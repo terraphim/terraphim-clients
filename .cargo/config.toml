@@ -1,0 +1,5 @@
+[registry]
+global-credential-providers = ["cargo:token"]
+
+[registries.terraphim]
+index = "sparse+https://git.terraphim.cloud/api/packages/terraphim/cargo/"

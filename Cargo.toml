@@ -1,0 +1,49 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/terraphim_cli",
+    "crates/terraphim_mcp_server",
+    "crates/terraphim_sessions",
+    "crates/terraphim_lsp",
+    "crates/terraphim_grep",
+    "crates/terraphim_agent",
+    "crates/terraphim_command_runtime",
+    "crates/terraphim_hooks",
+    "crates/terraphim_update",
+    "crates/terraphim_negative_contribution",
+]
+
+[workspace.package]
+version = "1.20.3"
+edition = "2024"
+authors = ["Terraphim Team <team@terraphim.ai>"]
+documentation = "https://terraphim.ai"
+homepage = "https://terraphim.ai"
+repository = "https://git.terraphim.cloud/terraphim/terraphim-clients"
+license = "Apache-2.0"
+readme = "README.md"
+
+[workspace.dependencies]
+tokio = { version = "1.0", features = ["full"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1.21", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+async-trait = "0.1"
+thiserror = "1.0"
+anyhow = "1.0"
+log = "0.4"
+tracing = "0.1"
+tempfile = "3.27"
+rustls = { version = "0.23", default-features = false }
+rustls-webpki = "0.103.12"
+
+[patch.crates-io]
+rustls-webpki = { git = "https://github.com/rustls/webpki.git", tag = "v/0.103.12" }
+
+[profile.release]
+panic = "unwind"
+lto = false
+codegen-units = 1
+opt-level = 3
