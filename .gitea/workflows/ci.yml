@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# All cross-repo deps resolve from the public-read `terraphim` cargo registry
+# (.cargo/config.toml is committed), so no token is needed for builds.
+jobs:
+  check:
+    runs-on: [self-hosted, bigbox]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain (1.87.0 + rustfmt + clippy)
+        uses: dtolnay/rust-toolchain@1.87.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Build
+        run: cargo build --workspace
+
+      - name: Test
+        run: cargo test --workspace
