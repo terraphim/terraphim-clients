@@ -227,15 +227,15 @@ impl ForgivingParser {
         // 3. Try fuzzy matching
         let commands: Vec<&str> = self.known_commands.iter().map(|s| s.as_str()).collect();
 
-        if let Some(best) = find_best_match(&cmd_lower, &commands) {
-            if best.edit_distance <= self.max_auto_correct_distance {
-                return ParseResult::AutoCorrected {
-                    command: best.command.clone(),
-                    original: cmd_part.to_string(),
-                    distance: best.edit_distance,
-                    args,
-                };
-            }
+        if let Some(best) = find_best_match(&cmd_lower, &commands)
+            && best.edit_distance <= self.max_auto_correct_distance
+        {
+            return ParseResult::AutoCorrected {
+                command: best.command.clone(),
+                original: cmd_part.to_string(),
+                distance: best.edit_distance,
+                args,
+            };
         }
 
         // 4. Get suggestions for unknown command

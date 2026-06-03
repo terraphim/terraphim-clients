@@ -233,28 +233,28 @@ impl RobotFormatter {
             Ok(v) => v,
             Err(_) => return serde_json::Value::Null,
         };
-        if let Some(results) = v.get_mut("data").and_then(|d| d.get_mut("results")) {
-            if let Some(arr) = results.as_array_mut() {
-                let keep: Vec<&str> = match &self.config.fields {
-                    FieldMode::Full => unreachable!(),
-                    FieldMode::Summary => vec![
-                        "rank",
-                        "id",
-                        "title",
-                        "url",
-                        "score",
-                        "preview",
-                        "source",
-                        "date",
-                        "preview_truncated",
-                    ],
-                    FieldMode::Minimal => vec!["rank", "id", "title", "url", "score"],
-                    FieldMode::Custom(fields) => fields.iter().map(|s| s.as_str()).collect(),
-                };
-                for item in arr {
-                    if let Some(obj) = item.as_object_mut() {
-                        obj.retain(|k, _| keep.contains(&k.as_str()));
-                    }
+        if let Some(results) = v.get_mut("data").and_then(|d| d.get_mut("results"))
+            && let Some(arr) = results.as_array_mut()
+        {
+            let keep: Vec<&str> = match &self.config.fields {
+                FieldMode::Full => unreachable!(),
+                FieldMode::Summary => vec![
+                    "rank",
+                    "id",
+                    "title",
+                    "url",
+                    "score",
+                    "preview",
+                    "source",
+                    "date",
+                    "preview_truncated",
+                ],
+                FieldMode::Minimal => vec!["rank", "id", "title", "url", "score"],
+                FieldMode::Custom(fields) => fields.iter().map(|s| s.as_str()).collect(),
+            };
+            for item in arr {
+                if let Some(obj) = item.as_object_mut() {
+                    obj.retain(|k, _| keep.contains(&k.as_str()));
                 }
             }
         }
@@ -275,26 +275,25 @@ impl RobotFormatter {
 
     /// Truncate content if needed based on config
     pub fn truncate_content(&self, content: &str) -> (String, bool) {
-        if let Some(max_len) = self.config.max_content_length {
-            if content.len() > max_len {
-                let safe_boundary = if content.is_char_boundary(max_len) {
-                    max_len
-                } else {
-                    content
-                        .char_indices()
-                        .take_while(|(i, _)| *i < max_len)
-                        .last()
-                        .map(|(i, _)| i)
-                        .unwrap_or(0)
-                };
-                let truncated =
-                    if let Some(pos) = content[..safe_boundary].rfind(char::is_whitespace) {
-                        &content[..pos]
-                    } else {
-                        &content[..safe_boundary]
-                    };
-                return (format!("{}...", truncated), true);
-            }
+        if let Some(max_len) = self.config.max_content_length
+            && content.len() > max_len
+        {
+            let safe_boundary = if content.is_char_boundary(max_len) {
+                max_len
+            } else {
+                content
+                    .char_indices()
+                    .take_while(|(i, _)| *i < max_len)
+                    .last()
+                    .map(|(i, _)| i)
+                    .unwrap_or(0)
+            };
+            let truncated = if let Some(pos) = content[..safe_boundary].rfind(char::is_whitespace) {
+                &content[..pos]
+            } else {
+                &content[..safe_boundary]
+            };
+            return (format!("{}...", truncated), true);
         }
         (content.to_string(), false)
     }

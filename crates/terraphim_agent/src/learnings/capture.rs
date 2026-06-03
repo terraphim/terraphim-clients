@@ -994,10 +994,10 @@ pub fn capture_failed_command(
         CapturedLearning::new(actual_command.clone(), redacted_error, exit_code, source);
 
     // Set full chain if different from actual command
-    if let Some(ref chain) = full_chain {
-        if *chain != actual_command {
-            learning = learning.with_failing_subcommand(actual_command.clone(), chain.clone());
-        }
+    if let Some(ref chain) = full_chain
+        && *chain != actual_command
+    {
+        learning = learning.with_failing_subcommand(actual_command.clone(), chain.clone());
     }
     let entities = annotate_with_entities(&annotation_text);
     if !entities.is_empty() {
@@ -1160,12 +1160,11 @@ pub fn list_learnings(
 
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.extension().map(|e| e == "md").unwrap_or(false) {
-            if let Ok(content) = fs::read_to_string(&path) {
-                if let Some(learning) = CapturedLearning::from_markdown(&content) {
-                    learnings.push(learning);
-                }
-            }
+        if path.extension().map(|e| e == "md").unwrap_or(false)
+            && let Ok(content) = fs::read_to_string(&path)
+            && let Some(learning) = CapturedLearning::from_markdown(&content)
+        {
+            learnings.push(learning);
         }
     }
 
@@ -1224,16 +1223,14 @@ pub fn correct_learning(
 
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.extension().map(|e| e == "md").unwrap_or(false) {
-            if let Ok(content) = fs::read_to_string(&path) {
-                if let Some(mut learning) = CapturedLearning::from_markdown(&content) {
-                    if learning.id == id || learning.id.starts_with(id) {
-                        learning.correction = Some(correction.to_string());
-                        fs::write(&path, learning.to_markdown())?;
-                        return Ok(path);
-                    }
-                }
-            }
+        if path.extension().map(|e| e == "md").unwrap_or(false)
+            && let Ok(content) = fs::read_to_string(&path)
+            && let Some(mut learning) = CapturedLearning::from_markdown(&content)
+            && (learning.id == id || learning.id.starts_with(id))
+        {
+            learning.correction = Some(correction.to_string());
+            fs::write(&path, learning.to_markdown())?;
+            return Ok(path);
         }
     }
 
@@ -1327,34 +1324,34 @@ pub fn list_all_entries(
 
     for entry in fs::read_dir(storage_dir)?.flatten() {
         let path = entry.path();
-        if path.extension().map(|e| e == "md").unwrap_or(false) {
-            if let Ok(content) = fs::read_to_string(&path) {
-                let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                if filename.starts_with("correction-") {
-                    if let Some(correction) = CorrectionEvent::from_markdown(&content) {
-                        entries.push(LearningEntry::Correction(correction));
-                    }
-                } else if let Some(learning) = CapturedLearning::from_markdown(&content) {
-                    entries.push(LearningEntry::Learning(learning));
+        if path.extension().map(|e| e == "md").unwrap_or(false)
+            && let Ok(content) = fs::read_to_string(&path)
+        {
+            let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if filename.starts_with("correction-") {
+                if let Some(correction) = CorrectionEvent::from_markdown(&content) {
+                    entries.push(LearningEntry::Correction(correction));
                 }
+            } else if let Some(learning) = CapturedLearning::from_markdown(&content) {
+                entries.push(LearningEntry::Learning(learning));
             }
         }
     }
 
     // Also load procedures from procedures.jsonl if it exists
     let procedures_path = storage_dir.join("procedures.jsonl");
-    if procedures_path.exists() {
-        if let Ok(content) = fs::read_to_string(&procedures_path) {
-            for line in content.lines() {
-                let line = line.trim();
-                if line.is_empty() {
-                    continue;
-                }
-                if let Ok(proc) =
-                    serde_json::from_str::<terraphim_types::procedure::CapturedProcedure>(line)
-                {
-                    entries.push(LearningEntry::Procedure(proc));
-                }
+    if procedures_path.exists()
+        && let Ok(content) = fs::read_to_string(&procedures_path)
+    {
+        for line in content.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            if let Ok(proc) =
+                serde_json::from_str::<terraphim_types::procedure::CapturedProcedure>(line)
+            {
+                entries.push(LearningEntry::Procedure(proc));
             }
         }
     }
@@ -1690,15 +1687,15 @@ pub fn auto_extract_corrections(
             if let Some(exit_code) = entry.exit_code {
                 if exit_code != 0 {
                     // Extract the command from tool_input in previous context or from error
-                    if let Some(ref tool_input) = entry.tool_input {
-                        if let Some(cmd) = extract_command_from_input(tool_input) {
-                            let error = entry
-                                .error
-                                .clone()
-                                .or_else(|| entry.content.clone())
-                                .unwrap_or_default();
-                            last_failed_command = Some((cmd, exit_code, error));
-                        }
+                    if let Some(ref tool_input) = entry.tool_input
+                        && let Some(cmd) = extract_command_from_input(tool_input)
+                    {
+                        let error = entry
+                            .error
+                            .clone()
+                            .or_else(|| entry.content.clone())
+                            .unwrap_or_default();
+                        last_failed_command = Some((cmd, exit_code, error));
                     }
                 } else if exit_code == 0 {
                     // Successful command - check if we had a previous failure
@@ -1706,27 +1703,27 @@ pub fn auto_extract_corrections(
                         last_failed_command.take()
                     {
                         // Extract the successful command
-                        if let Some(ref tool_input) = entry.tool_input {
-                            if let Some(success_cmd) = extract_command_from_input(tool_input) {
-                                // Only create correction if commands are different
-                                if failed_cmd != success_cmd {
-                                    let context = format!(
-                                        "Auto-extracted from session transcript. Failed with exit {}: {}",
-                                        failed_exit, failed_error
-                                    );
-                                    let correction = CorrectionEvent::new(
-                                        CorrectionType::ToolPreference,
-                                        failed_cmd,
-                                        success_cmd,
-                                        context,
-                                        LearningSource::Project,
-                                    )
-                                    .with_tags(vec![
-                                        "auto-extracted".to_string(),
-                                        "transcript".to_string(),
-                                    ]);
-                                    corrections.push(correction);
-                                }
+                        if let Some(ref tool_input) = entry.tool_input
+                            && let Some(success_cmd) = extract_command_from_input(tool_input)
+                        {
+                            // Only create correction if commands are different
+                            if failed_cmd != success_cmd {
+                                let context = format!(
+                                    "Auto-extracted from session transcript. Failed with exit {}: {}",
+                                    failed_exit, failed_error
+                                );
+                                let correction = CorrectionEvent::new(
+                                    CorrectionType::ToolPreference,
+                                    failed_cmd,
+                                    success_cmd,
+                                    context,
+                                    LearningSource::Project,
+                                )
+                                .with_tags(vec![
+                                    "auto-extracted".to_string(),
+                                    "transcript".to_string(),
+                                ]);
+                                corrections.push(correction);
                             }
                         }
                     }
@@ -1735,46 +1732,45 @@ pub fn auto_extract_corrections(
         }
 
         // Check for explicit correction phrases in content
-        if let Some(ref content) = entry.content {
-            if let Some((original, corrected)) = contains_correction_phrase(content) {
-                let context = format!(
-                    "Auto-extracted from session transcript content: {}",
-                    content.chars().take(100).collect::<String>()
-                );
-                let correction = CorrectionEvent::new(
-                    CorrectionType::Other("phrase-detected".to_string()),
-                    original,
-                    corrected,
-                    context,
-                    LearningSource::Project,
-                )
-                .with_tags(vec!["auto-extracted".to_string(), "phrase".to_string()]);
-                corrections.push(correction);
-            }
+        if let Some(ref content) = entry.content
+            && let Some((original, corrected)) = contains_correction_phrase(content)
+        {
+            let context = format!(
+                "Auto-extracted from session transcript content: {}",
+                content.chars().take(100).collect::<String>()
+            );
+            let correction = CorrectionEvent::new(
+                CorrectionType::Other("phrase-detected".to_string()),
+                original,
+                corrected,
+                context,
+                LearningSource::Project,
+            )
+            .with_tags(vec!["auto-extracted".to_string(), "phrase".to_string()]);
+            corrections.push(correction);
         }
 
         // Also check in tool_result if it's a string
-        if let Some(ref tool_result) = entry.tool_result {
-            if let Some(content) = tool_result.as_str() {
-                if let Some((original, corrected)) = contains_correction_phrase(content) {
-                    let context = format!(
-                        "Auto-extracted from tool result: {}",
-                        content.chars().take(100).collect::<String>()
-                    );
-                    let correction = CorrectionEvent::new(
-                        CorrectionType::Other("phrase-detected".to_string()),
-                        original,
-                        corrected,
-                        context,
-                        LearningSource::Project,
-                    )
-                    .with_tags(vec![
-                        "auto-extracted".to_string(),
-                        "tool-result".to_string(),
-                    ]);
-                    corrections.push(correction);
-                }
-            }
+        if let Some(ref tool_result) = entry.tool_result
+            && let Some(content) = tool_result.as_str()
+            && let Some((original, corrected)) = contains_correction_phrase(content)
+        {
+            let context = format!(
+                "Auto-extracted from tool result: {}",
+                content.chars().take(100).collect::<String>()
+            );
+            let correction = CorrectionEvent::new(
+                CorrectionType::Other("phrase-detected".to_string()),
+                original,
+                corrected,
+                context,
+                LearningSource::Project,
+            )
+            .with_tags(vec![
+                "auto-extracted".to_string(),
+                "tool-result".to_string(),
+            ]);
+            corrections.push(correction);
         }
     }
 

@@ -52,10 +52,10 @@ pub async fn find_role_by_name_or_shortname(
 
     // Then try match on shortname
     for (name, role) in config.roles.iter() {
-        if let Some(ref shortname) = role.shortname {
-            if shortname.to_lowercase() == query_lower {
-                return Some(name.clone());
-            }
+        if let Some(ref shortname) = role.shortname
+            && shortname.to_lowercase() == query_lower
+        {
+            return Some(name.clone());
         }
     }
 

@@ -35,12 +35,11 @@ fn get_workspace_root() -> Result<PathBuf> {
 
     loop {
         let cargo_toml = current.join("Cargo.toml");
-        if cargo_toml.exists() {
-            if let Ok(content) = fs::read_to_string(&cargo_toml) {
-                if content.contains("[workspace]") {
-                    return Ok(current);
-                }
-            }
+        if cargo_toml.exists()
+            && let Ok(content) = fs::read_to_string(&cargo_toml)
+            && content.contains("[workspace]")
+        {
+            return Ok(current);
         }
 
         if !current.pop() {
@@ -442,10 +441,10 @@ fn compare_rankings(
     let moved_up: Vec<String> = kg_ids
         .iter()
         .filter(|id| {
-            if let Some(kg_pos) = kg_ids.iter().position(|x| x == *id) {
-                if let Some(base_pos) = baseline_ids.iter().position(|x| x == *id) {
-                    return kg_pos < base_pos;
-                }
+            if let Some(kg_pos) = kg_ids.iter().position(|x| x == *id)
+                && let Some(base_pos) = baseline_ids.iter().position(|x| x == *id)
+            {
+                return kg_pos < base_pos;
             }
             false
         })
@@ -455,10 +454,10 @@ fn compare_rankings(
     let moved_down: Vec<String> = kg_ids
         .iter()
         .filter(|id| {
-            if let Some(kg_pos) = kg_ids.iter().position(|x| x == *id) {
-                if let Some(base_pos) = baseline_ids.iter().position(|x| x == *id) {
-                    return kg_pos > base_pos;
-                }
+            if let Some(kg_pos) = kg_ids.iter().position(|x| x == *id)
+                && let Some(base_pos) = baseline_ids.iter().position(|x| x == *id)
+            {
+                return kg_pos > base_pos;
             }
             false
         })

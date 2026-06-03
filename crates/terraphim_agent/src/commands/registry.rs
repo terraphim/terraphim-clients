@@ -356,15 +356,15 @@ impl CommandRegistry {
             // Validate min/max for numbers
             if value.is_number() {
                 let num = value.as_f64().unwrap();
-                if let Some(min) = validation.min {
-                    if num < min {
-                        return Err(format!("Value {} is below minimum {}", num, min));
-                    }
+                if let Some(min) = validation.min
+                    && num < min
+                {
+                    return Err(format!("Value {} is below minimum {}", num, min));
                 }
-                if let Some(max) = validation.max {
-                    if num > max {
-                        return Err(format!("Value {} is above maximum {}", num, max));
-                    }
+                if let Some(max) = validation.max
+                    && num > max
+                {
+                    return Err(format!("Value {} is above maximum {}", num, max));
                 }
             }
 
@@ -383,13 +383,13 @@ impl CommandRegistry {
             }
 
             // Validate regex pattern for strings
-            if let Some(ref pattern) = validation.pattern {
-                if let Some(s) = value.as_str() {
-                    let regex = regex::Regex::new(pattern)
-                        .map_err(|e| format!("Invalid regex pattern: {}", e))?;
-                    if !regex.is_match(s) {
-                        return Err(format!("Value '{}' does not match pattern: {}", s, pattern));
-                    }
+            if let Some(ref pattern) = validation.pattern
+                && let Some(s) = value.as_str()
+            {
+                let regex = regex::Regex::new(pattern)
+                    .map_err(|e| format!("Invalid regex pattern: {}", e))?;
+                if !regex.is_match(s) {
+                    return Err(format!("Value '{}' does not match pattern: {}", s, pattern));
                 }
             }
         }

@@ -755,42 +755,42 @@ impl MarkdownCommandParser {
         }
 
         // Validate timeout
-        if let Some(timeout) = definition.timeout {
-            if timeout == 0 {
-                return Err(CommandRegistryError::invalid_frontmatter(
-                    source_path,
-                    "Timeout cannot be zero",
-                ));
-            }
+        if let Some(timeout) = definition.timeout
+            && timeout == 0
+        {
+            return Err(CommandRegistryError::invalid_frontmatter(
+                source_path,
+                "Timeout cannot be zero",
+            ));
         }
 
         // Validate resource limits
         if let Some(ref limits) = definition.resource_limits {
-            if let Some(max_memory) = limits.max_memory_mb {
-                if max_memory == 0 {
-                    return Err(CommandRegistryError::invalid_frontmatter(
-                        source_path,
-                        "Max memory limit cannot be zero",
-                    ));
-                }
+            if let Some(max_memory) = limits.max_memory_mb
+                && max_memory == 0
+            {
+                return Err(CommandRegistryError::invalid_frontmatter(
+                    source_path,
+                    "Max memory limit cannot be zero",
+                ));
             }
 
-            if let Some(max_cpu) = limits.max_cpu_time {
-                if max_cpu == 0 {
-                    return Err(CommandRegistryError::invalid_frontmatter(
-                        source_path,
-                        "Max CPU time cannot be zero",
-                    ));
-                }
+            if let Some(max_cpu) = limits.max_cpu_time
+                && max_cpu == 0
+            {
+                return Err(CommandRegistryError::invalid_frontmatter(
+                    source_path,
+                    "Max CPU time cannot be zero",
+                ));
             }
 
-            if let Some(max_disk) = limits.max_disk_mb {
-                if max_disk == 0 {
-                    return Err(CommandRegistryError::invalid_frontmatter(
-                        source_path,
-                        "Max disk limit cannot be zero",
-                    ));
-                }
+            if let Some(max_disk) = limits.max_disk_mb
+                && max_disk == 0
+            {
+                return Err(CommandRegistryError::invalid_frontmatter(
+                    source_path,
+                    "Max disk limit cannot be zero",
+                ));
             }
         }
 

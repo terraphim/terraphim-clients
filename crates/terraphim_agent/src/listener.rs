@@ -1401,10 +1401,8 @@ impl ListenerRuntime {
             page += 1;
         }
 
-        if !should_retry_current_cursor {
-            if let Some(newest_seen_at) = newest_seen_at {
-                self.last_seen_at = newest_seen_at.to_string();
-            }
+        if !should_retry_current_cursor && let Some(newest_seen_at) = newest_seen_at {
+            self.last_seen_at = newest_seen_at.to_string();
         }
         Ok(())
     }

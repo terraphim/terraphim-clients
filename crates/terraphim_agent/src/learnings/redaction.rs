@@ -114,10 +114,10 @@ pub fn contains_secrets(text: &str) -> bool {
     ];
 
     for pattern in patterns {
-        if let Ok(re) = regex::Regex::new(pattern) {
-            if re.is_match(text) {
-                return true;
-            }
+        if let Ok(re) = regex::Regex::new(pattern)
+            && re.is_match(text)
+        {
+            return true;
         }
     }
 

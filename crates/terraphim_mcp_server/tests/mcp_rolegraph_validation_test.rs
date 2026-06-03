@@ -236,10 +236,10 @@ async fn test_mcp_server_terraphim_engineer_search() -> Result<()> {
         );
 
         // Print first result for debugging
-        if let Some(first_content) = search_result.content.first() {
-            if let Some(text_content) = first_content.as_text() {
-                println!("   📄 Result summary: {}", text_content.text);
-            }
+        if let Some(first_content) = search_result.content.first()
+            && let Some(text_content) = first_content.as_text()
+        {
+            println!("   📄 Result summary: {}", text_content.text);
         }
 
         // Debug: Let's investigate why no documents are found

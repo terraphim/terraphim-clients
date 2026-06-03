@@ -1014,9 +1014,6 @@ enum LearnSub {
     },
     /// Process hook input from AI agents (reads JSON from stdin)
     Hook {
-        /// AI agent format
-        #[arg(long, value_enum, default_value = "claude")]
-        format: learnings::AgentFormat,
         /// Hook type for multi-hook pipeline
         #[arg(long, value_enum, default_value = "post-tool-use")]
         learn_hook_type: learnings::LearnHookType,
@@ -1990,12 +1987,12 @@ async fn run_offline_command(
 
         if *json {
             println!("{}", serde_json::to_string(&result)?);
-        } else if result.decision == guard_patterns::GuardDecision::Block {
-            if let Some(reason) = &result.reason {
-                eprintln!("BLOCKED: {}", reason);
-                if !fail_open {
-                    std::process::exit(1);
-                }
+        } else if result.decision == guard_patterns::GuardDecision::Block
+            && let Some(reason) = &result.reason
+        {
+            eprintln!("BLOCKED: {}", reason);
+            if !fail_open {
+                std::process::exit(1);
             }
         }
         // If allowed, no output in non-JSON mode (silent success)
@@ -2748,26 +2745,22 @@ async fn run_offline_command(
                             // If replacement occurred or KG validation has findings, output modified input
                             if hook_result.replacements > 0 || kg_validation.has_findings {
                                 let mut output = input_value.clone();
-                                if hook_result.replacements > 0 {
-                                    if let Some(tool_input) = output.get_mut("tool_input") {
-                                        if let Some(obj) = tool_input.as_object_mut() {
-                                            obj.insert(
-                                                "command".to_string(),
-                                                serde_json::Value::String(
-                                                    hook_result.result.clone(),
-                                                ),
-                                            );
-                                        }
-                                    }
+                                if hook_result.replacements > 0
+                                    && let Some(tool_input) = output.get_mut("tool_input")
+                                    && let Some(obj) = tool_input.as_object_mut()
+                                {
+                                    obj.insert(
+                                        "command".to_string(),
+                                        serde_json::Value::String(hook_result.result.clone()),
+                                    );
                                 }
-                                if kg_validation.has_findings {
-                                    if let Some(obj) = output.as_object_mut() {
-                                        obj.insert(
-                                            "validations".to_string(),
-                                            serde_json::to_value(&kg_validation)
-                                                .unwrap_or_default(),
-                                        );
-                                    }
+                                if kg_validation.has_findings
+                                    && let Some(obj) = output.as_object_mut()
+                                {
+                                    obj.insert(
+                                        "validations".to_string(),
+                                        serde_json::to_value(&kg_validation).unwrap_or_default(),
+                                    );
                                 }
                                 println!("{}", serde_json::to_string(&output)?);
                             } else {
@@ -2951,16 +2944,13 @@ async fn run_offline_command(
 
             // Load cached sessions from disk
             let cache_path = get_session_cache_path();
-            if cache_path.exists() {
-                if let Ok(data) = std::fs::read_to_string(&cache_path) {
-                    if let Ok(cached) =
-                        serde_json::from_str::<Vec<terraphim_sessions::Session>>(&data)
-                    {
-                        service.load_sessions(cached).await;
-                        if !output.is_machine_readable() {
-                            println!("Loaded sessions from cache.");
-                        }
-                    }
+            if cache_path.exists()
+                && let Ok(data) = std::fs::read_to_string(&cache_path)
+                && let Ok(cached) = serde_json::from_str::<Vec<terraphim_sessions::Session>>(&data)
+            {
+                service.load_sessions(cached).await;
+                if !output.is_machine_readable() {
+                    println!("Loaded sessions from cache.");
                 }
             }
 
@@ -3345,12 +3335,11 @@ async fn run_learn_command(sub: LearnSub) -> Result<()> {
                 }
             }
         }
-        LearnSub::Hook {
-            format,
-            learn_hook_type,
-        } => learnings::process_hook_input_with_type(format, learn_hook_type)
-            .await
-            .map_err(|e| e.into()),
+        LearnSub::Hook { learn_hook_type } => {
+            learnings::process_hook_input_with_type(learn_hook_type)
+                .await
+                .map_err(|e| e.into())
+        }
         LearnSub::InstallHook { agent } => {
             learnings::install_hook(agent).await.map_err(|e| e.into())
         }
@@ -3601,14 +3590,12 @@ async fn run_learn_command(sub: LearnSub) -> Result<()> {
 
                     // Load cached sessions from disk
                     let cache_path = get_session_cache_path();
-                    if cache_path.exists() {
-                        if let Ok(data) = std::fs::read_to_string(&cache_path) {
-                            if let Ok(cached) =
-                                serde_json::from_str::<Vec<terraphim_sessions::Session>>(&data)
-                            {
-                                service.load_sessions(cached).await;
-                            }
-                        }
+                    if cache_path.exists()
+                        && let Ok(data) = std::fs::read_to_string(&cache_path)
+                        && let Ok(cached) =
+                            serde_json::from_str::<Vec<terraphim_sessions::Session>>(&data)
+                    {
+                        service.load_sessions(cached).await;
                     }
 
                     let session = service.get_session(&session_id).await;
@@ -4750,12 +4737,12 @@ async fn run_server_command(
 
             if json {
                 println!("{}", serde_json::to_string(&result)?);
-            } else if result.decision == guard_patterns::GuardDecision::Block {
-                if let Some(reason) = &result.reason {
-                    eprintln!("BLOCKED: {}", reason);
-                    if !fail_open {
-                        std::process::exit(1);
-                    }
+            } else if result.decision == guard_patterns::GuardDecision::Block
+                && let Some(reason) = &result.reason
+            {
+                eprintln!("BLOCKED: {}", reason);
+                if !fail_open {
+                    std::process::exit(1);
                 }
             }
 
@@ -5226,157 +5213,150 @@ fn ui_loop(
             }
         })?;
 
-        if event::poll(std::time::Duration::from_millis(50))? {
-            if let Event::Key(key) = event::read()? {
-                match view_mode {
-                    ViewMode::Search => match map_search_key_event(key) {
-                        TuiAction::Quit => break,
-                        TuiAction::SearchOrOpen => {
-                            let query = input.trim().to_string();
+        if event::poll(std::time::Duration::from_millis(50))?
+            && let Event::Key(key) = event::read()?
+        {
+            match view_mode {
+                ViewMode::Search => match map_search_key_event(key) {
+                    TuiAction::Quit => break,
+                    TuiAction::SearchOrOpen => {
+                        let query = input.trim().to_string();
+                        let backend = backend.clone();
+                        let role = current_role.clone();
+                        if !query.is_empty() {
+                            if let Ok(docs) = rt.block_on(async move {
+                                let q = SearchQuery {
+                                    search_term: NormalizedTermValue::from(query.as_str()),
+                                    search_terms: None,
+                                    operator: None,
+                                    skip: Some(0),
+                                    limit: Some(10),
+                                    role: Some(RoleName::new(&role)),
+                                    layer: Layer::default(),
+                                    include_pinned: false,
+                                    min_quality: None,
+                                };
+                                backend.search(&q).await
+                            }) {
+                                let lines: Vec<String> = docs
+                                    .iter()
+                                    .map(|d| format!("{} {}", d.rank.unwrap_or_default(), d.title))
+                                    .collect();
+                                results = lines;
+                                detailed_results = docs;
+                                selected_result_index = 0;
+                            }
+                        } else if selected_result_index < detailed_results.len() {
+                            view_mode = ViewMode::ResultDetail;
+                        }
+                    }
+                    TuiAction::MoveUp => {
+                        selected_result_index = selected_result_index.saturating_sub(1);
+                    }
+                    TuiAction::MoveDown => {
+                        if selected_result_index + 1 < results.len() {
+                            selected_result_index += 1;
+                        }
+                    }
+                    TuiAction::Autocomplete => {
+                        let query = input.trim();
+                        if !query.is_empty() {
                             let backend = backend.clone();
                             let role = current_role.clone();
-                            if !query.is_empty() {
-                                if let Ok(docs) = rt.block_on(async move {
-                                    let q = SearchQuery {
-                                        search_term: NormalizedTermValue::from(query.as_str()),
-                                        search_terms: None,
-                                        operator: None,
-                                        skip: Some(0),
-                                        limit: Some(10),
-                                        role: Some(RoleName::new(&role)),
-                                        layer: Layer::default(),
-                                        include_pinned: false,
-                                        min_quality: None,
-                                    };
-                                    backend.search(&q).await
+                            if let Ok(autocomplete_resp) =
+                                rt.block_on(async move { backend.autocomplete(&role, query).await })
+                            {
+                                suggestions = autocomplete_resp.into_iter().take(5).collect();
+                            }
+                        }
+                    }
+                    TuiAction::SwitchRole => {
+                        let backend = backend.clone();
+                        if let Ok(cfg) = rt.block_on(async { backend.get_config().await }) {
+                            let roles: Vec<String> =
+                                cfg.roles.keys().map(|k| k.to_string()).collect();
+                            if !roles.is_empty()
+                                && let Some(current_idx) =
+                                    roles.iter().position(|r| r == &current_role)
+                            {
+                                let next_idx = (current_idx + 1) % roles.len();
+                                current_role = roles[next_idx].clone();
+                                if let Ok(rg) = rt.block_on(async {
+                                    backend.get_rolegraph_terms(&current_role).await
                                 }) {
-                                    let lines: Vec<String> = docs
-                                        .iter()
-                                        .map(|d| {
-                                            format!("{} {}", d.rank.unwrap_or_default(), d.title)
-                                        })
-                                        .collect();
-                                    results = lines;
-                                    detailed_results = docs;
-                                    selected_result_index = 0;
+                                    terms = rg;
                                 }
-                            } else if selected_result_index < detailed_results.len() {
-                                view_mode = ViewMode::ResultDetail;
                             }
                         }
-                        TuiAction::MoveUp => {
-                            selected_result_index = selected_result_index.saturating_sub(1);
-                        }
-                        TuiAction::MoveDown => {
-                            if selected_result_index + 1 < results.len() {
-                                selected_result_index += 1;
-                            }
-                        }
-                        TuiAction::Autocomplete => {
-                            let query = input.trim();
-                            if !query.is_empty() {
+                    }
+                    TuiAction::SummarizeSelection => {
+                        #[cfg(feature = "llm")]
+                        {
+                            if selected_result_index < detailed_results.len() {
+                                let doc = detailed_results[selected_result_index].clone();
                                 let backend = backend.clone();
                                 let role = current_role.clone();
-                                if let Ok(autocomplete_resp) =
-                                    rt.block_on(
-                                        async move { backend.autocomplete(&role, query).await },
-                                    )
+                                if let Ok(Some(summary_text)) = rt.block_on(async move {
+                                    backend.summarize(&doc, Some(&role)).await
+                                }) && selected_result_index < results.len()
                                 {
-                                    suggestions = autocomplete_resp.into_iter().take(5).collect();
+                                    results[selected_result_index] =
+                                        format!("SUMMARY: {}", summary_text);
                                 }
                             }
                         }
-                        TuiAction::SwitchRole => {
-                            let backend = backend.clone();
-                            if let Ok(cfg) = rt.block_on(async { backend.get_config().await }) {
-                                let roles: Vec<String> =
-                                    cfg.roles.keys().map(|k| k.to_string()).collect();
-                                if !roles.is_empty() {
-                                    if let Some(current_idx) =
-                                        roles.iter().position(|r| r == &current_role)
+                    }
+                    TuiAction::Backspace => {
+                        input.pop();
+                        update_local_suggestions(&input, &terms, &mut suggestions);
+                    }
+                    TuiAction::InsertChar(c) => {
+                        input.push(c);
+                        update_local_suggestions(&input, &terms, &mut suggestions);
+                    }
+                    TuiAction::None | TuiAction::BackToSearch | TuiAction::SummarizeDetail => {}
+                },
+                ViewMode::ResultDetail => match map_detail_key_event(key) {
+                    TuiAction::BackToSearch => {
+                        view_mode = ViewMode::Search;
+                    }
+                    TuiAction::SummarizeDetail => {
+                        #[cfg(feature = "llm")]
+                        {
+                            if selected_result_index < detailed_results.len() {
+                                let doc = detailed_results[selected_result_index].clone();
+                                let backend = backend.clone();
+                                let role = current_role.clone();
+                                if let Ok(Some(summary_text)) = rt.block_on(async move {
+                                    backend.summarize(&doc, Some(&role)).await
+                                }) {
+                                    let original_body = if detailed_results[selected_result_index]
+                                        .body
+                                        .is_empty()
                                     {
-                                        let next_idx = (current_idx + 1) % roles.len();
-                                        current_role = roles[next_idx].clone();
-                                        if let Ok(rg) = rt.block_on(async {
-                                            backend.get_rolegraph_terms(&current_role).await
-                                        }) {
-                                            terms = rg;
-                                        }
-                                    }
+                                        "No content"
+                                    } else {
+                                        &detailed_results[selected_result_index].body
+                                    };
+                                    detailed_results[selected_result_index].body = format!(
+                                        "SUMMARY:\n{}\n\nORIGINAL:\n{}",
+                                        summary_text, original_body
+                                    );
                                 }
                             }
                         }
-                        TuiAction::SummarizeSelection => {
-                            #[cfg(feature = "llm")]
-                            {
-                                if selected_result_index < detailed_results.len() {
-                                    let doc = detailed_results[selected_result_index].clone();
-                                    let backend = backend.clone();
-                                    let role = current_role.clone();
-                                    if let Ok(Some(summary_text)) = rt.block_on(async move {
-                                        backend.summarize(&doc, Some(&role)).await
-                                    }) {
-                                        if selected_result_index < results.len() {
-                                            results[selected_result_index] =
-                                                format!("SUMMARY: {}", summary_text);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        TuiAction::Backspace => {
-                            input.pop();
-                            update_local_suggestions(&input, &terms, &mut suggestions);
-                        }
-                        TuiAction::InsertChar(c) => {
-                            input.push(c);
-                            update_local_suggestions(&input, &terms, &mut suggestions);
-                        }
-                        TuiAction::None | TuiAction::BackToSearch | TuiAction::SummarizeDetail => {}
-                    },
-                    ViewMode::ResultDetail => match map_detail_key_event(key) {
-                        TuiAction::BackToSearch => {
-                            view_mode = ViewMode::Search;
-                        }
-                        TuiAction::SummarizeDetail => {
-                            #[cfg(feature = "llm")]
-                            {
-                                if selected_result_index < detailed_results.len() {
-                                    let doc = detailed_results[selected_result_index].clone();
-                                    let backend = backend.clone();
-                                    let role = current_role.clone();
-                                    if let Ok(Some(summary_text)) = rt.block_on(async move {
-                                        backend.summarize(&doc, Some(&role)).await
-                                    }) {
-                                        let original_body = if detailed_results
-                                            [selected_result_index]
-                                            .body
-                                            .is_empty()
-                                        {
-                                            "No content"
-                                        } else {
-                                            &detailed_results[selected_result_index].body
-                                        };
-                                        detailed_results[selected_result_index].body = format!(
-                                            "SUMMARY:\n{}\n\nORIGINAL:\n{}",
-                                            summary_text, original_body
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                        TuiAction::Quit => break,
-                        TuiAction::None
-                        | TuiAction::SearchOrOpen
-                        | TuiAction::MoveUp
-                        | TuiAction::MoveDown
-                        | TuiAction::Autocomplete
-                        | TuiAction::SwitchRole
-                        | TuiAction::SummarizeSelection
-                        | TuiAction::Backspace
-                        | TuiAction::InsertChar(_) => {}
-                    },
-                }
+                    }
+                    TuiAction::Quit => break,
+                    TuiAction::None
+                    | TuiAction::SearchOrOpen
+                    | TuiAction::MoveUp
+                    | TuiAction::MoveDown
+                    | TuiAction::Autocomplete
+                    | TuiAction::SwitchRole
+                    | TuiAction::SummarizeSelection
+                    | TuiAction::Backspace
+                    | TuiAction::InsertChar(_) => {}
+                },
             }
         }
     }

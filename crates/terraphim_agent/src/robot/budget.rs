@@ -84,10 +84,10 @@ impl BudgetEngine {
     }
 
     fn apply_max_results(&self, items: &[serde_json::Value]) -> (Vec<serde_json::Value>, bool) {
-        if let Some(max) = self.config.max_results {
-            if items.len() > max {
-                return (items[..max].to_vec(), true);
-            }
+        if let Some(max) = self.config.max_results
+            && items.len() > max
+        {
+            return (items[..max].to_vec(), true);
         }
         (items.to_vec(), false)
     }

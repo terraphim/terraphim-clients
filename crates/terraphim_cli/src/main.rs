@@ -408,14 +408,13 @@ async fn main() -> Result<()> {
         }) => {
             let result = handle_coverage(&service, text, &schema, threshold).await;
             // Check if coverage is below threshold for exit code
-            if let Ok(val) = &result {
-                if let Some(true) = val
+            if let Ok(val) = &result
+                && let Some(true) = val
                     .get("signal")
                     .and_then(|s| s.get("needs_review"))
                     .and_then(|v| v.as_bool())
-                {
-                    coverage_below_threshold = true;
-                }
+            {
+                coverage_below_threshold = true;
             }
             result
         }

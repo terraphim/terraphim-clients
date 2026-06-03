@@ -85,12 +85,11 @@ fn get_thesaurus_with_auto_rebuild() -> Option<Thesaurus> {
     // Fast path: check if cache is populated and still valid (read lock)
     {
         let guard = KG_CACHE.read().ok()?;
-        if let Some(cached) = guard.as_ref() {
-            if let Ok(Some(current_hash)) = compute_kg_source_hash(&cached.kg_path) {
-                if current_hash == cached.source_hash {
-                    return Some(cached.thesaurus.clone());
-                }
-            }
+        if let Some(cached) = guard.as_ref()
+            && let Ok(Some(current_hash)) = compute_kg_source_hash(&cached.kg_path)
+            && current_hash == cached.source_hash
+        {
+            return Some(cached.thesaurus.clone());
         }
     }
 
@@ -98,12 +97,11 @@ fn get_thesaurus_with_auto_rebuild() -> Option<Thesaurus> {
     let mut guard = KG_CACHE.write().ok()?;
 
     // Re-check after acquiring write lock (another thread may have updated)
-    if let Some(cached) = guard.as_ref() {
-        if let Ok(Some(current_hash)) = compute_kg_source_hash(&cached.kg_path) {
-            if current_hash == cached.source_hash {
-                return Some(cached.thesaurus.clone());
-            }
-        }
+    if let Some(cached) = guard.as_ref()
+        && let Ok(Some(current_hash)) = compute_kg_source_hash(&cached.kg_path)
+        && current_hash == cached.source_hash
+    {
+        return Some(cached.thesaurus.clone());
     }
 
     // Build new cache

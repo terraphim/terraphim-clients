@@ -540,18 +540,18 @@ impl CommandValidator {
         );
 
         // 4. Check role permissions
-        if let Some(permissions) = self.role_permissions.get(role) {
-            if !self.has_required_permissions(command, permissions) {
-                let details = format!("Role '{}' lacks required permissions for command", role);
-                self.log_security_event(
-                    user,
-                    command,
-                    SecurityAction::PermissionCheck,
-                    SecurityResult::Denied(details.clone()),
-                    &details,
-                );
-                return Err(CommandValidationError::InsufficientPermissions(details));
-            }
+        if let Some(permissions) = self.role_permissions.get(role)
+            && !self.has_required_permissions(command, permissions)
+        {
+            let details = format!("Role '{}' lacks required permissions for command", role);
+            self.log_security_event(
+                user,
+                command,
+                SecurityAction::PermissionCheck,
+                SecurityResult::Denied(details.clone()),
+                &details,
+            );
+            return Err(CommandValidationError::InsufficientPermissions(details));
         }
         self.log_security_event(
             user,

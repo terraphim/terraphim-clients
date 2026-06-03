@@ -67,11 +67,10 @@ fn start_test_server() -> Result<(Child, u16)> {
             .get(&health_url)
             .timeout(Duration::from_secs(1))
             .send()
+            && response.status().is_success()
         {
-            if response.status().is_success() {
-                println!("Test server is ready on port {}", port);
-                return Ok((child, port));
-            }
+            println!("Test server is ready on port {}", port);
+            return Ok((child, port));
         }
         std::thread::sleep(backoff);
         backoff = backoff.saturating_mul(2);

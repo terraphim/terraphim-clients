@@ -138,11 +138,11 @@ pub fn search_sessions(sessions: &[Session], query: &str) -> Vec<Scored<Session>
             .unwrap_or(std::cmp::Ordering::Equal)
     });
 
-    if let Some(top_score) = scored.first().map(|s| s.score()) {
-        if top_score > 0.0 {
-            let threshold = top_score * MIN_SCORE_FRACTION;
-            scored.retain(|s| s.score() >= threshold);
-        }
+    if let Some(top_score) = scored.first().map(|s| s.score())
+        && top_score > 0.0
+    {
+        let threshold = top_score * MIN_SCORE_FRACTION;
+        scored.retain(|s| s.score() >= threshold);
     }
 
     scored

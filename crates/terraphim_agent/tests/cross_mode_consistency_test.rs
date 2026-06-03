@@ -33,12 +33,11 @@ fn get_workspace_root() -> Result<PathBuf> {
 
     loop {
         let cargo_toml = current.join("Cargo.toml");
-        if cargo_toml.exists() {
-            if let Ok(content) = fs::read_to_string(&cargo_toml) {
-                if content.contains("[workspace]") {
-                    return Ok(current);
-                }
-            }
+        if cargo_toml.exists()
+            && let Ok(content) = fs::read_to_string(&cargo_toml)
+            && content.contains("[workspace]")
+        {
+            return Ok(current);
         }
 
         if !current.pop() {

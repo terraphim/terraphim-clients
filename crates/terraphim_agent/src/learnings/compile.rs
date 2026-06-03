@@ -136,10 +136,10 @@ pub fn write_thesaurus_json(
     })?;
 
     // Create parent directories if needed
-    if let Some(parent) = output_path.parent() {
-        if !parent.exists() {
-            fs::create_dir_all(parent)?;
-        }
+    if let Some(parent) = output_path.parent()
+        && !parent.exists()
+    {
+        fs::create_dir_all(parent)?;
     }
 
     fs::write(output_path, json)

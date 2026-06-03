@@ -97,12 +97,12 @@ fn test_mcp_autocomplete_via_stdio() {
         }
         println!("Tools list response: {}", response.trim());
 
-        if let Ok(tools_response) = serde_json::from_str::<serde_json::Value>(&response) {
-            if tools_response.get("result").is_some() {
-                println!("Parsed tools response: {:#?}", tools_response);
-                got_tools = true;
-                break;
-            }
+        if let Ok(tools_response) = serde_json::from_str::<serde_json::Value>(&response)
+            && tools_response.get("result").is_some()
+        {
+            println!("Parsed tools response: {:#?}", tools_response);
+            got_tools = true;
+            break;
         }
 
         std::thread::sleep(std::time::Duration::from_millis(100));

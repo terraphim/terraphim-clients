@@ -492,13 +492,12 @@ pub fn extract_bash_commands_from_session(
     let mut commands = Vec::new();
     for msg in &session.messages {
         for block in &msg.blocks {
-            if let ContentBlock::ToolUse { id, name, input } = block {
-                if name == "Bash" {
-                    if let Some(cmd) = input.get("command").and_then(|v| v.as_str()) {
-                        let exit_code = results.get(id.as_str()).copied().unwrap_or(0);
-                        commands.push((cmd.to_string(), exit_code));
-                    }
-                }
+            if let ContentBlock::ToolUse { id, name, input } = block
+                && name == "Bash"
+                && let Some(cmd) = input.get("command").and_then(|v| v.as_str())
+            {
+                let exit_code = results.get(id.as_str()).copied().unwrap_or(0);
+                commands.push((cmd.to_string(), exit_code));
             }
         }
     }

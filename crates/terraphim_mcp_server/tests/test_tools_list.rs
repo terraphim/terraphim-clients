@@ -113,14 +113,13 @@ fn test_tools_list_only() {
             println!("Parsed tools response: {:#?}", tools_response);
 
             // Check if tools are present
-            if let Some(result) = tools_response.get("result") {
-                if let Some(tools) = result.get("tools") {
-                    if let Some(tools_array) = tools.as_array() {
-                        println!("Number of tools available: {}", tools_array.len());
-                        for (i, tool) in tools_array.iter().enumerate() {
-                            println!("Tool {}: {:?}", i, tool.get("name"));
-                        }
-                    }
+            if let Some(result) = tools_response.get("result")
+                && let Some(tools) = result.get("tools")
+                && let Some(tools_array) = tools.as_array()
+            {
+                println!("Number of tools available: {}", tools_array.len());
+                for (i, tool) in tools_array.iter().enumerate() {
+                    println!("Tool {}: {:?}", i, tool.get("name"));
                 }
             }
         } else {

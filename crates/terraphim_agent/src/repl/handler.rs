@@ -679,28 +679,28 @@ impl ReplHandler {
                     None
                 };
                 #[cfg(feature = "server")]
-                if resolved_name.is_none() {
-                    if let Some(api_client) = &self.api_client {
-                        resolved_name = match api_client.get_config().await {
-                            Ok(cfg) => {
-                                let query_lower = name.to_lowercase();
-                                cfg.config
-                                    .roles
-                                    .iter()
-                                    .find(|(n, _)| n.to_string().to_lowercase() == query_lower)
-                                    .or_else(|| {
-                                        cfg.config.roles.iter().find(|(_, role)| {
-                                            role.shortname
-                                                .as_ref()
-                                                .map(|s| s.to_lowercase() == query_lower)
-                                                .unwrap_or(false)
-                                        })
+                if resolved_name.is_none()
+                    && let Some(api_client) = &self.api_client
+                {
+                    resolved_name = match api_client.get_config().await {
+                        Ok(cfg) => {
+                            let query_lower = name.to_lowercase();
+                            cfg.config
+                                .roles
+                                .iter()
+                                .find(|(n, _)| n.to_string().to_lowercase() == query_lower)
+                                .or_else(|| {
+                                    cfg.config.roles.iter().find(|(_, role)| {
+                                        role.shortname
+                                            .as_ref()
+                                            .map(|s| s.to_lowercase() == query_lower)
+                                            .unwrap_or(false)
                                     })
-                                    .map(|(n, _)| n.to_string())
-                            }
-                            Err(_) => None,
-                        };
-                    }
+                                })
+                                .map(|(n, _)| n.to_string())
+                        }
+                        Err(_) => None,
+                    };
                 }
 
                 let actual_name = match resolved_name {

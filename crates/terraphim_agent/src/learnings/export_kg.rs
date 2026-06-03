@@ -187,10 +187,10 @@ fn group_corrections(
             entry.originals.push(correction.original.clone());
         }
 
-        if let Some(ref sid) = correction.session_id {
-            if !entry.session_ids.contains(sid) {
-                entry.session_ids.push(sid.clone());
-            }
+        if let Some(ref sid) = correction.session_id
+            && !entry.session_ids.contains(sid)
+        {
+            entry.session_ids.push(sid.clone());
         }
 
         if !correction.context_description.is_empty()

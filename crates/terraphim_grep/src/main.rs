@@ -134,10 +134,10 @@ fn resolve_role_name(
     explicit_role: Option<&str>,
     project_config: Option<&terraphim_config::project::ProjectConfig>,
 ) -> Result<String> {
-    if let Some(config) = project_config {
-        if let Some(role) = config.resolve_role_name(explicit_role)? {
-            return Ok(role);
-        }
+    if let Some(config) = project_config
+        && let Some(role) = config.resolve_role_name(explicit_role)?
+    {
+        return Ok(role);
     }
 
     Ok(explicit_role.unwrap_or("default").to_string())
@@ -149,11 +149,11 @@ fn resolve_role_name(
 ///   1. `.terraphim/thesaurus-<role>.json` (project config)
 ///   2. `*_thesaurus.json` in CWD or nearby directories (filesystem heuristic)
 fn find_default_thesaurus(role_name: &str) -> Option<PathBuf> {
-    if let Some(dir) = discover_project_dir() {
-        if let Some(path) = terraphim_config::project::discover_thesaurus(&dir, role_name) {
-            tracing::info!("Using project thesaurus: {:?}", path);
-            return Some(path);
-        }
+    if let Some(dir) = discover_project_dir()
+        && let Some(path) = terraphim_config::project::discover_thesaurus(&dir, role_name)
+    {
+        tracing::info!("Using project thesaurus: {:?}", path);
+        return Some(path);
     }
 
     let possible_paths = vec![
@@ -165,14 +165,14 @@ fn find_default_thesaurus(role_name: &str) -> Option<PathBuf> {
     for base in possible_paths {
         if let Ok(cwd) = std::env::current_dir() {
             let candidate = cwd.join(&base);
-            if candidate.exists() {
-                if let Ok(entries) = std::fs::read_dir(&candidate) {
-                    for entry in entries.flatten() {
-                        let name = entry.file_name();
-                        let name_str = name.to_string_lossy();
-                        if name_str.ends_with("_thesaurus.json") {
-                            return Some(candidate.join(&name));
-                        }
+            if candidate.exists()
+                && let Ok(entries) = std::fs::read_dir(&candidate)
+            {
+                for entry in entries.flatten() {
+                    let name = entry.file_name();
+                    let name_str = name.to_string_lossy();
+                    if name_str.ends_with("_thesaurus.json") {
+                        return Some(candidate.join(&name));
                     }
                 }
             }
@@ -221,10 +221,10 @@ fn build_llm_for_role(
                 let role_file = dir.join(format!("role-{}.json", role_name));
                 if role_file.is_file() {
                     tracing::info!("Using project role config: {:?}", role_file);
-                    if let Ok(contents) = std::fs::read_to_string(&role_file) {
-                        if let Ok(r) = serde_json::from_str::<terraphim_config::Role>(&contents) {
-                            return terraphim_service::llm::build_llm_from_role(&r);
-                        }
+                    if let Ok(contents) = std::fs::read_to_string(&role_file)
+                        && let Ok(r) = serde_json::from_str::<terraphim_config::Role>(&contents)
+                    {
+                        return terraphim_service::llm::build_llm_from_role(&r);
                     }
                 }
             }

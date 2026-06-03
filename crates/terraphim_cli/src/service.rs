@@ -108,16 +108,15 @@ impl CliService {
         device_settings: &DeviceSettings,
     ) -> Result<Self> {
         // Try persistence first (preserves runtime changes like `config set`)
-        if let Ok(mut empty_config) = ConfigBuilder::new_with_id(ConfigId::Embedded).build() {
-            if let Ok(persisted) = empty_config.load().await {
-                if !persisted.roles.is_empty() {
-                    log::info!(
-                        "Loaded {} role(s) from persistence (role_config bootstrap already done)",
-                        persisted.roles.len()
-                    );
-                    return Self::from_config(persisted).await;
-                }
-            }
+        if let Ok(mut empty_config) = ConfigBuilder::new_with_id(ConfigId::Embedded).build()
+            && let Ok(persisted) = empty_config.load().await
+            && !persisted.roles.is_empty()
+        {
+            log::info!(
+                "Loaded {} role(s) from persistence (role_config bootstrap already done)",
+                persisted.roles.len()
+            );
+            return Self::from_config(persisted).await;
         }
 
         // No persisted config -- bootstrap from JSON file

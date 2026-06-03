@@ -55,8 +55,8 @@ impl CommandHook for LoggingHook {
         eprintln!("{}", log_entry);
 
         // Optionally log to file
-        if let Some(log_file) = &self.log_file {
-            if let Err(e) = std::fs::OpenOptions::new()
+        if let Some(log_file) = &self.log_file
+            && let Err(e) = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
                 .open(log_file)
@@ -64,13 +64,12 @@ impl CommandHook for LoggingHook {
                     use std::io::Write;
                     writeln!(file, "{}", log_entry)
                 })
-            {
-                eprintln!(
-                    "Warning: Failed to write to log file '{}': {}",
-                    log_file.display(),
-                    e
-                );
-            }
+        {
+            eprintln!(
+                "Warning: Failed to write to log file '{}': {}",
+                log_file.display(),
+                e
+            );
         }
 
         Ok(HookResult {

@@ -27,14 +27,15 @@ fn has_successful_extract_results(output: &str) -> bool {
 fn extract_found_terms(output: &str) -> Vec<String> {
     let mut terms = Vec::new();
     for line in output.lines() {
-        if line.contains("(term: '") && line.contains("')") {
-            if let Some(start) = line.find("(term: '") {
-                let term_start = start + "(term: '".len();
-                if let Some(end) = line[term_start..].find("')") {
-                    let term = &line[term_start..term_start + end];
-                    if !terms.contains(&term.to_string()) {
-                        terms.push(term.to_string());
-                    }
+        if line.contains("(term: '")
+            && line.contains("')")
+            && let Some(start) = line.find("(term: '")
+        {
+            let term_start = start + "(term: '".len();
+            if let Some(end) = line[term_start..].find("')") {
+                let term = &line[term_start..term_start + end];
+                if !terms.contains(&term.to_string()) {
+                    terms.push(term.to_string());
                 }
             }
         }

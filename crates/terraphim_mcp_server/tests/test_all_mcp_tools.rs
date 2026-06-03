@@ -99,19 +99,18 @@ fn test_all_mcp_tools() {
             println!("Parsed tools response: {:#?}", tools_response);
 
             // Check if tools are present
-            if let Some(result) = tools_response.get("result") {
-                if let Some(tools) = result.get("tools") {
-                    if let Some(tools_array) = tools.as_array() {
-                        println!("Number of tools available: {}", tools_array.len());
-                        for (i, tool) in tools_array.iter().enumerate() {
-                            println!("Tool {}: {:?}", i, tool.get("name"));
-                        }
+            if let Some(result) = tools_response.get("result")
+                && let Some(tools) = result.get("tools")
+                && let Some(tools_array) = tools.as_array()
+            {
+                println!("Number of tools available: {}", tools_array.len());
+                for (i, tool) in tools_array.iter().enumerate() {
+                    println!("Tool {}: {:?}", i, tool.get("name"));
+                }
 
-                        // If we have tools, test a few of them
-                        if !tools_array.is_empty() {
-                            test_specific_tools(&mut stdin, &mut reader);
-                        }
-                    }
+                // If we have tools, test a few of them
+                if !tools_array.is_empty() {
+                    test_specific_tools(&mut stdin, &mut reader);
                 }
             }
         } else {

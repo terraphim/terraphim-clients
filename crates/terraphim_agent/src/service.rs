@@ -123,20 +123,19 @@ impl TuiService {
         no_project_config: bool,
     ) -> Result<Self> {
         // Try persistence first (preserves runtime changes like `config set`)
-        if let Ok(mut empty_config) = ConfigBuilder::new_with_id(ConfigId::Embedded).build() {
-            if let Ok(persisted) = empty_config.load().await {
-                if !persisted.roles.is_empty() {
-                    log::info!(
-                        "Loaded {} role(s) from persistence (role_config bootstrap already done)",
-                        persisted.roles.len()
-                    );
-                    let mut config = persisted;
-                    if !no_project_config {
-                        Self::merge_project_config(&mut config);
-                    }
-                    return Self::from_config(config).await;
-                }
+        if let Ok(mut empty_config) = ConfigBuilder::new_with_id(ConfigId::Embedded).build()
+            && let Ok(persisted) = empty_config.load().await
+            && !persisted.roles.is_empty()
+        {
+            log::info!(
+                "Loaded {} role(s) from persistence (role_config bootstrap already done)",
+                persisted.roles.len()
+            );
+            let mut config = persisted;
+            if !no_project_config {
+                Self::merge_project_config(&mut config);
             }
+            return Self::from_config(config).await;
         }
 
         // No persisted config -- bootstrap from JSON file

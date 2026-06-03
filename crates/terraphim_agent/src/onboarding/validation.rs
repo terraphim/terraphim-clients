@@ -61,10 +61,10 @@ pub fn validate_role(role: &Role) -> Result<(), Vec<ValidationError>> {
     }
 
     // Validate knowledge graph if present
-    if let Some(ref kg) = role.kg {
-        if let Err(e) = validate_knowledge_graph(kg) {
-            errors.push(e);
-        }
+    if let Some(ref kg) = role.kg
+        && let Err(e) = validate_knowledge_graph(kg)
+    {
+        errors.push(e);
     }
 
     if errors.is_empty() {
@@ -122,12 +122,12 @@ pub fn validate_knowledge_graph(kg: &KnowledgeGraph) -> Result<(), ValidationErr
     }
 
     // Validate local path format if present
-    if let Some(ref local) = kg.knowledge_graph_local {
-        if local.path.as_os_str().is_empty() {
-            return Err(ValidationError::InvalidKnowledgeGraph(
-                "Local knowledge graph path cannot be empty".into(),
-            ));
-        }
+    if let Some(ref local) = kg.knowledge_graph_local
+        && local.path.as_os_str().is_empty()
+    {
+        return Err(ValidationError::InvalidKnowledgeGraph(
+            "Local knowledge graph path cannot be empty".into(),
+        ));
     }
 
     Ok(())
@@ -147,10 +147,10 @@ pub fn expand_tilde(path: &str) -> String {
         if let Some(home) = dirs::home_dir() {
             return path.replacen("~", home.to_string_lossy().as_ref(), 1);
         }
-    } else if path == "~" {
-        if let Some(home) = dirs::home_dir() {
-            return home.to_string_lossy().to_string();
-        }
+    } else if path == "~"
+        && let Some(home) = dirs::home_dir()
+    {
+        return home.to_string_lossy().to_string();
     }
     path.to_string()
 }

@@ -39,18 +39,6 @@ pub enum LearnHookType {
     UserPromptSubmit,
 }
 
-/// AI agent format for hook processing.
-#[derive(Debug, Clone, Copy, PartialEq, clap::ValueEnum)]
-#[allow(dead_code)]
-pub enum AgentFormat {
-    /// Claude Code format
-    Claude,
-    /// Codex format
-    Codex,
-    /// Opencode format
-    Opencode,
-}
-
 /// Capture learning from hook input.
 ///
 /// Extracts the command, error output, and exit code from the hook input
@@ -84,10 +72,7 @@ pub fn capture_from_hook(input: &HookInput) -> Result<PathBuf, LearningError> {
 ///
 /// All hook types maintain fail-open behavior: errors are logged but
 /// never block the pipeline.
-pub async fn process_hook_input_with_type(
-    _format: AgentFormat,
-    hook_type: LearnHookType,
-) -> Result<(), HookError> {
+pub async fn process_hook_input_with_type(hook_type: LearnHookType) -> Result<(), HookError> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     // Read stdin
@@ -95,7 +80,7 @@ pub async fn process_hook_input_with_type(
     tokio::io::stdin()
         .read_to_string(&mut buffer)
         .await
-        .map_err(HookError::StdinError)?;
+        .map_err(HookError::Stdin)?;
 
     match hook_type {
         LearnHookType::PreToolUse => {
@@ -105,10 +90,10 @@ pub async fn process_hook_input_with_type(
             // Parse JSON and capture failures (existing behavior)
             match HookInput::from_json(&buffer) {
                 Ok(input) => {
-                    if input.should_capture() {
-                        if let Err(e) = capture_from_hook(&input) {
-                            log::debug!("Hook capture failed: {}", e);
-                        }
+                    if input.should_capture()
+                        && let Err(e) = capture_from_hook(&input)
+                    {
+                        log::debug!("Hook capture failed: {}", e);
                     }
                 }
                 Err(e) => {
@@ -132,7 +117,7 @@ pub async fn process_hook_input_with_type(
     tokio::io::stdout()
         .write_all(output.as_bytes())
         .await
-        .map_err(HookError::StdinError)?;
+        .map_err(HookError::Stdin)?;
 
     Ok(())
 }
@@ -230,50 +215,49 @@ fn parse_correction_pattern(text: &str) -> Option<(String, String)> {
     let trimmed = lower.trim_start();
 
     // "use X instead of Y" (must start with "use")
-    if let Some(use_idx) = trimmed.find("use ") {
-        if use_idx == 0 {
-            let text_after_use =
-                &text[text.to_lowercase().trim_start().find("use ").unwrap() + 4..];
-            let lower_after_use = text_after_use.to_lowercase();
-            if let Some(instead_idx) = lower_after_use.find(" instead of ") {
-                let corrected = text_after_use[..instead_idx].trim().to_string();
-                let original = text_after_use[instead_idx + 12..]
-                    .trim()
-                    .trim_end_matches('.')
-                    .to_string();
-                if !corrected.is_empty() && !original.is_empty() {
-                    return Some((original, corrected));
-                }
+    if let Some(use_idx) = trimmed.find("use ")
+        && use_idx == 0
+    {
+        let text_after_use = &text[text.to_lowercase().trim_start().find("use ").unwrap() + 4..];
+        let lower_after_use = text_after_use.to_lowercase();
+        if let Some(instead_idx) = lower_after_use.find(" instead of ") {
+            let corrected = text_after_use[..instead_idx].trim().to_string();
+            let original = text_after_use[instead_idx + 12..]
+                .trim()
+                .trim_end_matches('.')
+                .to_string();
+            if !corrected.is_empty() && !original.is_empty() {
+                return Some((original, corrected));
             }
-            // "use X not Y"
-            if let Some(not_idx) = lower_after_use.find(" not ") {
-                let corrected = text_after_use[..not_idx].trim().to_string();
-                let original = text_after_use[not_idx + 5..]
-                    .trim()
-                    .trim_end_matches('.')
-                    .to_string();
-                if !corrected.is_empty() && !original.is_empty() {
-                    return Some((original, corrected));
-                }
+        }
+        // "use X not Y"
+        if let Some(not_idx) = lower_after_use.find(" not ") {
+            let corrected = text_after_use[..not_idx].trim().to_string();
+            let original = text_after_use[not_idx + 5..]
+                .trim()
+                .trim_end_matches('.')
+                .to_string();
+            if !corrected.is_empty() && !original.is_empty() {
+                return Some((original, corrected));
             }
         }
     }
 
     // "prefer X over Y" (must start with "prefer")
-    if let Some(prefer_idx) = trimmed.find("prefer ") {
-        if prefer_idx == 0 {
-            let text_after_prefer =
-                &text[text.to_lowercase().trim_start().find("prefer ").unwrap() + 7..];
-            let lower_after_prefer = text_after_prefer.to_lowercase();
-            if let Some(over_idx) = lower_after_prefer.find(" over ") {
-                let corrected = text_after_prefer[..over_idx].trim().to_string();
-                let original = text_after_prefer[over_idx + 6..]
-                    .trim()
-                    .trim_end_matches('.')
-                    .to_string();
-                if !corrected.is_empty() && !original.is_empty() {
-                    return Some((original, corrected));
-                }
+    if let Some(prefer_idx) = trimmed.find("prefer ")
+        && prefer_idx == 0
+    {
+        let text_after_prefer =
+            &text[text.to_lowercase().trim_start().find("prefer ").unwrap() + 7..];
+        let lower_after_prefer = text_after_prefer.to_lowercase();
+        if let Some(over_idx) = lower_after_prefer.find(" over ") {
+            let corrected = text_after_prefer[..over_idx].trim().to_string();
+            let original = text_after_prefer[over_idx + 6..]
+                .trim()
+                .trim_end_matches('.')
+                .to_string();
+            if !corrected.is_empty() && !original.is_empty() {
+                return Some((original, corrected));
             }
         }
     }
@@ -282,18 +266,15 @@ fn parse_correction_pattern(text: &str) -> Option<(String, String)> {
 }
 
 /// Errors that can occur during hook processing.
+///
+/// Only `Stdin` is currently produced: JSON-parse and capture failures are
+/// handled inline (fail-open, logged) rather than propagated, so no further
+/// variants are constructed.
 #[derive(Debug, Error)]
-#[allow(dead_code)]
 pub enum HookError {
     /// Failed to read from stdin
     #[error("failed to read stdin: {0}")]
-    StdinError(#[from] std::io::Error),
-    /// Failed to parse hook input JSON
-    #[error("failed to parse hook input: {0}")]
-    ParseError(#[from] serde_json::Error),
-    /// Capture operation failed
-    #[error("capture failed: {0}")]
-    CaptureError(#[from] LearningError),
+    Stdin(#[from] std::io::Error),
 }
 
 /// Input from AI agent hook.
@@ -711,14 +692,6 @@ mod tests {
             LearningError::Ignored(msg) => assert_eq!(msg, "No command in input"),
             _ => panic!("Expected Ignored error"),
         }
-    }
-
-    #[test]
-    fn test_agent_format_variants() {
-        // Verify AgentFormat enum variants exist and are distinct
-        assert_ne!(AgentFormat::Claude, AgentFormat::Codex);
-        assert_ne!(AgentFormat::Claude, AgentFormat::Opencode);
-        assert_ne!(AgentFormat::Codex, AgentFormat::Opencode);
     }
 
     #[test]

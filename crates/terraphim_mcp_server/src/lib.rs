@@ -58,10 +58,9 @@ fn find_terraphim_rlm_binary() -> std::path::PathBuf {
         .arg("terraphim_rlm")
         .output()
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        && !path.is_empty()
     {
-        if !path.is_empty() {
-            return std::path::PathBuf::from(path);
-        }
+        return std::path::PathBuf::from(path);
     }
     // Fallback to bare name and hope it's in PATH
     std::path::PathBuf::from("terraphim_rlm")

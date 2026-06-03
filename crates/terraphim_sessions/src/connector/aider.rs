@@ -338,10 +338,10 @@ async fn find_aider_history_files(
                 files.push(path);
             }
 
-            if let Some(max) = limit {
-                if files.len() >= max {
-                    return Ok(files);
-                }
+            if let Some(max) = limit
+                && files.len() >= max
+            {
+                return Ok(files);
             }
         }
     }

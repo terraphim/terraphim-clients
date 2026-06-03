@@ -217,20 +217,20 @@ async fn test_mcp_server_integration() -> Result<()> {
         // Check if search was successful (even if no results found)
         assert!(!search_result.is_error.unwrap_or(false));
         // Verify we got a response
-        if let Some(content) = search_result.content.first() {
-            if let Some(text_content) = content.as_text() {
-                println!("Search response: {}", text_content.text);
-                // Ensure the reported count matches number of resource objects returned (text node excluded)
-                if let Some(found) = extract_found_count(&text_content.text) {
-                    assert!(
-                        found >= search_result.content.len() - 1,
-                        "Reported document count {} is less than returned resources {}",
-                        found,
-                        search_result.content.len() - 1
-                    );
-                } else {
-                    panic!("Failed to parse found-count message: {}", text_content.text);
-                }
+        if let Some(content) = search_result.content.first()
+            && let Some(text_content) = content.as_text()
+        {
+            println!("Search response: {}", text_content.text);
+            // Ensure the reported count matches number of resource objects returned (text node excluded)
+            if let Some(found) = extract_found_count(&text_content.text) {
+                assert!(
+                    found >= search_result.content.len() - 1,
+                    "Reported document count {} is less than returned resources {}",
+                    found,
+                    search_result.content.len() - 1
+                );
+            } else {
+                panic!("Failed to parse found-count message: {}", text_content.text);
             }
         }
     }
@@ -280,17 +280,17 @@ async fn test_search_with_different_roles() -> Result<()> {
             })
             .await?;
         println!("Search result for role '{}': {:#?}", role, search_result);
-        if let Some(content) = search_result.content.first() {
-            if let Some(text_content) = content.as_text() {
-                println!("Role '{}' response: {}", role, text_content.text);
-                if let Some(found) = extract_found_count(&text_content.text) {
-                    // For Default role there should be at least one document
-                    if role == "Default" {
-                        assert!(
-                            found > 0,
-                            "Default role should return at least one document"
-                        );
-                    }
+        if let Some(content) = search_result.content.first()
+            && let Some(text_content) = content.as_text()
+        {
+            println!("Role '{}' response: {}", role, text_content.text);
+            if let Some(found) = extract_found_count(&text_content.text) {
+                // For Default role there should be at least one document
+                if role == "Default" {
+                    assert!(
+                        found > 0,
+                        "Default role should return at least one document"
+                    );
                 }
             }
         }
@@ -399,24 +399,24 @@ async fn test_simple_search_with_debug() -> Result<()> {
             })
             .await?;
         println!("Search result for '{}': {:#?}", search_term, search_result);
-        if let Some(content) = search_result.content.first() {
-            if let Some(text_content) = content.as_text() {
+        if let Some(content) = search_result.content.first()
+            && let Some(text_content) = content.as_text()
+        {
+            println!(
+                "Search response for '{}': {}",
+                search_term, text_content.text
+            );
+            // If we found documents, let's see what they are
+            if text_content.text.contains("Found") && !text_content.text.contains("Found 0") {
                 println!(
-                    "Search response for '{}': {}",
+                    "✅ Found documents for '{}': {}",
                     search_term, text_content.text
                 );
-                // If we found documents, let's see what they are
-                if text_content.text.contains("Found") && !text_content.text.contains("Found 0") {
-                    println!(
-                        "✅ Found documents for '{}': {}",
-                        search_term, text_content.text
-                    );
-                } else {
-                    println!(
-                        "❌ No documents found for '{}': {}",
-                        search_term, text_content.text
-                    );
-                }
+            } else {
+                println!(
+                    "❌ No documents found for '{}': {}",
+                    search_term, text_content.text
+                );
             }
         }
     }

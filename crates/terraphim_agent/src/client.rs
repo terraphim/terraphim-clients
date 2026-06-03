@@ -60,10 +60,10 @@ impl ApiClient {
             if name.to_string().to_lowercase() == role_lower {
                 return Ok(name.clone());
             }
-            if let Some(ref sn) = role_cfg.shortname {
-                if sn.to_lowercase() == role_lower {
-                    return Ok(name.clone());
-                }
+            if let Some(ref sn) = role_cfg.shortname
+                && sn.to_lowercase() == role_lower
+            {
+                return Ok(name.clone());
             }
         }
         Ok(RoleName::new(role))
