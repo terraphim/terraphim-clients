@@ -11,7 +11,7 @@ repository = "https://github.com/terraphim/terraphim-ai"
 readme = "../../README.md"
 
 [dependencies]
-terraphim_config = { version = "1.0.0", registry = "terraphim" }
-terraphim_persistence = { version = "1.0.0", registry = "terraphim" }
-terraphim_types = { version = "1.0.0", registry = "terraphim" }
+terraphim_config = { version = "1.0.0" }
+terraphim_persistence = { version = "1.0.0" }
+terraphim_types = { version = "1.0.0" }
 anyhow = { workspace = true }
