@@ -1,16 +1,32 @@
 //! Hook input types and parser for AI agent integration.
 //!
-//! This module provides types for parsing JSON input from AI agent hooks
-//! (Claude Code, Codex, opencode) and extracting failed commands for
-//! learning capture.
+//! This module parses JSON hook-event payloads emitted by AI coding agents and
+//! normalises them into a single internal representation ([`HookInput`]) so that
+//! failed commands can be captured as learnings regardless of which agent
+//! produced the event.
+//!
+//! # Supported agents
+//!
+//! Different agents emit different hook-event envelopes. [`AgentFormat`] selects
+//! the parser; `Auto` (the default) shape-sniffs the JSON.
+//!
+//! - **Claude Code** ([`AgentFormat::Claude`]): the canonical envelope
+//!   `{ tool_name, tool_input.command, tool_result.{exit_code,stdout,stderr} }`.
+//! - **opencode** ([`AgentFormat::Opencode`]): the native `tool.execute.after`
+//!   envelope `{ tool, args.command, output, metadata.exitCode }` *or* the
+//!   Claude-shaped payload its plugin normalises to before invocation.
+//! - **Codex** ([`AgentFormat::Codex`]): the Claude-shaped tool event its shell
+//!   hook forwards. Codex's turn-level `notify` events (e.g.
+//!   `agent-turn-complete`) carry no per-command result and are accepted but
+//!   never captured.
 //!
 //! # Usage
 //!
 //! ```rust,ignore
-//! use terraphim_agent::learnings::HookInput;
+//! use terraphim_agent::learnings::{AgentFormat, HookInput};
 //!
 //! let json = r#"{ "tool_name": "Bash", "tool_input": {"command": "git push"}, "tool_result": {"exit_code": 1, "stdout": "", "stderr": "rejected"} }"#;
-//! let input = HookInput::from_json(json)?;
+//! let input = HookInput::from_json_with_format(json, AgentFormat::Auto)?;
 //!
 //! if input.should_capture() {
 //!     // Capture learning from failed command
@@ -37,6 +53,24 @@ pub enum LearnHookType {
     PostToolUse,
     /// User prompt submit: capture user corrections inline
     UserPromptSubmit,
+}
+
+/// Per-agent hook-event format.
+///
+/// Selects how a raw hook-event payload is parsed before normalisation into a
+/// [`HookInput`]. `Auto` shape-sniffs the JSON and is the default for the
+/// `learn hook` CLI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, clap::ValueEnum)]
+pub enum AgentFormat {
+    /// Detect the envelope from the JSON shape.
+    #[default]
+    Auto,
+    /// Claude Code `PostToolUse`/`PreToolUse` envelope.
+    Claude,
+    /// OpenAI Codex CLI hook/notify envelope.
+    Codex,
+    /// opencode plugin `tool.execute.*` envelope.
+    Opencode,
 }
 
 /// Capture learning from hook input.
@@ -70,9 +104,15 @@ pub fn capture_from_hook(input: &HookInput) -> Result<PathBuf, LearningError> {
 /// - PostToolUse: captures failed commands (original behavior)
 /// - UserPromptSubmit: captures user corrections inline
 ///
+/// The `format` selects the per-agent parser; use [`AgentFormat::Auto`] to
+/// shape-sniff the payload.
+///
 /// All hook types maintain fail-open behavior: errors are logged but
 /// never block the pipeline.
-pub async fn process_hook_input_with_type(hook_type: LearnHookType) -> Result<(), HookError> {
+pub async fn process_hook_input_with_type(
+    hook_type: LearnHookType,
+    format: AgentFormat,
+) -> Result<(), HookError> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     // Read stdin
@@ -84,11 +124,11 @@ pub async fn process_hook_input_with_type(hook_type: LearnHookType) -> Result<()
 
     match hook_type {
         LearnHookType::PreToolUse => {
-            process_pre_tool_use(&buffer);
+            process_pre_tool_use(&buffer, format);
         }
         LearnHookType::PostToolUse => {
             // Parse JSON and capture failures (existing behavior)
-            match HookInput::from_json(&buffer) {
+            match HookInput::from_json_with_format(&buffer, format) {
                 Ok(input) => {
                     if input.should_capture()
                         && let Err(e) = capture_from_hook(&input)
@@ -127,8 +167,8 @@ pub async fn process_hook_input_with_type(hook_type: LearnHookType) -> Result<()
 /// Reads the command from the JSON input and queries past learnings for
 /// similar commands. If a match is found (especially one with a correction),
 /// emits a warning to stderr. Never blocks execution.
-fn process_pre_tool_use(json: &str) {
-    let input = match HookInput::from_json(json) {
+fn process_pre_tool_use(json: &str, format: AgentFormat) {
+    let input = match HookInput::from_json_with_format(json, format) {
         Ok(i) => i,
         Err(_) => return, // fail-open
     };
@@ -323,8 +363,148 @@ pub struct ToolResult {
     pub stderr: String,
 }
 
+/// opencode native `tool.execute.after` event envelope.
+///
+/// Captured from the deployed opencode plugin (`terraphim-hooks.js`), which
+/// reads `input.tool`, `output.args.command`, `output.output`, and
+/// `output.metadata.exitCode` / `output.metadata.exit_code`. This is the shape
+/// opencode would emit if wired to forward its native event directly, rather
+/// than the Claude-normalised payload the current plugin sends.
+#[derive(Debug, Clone, Deserialize)]
+struct OpencodeEvent {
+    /// Tool name (e.g. "bash"); lower-case in opencode.
+    tool: String,
+    /// Tool arguments; `command` is present for the bash tool.
+    #[serde(default)]
+    args: OpencodeArgs,
+    /// Combined tool output.
+    #[serde(default)]
+    output: Option<String>,
+    /// Execution metadata carrying the exit code.
+    #[serde(default)]
+    metadata: OpencodeMetadata,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+struct OpencodeArgs {
+    #[serde(default)]
+    command: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+struct OpencodeMetadata {
+    /// Exit code; opencode emits `exitCode`, some builds emit `exit_code`.
+    #[serde(default, rename = "exitCode", alias = "exit_code")]
+    exit_code: Option<i32>,
+}
+
+impl OpencodeEvent {
+    /// Normalise an opencode native event into a [`HookInput`].
+    ///
+    /// The opencode `bash` tool maps to the Claude `"Bash"` tool name so the
+    /// shared [`HookInput::should_capture`] logic applies unchanged. Output is
+    /// placed in `stdout` to mirror the deployed plugin, which sends
+    /// `{ stdout: rawOutput, stderr: "" }`. When the native event omits the
+    /// exit code it defaults to `0` (non-capturing) rather than guessing.
+    fn into_hook_input(self) -> HookInput {
+        let tool_name = if self.tool.eq_ignore_ascii_case("bash") {
+            "Bash".to_string()
+        } else {
+            self.tool
+        };
+        HookInput {
+            tool_name,
+            tool_input: ToolInput {
+                command: self.args.command,
+                extra: HashMap::new(),
+            },
+            tool_result: ToolResult {
+                exit_code: self.metadata.exit_code.unwrap_or(0),
+                stdout: self.output.unwrap_or_default(),
+                stderr: String::new(),
+            },
+        }
+    }
+}
+
 #[allow(dead_code)]
 impl HookInput {
+    /// Build a non-capturing input for an agent event that carries no
+    /// per-command result (e.g. a Codex turn-level `notify` event).
+    fn non_capturing(tool: &str) -> Self {
+        HookInput {
+            tool_name: tool.to_string(),
+            tool_input: ToolInput {
+                command: None,
+                extra: HashMap::new(),
+            },
+            tool_result: ToolResult {
+                exit_code: 0,
+                stdout: String::new(),
+                stderr: String::new(),
+            },
+        }
+    }
+
+    /// Parse a hook-event payload using the given per-agent [`AgentFormat`].
+    ///
+    /// Normalises every supported envelope into a [`HookInput`]. Returns an
+    /// error only when the payload is not valid JSON for the selected format;
+    /// callers fail open on error.
+    pub fn from_json_with_format(
+        json: &str,
+        format: AgentFormat,
+    ) -> Result<Self, serde_json::Error> {
+        match format {
+            AgentFormat::Claude => serde_json::from_str(json),
+            AgentFormat::Opencode => Self::from_opencode_json(json),
+            AgentFormat::Codex => Self::from_codex_json(json),
+            AgentFormat::Auto => Self::from_json_auto(json),
+        }
+    }
+
+    /// Parse an opencode payload: the Claude-normalised shape its plugin sends
+    /// today, falling back to opencode's native `tool.execute.after` envelope.
+    fn from_opencode_json(json: &str) -> Result<Self, serde_json::Error> {
+        if let Ok(claude) = serde_json::from_str::<HookInput>(json) {
+            return Ok(claude);
+        }
+        let event: OpencodeEvent = serde_json::from_str(json)?;
+        Ok(event.into_hook_input())
+    }
+
+    /// Parse a Codex payload: the Claude-shaped tool event its shell hook
+    /// forwards. Codex turn-level `notify` events carry no per-command result,
+    /// so any other (valid JSON) object normalises to a non-capturing input.
+    fn from_codex_json(json: &str) -> Result<Self, serde_json::Error> {
+        if let Ok(claude) = serde_json::from_str::<HookInput>(json) {
+            return Ok(claude);
+        }
+        // Validate it is at least well-formed JSON, then drop it (non-capturing)
+        // rather than fabricating a command from a turn-level notify event.
+        let _: serde_json::Value = serde_json::from_str(json)?;
+        Ok(Self::non_capturing("codex"))
+    }
+
+    /// Shape-sniff the payload across all supported envelopes.
+    fn from_json_auto(json: &str) -> Result<Self, serde_json::Error> {
+        let value: serde_json::Value = serde_json::from_str(json)?;
+
+        // Claude / Codex / opencode-normalised: canonical tool event.
+        if value.get("tool_name").is_some() && value.get("tool_result").is_some() {
+            return serde_json::from_str(json);
+        }
+        // opencode native: `tool` + (`args` | `output`), no `tool_name`.
+        if value.get("tool").is_some()
+            && (value.get("args").is_some() || value.get("output").is_some())
+        {
+            let event: OpencodeEvent = serde_json::from_str(json)?;
+            return Ok(event.into_hook_input());
+        }
+        // Anything else (e.g. a Codex turn-level notify event) is non-capturing.
+        Ok(Self::non_capturing("unknown"))
+    }
+
     /// Parse hook input from a JSON string.
     ///
     /// # Arguments
@@ -781,14 +961,14 @@ mod tests {
             "tool_input": {"path": "/tmp/test.txt"},
             "tool_result": {"exit_code": 0, "stdout": "", "stderr": ""}
         }"#;
-        process_pre_tool_use(json);
+        process_pre_tool_use(json, AgentFormat::Auto);
         // No panic = pass
     }
 
     #[test]
     fn test_pre_tool_use_no_crash_on_invalid_json() {
         // Invalid JSON should not crash (fail-open)
-        process_pre_tool_use("not valid json");
+        process_pre_tool_use("not valid json", AgentFormat::Auto);
         // No panic = pass
     }
 
@@ -802,5 +982,135 @@ mod tests {
     fn test_user_prompt_submit_no_crash_on_invalid_json() {
         process_user_prompt_submit("invalid");
         // No panic = pass
+    }
+
+    // --- Per-agent format parsing (issue #2) ---------------------------------
+    //
+    // Fixtures are real captured payloads (see test-fixtures/hooks/README.md),
+    // not fabricated mocks.
+
+    const CLAUDE_FIXTURE: &str =
+        include_str!("../../test-fixtures/hooks/claude_post_tool_use.json");
+    const OPENCODE_NATIVE_FIXTURE: &str =
+        include_str!("../../test-fixtures/hooks/opencode_native_tool_execute_after.json");
+    const OPENCODE_NORMALISED_FIXTURE: &str =
+        include_str!("../../test-fixtures/hooks/opencode_normalised.json");
+    const CODEX_NOTIFY_FIXTURE: &str =
+        include_str!("../../test-fixtures/hooks/codex_notify_turn_complete.json");
+
+    #[test]
+    fn test_agent_format_default_is_auto() {
+        assert_eq!(AgentFormat::default(), AgentFormat::Auto);
+    }
+
+    #[test]
+    fn test_claude_format_parses_canonical_event() {
+        let input = HookInput::from_json_with_format(CLAUDE_FIXTURE, AgentFormat::Claude).unwrap();
+        assert_eq!(input.tool_name, "Bash");
+        assert_eq!(input.command(), Some("git push -f origin main"));
+        assert_eq!(input.tool_result.exit_code, 1);
+        assert!(input.should_capture());
+    }
+
+    #[test]
+    fn test_opencode_native_event_normalises_and_captures() {
+        // opencode's native tool.execute.after envelope: {tool, args.command,
+        // output, metadata.exitCode}.
+        let input =
+            HookInput::from_json_with_format(OPENCODE_NATIVE_FIXTURE, AgentFormat::Opencode)
+                .unwrap();
+        assert_eq!(input.tool_name, "Bash"); // "bash" -> "Bash" so should_capture applies
+        assert_eq!(input.command(), Some("cargo buidl --workspace"));
+        assert_eq!(input.tool_result.exit_code, 101);
+        assert!(input.tool_result.stdout.contains("no such command"));
+        assert!(input.should_capture());
+    }
+
+    #[test]
+    fn test_opencode_native_exit_code_snake_case_alias() {
+        let json =
+            r#"{"tool":"bash","args":{"command":"false"},"output":"","metadata":{"exit_code":1}}"#;
+        let input = HookInput::from_json_with_format(json, AgentFormat::Opencode).unwrap();
+        assert_eq!(input.tool_result.exit_code, 1);
+        assert!(input.should_capture());
+    }
+
+    #[test]
+    fn test_opencode_native_missing_exit_code_defaults_non_capturing() {
+        // Without metadata we do not guess an exit code; default 0 => no capture.
+        let json = r#"{"tool":"bash","args":{"command":"ls"},"output":"a\nb"}"#;
+        let input = HookInput::from_json_with_format(json, AgentFormat::Opencode).unwrap();
+        assert_eq!(input.tool_result.exit_code, 0);
+        assert!(!input.should_capture());
+    }
+
+    #[test]
+    fn test_opencode_accepts_claude_normalised_payload() {
+        // The deployed opencode plugin normalises to the Claude shape before
+        // invoking the CLI with --format opencode.
+        let input =
+            HookInput::from_json_with_format(OPENCODE_NORMALISED_FIXTURE, AgentFormat::Opencode)
+                .unwrap();
+        assert_eq!(input.command(), Some("cargo buidl --workspace"));
+        assert_eq!(input.tool_result.exit_code, 101);
+        assert!(input.should_capture());
+    }
+
+    #[test]
+    fn test_codex_claude_shaped_event_captures() {
+        // Codex's shell hook forwards Claude-shaped tool events.
+        let input = HookInput::from_json_with_format(CLAUDE_FIXTURE, AgentFormat::Codex).unwrap();
+        assert_eq!(input.command(), Some("git push -f origin main"));
+        assert!(input.should_capture());
+    }
+
+    #[test]
+    fn test_codex_notify_turn_event_is_non_capturing() {
+        // Turn-level notify events carry no per-command result.
+        let input =
+            HookInput::from_json_with_format(CODEX_NOTIFY_FIXTURE, AgentFormat::Codex).unwrap();
+        assert_eq!(input.command(), None);
+        assert!(!input.should_capture());
+    }
+
+    #[test]
+    fn test_codex_format_rejects_invalid_json() {
+        assert!(HookInput::from_json_with_format("not json", AgentFormat::Codex).is_err());
+    }
+
+    #[test]
+    fn test_auto_detects_claude_shape() {
+        let input = HookInput::from_json_with_format(CLAUDE_FIXTURE, AgentFormat::Auto).unwrap();
+        assert!(input.should_capture());
+    }
+
+    #[test]
+    fn test_auto_detects_opencode_native_shape() {
+        let input =
+            HookInput::from_json_with_format(OPENCODE_NATIVE_FIXTURE, AgentFormat::Auto).unwrap();
+        assert_eq!(input.command(), Some("cargo buidl --workspace"));
+        assert_eq!(input.tool_result.exit_code, 101);
+        assert!(input.should_capture());
+    }
+
+    #[test]
+    fn test_auto_treats_unknown_object_as_non_capturing() {
+        let input =
+            HookInput::from_json_with_format(CODEX_NOTIFY_FIXTURE, AgentFormat::Auto).unwrap();
+        assert!(!input.should_capture());
+    }
+
+    #[test]
+    fn test_auto_rejects_invalid_json() {
+        assert!(HookInput::from_json_with_format("not json", AgentFormat::Auto).is_err());
+    }
+
+    #[test]
+    fn test_opencode_non_bash_tool_not_captured() {
+        let json =
+            r#"{"tool":"edit","args":{"path":"/tmp/x"},"output":"","metadata":{"exitCode":0}}"#;
+        let input = HookInput::from_json_with_format(json, AgentFormat::Opencode).unwrap();
+        assert_eq!(input.tool_name, "edit");
+        assert!(!input.should_capture());
     }
 }

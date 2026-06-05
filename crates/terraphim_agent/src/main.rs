@@ -1017,6 +1017,9 @@ enum LearnSub {
         /// Hook type for multi-hook pipeline
         #[arg(long, value_enum, default_value = "post-tool-use")]
         learn_hook_type: learnings::LearnHookType,
+        /// Source agent format (auto-detected by default)
+        #[arg(long, value_enum, default_value = "auto")]
+        format: learnings::AgentFormat,
     },
     /// Install hook for AI agent
     InstallHook {
@@ -3335,11 +3338,12 @@ async fn run_learn_command(sub: LearnSub) -> Result<()> {
                 }
             }
         }
-        LearnSub::Hook { learn_hook_type } => {
-            learnings::process_hook_input_with_type(learn_hook_type)
-                .await
-                .map_err(|e| e.into())
-        }
+        LearnSub::Hook {
+            learn_hook_type,
+            format,
+        } => learnings::process_hook_input_with_type(learn_hook_type, format)
+            .await
+            .map_err(|e| e.into()),
         LearnSub::InstallHook { agent } => {
             learnings::install_hook(agent).await.map_err(|e| e.into())
         }

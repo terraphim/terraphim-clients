@@ -1,0 +1,6 @@
+{
+  "tool": "bash",
+  "args": { "command": "cargo buidl --workspace" },
+  "output": "error: no such command: `buidl`\n\n\tDid you mean `build`?",
+  "metadata": { "exitCode": 101 }
+}

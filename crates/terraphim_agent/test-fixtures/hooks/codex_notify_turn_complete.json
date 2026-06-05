@@ -1,0 +1,6 @@
+{
+  "type": "agent-turn-complete",
+  "turn-id": "0193f1a2-7c44-7c9a-8f1e-0c2b6d4e5a90",
+  "input-messages": ["rename foo to bar"],
+  "last-assistant-message": "Renamed `foo` to `bar` across 3 files."
+}

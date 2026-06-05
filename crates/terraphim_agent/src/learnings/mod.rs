@@ -65,7 +65,7 @@ pub use export_kg::{CorrectionTypeFilter, export_corrections_as_kg};
 pub use redaction::redact_secrets;
 
 // Hook types for AI agent integration
-pub use hook::{LearnHookType, process_hook_input_with_type};
+pub use hook::{AgentFormat, LearnHookType, process_hook_input_with_type};
 
 // Install types for AI agent hook installation
 pub use install::{AgentType, install_hook};

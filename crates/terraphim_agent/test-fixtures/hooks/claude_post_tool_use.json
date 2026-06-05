@@ -1,0 +1,9 @@
+{
+  "tool_name": "Bash",
+  "tool_input": { "command": "git push -f origin main" },
+  "tool_result": {
+    "exit_code": 1,
+    "stdout": "",
+    "stderr": "remote: rejected (non-fast-forward)"
+  }
+}

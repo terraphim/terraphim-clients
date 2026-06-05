@@ -1,0 +1,9 @@
+{
+  "tool_name": "Bash",
+  "tool_input": { "command": "cargo buidl --workspace" },
+  "tool_result": {
+    "exit_code": 101,
+    "stdout": "error: no such command: `buidl`\n\n\tDid you mean `build`?",
+    "stderr": ""
+  }
+}
