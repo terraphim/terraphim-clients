@@ -1,0 +1,64 @@
+name: Publish Crates
+on:
+  workflow_dispatch:
+    inputs:
+      crate_list:
+        description: Space-separated crate package names to publish in order
+        required: true
+        type: string
+      dry_run:
+        description: Run cargo publish --dry-run only
+        required: false
+        default: "true"
+        type: choice
+        options: ["true", "false"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Publish crates in dependency order
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          CRATE_LIST: ${{ inputs.crate_list }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          for crate in $CRATE_LIST; do
+            manifest="crates/$crate/Cargo.toml"
+            if [ ! -f "$manifest" ]; then
+              echo "Missing manifest for $crate at $manifest" >&2
+              exit 1
+            fi
+            version=$(grep -m1 '^version' "$manifest" | sed 's/.*"\(.*\)".*/\1/')
+            # Check crates.io with auth to avoid rate limits
+            if curl -fsS -H "Authorization: ${CARGO_REGISTRY_TOKEN}" "https://crates.io/api/v1/crates/$crate/$version" >/dev/null 2>&1; then
+              echo "$crate $version already exists on crates.io; skipping"
+              continue
+            fi
+            if [ "$DRY_RUN" = "true" ]; then
+              cargo publish --manifest-path "$manifest" --dry-run
+            else
+              set +e
+              output=$(cargo publish --manifest-path "$manifest" 2>&1)
+              exit_code=$?
+              set -e
+              if [ "$exit_code" -ne 0 ]; then
+                if echo "$output" | grep -qi "already exists"; then
+                  echo "$crate $version already exists on crates.io; skipping"
+                  continue
+                fi
+                echo "$output" >&2
+                echo "ERROR: Failed to publish $crate" >&2
+                exit 1
+              fi
+            fi
+          done
