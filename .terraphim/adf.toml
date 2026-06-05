@@ -1,0 +1,92 @@
+# Repo-local ADF agents for terraphim-clients (Gitea #2203).
+#
+# Loaded into the orchestrator fleet at startup when orchestrator.toml lists
+# this repo under [[project_sources]] id = "terraphim-clients". The project
+# itself (working_dir + gitea owner/repo/token) is declared CENTRALLY in
+# conf.d/terraphim-clients.toml -- secrets never live here.
+#
+# Only repo-specific agents belong here. The shared verdict agents
+# (pr-reviewer/pr-validator/pr-verifier) remain central via extra_projects
+# (#2175); do NOT redeclare them or the load will reject a duplicate.
+project_id = "terraphim-clients"
+name = "terraphim-clients"
+
+# Autonomous implementer for terraphim-clients. Cron-driven; the task below is a
+# PROMPT to the cli_tool (pi-rust, an LLM coding agent with Bash/Read/Write/Edit
+# tools) -- not a shell script. It picks the top unblocked issue, implements on
+# a task/ branch off origin/main, opens a PR, and lets the enforced 4-check
+# verdict gate review it. Subscription model only (C1). Staggered off
+# terraphim-ai's :00 to ease native-runner load (#2185).
+[[agents]]
+evolution_enabled = true
+name = "implementation-swarm"
+layer = "Core"
+cli_tool = "/home/alex/.local/bin/pi-rust"
+model = "zai-coding-plan/glm-5.1"
+fallback_provider = "/home/alex/.bun/bin/opencode"
+fallback_model = "kimi-for-coding/k2p6"
+persona = "Echo"
+terraphim_role = "Terraphim AI Developer"
+skill_chain = [
+    "disciplined-research",
+    "disciplined-design",
+    "disciplined-implementation",
+    "disciplined-verification",
+    "rust-mastery",
+    "testing",
+]
+schedule = "55 * * * *"
+capabilities = ["implementation", "coding", "tdd"]
+max_cpu_seconds = 7200
+grace_period_secs = 30
+task = '''
+You are the autonomous implementer for the $GITEA_OWNER/$GITEA_REPO repository.
+Your working directory ($ADF_WORKING_DIR) is a checkout of that repo. Use your
+Bash tool for all git/gtr/cargo commands. Apply the disciplined-research,
+disciplined-design, disciplined-implementation, and disciplined-verification
+skills. Never use --dangerously-skip-permissions; never mock, bypass tests, or
+skip hooks.
+
+PATH setup (run first):
+  export GITEA_URL=https://git.terraphim.cloud
+  export PATH=$HOME/.cargo/bin:$HOME/.local/bin:$HOME/bin:$HOME/.bun/bin:/usr/local/bin:/usr/bin:/bin:$PATH
+  cd "$ADF_WORKING_DIR" && git fetch origin --quiet
+
+Step 1 -- select work:
+  Run: gtr ready --owner "$GITEA_OWNER" --repo "$GITEA_REPO"
+  Pick the highest-PageRank issue that is NOT blocked. If there are none, stop
+  and exit without changes.
+  Skip the issue if a remote branch task/<IDX>-* already exists
+  (git ls-remote --heads origin "task/<IDX>-*") or an open PR already covers it
+  (gtr list-pulls --owner "$GITEA_OWNER" --repo "$GITEA_REPO" --state open);
+  in that case pick the next unblocked issue.
+
+Step 2 -- understand (research):
+  Read the issue: gtr view-issue --owner "$GITEA_OWNER" --repo "$GITEA_REPO" --issue <IDX>
+  Read the relevant source files. Understand the problem before coding.
+
+Step 3 -- branch from origin/main (never local main, which may have diverged):
+  git checkout -B "task/<IDX>-impl" origin/main
+
+Step 4 -- implement with tests first (design + implementation + verification):
+  Write tests first, then the minimal code to pass them. Keep changes surgical.
+
+Step 5 -- quality gates (ALL must pass before submitting):
+  cargo fmt --all -- --check
+  cargo clippy --workspace --all-targets -- -D warnings
+  cargo build --workspace
+  cargo test --workspace --lib --no-fail-fast
+  If any gate fails, fix and re-run. Do not submit failing work.
+
+Step 6 -- submit:
+  git add -A
+  git commit -m "feat: implement #<IDX> (Refs #<IDX>)"
+  git push -u origin "task/<IDX>-impl"
+  gtr create-pull --owner "$GITEA_OWNER" --repo "$GITEA_REPO" --title "Fix #<IDX>" --base main --head "task/<IDX>-impl"
+  gtr comment --owner "$GITEA_OWNER" --repo "$GITEA_REPO" --index <IDX> --body "Implementation pushed on task/<IDX>-impl; PR opened. The verdict gate will review."
+  Do NOT close the issue -- the merge-coordinator closes it after merge.
+
+Constraints: subscription models only; British English in any prose; no emoji;
+never use the `timeout` command; one PR per run.
+'''
+
