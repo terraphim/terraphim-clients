@@ -8,7 +8,7 @@ homepage = "https://terraphim.ai"
 repository = "https://github.com/terraphim/terraphim-ai"
 keywords = ["ai", "mcp", "server", "model-context-protocol"]
 license = "MIT"
-publish = ["terraphim"]  # E5 #1910: clients repo publishes to terraphim registry
+  # E5 #1910: clients repo publishes to terraphim registry
 readme = "../../README.md"
 
 [[bin]]
