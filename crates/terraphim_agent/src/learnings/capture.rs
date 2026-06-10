@@ -520,8 +520,18 @@ pub struct CorrectionEvent {
     /// Session ID for traceability
     pub session_id: Option<String>,
     /// Tags for categorisation
+    #[serde(default)]
     pub tags: Vec<String>,
 }
+
+/// Sanitise a string for use as a YAML frontmatter value.
+/// Strips newlines and carriage returns to prevent header injection.
+fn sanitise_yaml_value(s: &str) -> String {
+    s.chars().filter(|c| *c != '\n' && *c != '\r').collect()
+}
+
+/// Maximum allowed byte length for a single text field in a correction.
+const MAX_FIELD_BYTES: usize = 65_536; // 64 KiB
 
 impl CorrectionEvent {
     /// Create a new correction event.
@@ -564,9 +574,9 @@ impl CorrectionEvent {
     pub fn to_markdown(&self) -> String {
         let mut md = String::new();
 
-        // Frontmatter
+        // Frontmatter — sanitise all values to prevent YAML header injection
         md.push_str("---\n");
-        md.push_str(&format!("id: {}\n", self.id));
+        md.push_str(&format!("id: {}\n", sanitise_yaml_value(&self.id)));
         md.push_str("type: correction\n");
         md.push_str(&format!("correction_type: {}\n", self.correction_type));
         md.push_str(&format!("source: {:?}\n", self.source));
@@ -574,31 +584,40 @@ impl CorrectionEvent {
             "captured_at: {}\n",
             self.context.captured_at.to_rfc3339()
         ));
-        md.push_str(&format!("working_dir: {}\n", self.context.working_dir));
+        md.push_str(&format!(
+            "working_dir: {}\n",
+            sanitise_yaml_value(&self.context.working_dir)
+        ));
 
         if let Some(ref hostname) = self.context.hostname {
-            md.push_str(&format!("hostname: {}\n", hostname));
+            md.push_str(&format!("hostname: {}\n", sanitise_yaml_value(hostname)));
         }
 
         if let Some(ref session_id) = self.session_id {
-            md.push_str(&format!("session_id: {}\n", session_id));
+            md.push_str(&format!(
+                "session_id: {}\n",
+                sanitise_yaml_value(session_id)
+            ));
         }
 
         if !self.tags.is_empty() {
             md.push_str("tags:\n");
             for tag in &self.tags {
-                md.push_str(&format!("  - {}\n", tag));
+                md.push_str(&format!("  - {}\n", sanitise_yaml_value(tag)));
             }
         }
 
         md.push_str("---\n\n");
 
-        // Body
+        // Body — escape backticks to preserve inline-code formatting
+        let escaped_original = self.original.replace('`', "\\`");
+        let escaped_corrected = self.corrected.replace('`', "\\`");
+
         md.push_str("## Original\n\n");
-        md.push_str(&format!("`{}`\n\n", self.original));
+        md.push_str(&format!("`{}`\n\n", escaped_original));
 
         md.push_str("## Corrected\n\n");
-        md.push_str(&format!("`{}`\n\n", self.corrected));
+        md.push_str(&format!("`{}`\n\n", escaped_corrected));
 
         if !self.context_description.is_empty() {
             md.push_str("## Context\n\n");
@@ -1105,6 +1124,20 @@ pub fn capture_correction(
 ) -> Result<PathBuf, LearningError> {
     if !config.enabled {
         return Err(LearningError::Ignored("Capture disabled".to_string()));
+    }
+
+    // Reject inputs that exceed the per-field size limit.
+    for (field_name, value) in [
+        ("original", original),
+        ("corrected", corrected),
+        ("context", context_description),
+    ] {
+        if value.len() > MAX_FIELD_BYTES {
+            return Err(LearningError::Ignored(format!(
+                "Field '{}' exceeds maximum size of {} bytes",
+                field_name, MAX_FIELD_BYTES
+            )));
+        }
     }
 
     // Redact secrets from all text fields
@@ -2378,6 +2411,97 @@ mod tests {
         assert!(correction_entry.summary().contains("tool-preference"));
         assert!(correction_entry.summary().contains("npm"));
         assert!(correction_entry.summary().contains("bun"));
+    }
+
+    #[test]
+    fn test_yaml_injection_in_hostname_is_stripped() {
+        let mut event = CorrectionEvent::new(
+            CorrectionType::ToolPreference,
+            "npm".to_string(),
+            "bun".to_string(),
+            "context".to_string(),
+            LearningSource::Project,
+        );
+        // Inject a newline that would split the value into a second YAML key
+        event.context.hostname = Some("evil\ncorrection_type: injected".to_string());
+        let md = event.to_markdown();
+        // After sanitisation no line in the frontmatter should look like a YAML injection
+        let frontmatter_end = md.find("---\n\n").unwrap_or(md.len());
+        let frontmatter = &md[..frontmatter_end];
+        // The injected newline must have been removed — "correction_type: injected"
+        // must not appear as its own line.
+        let has_injected_line = frontmatter
+            .lines()
+            .any(|line| line.trim() == "correction_type: injected");
+        assert!(
+            !has_injected_line,
+            "YAML injection via hostname newline must be stripped; frontmatter was:\n{}",
+            frontmatter
+        );
+    }
+
+    #[test]
+    fn test_yaml_injection_in_session_id_is_stripped() {
+        let event = CorrectionEvent::new(
+            CorrectionType::Naming,
+            "old".to_string(),
+            "new".to_string(),
+            "".to_string(),
+            LearningSource::Project,
+        )
+        .with_session_id("ses\ntype: injected".to_string());
+        let md = event.to_markdown();
+        let frontmatter_end = md.find("---\n\n").unwrap_or(md.len());
+        let frontmatter = &md[..frontmatter_end];
+        // No standalone "type: injected" line may appear.
+        let has_injected_line = frontmatter
+            .lines()
+            .any(|line| line.trim() == "type: injected");
+        assert!(
+            !has_injected_line,
+            "YAML injection via session_id newline must be stripped; frontmatter was:\n{}",
+            frontmatter
+        );
+    }
+
+    #[test]
+    fn test_capture_correction_rejects_oversized_input() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = LearningCaptureConfig::new(
+            temp_dir.path().join("learnings"),
+            temp_dir.path().join("global"),
+        );
+        let huge = "x".repeat(MAX_FIELD_BYTES + 1);
+        let result = capture_correction(
+            CorrectionType::Other("test".to_string()),
+            &huge,
+            "small",
+            "",
+            &config,
+        );
+        assert!(result.is_err(), "Oversized input must be rejected");
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("maximum size"),
+            "Error must mention size limit"
+        );
+    }
+
+    #[test]
+    fn test_backtick_in_original_is_escaped() {
+        let event = CorrectionEvent::new(
+            CorrectionType::CodePattern,
+            "use `unwrap()`".to_string(),
+            "use Result<T>".to_string(),
+            "".to_string(),
+            LearningSource::Project,
+        );
+        let md = event.to_markdown();
+        // The backtick in original must be escaped so it doesn't break the inline code block
+        assert!(
+            md.contains("\\`unwrap()\\`"),
+            "Backticks in original must be escaped"
+        );
     }
 
     #[test]

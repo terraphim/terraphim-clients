@@ -1089,23 +1089,10 @@ enum LearnSub {
         #[arg(long)]
         correction: String,
     },
-    /// Record a user correction (tool preference, naming, workflow, etc.)
+    /// Record and list user corrections (tool preference, naming, workflow, etc.)
     Correction {
-        /// What the agent said/did originally
-        #[arg(long)]
-        original: String,
-        /// What the user said instead
-        #[arg(long)]
-        corrected: String,
-        /// Type of correction
-        #[arg(long, default_value = "other")]
-        correction_type: String,
-        /// Context description
-        #[arg(long, default_value = "")]
-        context: String,
-        /// Session ID for traceability
-        #[arg(long)]
-        session_id: Option<String>,
+        #[command(subcommand)]
+        sub: CorrectionSub,
     },
     /// Process hook input from AI agents (reads JSON from stdin)
     Hook {
@@ -1156,6 +1143,40 @@ enum LearnSub {
     Shared {
         #[command(subcommand)]
         sub: SharedLearningSub,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum CorrectionSub {
+    /// Record a new user correction
+    Add {
+        /// What the agent said/did originally
+        #[arg(long)]
+        original: String,
+        /// What the user said instead
+        #[arg(long)]
+        corrected: String,
+        /// Type of correction: tool-preference, code-pattern, naming, workflow-step, fact-correction, style-preference, other
+        #[arg(long, default_value = "other")]
+        correction_type: String,
+        /// Context description (optional)
+        #[arg(long, default_value = "")]
+        context: String,
+        /// Session ID for traceability
+        #[arg(long)]
+        session_id: Option<String>,
+    },
+    /// List stored corrections
+    List {
+        /// Show at most this many corrections (default: 20)
+        #[arg(long, default_value_t = 20)]
+        recent: usize,
+        /// Filter by correction type (e.g. tool-preference, code-pattern)
+        #[arg(long)]
+        filter_type: Option<String>,
+        /// Show global corrections instead of project-local
+        #[arg(long, default_value_t = false)]
+        global: bool,
     },
 }
 
@@ -3680,33 +3701,79 @@ async fn run_learn_command(sub: LearnSub) -> Result<()> {
                 }
             }
         }
-        LearnSub::Correction {
-            original,
-            corrected,
-            correction_type,
-            context,
-            session_id,
-        } => {
-            let ct: CorrectionType = correction_type
-                .parse()
-                .unwrap_or(CorrectionType::Other(correction_type.clone()));
-            let correction = capture_correction(ct, &original, &corrected, &context, &config);
-            if let Some(ref sid) = session_id {
-                // We need to read the file and update it with session_id
-                // For now, just print the session_id
-                log::info!("Session ID: {}", sid);
-            }
-            match correction {
-                Ok(path) => {
-                    println!("Captured correction: {}", path.display());
-                    Ok(())
+        LearnSub::Correction { sub } => match sub {
+            CorrectionSub::Add {
+                original,
+                corrected,
+                correction_type,
+                context,
+                session_id,
+            } => {
+                let ct: CorrectionType = correction_type
+                    .parse()
+                    .unwrap_or(CorrectionType::Other(correction_type.clone()));
+                if let Some(ref sid) = session_id {
+                    log::debug!("Correction session_id: {}", sid);
                 }
-                Err(e) => {
-                    eprintln!("Failed to capture correction: {}", e);
-                    Err(e.into())
+                match capture_correction(ct, &original, &corrected, &context, &config) {
+                    Ok(path) => {
+                        println!("Captured correction: {}", path.display());
+                        Ok(())
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to capture correction: {}", e);
+                        Err(e.into())
+                    }
                 }
             }
-        }
+            CorrectionSub::List {
+                recent,
+                filter_type,
+                global,
+            } => {
+                let storage_loc = config.storage_location();
+                let storage_dir = if global {
+                    &config.global_dir
+                } else {
+                    &storage_loc
+                };
+                match list_all_entries(storage_dir, recent) {
+                    Ok(entries) => {
+                        let corrections: Vec<_> = entries
+                            .into_iter()
+                            .filter_map(|e| {
+                                if let learnings::LearningEntry::Correction(c) = e {
+                                    Some(c)
+                                } else {
+                                    None
+                                }
+                            })
+                            .filter(|c| {
+                                filter_type
+                                    .as_ref()
+                                    .is_none_or(|ft| c.correction_type.to_string() == *ft)
+                            })
+                            .collect();
+                        if corrections.is_empty() {
+                            println!("No corrections found.");
+                        } else {
+                            println!("Corrections ({}):", corrections.len());
+                            for c in &corrections {
+                                println!(
+                                    "  [{}] {} -> {}",
+                                    c.correction_type, c.original, c.corrected
+                                );
+                                if !c.context_description.is_empty() {
+                                    println!("     Context: {}", c.context_description);
+                                }
+                            }
+                        }
+                        Ok(())
+                    }
+                    Err(e) => Err(e.into()),
+                }
+            }
+        },
         LearnSub::Hook {
             format,
             learn_hook_type,
