@@ -23,7 +23,6 @@ use std::path::PathBuf;
 use serde::Deserialize;
 use thiserror::Error;
 
-use crate::learnings::redaction::contains_secrets;
 use crate::learnings::{
     LearningCaptureConfig, LearningError, capture_failed_command, redact_secrets,
 };
@@ -78,10 +77,9 @@ pub async fn process_hook_input_with_type(hook_type: LearnHookType) -> Result<()
 
 /// Core hook processing logic with injectable I/O streams.
 ///
-/// Reads from `reader`, dispatches to the hook handler, redacts any secrets
-/// from the input buffer, then writes the (possibly-redacted) output to `writer`.
-/// Secrets are never forwarded to `writer` — `contains_secrets` acts as a
-/// fast pre-check before calling the more expensive `redact_secrets`.
+/// Reads from `reader`, dispatches to the hook handler, unconditionally redacts
+/// any secrets from the input buffer, then writes the redacted output to `writer`.
+/// Secrets are never forwarded to `writer`.
 pub(crate) async fn process_hook_with_streams<R, W>(
     hook_type: LearnHookType,
     mut reader: R,
@@ -124,15 +122,11 @@ where
         }
     }
 
-    // Redact secrets before passing through to the output stream.
-    // contains_secrets is a fast pre-check; redact_secrets is only called
-    // when secrets are present.
-    let output = if contains_secrets(&buffer) {
-        log::debug!("Hook passthrough: secrets detected, redacting before stdout");
-        redact_secrets(&buffer)
-    } else {
-        buffer
-    };
+    // Unconditionally redact secrets before passing through to the output stream.
+    // The previous contains_secrets() fast-path was removed because its pattern
+    // set did not cover GitHub PATs (ghp_*), Slack tokens (xox*), or connection
+    // strings, allowing those secrets to bypass redaction entirely.
+    let output = redact_secrets(&buffer);
 
     writer
         .write_all(output.as_bytes())
@@ -792,7 +786,6 @@ mod tests {
     #[test]
     fn test_hook_passthrough_redacts_aws_key_in_error() {
         use crate::learnings::redact_secrets;
-        use crate::learnings::redaction::contains_secrets;
 
         // Build a fake AWS key at runtime to avoid tripping the pre-commit secret scanner.
         // The key prefix "AKIA" followed by 16 uppercase alphanumeric chars is the pattern.
@@ -810,9 +803,6 @@ mod tests {
         }}"#,
             aws_key
         );
-
-        // Verify the input contains secrets
-        assert!(contains_secrets(&json));
 
         // Verify redaction removes the AWS key
         let redacted = redact_secrets(&json);
@@ -897,5 +887,88 @@ mod tests {
     fn test_user_prompt_submit_no_crash_on_invalid_json() {
         process_user_prompt_submit("invalid");
         // No panic = pass
+    }
+
+    /// GitHub PAT bypass: `ghp_` tokens are not in `contains_secrets()` patterns
+    /// but ARE matched by `redact_secrets()`. Unconditional redaction must catch them.
+    #[tokio::test]
+    async fn test_process_hook_github_pat_is_redacted() {
+        use super::process_hook_with_streams;
+
+        // Build token at runtime to avoid the pre-commit secret scanner.
+        let pat = format!("ghp_{}", "A".repeat(36));
+        let json = format!(
+            r#"{{"tool_name":"Bash","tool_input":{{"command":"git push"}},"tool_result":{{"exit_code":1,"stdout":"","stderr":"remote: invalid credentials {pat}"}}}}"#,
+        );
+
+        let mut output_buf: Vec<u8> = Vec::new();
+        process_hook_with_streams(LearnHookType::PostToolUse, json.as_bytes(), &mut output_buf)
+            .await
+            .expect("process_hook_with_streams must not fail");
+
+        let output = String::from_utf8(output_buf).expect("output must be valid UTF-8");
+        assert!(
+            !output.contains(&pat),
+            "GitHub PAT must not appear in stdout output; got: {output}"
+        );
+        assert!(
+            output.contains("[GITHUB_TOKEN_REDACTED]"),
+            "Redacted placeholder must appear in output; got: {output}"
+        );
+    }
+
+    /// Slack token bypass: `xoxb-` tokens are not in `contains_secrets()` patterns
+    /// but ARE matched by `redact_secrets()`. Unconditional redaction must catch them.
+    #[tokio::test]
+    async fn test_process_hook_slack_token_is_redacted() {
+        use super::process_hook_with_streams;
+
+        let slack_token = "xoxb-123456789012-123456789012-AbCdEfGhIjKlMnOpQrSt";
+        let json = format!(
+            r#"{{"tool_name":"Bash","tool_input":{{"command":"curl -H 'Authorization: Bearer {slack_token}' https://slack.com/api/chat.postMessage"}},"tool_result":{{"exit_code":0,"stdout":"","stderr":""}}}}"#,
+        );
+
+        let mut output_buf: Vec<u8> = Vec::new();
+        process_hook_with_streams(LearnHookType::PostToolUse, json.as_bytes(), &mut output_buf)
+            .await
+            .expect("process_hook_with_streams must not fail");
+
+        let output = String::from_utf8(output_buf).expect("output must be valid UTF-8");
+        assert!(
+            !output.contains(slack_token),
+            "Slack token must not appear in stdout output; got: {output}"
+        );
+        assert!(
+            output.contains("[SLACK_TOKEN_REDACTED]"),
+            "Redacted placeholder must appear in output; got: {output}"
+        );
+    }
+
+    /// Connection string bypass: `postgresql://user:pass@host` is not in
+    /// `contains_secrets()` patterns but IS matched by `redact_secrets()`.
+    /// Unconditional redaction must catch it.
+    #[tokio::test]
+    async fn test_process_hook_connection_string_is_redacted() {
+        use super::process_hook_with_streams;
+
+        let conn = "postgresql://dbuser:s3cr3tpassword@prod-db.internal:5432/appdb";
+        let json = format!(
+            r#"{{"tool_name":"Bash","tool_input":{{"command":"psql {conn}"}},"tool_result":{{"exit_code":1,"stdout":"","stderr":"connection refused"}}}}"#,
+        );
+
+        let mut output_buf: Vec<u8> = Vec::new();
+        process_hook_with_streams(LearnHookType::PostToolUse, json.as_bytes(), &mut output_buf)
+            .await
+            .expect("process_hook_with_streams must not fail");
+
+        let output = String::from_utf8(output_buf).expect("output must be valid UTF-8");
+        assert!(
+            !output.contains("s3cr3tpassword"),
+            "Connection string password must not appear in stdout output; got: {output}"
+        );
+        assert!(
+            output.contains("postgresql://[REDACTED]@"),
+            "Redacted connection string must appear in output; got: {output}"
+        );
     }
 }
