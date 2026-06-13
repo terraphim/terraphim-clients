@@ -1004,6 +1004,19 @@ pub fn capture_failed_command(
         learning = learning.with_entities(entities);
     }
 
+    // Auto-suggest correction from compiled ToolPreference corrections (non-blocking).
+    // If the command or error text matches a known correction pattern, set the
+    // correction field so `learn list` surfaces it immediately on next capture.
+    if let Ok(corrections) =
+        crate::learnings::compile::compile_corrections_to_thesaurus(&storage_dir)
+        && !corrections.is_empty()
+        && let Ok(matches) =
+            terraphim_automata::matcher::find_matches(&annotation_text, corrections, false)
+        && let Some(first) = matches.first()
+    {
+        learning = learning.with_correction(first.normalized_term.display().to_string());
+    }
+
     // Calculate importance score
     let repetition_count = count_similar_failures(&storage_dir, &actual_command);
     let has_correction = has_correction_for_similar(&storage_dir, &actual_command);
@@ -1920,6 +1933,59 @@ mod tests {
 
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), LearningError::Ignored(_)));
+    }
+
+    /// Regression test: capture_failed_command sets learning.correction when a
+    /// ToolPreference correction in the storage dir matches the failing command.
+    #[test]
+    fn test_capture_sets_correction_when_kg_match_found() {
+        use crate::learnings::compile::compile_corrections_to_thesaurus;
+
+        let temp_dir = TempDir::new().unwrap();
+        let learnings_dir = temp_dir.path().join("learnings");
+        fs::create_dir_all(&learnings_dir).unwrap();
+
+        // Pre-populate a ToolPreference correction: "npm install" -> "bun install"
+        let correction = CorrectionEvent::new(
+            CorrectionType::ToolPreference,
+            "npm install".to_string(),
+            "bun install".to_string(),
+            String::new(),
+            LearningSource::Project,
+        );
+        fs::write(
+            learnings_dir.join("correction-npm.md"),
+            correction.to_markdown(),
+        )
+        .unwrap();
+
+        // Sanity-check: the correction file is parseable by compile module
+        let thesaurus = compile_corrections_to_thesaurus(&learnings_dir).unwrap();
+        assert_eq!(thesaurus.len(), 1, "correction thesaurus should have 1 entry");
+
+        // Run capture with a command that contains the corrected pattern
+        let config = LearningCaptureConfig::new(
+            learnings_dir.clone(),
+            temp_dir.path().join("global"),
+        );
+        let path = capture_failed_command(
+            "npm install express",
+            "npm ERR! code E404",
+            1,
+            &config,
+        )
+        .expect("capture should succeed");
+
+        // Read back the captured learning and verify the correction was auto-set
+        let content = fs::read_to_string(&path).unwrap();
+        let learning = CapturedLearning::from_markdown(&content)
+            .expect("captured learning should be parseable");
+
+        assert_eq!(
+            learning.correction.as_deref(),
+            Some("bun install"),
+            "correction field should be auto-suggested from the compiled thesaurus"
+        );
     }
 
     #[test]
