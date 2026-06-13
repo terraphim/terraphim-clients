@@ -9,7 +9,7 @@ homepage = "https://terraphim.ai"
 repository = "https://github.com/terraphim/terraphim-ai"
 keywords = ["cli", "ai", "agent", "search", "repl"]
 license = "Apache-2.0"
-readme = "../../README.md"
+readme = "README.md"
 
 [features]
 default = ["repl-interactive", "llm", "repl-sessions"]

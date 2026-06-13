@@ -49,13 +49,14 @@ fn create_unique_test_root() -> Result<PathBuf> {
 pub fn apply_hermetic_env(cmd: &mut Command) -> Result<()> {
     let root = create_unique_test_root()?;
     let home_dir = root.join("home");
-    let xdg_config_home = root.join("xdg-config");
+    let xdg_config_home = home_dir.join(".config");
+    let terraphim_config_dir = xdg_config_home.join("terraphim");
     let data_dir = root.join("data");
     let dashmap_dir = root.join("dashmap");
     let sqlite_dir = root.join("sqlite");
 
     fs::create_dir_all(&home_dir)?;
-    fs::create_dir_all(&xdg_config_home)?;
+    fs::create_dir_all(&terraphim_config_dir)?;
     fs::create_dir_all(&data_dir)?;
     fs::create_dir_all(&dashmap_dir)?;
     fs::create_dir_all(&sqlite_dir)?;
@@ -75,12 +76,16 @@ pub fn apply_hermetic_env(cmd: &mut Command) -> Result<()> {
     // Write to all three under the hermetic HOME so whichever runs first
     // finds our settings.
     let sqlite_db = sqlite_dir.join("terraphim.db");
+    let role_config = workspace_root()?
+        .join("crates/terraphim_agent/tests/fixtures/terraphim_engineer_config.json");
+
     let settings_toml = format!(
         r#"
 server_hostname = "127.0.0.1:8000"
 api_endpoint = "http://localhost:8000/api"
 initialized = "false"
 default_data_path = "{data}"
+role_config = "{role_config}"
 
 [profiles.dashmap]
 type = "dashmap"
@@ -96,9 +101,10 @@ table = "terraphim_kv"
         dashmap = dashmap_dir.display(),
         sqlite = sqlite_dir.display(),
         db = sqlite_db.display(),
+        role_config = role_config.display(),
     );
     let settings_dirs = [
-        home_dir.join(".config").join("terraphim"),
+        terraphim_config_dir.clone(),
         home_dir
             .join("Library")
             .join("Application Support")
@@ -110,13 +116,12 @@ table = "terraphim_kv"
     }
 
     let workspace = workspace_root()?;
-    let role_config = workspace.join("terraphim_server/default/terraphim_engineer_config.json");
 
     cmd.current_dir(&workspace)
         .env("HOME", &home_dir)
         .env("XDG_CONFIG_HOME", &xdg_config_home)
-        .env("TERRAPHIM_DEFAULT_DATA_PATH", &data_dir)
-        .env("TERRAPHIM_ROLE_CONFIG", &role_config);
+        .env("TERRAPHIM_SETTINGS_PATH", &terraphim_config_dir)
+        .env("TERRAPHIM_DEFAULT_DATA_PATH", &data_dir);
 
     Ok(())
 }
