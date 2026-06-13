@@ -388,6 +388,7 @@ impl SessionConnector for ClineConnector {
             });
         }
 
+        crate::redaction::redact_sessions(&mut sessions);
         Ok(sessions)
     }
 }

@@ -97,6 +97,7 @@ impl SessionConnector for AiderConnector {
         }
 
         info!("Successfully imported {} Aider sessions", sessions.len());
+        crate::redaction::redact_sessions(&mut sessions);
         Ok(sessions)
     }
 }

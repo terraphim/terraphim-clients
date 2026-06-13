@@ -147,6 +147,7 @@ impl SessionConnector for CodexConnector {
             }
         }
 
+        crate::redaction::redact_sessions(&mut sessions);
         Ok(sessions)
     }
 }

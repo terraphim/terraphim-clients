@@ -23,7 +23,7 @@ terraphim-session-analyzer = ["dep:terraphim-session-analyzer"]
 tsa-full = ["terraphim-session-analyzer", "terraphim-session-analyzer/connectors"]
 
 # Enable Aider session connector
-aider-connector = ["dep:regex", "dep:terraphim-markdown-parser"]
+aider-connector = ["dep:terraphim-markdown-parser"]
 
 # Enable Cline session connector (VS Code extension)
 cline-connector = []
@@ -72,8 +72,8 @@ dirs = "5.0"
 # File watching
 notify = "8.2"
 
-# Feature-gated: regex for Aider/Cline connectors
-regex = { version = "1.10", optional = true }
+# Regex for secret redaction (always enabled) and Aider connector parsing
+regex = "1.10"
 
 # Feature-gated: SQLite access for Cursor connector
 rusqlite = { version = "0.32", features = ["bundled"], optional = true }

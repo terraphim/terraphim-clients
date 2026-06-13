@@ -136,7 +136,9 @@ impl SessionConnector for OpenCodeConnector {
             ),
         };
 
-        Ok(vec![session])
+        let mut sessions = vec![session];
+        crate::redaction::redact_sessions(&mut sessions);
+        Ok(sessions)
     }
 }
 
