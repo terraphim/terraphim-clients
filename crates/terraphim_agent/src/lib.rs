@@ -20,6 +20,13 @@ pub mod forgiving;
 // MCP Tool Index - for discovering and searching MCP tools
 pub mod mcp_tool_index;
 
+// Command guard patterns - always available for risk classification
+pub mod guard_patterns;
+
+// Learning capture system - always available so secret-redaction and hook
+// passthrough logic are exercised by `cargo test --lib` and `--doc` gates.
+pub mod learnings;
+
 #[cfg(feature = "repl")]
 pub mod repl;
 
