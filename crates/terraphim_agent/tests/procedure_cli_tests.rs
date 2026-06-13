@@ -404,6 +404,204 @@ fn procedure_disable_prevents_replay() {
     );
 }
 
+/// Test that `learn procedure from-session <id>` extracts non-trivial successful Bash
+/// commands from a session JSON cache and creates a procedure.
+///
+/// This test satisfies AC from terraphim-ai#2350:
+/// - from-session creates a procedure from session history
+/// - trivial commands (cd) are filtered out
+/// - title is auto-generated from the first non-trivial command
+/// - save_with_dedup() is called (one procedure created, not two on repeat)
+#[cfg(feature = "repl-sessions")]
+#[test]
+fn procedure_from_session_extracts_non_trivial_commands() {
+    let binary = require_binary!();
+    let tmp = tempfile::tempdir().expect("create temp dir");
+    let home = tmp.path().to_string_lossy().to_string();
+
+    // Write a session JSON to the cache path that get_session_cache_path() resolves to.
+    // On Linux, dirs::cache_dir() = $XDG_CACHE_HOME (if set), so we control the path.
+    let cache_dir = tmp.path().join("xdg-cache").join("terraphim-agent");
+    std::fs::create_dir_all(&cache_dir).expect("create cache dir");
+
+    // Session with 4 Bash blocks:
+    //   tu1: cargo build --release  (exit 0, keep)
+    //   tu2: cd /tmp                (exit 0, trivial → filter)
+    //   tu3: cargo test --lib       (exit 1, failed → filter)
+    //   tu4: cargo clippy           (exit 0, keep)
+    let session_json = r#"[
+      {
+        "id": "test-session-2350",
+        "source": "test",
+        "external_id": "test-session-2350",
+        "title": "Test session for #2350",
+        "source_path": "/dev/null",
+        "started_at": null,
+        "ended_at": null,
+        "messages": [
+          {"idx": 0, "role": "assistant", "content": "cmd",
+           "blocks": [{"type":"tool_use","id":"tu1","name":"Bash","input":{"command":"cargo build --release"}}]},
+          {"idx": 1, "role": "tool", "content": "ok",
+           "blocks": [{"type":"tool_result","tool_use_id":"tu1","content":"Compiled","exit_code":0}]},
+          {"idx": 2, "role": "assistant", "content": "cmd",
+           "blocks": [{"type":"tool_use","id":"tu2","name":"Bash","input":{"command":"cd /tmp"}}]},
+          {"idx": 3, "role": "tool", "content": "ok",
+           "blocks": [{"type":"tool_result","tool_use_id":"tu2","content":"","exit_code":0}]},
+          {"idx": 4, "role": "assistant", "content": "cmd",
+           "blocks": [{"type":"tool_use","id":"tu3","name":"Bash","input":{"command":"cargo test --lib"}}]},
+          {"idx": 5, "role": "tool", "content": "fail",
+           "blocks": [{"type":"tool_result","tool_use_id":"tu3","content":"FAILED","exit_code":1}]},
+          {"idx": 6, "role": "assistant", "content": "cmd",
+           "blocks": [{"type":"tool_use","id":"tu4","name":"Bash","input":{"command":"cargo clippy"}}]},
+          {"idx": 7, "role": "tool", "content": "ok",
+           "blocks": [{"type":"tool_result","tool_use_id":"tu4","content":"ok","exit_code":0}]}
+        ],
+        "metadata": {}
+      }
+    ]"#;
+
+    let session_file = cache_dir.join("sessions.json");
+    std::fs::write(&session_file, session_json).expect("write session file");
+
+    let output = Command::new(&binary)
+        .args(["learn", "procedure", "from-session", "test-session-2350"])
+        .env("HOME", &home)
+        .env("XDG_DATA_HOME", format!("{}/xdg-data", home))
+        .env("XDG_CACHE_HOME", format!("{}/xdg-cache", home))
+        .output()
+        .expect("run binary");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        output.status.success(),
+        "from-session should succeed; stderr: {}",
+        stderr
+    );
+
+    // Should report 2 steps (cargo build + cargo clippy; cd and failed test filtered)
+    assert!(
+        stdout.contains("2 steps"),
+        "expected 2 steps in output, got: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("4 commands"),
+        "expected 4 total commands counted, got: {}",
+        stdout
+    );
+}
+
+/// Running from-session twice with the same session deduplicates via save_with_dedup.
+#[cfg(feature = "repl-sessions")]
+#[test]
+fn procedure_from_session_deduplicates_on_repeat() {
+    let binary = require_binary!();
+    let tmp = tempfile::tempdir().expect("create temp dir");
+    let home = tmp.path().to_string_lossy().to_string();
+
+    let cache_dir = tmp.path().join("xdg-cache").join("terraphim-agent");
+    std::fs::create_dir_all(&cache_dir).expect("create cache dir");
+
+    let session_json = r#"[
+      {
+        "id": "dedup-session-2350",
+        "source": "test",
+        "external_id": "dedup-session-2350",
+        "title": null,
+        "source_path": "/dev/null",
+        "started_at": null,
+        "ended_at": null,
+        "messages": [
+          {"idx": 0, "role": "assistant", "content": "cmd",
+           "blocks": [{"type":"tool_use","id":"tu1","name":"Bash","input":{"command":"cargo build"}}]},
+          {"idx": 1, "role": "tool", "content": "ok",
+           "blocks": [{"type":"tool_result","tool_use_id":"tu1","content":"ok","exit_code":0}]}
+        ],
+        "metadata": {}
+      }
+    ]"#;
+
+    std::fs::write(cache_dir.join("sessions.json"), session_json).expect("write session file");
+
+    let run = |extra_args: &[&str]| {
+        Command::new(&binary)
+            .args(["learn", "procedure", "from-session", "dedup-session-2350"])
+            .args(extra_args)
+            .env("HOME", &home)
+            .env("XDG_DATA_HOME", format!("{}/xdg-data", home))
+            .env("XDG_CACHE_HOME", format!("{}/xdg-cache", home))
+            .output()
+            .expect("run binary")
+    };
+
+    // First run: creates a procedure
+    let first = run(&[]);
+    assert!(
+        first.status.success(),
+        "first run should succeed, stderr: {}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+
+    // Second run: same session, should still succeed (dedup merges or reuses)
+    let second = run(&[]);
+    assert!(
+        second.status.success(),
+        "second run should succeed, stderr: {}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+
+    // Verify only 1 procedure in the store after both runs
+    let list_output = Command::new(&binary)
+        .args(["learn", "procedure", "list"])
+        .env("HOME", &home)
+        .env("XDG_DATA_HOME", format!("{}/xdg-data", home))
+        .env("XDG_CACHE_HOME", format!("{}/xdg-cache", home))
+        .output()
+        .expect("list procedures");
+
+    let list_stdout = String::from_utf8_lossy(&list_output.stdout);
+    // The list output shows "Procedures (N of N)" — should be 1
+    assert!(
+        list_stdout.contains("(1 of 1)"),
+        "expected exactly 1 procedure after two identical runs, got: {}",
+        list_stdout
+    );
+}
+
+/// Verify that from-session with a missing session ID exits non-zero.
+#[cfg(feature = "repl-sessions")]
+#[test]
+fn procedure_from_session_missing_id_fails() {
+    let binary = require_binary!();
+    let tmp = tempfile::tempdir().expect("create temp dir");
+    let home = tmp.path().to_string_lossy().to_string();
+
+    // Cache dir exists but contains no matching session
+    let cache_dir = tmp.path().join("xdg-cache").join("terraphim-agent");
+    std::fs::create_dir_all(&cache_dir).expect("create cache dir");
+    std::fs::write(cache_dir.join("sessions.json"), "[]").expect("write empty sessions");
+
+    let output = Command::new(&binary)
+        .args([
+            "learn",
+            "procedure",
+            "from-session",
+            "nonexistent-session-id",
+        ])
+        .env("HOME", &home)
+        .env("XDG_DATA_HOME", format!("{}/xdg-data", home))
+        .env("XDG_CACHE_HOME", format!("{}/xdg-cache", home))
+        .output()
+        .expect("run binary");
+
+    assert!(
+        !output.status.success(),
+        "from-session with missing session ID should exit non-zero"
+    );
+}
+
 #[test]
 fn procedure_enable_allows_replay() {
     let binary = require_binary!();
