@@ -14,7 +14,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.20.4"
+version = "1.20.5"
 edition = "2024"
 authors = ["Terraphim Team <team@terraphim.ai>"]
 documentation = "https://terraphim.ai"
@@ -22,6 +22,9 @@ homepage = "https://terraphim.ai"
 repository = "https://git.terraphim.cloud/terraphim/terraphim-clients"
 license = "Apache-2.0"
 readme = "README.md"
+
+[patch.crates-io]
+terraphim_service = { version = "1.20.5", registry = "terraphim" }
 
 [workspace.dependencies]
 tokio = { version = "1.0", features = ["full"] }
