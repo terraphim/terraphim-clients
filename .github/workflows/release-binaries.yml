@@ -84,7 +84,7 @@ jobs:
             BUILD="rustup run stable cargo"
           fi
           $BUILD build --release --target ${{ matrix.target }} -p terraphim_agent --bin terraphim-agent
-          $BUILD build --release --target ${{ matrix.target }} -p terraphim_cli --bin terraphim-cli
+          $BUILD build --release --target ${{ matrix.target }} -p terraphim-cli --bin terraphim-cli
           $BUILD build --release --target ${{ matrix.target }} -p terraphim_grep --bin terraphim-grep --features "code-search openrouter"
       - name: Package artifacts (Unix)
         if: matrix.os != 'windows-latest'
