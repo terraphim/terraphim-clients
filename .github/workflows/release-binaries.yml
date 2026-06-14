@@ -30,25 +30,28 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: [self-hosted, bigbox]
+          # GitHub-hosted Linux: terraphim-ai self-hosted runners are repo-scoped.
+          - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             use_cross: false
-          - os: [self-hosted, bigbox]
+          - os: ubuntu-22.04
             target: x86_64-unknown-linux-musl
             use_cross: true
-          - os: [self-hosted, bigbox]
+          - os: ubuntu-22.04
             target: aarch64-unknown-linux-musl
             use_cross: true
-          - os: [self-hosted, macOS]
+          - os: macos-latest
             target: x86_64-apple-darwin
             use_cross: false
-          - os: [self-hosted, macOS]
+          - os: macos-latest
             target: aarch64-apple-darwin
             use_cross: false
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             use_cross: false
     runs-on: ${{ matrix.os }}
+    env:
+      CARGO_REGISTRIES_TERRAPHIM_TOKEN: ${{ secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -63,16 +66,23 @@ jobs:
           if command -v choco &>/dev/null; then choco install zig -y; fi
       - name: Install cross
         if: matrix.use_cross
-        run: cargo install cross
+        run: |
+          if command -v cross &>/dev/null; then
+            cross --version
+            exit 0
+          fi
+          rustup run stable cargo install cross --locked --git https://github.com/cross-rs/cross
       - uses: Swatinem/rust-cache@v2
         if: matrix.target != 'x86_64-unknown-linux-gnu'
         with:
           key: clients-${{ matrix.target }}
       - name: Build client binaries
-        env:
-          CARGO_REGISTRIES_TERRAPHIM_TOKEN: ${{ secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN }}
         run: |
-          BUILD="${{ matrix.use_cross && 'cross' || 'cargo' }}"
+          if [ "${{ matrix.use_cross }}" = "true" ]; then
+            BUILD="rustup run stable cross"
+          else
+            BUILD="rustup run stable cargo"
+          fi
           $BUILD build --release --target ${{ matrix.target }} -p terraphim_agent --bin terraphim-agent
           $BUILD build --release --target ${{ matrix.target }} -p terraphim_cli --bin terraphim-cli
           $BUILD build --release --target ${{ matrix.target }} -p terraphim_grep --bin terraphim-grep --features "code-search openrouter"
@@ -113,7 +123,7 @@ jobs:
     name: Create macOS universal client binaries
     needs: build-binaries
     if: always() && needs.build-binaries.result != 'cancelled'
-    runs-on: [self-hosted, macOS]
+    runs-on: macos-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -137,7 +147,7 @@ jobs:
     name: Sign and notarize macOS client binaries
     needs: create-universal-macos
     if: always() && needs.create-universal-macos.result == 'success'
-    runs-on: [self-hosted, macOS]
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
