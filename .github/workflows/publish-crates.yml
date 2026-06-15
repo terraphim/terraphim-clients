@@ -84,10 +84,10 @@ jobs:
               continue
             fi
             if [ "$DRY_RUN" = "true" ]; then
-              cargo publish --manifest-path "$manifest" --dry-run
+              cargo publish --manifest-path "$manifest" --dry-run --allow-dirty
             else
               set +e
-              output=$(cargo publish --manifest-path "$manifest" 2>&1)
+              output=$(cargo publish --manifest-path "$manifest" --allow-dirty 2>&1)
               exit_code=$?
               set -e
               if [ "$exit_code" -ne 0 ]; then
