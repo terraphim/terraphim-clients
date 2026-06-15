@@ -71,15 +71,15 @@ notify = "8.2"
 regex = { version = "1.10", optional = true }
 
 # Feature-gated: Terraphim Session Analyzer
-terraphim-session-analyzer = { version = "1.19.2", optional = true, registry = "terraphim" }
+terraphim-session-analyzer = { version = "1.19.2", optional = true }
 
 # Feature-gated: Markdown parsing for Aider/Cline connectors
-terraphim-markdown-parser = { version = "1.20.2", registry = "terraphim", optional = true }
+terraphim-markdown-parser = { version = "1.20.2", optional = true }
 
 # Feature-gated: Terraphim enrichment (uses published crates.io versions)
-terraphim_automata = { version = ">=1.4.10", registry = "terraphim", optional = true }
-terraphim_rolegraph = { version = ">=1.4.10", registry = "terraphim", optional = true }
-terraphim_types = { version = ">=1.4.10", registry = "terraphim", optional = true }
+terraphim_automata = { version = ">=1.4.10", optional = true }
+terraphim_rolegraph = { version = ">=1.4.10", optional = true }
+terraphim_types = { version = ">=1.4.10", optional = true }
 
 
 
