@@ -159,14 +159,14 @@ impl TerraphimGrep {
                 let stats = GrepStats {
                     search_latency_ms,
                     rlm_latency_ms: None,
-                    chunks_returned: 0,
-                    kg_hits: 0,
+                    chunks_returned: chunks.len(),
+                    kg_hits: hybrid_results.kg_concepts.len(),
                 };
 
                 Ok(GrepResult {
                     chunks,
                     answer: None,
-                    concepts: vec![],
+                    concepts: hybrid_results.kg_concepts,
                     sufficiency: SufficiencyState::RlmInsufficient,
                     stats,
                 })
@@ -339,6 +339,55 @@ mod tests {
         assert_eq!(options.max_results, 50);
         assert!(!options.force_rlm);
         assert!(!options.include_answer);
+    }
+
+    /// Regression for #2721: the Insufficient branch previously hardcoded `chunks_returned: 0`
+    /// and `concepts: vec![]`, discarding KG boost data that was already computed.
+    /// With a corpus of 2 files (below the default `min_results: 3`), the judge returns
+    /// Insufficient. The result must reflect actual chunk count, not zero.
+    #[cfg(feature = "code-search")]
+    #[tokio::test]
+    async fn insufficient_path_propagates_chunk_count() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        // Only 2 files -- below default min_results (3), forces Insufficient path.
+        for i in 0..2 {
+            let path = tmp.path().join(format!("sparse_{i}.rs"));
+            std::fs::write(&path, format!("fn sparse_fn_{i}() {{ /* sparse */ }}\n")).unwrap();
+        }
+
+        let hybrid =
+            HybridSearcher::new("test-role".to_string(), terraphim_types::Thesaurus::new("t".to_string()))
+                .expect("build hybrid searcher")
+                .with_search_path(tmp.path().to_path_buf());
+        let judge = SufficiencyJudge::default(); // min_results = 3
+        let grep = TerraphimGrep::new(Arc::new(hybrid), Arc::new(judge));
+
+        let result = grep
+            .search(
+                "sparse",
+                GrepOptions {
+                    haystack: Haystack::Code,
+                    max_results: 50,
+                    ..GrepOptions::default()
+                },
+            )
+            .await
+            .expect("search should succeed");
+
+        // If the judge marked this Insufficient, chunks_returned must not be zero.
+        // (Before the fix it was always 0, hiding how many partial results were found.)
+        if matches!(result.sufficiency, SufficiencyState::RlmInsufficient) {
+            assert_eq!(
+                result.stats.chunks_returned,
+                result.chunks.len(),
+                "chunks_returned must equal actual chunk count in Insufficient path"
+            );
+            assert_eq!(
+                result.stats.kg_hits,
+                result.concepts.len(),
+                "kg_hits must equal concept count in Insufficient path"
+            );
+        }
     }
 
     /// When `code-search` is enabled and the sufficiency judge requests synthesis but no
