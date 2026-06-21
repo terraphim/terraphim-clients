@@ -5,7 +5,7 @@
 //! knowledge graph.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -14,7 +14,10 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
+use terraphim_types::NormalizedTermValue;
+
 use crate::learnings::LearningCaptureConfig;
+use crate::learnings::compile::compile_corrections_to_thesaurus;
 use crate::learnings::redaction::redact_secrets;
 
 /// Errors that can occur during learning capture.
@@ -904,6 +907,44 @@ pub fn annotate_with_thesaurus(text: &str, thesaurus: &terraphim_types::Thesauru
     }
 }
 
+/// Look up the first entity that has a known ToolPreference correction and
+/// return the suggested replacement text.
+///
+/// Returns `None` when:
+/// - `entities` is empty
+/// - no correction files exist in `learnings_dir`
+/// - no entity matches a compiled correction key
+pub fn suggest_correction_from_entities(
+    entities: &[String],
+    learnings_dir: &Path,
+) -> Option<String> {
+    if entities.is_empty() {
+        return None;
+    }
+
+    let thesaurus = compile_corrections_to_thesaurus(learnings_dir)
+        .map_err(|e| log::warn!("Could not compile corrections for auto-suggest: {}", e))
+        .ok()?;
+
+    if thesaurus.is_empty() {
+        return None;
+    }
+
+    for entity in entities {
+        let key = NormalizedTermValue::from(entity.as_str());
+        if let Some(term) = thesaurus.get(&key) {
+            let suggestion = term
+                .display_value
+                .as_deref()
+                .unwrap_or_else(|| term.value.as_str())
+                .to_string();
+            return Some(suggestion);
+        }
+    }
+
+    None
+}
+
 /// Count how many existing learnings have a similar command.
 ///
 /// Two commands are considered similar if they share the same base
@@ -1001,6 +1042,9 @@ pub fn capture_failed_command(
     }
     let entities = annotate_with_entities(&annotation_text);
     if !entities.is_empty() {
+        if let Some(correction) = suggest_correction_from_entities(&entities, &storage_dir) {
+            learning = learning.with_correction(correction);
+        }
         learning = learning.with_entities(entities);
     }
 
@@ -2853,5 +2897,39 @@ mod tests {
         );
         let entry2 = LearningEntry::Correction(correction);
         assert!(matches!(entry2, LearningEntry::Correction(_)));
+    }
+
+    #[test]
+    fn test_capture_sets_correction_when_kg_match_found() {
+        let temp_dir = TempDir::new().unwrap();
+        let learnings_dir = temp_dir.path().join("learnings");
+        fs::create_dir_all(&learnings_dir).unwrap();
+
+        // Write a ToolPreference correction: "npm" → "bun"
+        let event = CorrectionEvent::new(
+            CorrectionType::ToolPreference,
+            "npm".to_string(),
+            "bun".to_string(),
+            "User prefers bun over npm".to_string(),
+            LearningSource::Project,
+        );
+        fs::write(
+            learnings_dir.join("correction-npm-bun.md"),
+            event.to_markdown(),
+        )
+        .unwrap();
+
+        // Entity "npm" matches the correction
+        let entities = vec!["npm".to_string(), "install".to_string()];
+        let suggestion = suggest_correction_from_entities(&entities, &learnings_dir);
+        assert_eq!(suggestion, Some("bun".to_string()));
+
+        // No entity matches → no suggestion
+        let no_match = suggest_correction_from_entities(&["cargo".to_string()], &learnings_dir);
+        assert!(no_match.is_none());
+
+        // Empty entity list → no suggestion
+        let empty = suggest_correction_from_entities(&[], &learnings_dir);
+        assert!(empty.is_none());
     }
 }
