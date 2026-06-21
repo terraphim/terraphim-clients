@@ -181,6 +181,33 @@ fn find_default_thesaurus(role_name: &str) -> Option<PathBuf> {
     None
 }
 
+/// Resolve the role name to use for a search, respecting the --thesaurus short-circuit.
+///
+/// When `has_explicit_thesaurus` is `true` the caller already knows which thesaurus to load;
+/// project role discovery must be skipped to avoid "multiple project roles found" errors in
+/// directories that contain more than one `role-*.json` file (terraphim/terraphim-ai#2722).
+///
+/// `load_config_fn` is a closure that loads the project config; it is only called when
+/// `has_explicit_thesaurus` is `false`, making the short-circuit branch allocation-free.
+fn determine_role_name<F>(
+    has_explicit_thesaurus: bool,
+    explicit_role: Option<&str>,
+    load_config_fn: &F,
+) -> Result<String>
+where
+    F: Fn() -> Option<(std::path::PathBuf, terraphim_config::project::ProjectConfig)>,
+{
+    if has_explicit_thesaurus {
+        return Ok(explicit_role.unwrap_or("default").to_string());
+    }
+
+    let project_config = load_config_fn();
+    resolve_role_name(
+        explicit_role,
+        project_config.as_ref().map(|(_, config)| config),
+    )
+}
+
 /// Build an `LlmClient` for the requested role.
 ///
 /// Resolution order:
@@ -305,11 +332,15 @@ async fn main() -> Result<()> {
         include_answer: args.answer,
     };
 
-    // Determine role and thesaurus
-    let project_config = load_project_config();
-    let role_name = resolve_role_name(
+    // Determine role and thesaurus.
+    // When --thesaurus is explicitly provided, skip project role discovery entirely.
+    // Without this short-circuit, a multi-role project directory causes
+    // "multiple project roles found" even though the thesaurus is already known.
+    // See terraphim/terraphim-ai#2722.
+    let role_name = determine_role_name(
+        args.thesaurus.is_some(),
         args.role.as_deref(),
-        project_config.as_ref().map(|(_, config)| config),
+        &load_project_config,
     )?;
 
     let thesaurus_path = args
@@ -453,5 +484,107 @@ fn print_results(result: &GrepResult, context_lines: usize) {
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use terraphim_config::project::ProjectConfig;
+
+    fn minimal_role_json(name: &str) -> String {
+        format!(
+            r#"{{"shortname":"{}","name":"{}","relevance_function":"title-scorer","terraphim_it":false,"theme":"default","haystacks":[]}}"#,
+            name, name
+        )
+    }
+
+    fn multi_role_project_config() -> ProjectConfig {
+        let mut config = ProjectConfig::default();
+        config.roles.insert(
+            "ai-engineer".to_string(),
+            serde_json::from_str(&minimal_role_json("AI Engineer")).unwrap(),
+        );
+        config.roles.insert(
+            "devops".to_string(),
+            serde_json::from_str(&minimal_role_json("DevOps")).unwrap(),
+        );
+        config.roles.insert(
+            "rust-engineer".to_string(),
+            serde_json::from_str(&minimal_role_json("Rust Engineer")).unwrap(),
+        );
+        config
+    }
+
+    // Regression test: terraphim/terraphim-ai#2722
+    // When --thesaurus is explicit, "multiple project roles found" must NOT be raised.
+    #[test]
+    fn explicit_thesaurus_bypasses_ambiguous_role_error() {
+        let config = multi_role_project_config();
+        // Sanity-check: without --thesaurus the multi-role config DOES error.
+        assert!(
+            config.resolve_role_name(None).is_err(),
+            "prerequisite: multi-role config without explicit role must error"
+        );
+
+        // With explicit thesaurus: determine_role_name must succeed.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let thesaurus_path = tmp.path().join("thesaurus-rust-engineer.json");
+        fs::write(&thesaurus_path, "[]").unwrap();
+
+        let result = determine_role_name(
+            true, // has_explicit_thesaurus
+            None, // no --role flag
+            &|| None::<(std::path::PathBuf, ProjectConfig)>,
+        );
+        assert!(
+            result.is_ok(),
+            "explicit --thesaurus must bypass ambiguous-role error"
+        );
+        assert_eq!(result.unwrap(), "default");
+    }
+
+    #[test]
+    fn explicit_thesaurus_with_role_uses_given_role() {
+        let result = determine_role_name(true, Some("rust-engineer"), &|| {
+            None::<(std::path::PathBuf, ProjectConfig)>
+        });
+        assert_eq!(result.unwrap(), "rust-engineer");
+    }
+
+    #[test]
+    fn no_thesaurus_single_role_project_resolves() {
+        let mut config = ProjectConfig::default();
+        config.roles.insert(
+            "devops".to_string(),
+            serde_json::from_str(&minimal_role_json("DevOps")).unwrap(),
+        );
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dummy_path = tmp.path().to_path_buf();
+
+        let result =
+            determine_role_name(false, None, &|| Some((dummy_path.clone(), config.clone())));
+        assert_eq!(result.unwrap(), "devops");
+    }
+
+    #[test]
+    fn no_thesaurus_multi_role_project_errors() {
+        let config = multi_role_project_config();
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dummy_path = tmp.path().to_path_buf();
+
+        let result =
+            determine_role_name(false, None, &|| Some((dummy_path.clone(), config.clone())));
+        assert!(
+            result.is_err(),
+            "without --thesaurus, ambiguous roles must still error"
+        );
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("multiple project roles found")
+        );
     }
 }
