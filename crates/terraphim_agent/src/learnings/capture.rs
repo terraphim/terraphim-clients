@@ -2005,20 +2005,17 @@ mod tests {
 
         // Sanity-check: the correction file is parseable by compile module
         let thesaurus = compile_corrections_to_thesaurus(&learnings_dir).unwrap();
-        assert_eq!(thesaurus.len(), 1, "correction thesaurus should have 1 entry");
+        assert_eq!(
+            thesaurus.len(),
+            1,
+            "correction thesaurus should have 1 entry"
+        );
 
         // Run capture with a command that contains the corrected pattern
-        let config = LearningCaptureConfig::new(
-            learnings_dir.clone(),
-            temp_dir.path().join("global"),
-        );
-        let path = capture_failed_command(
-            "npm install express",
-            "npm ERR! code E404",
-            1,
-            &config,
-        )
-        .expect("capture should succeed");
+        let config =
+            LearningCaptureConfig::new(learnings_dir.clone(), temp_dir.path().join("global"));
+        let path = capture_failed_command("npm install express", "npm ERR! code E404", 1, &config)
+            .expect("capture should succeed");
 
         // Read back the captured learning and verify the correction was auto-set
         let content = fs::read_to_string(&path).unwrap();
@@ -2900,7 +2897,7 @@ mod tests {
     }
 
     #[test]
-    fn test_capture_sets_correction_when_kg_match_found() {
+    fn test_suggest_correction_from_entities_matches_tool_preference() {
         let temp_dir = TempDir::new().unwrap();
         let learnings_dir = temp_dir.path().join("learnings");
         fs::create_dir_all(&learnings_dir).unwrap();
