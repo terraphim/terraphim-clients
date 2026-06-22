@@ -361,6 +361,18 @@ impl HybridSearcher {
         #[cfg(not(feature = "code-search"))]
         {
             let _ = (query, limit, search_path);
+            // `code-search` is a default feature, so reaching here means the binary was
+            // built with `--no-default-features` (or a custom set omitting it). Returning
+            // an empty Vec silently makes every query look like "0 results" with no
+            // explanation -- warn once so the cause is obvious rather than mysterious.
+            static WARNED: std::sync::Once = std::sync::Once::new();
+            WARNED.call_once(|| {
+                tracing::warn!(
+                    "terraphim-grep was built without the `code-search` feature; \
+                     file-content search is disabled and every query returns no matches. \
+                     Rebuild with `--features code-search` (the default) to enable grep."
+                );
+            });
             Ok(vec![])
         }
     }
@@ -415,6 +427,51 @@ mod tests {
         let chunks = results.to_chunks();
         assert_eq!(chunks.len(), 2);
         assert_eq!(results.total_results(), 2);
+    }
+
+    /// Regression for #47: a default build (which now enables `code-search`) must grep
+    /// file contents over a populated directory and return matches. Before the fix the
+    /// `code-search` feature was off by default, so `search_code` compiled to a no-op stub
+    /// and this exact scenario silently produced zero chunks.
+    #[cfg(feature = "code-search")]
+    #[tokio::test]
+    async fn default_build_greps_populated_directory() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("alpha.rs"),
+            "fn configure_pipeline() { /* pipeline setup */ }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.path().join("beta.rs"),
+            "fn run_pipeline() { configure_pipeline(); }\n",
+        )
+        .unwrap();
+
+        let searcher = HybridSearcher::new(
+            "test-role".to_string(),
+            terraphim_types::Thesaurus::new("t".to_string()),
+        )
+        .expect("build hybrid searcher")
+        .with_search_path(tmp.path().to_path_buf());
+
+        let results = searcher
+            .search(
+                "pipeline",
+                &GrepOptions {
+                    haystack: Haystack::Code,
+                    max_results: 50,
+                    ..GrepOptions::default()
+                },
+            )
+            .await
+            .expect("search should succeed");
+
+        assert!(
+            !results.code_results.is_empty(),
+            "default build must return file-content matches over {:?}, got none",
+            tmp.path()
+        );
     }
 
     fn chunk(source: &str, content: &str, score: f64) -> RetrievedChunk {
