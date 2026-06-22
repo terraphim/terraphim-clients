@@ -10,3 +10,5 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo build --workspace
       - run: cargo test --workspace --lib --no-fail-fast
+      - run: cargo clippy -p terraphim_sessions --features enrichment -- -D warnings
+      - run: cargo test -p terraphim_sessions --features enrichment --lib --no-fail-fast
