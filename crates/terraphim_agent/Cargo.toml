@@ -49,6 +49,7 @@ tracing = { workspace = true }
 
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 log = { workspace = true }
+env_logger = "0.11"
 urlencoding = { version = "2.1", optional = true }
 ahash = "0.8"
 terraphim_update = { path = "../terraphim_update", version = "1.0.0" }

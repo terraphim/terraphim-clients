@@ -29,6 +29,7 @@ mod tui_backend;
 
 mod guard_patterns;
 mod listener;
+mod logging;
 mod onboarding;
 mod service;
 #[allow(dead_code)]

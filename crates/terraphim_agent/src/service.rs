@@ -29,10 +29,12 @@ impl TuiService {
     /// If `no_project_config` is false, project-level `.terraphim/config.json` is discovered
     /// and merged on top of the loaded configuration.
     pub async fn new(config_path: Option<String>, no_project_config: bool) -> Result<Self> {
-        // Initialize logging
-        terraphim_service::logging::init_logging(
-            terraphim_service::logging::detect_logging_config(),
-        );
+        // Initialize logging. We install the agent's own filtered logger
+        // (rather than terraphim_service's) so that the benign
+        // thesaurus-not-found ERROR logged by `ensure_thesaurus_loaded` is
+        // suppressed while every other line is preserved. See
+        // terraphim/terraphim-clients#48 and `crate::logging`.
+        crate::logging::init_logging();
 
         log::info!("Initializing TUI service");
 

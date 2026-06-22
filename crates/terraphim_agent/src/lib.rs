@@ -5,6 +5,7 @@
 //! Feature flags gate heavier subsystems: `server`, `repl`, `shared-learning`.
 #[cfg(feature = "server")]
 pub mod client;
+pub mod logging;
 pub mod onboarding;
 pub mod service;
 #[cfg(feature = "shared-learning")]
