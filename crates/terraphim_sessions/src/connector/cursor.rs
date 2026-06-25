@@ -399,11 +399,20 @@ fn normalize_role(role: &str) -> MessageRole {
 }
 
 fn truncate_title(content: &str) -> String {
-    if content.len() > 60 {
-        format!("{}...", &content[..60])
-    } else {
-        content.to_string()
+    const MAX_CHARS_BYTES: usize = 60;
+    if content.len() <= MAX_CHARS_BYTES {
+        return content.to_string();
     }
+    // `content[..60]` would panic when byte 60 falls inside a multibyte
+    // UTF-8 scalar (CJK, emoji, accented Latin). Walk back to the nearest
+    // char boundary. Mirrors the established idiom in
+    // `terraphim_rlm/src/query_loop.rs:truncate` and
+    // `terraphim_sessions/src/search.rs`.
+    let mut boundary = MAX_CHARS_BYTES.min(content.len());
+    while boundary > 0 && !content.is_char_boundary(boundary) {
+        boundary -= 1;
+    }
+    format!("{}...", &content[..boundary])
 }
 
 // ---------------------------------------------------------------------------
@@ -679,6 +688,32 @@ mod tests {
         let short = "Hello Rust";
         let title = truncate_title(short);
         assert_eq!(title, "Hello Rust");
+    }
+
+    #[test]
+    fn test_truncate_title_multibyte_cjk_does_not_panic() {
+        // Regression: byte index 60 falls mid-CJK-char. Each 中 is 3 bytes;
+        // 30 of them = 90 bytes (> 60). 60 % 3 == 0 -> safe here, but mix
+        // so the boundary lands inside a scalar.
+        let s = format!("{}{}", "a", "中".repeat(40)); // 1 + 120 = 121 bytes
+        let title = truncate_title(&s);
+        assert!(title.ends_with("..."));
+        assert!(title.is_char_boundary(title.len()));
+        // prefix must be a valid UTF-8 prefix of the input
+        assert!(s.starts_with(title.trim_end_matches("...")));
+    }
+
+    #[test]
+    fn test_truncate_title_emoji_does_not_panic() {
+        // Regression from compound-review + quality-coordinator: emoji at
+        // byte 60 caused `end byte index 60 is not a char boundary; it is
+        // inside '😀' (bytes 57..61)` panic.
+        let s = format!("{}{}", "a", "😀".repeat(30)); // 1 + 120 = 121 bytes
+        let title = truncate_title(&s);
+        assert!(title.ends_with("..."));
+        assert!(title.is_char_boundary(title.len()));
+        assert!(s.starts_with(title.trim_end_matches("...")));
+        assert!(title.len() <= 63);
     }
 
     #[tokio::test]
