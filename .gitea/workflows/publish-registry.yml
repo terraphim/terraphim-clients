@@ -1,0 +1,48 @@
+name: publish-registry
+
+on:
+  workflow_dispatch:
+    inputs:
+      crate:
+        description: 'Crate name to publish (e.g. terraphim_sessions)'
+        required: true
+        default: 'terraphim_sessions'
+
+jobs:
+  publish:
+    runs-on: terraphim-native
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure terraphim registry token
+        env:
+          CARGO_REGISTRIES_TERRAPHIM_TOKEN: ${{ secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN }}
+        run: |
+          mkdir -p ~/.cargo
+          cat >> ~/.cargo/credentials.toml <<EOF
+          [registries.terraphim]
+          token = "${CARGO_REGISTRIES_TERRAPHIM_TOKEN}"
+          EOF
+
+      - name: Add terraphim registry index to cargo config
+        run: |
+          cat >> ~/.cargo/config.toml <<EOF
+
+          [registries.terraphim]
+          index = "sparse+https://git.terraphim.cloud/api/packages/terraphim/cargo/"
+          EOF
+
+      - name: Publish ${{ github.event.inputs.crate }}
+        run: |
+          CRATE="${{ github.event.inputs.crate }}"
+          # Find the crate directory
+          CRATE_DIR=$(find crates -maxdepth 1 -name "${CRATE}" -type d | head -1)
+          if [ -z "${CRATE_DIR}" ]; then
+            echo "ERROR: crate directory crates/${CRATE} not found"
+            exit 1
+          fi
+          echo "Publishing ${CRATE} from ${CRATE_DIR}"
+          cargo publish -p "${CRATE}" --registry terraphim
