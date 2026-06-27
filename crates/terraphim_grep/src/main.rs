@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
@@ -7,6 +7,7 @@ use terraphim_automata::AutomataPath;
 use terraphim_grep::{
     GrepOptions, GrepResult, Haystack, HybridSearcher, SufficiencyJudge, TerraphimGrep,
 };
+use terraphim_types::Thesaurus;
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 #[derive(Parser, Debug)]
@@ -208,6 +209,29 @@ where
     )
 }
 
+/// Build a thesaurus for the requested role.
+///
+/// Resolution order:
+///   1. If `--thesaurus <path>` is provided, load it.
+///   2. Otherwise try `find_default_thesaurus` (project config or filesystem heuristic).
+///   3. If none of the above succeeds, return an empty thesaurus so the CLI can fall back to
+///      `fff-search` enhanced grep without a knowledge graph.
+async fn resolve_thesaurus(role_name: &str, explicit: Option<&Path>) -> Result<Thesaurus> {
+    if let Some(path) = explicit {
+        let automata_path = AutomataPath::from_local(path);
+        return terraphim_automata::load_thesaurus(&automata_path)
+            .await
+            .with_context(|| format!("Failed to load thesaurus from {:?}", path));
+    }
+    if let Some(path) = find_default_thesaurus(role_name) {
+        let automata_path = AutomataPath::from_local(&path);
+        return terraphim_automata::load_thesaurus(&automata_path)
+            .await
+            .with_context(|| format!("Failed to load thesaurus from {:?}", path));
+    }
+    Ok(Thesaurus::new(role_name.to_string()))
+}
+
 /// Build an `LlmClient` for the requested role.
 ///
 /// Resolution order:
@@ -343,20 +367,17 @@ async fn main() -> Result<()> {
         &load_project_config,
     )?;
 
-    let thesaurus_path = args
-        .thesaurus
-        .or_else(|| find_default_thesaurus(&role_name))
-        .context(
-            "No thesaurus specified and could not find default. Use --thesaurus to specify path.",
-        )?;
-
-    // Load thesaurus
-    let automata_path = AutomataPath::from_local(&thesaurus_path);
-    let thesaurus = terraphim_automata::load_thesaurus(&automata_path)
-        .await
-        .with_context(|| format!("Failed to load thesaurus from {:?}", thesaurus_path))?;
-
-    tracing::debug!("Loaded thesaurus with {} entries", thesaurus.len());
+    // Load thesaurus, falling back to an empty one when no project thesaurus exists.
+    // This lets terraphim-grep behave like an enhanced fff-search grep without a KG.
+    let thesaurus = resolve_thesaurus(&role_name, args.thesaurus.as_deref()).await?;
+    if thesaurus.is_empty() {
+        tracing::info!(
+            "No thesaurus found for role '{}'; running in fff-search enhanced grep mode",
+            role_name
+        );
+    } else {
+        tracing::debug!("Loaded thesaurus with {} entries", thesaurus.len());
+    }
 
     // Determine search path
     let search_path = args

@@ -44,8 +44,12 @@ clap = { version = "4", features = ["derive"] }
 # `code-search` ships in the default set so a plain `cargo build`/`cargo install`
 # produces a grep that actually searches file contents. Without it, `search_code`
 # compiles to a no-op stub that returns no matches (see hybrid_searcher.rs).
+# It is also required for the no-KG failover path.
 default = ["llm", "code-search"]
 llm = ["dep:terraphim_service"]
+# Enable fast file-finder code search. This is enabled by default so that
+# terraphim-grep can fall back to plain enhanced grep when no knowledge graph
+# thesaurus is configured.
 code-search = ["dep:fff-search"]
 # Enable OpenRouter provider support (required for live OpenRouter tests against free models)
 openrouter = ["llm", "terraphim_service/openrouter"]
