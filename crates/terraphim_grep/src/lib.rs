@@ -390,4 +390,47 @@ mod tests {
         );
         assert!(result.answer.is_none(), "no LLM -> no synthesised answer");
     }
+
+    /// When no thesaurus is available, the searcher must still run the `fff-search` code path
+    /// and return results with empty concepts. This is the "enhanced grep" failover mode.
+    #[cfg(feature = "code-search")]
+    #[tokio::test]
+    async fn search_without_thesaurus_uses_fff_mode() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        for i in 0..3 {
+            let path = tmp.path().join(format!("file_{i}.rs"));
+            std::fs::write(&path, format!("fn target_{i}() {{ /* target */ }}\n")).unwrap();
+        }
+
+        // Empty thesaurus => no KG configuration.
+        let thesaurus = Thesaurus::new("test-role".to_string());
+        assert!(thesaurus.is_empty());
+
+        let hybrid = HybridSearcher::new("test-role".to_string(), thesaurus)
+            .expect("build hybrid searcher")
+            .with_search_path(tmp.path().to_path_buf());
+        let grep = TerraphimGrep::new(Arc::new(hybrid), Arc::new(SufficiencyJudge::default()));
+
+        let result = grep
+            .search(
+                "target",
+                GrepOptions {
+                    haystack: Haystack::Code,
+                    max_results: 50,
+                    ..GrepOptions::default()
+                },
+            )
+            .await
+            .expect("search should succeed without thesaurus");
+
+        assert!(
+            !result.chunks.is_empty(),
+            "expected fff-search to return chunks without KG"
+        );
+        assert!(
+            result.concepts.is_empty(),
+            "expected no KG concepts without thesaurus"
+        );
+        assert_eq!(result.stats.kg_hits, 0);
+    }
 }

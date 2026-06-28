@@ -14,7 +14,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.20.4"
+version = "1.21.0"
 edition = "2024"
 authors = ["Terraphim Team <team@terraphim.ai>"]
 documentation = "https://terraphim.ai"
@@ -22,6 +22,10 @@ homepage = "https://terraphim.ai"
 repository = "https://git.terraphim.cloud/terraphim/terraphim-clients"
 license = "Apache-2.0"
 readme = "README.md"
+
+[patch.crates-io]
+terraphim_service = { version = "1.20.5", registry = "terraphim" }
+rustls-webpki = { git = "https://github.com/rustls/webpki.git", tag = "v/0.103.12" }
 
 [workspace.dependencies]
 tokio = { version = "1.0", features = ["full"] }
@@ -38,9 +42,6 @@ tracing = "0.1"
 tempfile = "3.27"
 rustls = { version = "0.23", default-features = false }
 rustls-webpki = "0.103.12"
-
-[patch.crates-io]
-rustls-webpki = { git = "https://github.com/rustls/webpki.git", tag = "v/0.103.12" }
 
 [profile.release]
 panic = "unwind"
