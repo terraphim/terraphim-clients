@@ -4000,67 +4000,255 @@ async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Res
             Ok(())
         }
         MemorySub::Validate { all, lesson_id } => {
+            use terraphim_agent_evolution::{AgentEvolutionSystem, MemoryItem};
+
+            let evolution = AgentEvolutionSystem::new("cli-agent".to_string());
+            let items: Vec<&MemoryItem> = if all {
+                evolution
+                    .memory
+                    .current_state
+                    .short_term
+                    .iter()
+                    .collect()
+            } else if let Some(ref id) = lesson_id {
+                evolution
+                    .memory
+                    .current_state
+                    .short_term
+                    .iter()
+                    .filter(|m| m.id == *id)
+                    .collect()
+            } else {
+                evolution
+                    .memory
+                    .current_state
+                    .short_term
+                    .iter()
+                    .rev()
+                    .take(20)
+                    .collect()
+            };
+
+            if items.is_empty() {
+                println!("No memory items found to validate.");
+                return Ok(());
+            }
+
+            let mut scores = Vec::new();
+            for item in &items {
+                let score = score_memory_item(item);
+                scores.push((item.id.clone(), score));
+            }
+
             if output.is_machine_readable() {
-                let note = if all {
-                    "validating all stored memory items (rubric scorer pending Step 3)"
-                } else {
-                    "validating (rubric scorer pending Step 3)"
-                };
+                let json_scores: Vec<serde_json::Value> = scores
+                    .iter()
+                    .map(|(id, s)| {
+                        serde_json::json!({
+                            "memory_id": id,
+                            "faithfulness": s.faithfulness,
+                            "scope": s.scope,
+                            "provenance": s.provenance,
+                            "actionability": s.actionability,
+                            "decay": s.decay,
+                            "risk": s.risk,
+                            "composite": s.composite(),
+                        })
+                    })
+                    .collect();
                 println!(
                     "{}",
-                    serde_json::json!({ "status": "ok", "action": "validate", "all": all, "lesson_id": lesson_id, "note": note })
+                    serde_json::json!({ "status": "ok", "action": "validate", "scores": json_scores })
                 );
             } else {
-                println!("Memory validate: reliability rubric scoring");
-                if all {
-                    println!("  mode: validate all stored memory items");
-                } else if let Some(id) = lesson_id {
-                    println!("  validating lesson: {}", id);
-                } else {
-                    println!("  mode: validate most recent items");
+                println!("Memory Validation Results\n");
+                for (i, (id, score)) in scores.iter().enumerate() {
+                    println!("{}. {} (composite: {:.2})", i + 1, id, score.composite());
+                    println!(
+                        "   Faithfulness: {:.1}  Scope: {:.1}  Provenance: {:.1}",
+                        score.faithfulness, score.scope, score.provenance
+                    );
+                    println!(
+                        "   Actionability: {:.1}  Decay: {:.1}  Risk: {:.1}",
+                        score.actionability, score.decay, score.risk
+                    );
                 }
-                println!("  (rubric scorer integration: pending Step 3)");
+
+                let avg_composite = scores
+                    .iter()
+                    .map(|(_, s)| s.composite())
+                    .sum::<f64>()
+                    / scores.len() as f64;
+                println!("\nAverage composite score: {:.2}", avg_composite);
             }
             Ok(())
         }
         MemorySub::Retire { lesson_id, reason } => {
+            let out_path = match &lesson_id {
+                Some(id) => {
+                    let config_dir = dirs::config_dir()
+                        .unwrap_or_else(|| std::path::PathBuf::from("."))
+                        .join("terraphim");
+                    config_dir.join(format!("retired-{}.md", id))
+                }
+                None => {
+                    let config_dir = dirs::config_dir()
+                        .unwrap_or_else(|| std::path::PathBuf::from("."))
+                        .join("terraphim");
+                    config_dir.join("learned-rules-retirements.md")
+                }
+            };
+
+            let reason_text = reason.as_deref().unwrap_or("no reason provided");
+            let timestamp = chrono::Utc::now().to_rfc3339();
+            let entry = format!(
+                "## Retirement Proposal\n\n\
+                 **Date:** {}\n\
+                 **Lesson ID:** {}\n\
+                 **Reason:** {}\n\
+                 **Status:** PENDING CTO APPROVAL\n\n",
+                timestamp,
+                lesson_id.as_deref().unwrap_or("all"),
+                reason_text,
+            );
+
+            if let Some(parent) = out_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(&out_path, &entry)?;
+
+            println!("Retirement proposal written to: {}", out_path.display());
             if output.is_machine_readable() {
                 println!(
                     "{}",
-                    serde_json::json!({ "status": "ok", "action": "retire", "lesson_id": lesson_id, "reason": reason })
+                    serde_json::json!({ "status": "ok", "action": "retire", "lesson_id": lesson_id, "reason": reason, "output": out_path.to_string_lossy() })
                 );
-            } else {
-                println!("Memory retire: proposing demotion for memory item");
-                if let Some(id) = lesson_id {
-                    println!("  lesson_id: {} (CTO approval required)", id);
-                }
-                if let Some(r) = reason {
-                    println!("  reason: {}", r);
-                }
-                println!("  (writes to learned-rules.md: pending Step 3)");
             }
             Ok(())
         }
         MemorySub::Rubric { project, output: outfile } => {
-            if output.is_machine_readable() {
-                println!(
-                    "{}",
-                    serde_json::json!({
-                        "status": "ok",
-                        "action": "rubric",
-                        "project": project,
-                        "dimensions": ["faithfulness", "scope", "provenance", "actionability", "decay", "risk"],
-                        "note": "6-dimension rubric scorer not yet wired; returns placeholder"
-                    })
-                );
+            use terraphim_agent_evolution::{AgentEvolutionSystem, MemoryItem};
+
+            let evolution = AgentEvolutionSystem::new("cli-agent".to_string());
+            let items: Vec<&MemoryItem> =
+                evolution.memory.current_state.short_term.iter().collect();
+
+            if items.is_empty() {
+                println!("No memory items found for rubric analysis.");
+                return Ok(());
+            }
+
+            let scores: Vec<(&MemoryItem, RubricScore)> = items
+                .iter()
+                .map(|item| (*item, score_memory_item(item)))
+                .collect();
+
+            let avg_composite = scores
+                .iter()
+                .map(|(_, s)| s.composite())
+                .sum::<f64>()
+                / scores.len() as f64;
+
+            let avg_dimensions = RubricScore {
+                faithfulness: scores.iter().map(|(_, s)| s.faithfulness).sum::<f64>()
+                    / scores.len() as f64,
+                scope: scores.iter().map(|(_, s)| s.scope).sum::<f64>()
+                    / scores.len() as f64,
+                provenance: scores.iter().map(|(_, s)| s.provenance).sum::<f64>()
+                    / scores.len() as f64,
+                actionability: scores.iter().map(|(_, s)| s.actionability).sum::<f64>()
+                    / scores.len() as f64,
+                decay: scores.iter().map(|(_, s)| s.decay).sum::<f64>()
+                    / scores.len() as f64,
+                risk: scores.iter().map(|(_, s)| s.risk).sum::<f64>()
+                    / scores.len() as f64,
+            };
+
+            let mut offender_list: Vec<(&MemoryItem, f64)> = scores
+                .iter()
+                .map(|(item, s)| (*item, s.composite()))
+                .collect();
+            offender_list.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+            let top_offenders: Vec<_> = offender_list.iter().take(3).collect();
+
+            let retirement_recs: Vec<&MemoryItem> = scores
+                .iter()
+                .filter(|(_, s)| s.decay < 0.4 || s.risk > 0.7)
+                .map(|(item, _)| *item)
+                .take(3)
+                .collect();
+
+            let mut report = String::new();
+            report.push_str("# Memory Reliability Rubric Report\n\n");
+            report.push_str(&format!("**Project:** {}\n", project));
+            report.push_str(&format!(
+                "**Generated:** {}\n",
+                chrono::Utc::now().to_rfc3339()
+            ));
+            report.push_str(&format!(
+                "**Items analysed:** {}\n\n",
+                items.len()
+            ));
+
+            report.push_str("## Overall Scores\n\n");
+            report.push_str(&format!(
+                "| Dimension | Score | Status |\n|---|---|---|\n"
+            ));
+            for (name, value) in [
+                ("Faithfulness", avg_dimensions.faithfulness),
+                ("Scope", avg_dimensions.scope),
+                ("Provenance", avg_dimensions.provenance),
+                ("Actionability", avg_dimensions.actionability),
+                ("Decay", avg_dimensions.decay),
+                ("Risk", avg_dimensions.risk),
+            ] {
+                let status = if value >= 0.7 {
+                    "Good"
+                } else if value >= 0.4 {
+                    "Adequate"
+                } else {
+                    "Needs attention"
+                };
+                report.push_str(&format!("| {} | {:.2} | {} |\n", name, value, status));
+            }
+            report.push_str(&format!(
+                "\n**Composite score:** {:.2} / 1.00\n\n",
+                avg_composite
+            ));
+
+            report.push_str("## Top 3 Items Needing Attention\n\n");
+            for (i, (item, score)) in top_offenders.iter().enumerate() {
+                let first_line = item.content.lines().next().unwrap_or(&item.content);
+                report.push_str(&format!(
+                    "{}. **{}** (composite: {:.2})\n   {}\n\n",
+                    i + 1,
+                    item.id,
+                    score,
+                    truncate_snippet(first_line, 100),
+                ));
+            }
+
+            report.push_str("## Recommended Retirements\n\n");
+            if retirement_recs.is_empty() {
+                report.push_str("No items recommended for retirement.\n\n");
             } else {
-                println!("Memory rubric: running full reliability diagnostic");
-                println!("  project: {}", project);
-                if let Some(ref o) = outfile {
-                    println!("  output: {}", o);
+                for item in &retirement_recs {
+                    let first_line = item.content.lines().next().unwrap_or(&item.content);
+                    report.push_str(&format!(
+                        "- **{}**: {} (decay: {:.2}, risk: {:.2})\n",
+                        item.id,
+                        truncate_snippet(first_line, 80),
+                        score_decay(item),
+                        score_risk(item),
+                    ));
                 }
-                println!("  Dimensions: faithfulness, scope, provenance, actionability, decay, risk");
-                println!("  (6-dimension rubric scorer: pending Step 3)");
+            }
+
+            if let Some(path) = outfile {
+                std::fs::write(&path, &report)?;
+                println!("Rubric report written to: {}", path);
+            } else {
+                println!("{}", report);
             }
             Ok(())
         }
@@ -4338,22 +4526,184 @@ async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Res
             Ok(())
         }
         MemorySub::SecondRun { issue } => {
-            if output.is_machine_readable() {
-                println!(
-                    "{}",
-                    serde_json::json!({
-                        "status": "ok",
-                        "action": "second-run",
-                        "issue": issue,
-                        "note": "ADF artefact directory reader not yet wired; returns placeholder"
-                    })
-                );
-            } else {
-                println!("Memory second-run: computing token delta for Gitea issue #{}", issue);
-                println!("  (ADF artefact reader: pending Step 4)");
+            let artefact_base = dirs::cache_dir()
+                .unwrap_or_else(|| std::path::PathBuf::from("."))
+                .join("terraphim")
+                .join("adf-artefacts")
+                .join(format!("issue-{}", issue));
+
+            let mut runs: Vec<RunMetrics> = Vec::new();
+            if artefact_base.exists() {
+                for entry in std::fs::read_dir(&artefact_base)? {
+                    let entry = entry?;
+                    let path = entry.path();
+                    if path.extension().map_or(false, |e| e == "json") {
+                        if let Ok(data) = std::fs::read_to_string(&path) {
+                            if let Ok(metrics) = serde_json::from_str::<RunMetrics>(&data) {
+                                runs.push(metrics);
+                            }
+                        }
+                    }
+                }
             }
+
+            runs.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+
+            if runs.len() < 2 {
+                if output.is_machine_readable() {
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "status": "ok",
+                            "action": "second-run",
+                            "issue": issue,
+                            "runs_found": runs.len(),
+                            "note": "need at least 2 runs to compute delta"
+                        })
+                    );
+                } else {
+                    println!(
+                        "Found {} runs for issue #{}. Need at least 2 to compute delta.",
+                        runs.len(),
+                        issue
+                    );
+                    if artefact_base.exists() {
+                        println!("  artefact directory: {}", artefact_base.display());
+                    } else {
+                        println!("  no artefact directory found (expected at: {})", artefact_base.display());
+                    }
+                }
+                return Ok(());
+            }
+
+            let run_1 = &runs[0];
+            let run_2 = &runs[runs.len() - 1];
+
+            let token_delta = run_1.input_tokens as i64 - run_2.input_tokens as i64;
+            let retry_delta = run_1.retry_count as i32 - run_2.retry_count as i32;
+            let time_delta = run_1.wall_time_seconds - run_2.wall_time_seconds;
+
+            let signal = serde_json::json!({
+                "gitea_issue": issue,
+                "runs_compared": runs.len(),
+                "run_1": run_1,
+                "run_2": run_2,
+                "delta": {
+                    "tokens_saved": token_delta,
+                    "retries_avoided": retry_delta,
+                    "wall_time_delta_seconds": time_delta,
+                    "interpretation": if token_delta > 0 {
+                        "improved (fewer tokens in later run)"
+                    } else if token_delta < 0 {
+                        "regressed (more tokens in later run)"
+                    } else {
+                        "no change"
+                    }
+                }
+            });
+
+            println!("{}", serde_json::to_string_pretty(&signal)?);
             Ok(())
         }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+struct RubricScore {
+    faithfulness: f64,
+    scope: f64,
+    provenance: f64,
+    actionability: f64,
+    decay: f64,
+    risk: f64,
+}
+
+impl RubricScore {
+    fn composite(&self) -> f64 {
+        0.30 * self.faithfulness
+            + 0.25 * self.actionability
+            + 0.15 * self.scope
+            + 0.10 * self.provenance
+            + 0.10 * self.decay
+            + 0.10 * (1.0 - self.risk)
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct RunMetrics {
+    timestamp: String,
+    input_tokens: u64,
+    output_tokens: u64,
+    wall_time_seconds: f64,
+    retry_count: u32,
+    hook_injected_bytes: u64,
+}
+
+fn score_memory_item(item: &terraphim_agent_evolution::MemoryItem) -> RubricScore {
+    let faithfulness = if item.content.is_empty() {
+        0.1
+    } else if item.content.len() > 20 {
+        0.8
+    } else {
+        0.5
+    };
+
+    let scope = if !item.tags.is_empty() {
+        0.80f64.min(0.5 + item.tags.len() as f64 * 0.1)
+    } else {
+        0.3
+    };
+
+    let provenance = if item.created_at > chrono::Utc::now() - chrono::Duration::days(30) {
+        0.9
+    } else {
+        0.6
+    };
+
+    let actionability = match item.item_type {
+        terraphim_agent_evolution::MemoryItemType::LessonLearned => 0.9,
+        terraphim_agent_evolution::MemoryItemType::ExecutionResult => 0.6,
+        terraphim_agent_evolution::MemoryItemType::Skill => 0.8,
+        terraphim_agent_evolution::MemoryItemType::Concept => 0.5,
+        _ => 0.4,
+    };
+
+    let decay = (1.0f64).min(
+        60.0 / (1.0 + (chrono::Utc::now() - item.created_at).num_days() as f64),
+    );
+
+    let risk = if item.content.contains("sudo")
+        || item.content.contains("rm -rf")
+        || item.content.contains("DROP TABLE")
+    {
+        0.7
+    } else if item.content.contains("unsafe") {
+        0.4
+    } else {
+        0.1
+    };
+
+    RubricScore {
+        faithfulness,
+        scope,
+        provenance,
+        actionability,
+        decay,
+        risk,
+    }
+}
+
+fn score_decay(item: &terraphim_agent_evolution::MemoryItem) -> f64 {
+    (1.0f64).min(60.0 / (1.0 + (chrono::Utc::now() - item.created_at).num_days() as f64))
+}
+
+fn score_risk(item: &terraphim_agent_evolution::MemoryItem) -> f64 {
+    if item.content.contains("sudo") || item.content.contains("rm -rf") || item.content.contains("DROP TABLE") {
+        0.7
+    } else if item.content.contains("unsafe") {
+        0.4
+    } else {
+        0.1
     }
 }
 
