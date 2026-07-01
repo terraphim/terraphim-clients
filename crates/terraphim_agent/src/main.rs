@@ -3834,12 +3834,58 @@ async fn run_learn_command(sub: LearnSub) -> Result<()> {
     }
 }
 
+fn evolution_path() -> std::path::PathBuf {
+    dirs::config_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("terraphim")
+        .join("evolution")
+        .join("cli-agent.json")
+}
+
+fn load_evolution() -> terraphim_agent_evolution::AgentEvolutionSystem {
+    let path = evolution_path();
+    if path.exists() {
+        if let Ok(data) = std::fs::read_to_string(&path) {
+            #[derive(serde::Deserialize)]
+            struct EvolutionState {
+                memory: terraphim_agent_evolution::MemoryState,
+                lessons: terraphim_agent_evolution::LessonsState,
+            }
+            if let Ok(state) = serde_json::from_str::<EvolutionState>(&data) {
+                let mut evolution =
+                    terraphim_agent_evolution::AgentEvolutionSystem::new("cli-agent".to_string());
+                evolution.memory.current_state = state.memory;
+                evolution.lessons.current_state = state.lessons;
+                return evolution;
+            }
+        }
+    }
+    terraphim_agent_evolution::AgentEvolutionSystem::new("cli-agent".to_string())
+}
+
+fn save_evolution(
+    evolution: &terraphim_agent_evolution::AgentEvolutionSystem,
+) -> Result<(), anyhow::Error> {
+    let path = evolution_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let state = serde_json::json!({
+        "agent_id": evolution.agent_id,
+        "saved_at": chrono::Utc::now().to_rfc3339(),
+        "memory": evolution.memory.current_state,
+        "lessons": evolution.lessons.current_state,
+    });
+    std::fs::write(&path, serde_json::to_string_pretty(&state)?)?;
+    Ok(())
+}
+
 async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Result<()> {
     match sub {
         MemorySub::Capture { provenance_tag } => {
-            use terraphim_agent_evolution::{AgentEvolutionSystem, ImportanceLevel, MemoryItem, MemoryItemType};
+            use terraphim_agent_evolution::{ImportanceLevel, MemoryItem, MemoryItemType};
 
-            let mut evolution = AgentEvolutionSystem::new("cli-agent".to_string());
+            let mut evolution = load_evolution();
             let memory = MemoryItem {
                 id: uuid::Uuid::new_v4().to_string(),
                 item_type: MemoryItemType::Experience,
@@ -3856,6 +3902,7 @@ async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Res
             let id = memory.id.clone();
             match evolution.memory.add_memory(memory).await {
                 Ok(()) => {
+                    save_evolution(&evolution)?;
                     if output.is_machine_readable() {
                         println!(
                             "{}",
@@ -4000,9 +4047,9 @@ async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Res
             Ok(())
         }
         MemorySub::Validate { all, lesson_id } => {
-            use terraphim_agent_evolution::{AgentEvolutionSystem, MemoryItem};
+            use terraphim_agent_evolution::MemoryItem;
 
-            let evolution = AgentEvolutionSystem::new("cli-agent".to_string());
+            let evolution = load_evolution();
             let items: Vec<&MemoryItem> = if all {
                 evolution
                     .memory
@@ -4127,9 +4174,9 @@ async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Res
             Ok(())
         }
         MemorySub::Rubric { project, output: outfile } => {
-            use terraphim_agent_evolution::{AgentEvolutionSystem, MemoryItem};
+            use terraphim_agent_evolution::MemoryItem;
 
-            let evolution = AgentEvolutionSystem::new("cli-agent".to_string());
+            let evolution = load_evolution();
             let items: Vec<&MemoryItem> =
                 evolution.memory.current_state.short_term.iter().collect();
 
@@ -4253,9 +4300,9 @@ async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Res
             Ok(())
         }
         MemorySub::List { item_type, limit } => {
-            use terraphim_agent_evolution::AgentEvolutionSystem;
+            
 
-            let evolution = AgentEvolutionSystem::new("cli-agent".to_string());
+            let evolution = load_evolution();
             let state = &evolution.memory.current_state;
 
             let items = if let Some(ref t) = item_type {
@@ -4326,9 +4373,9 @@ async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Res
             Ok(())
         }
         MemorySub::Show { id, json } => {
-            use terraphim_agent_evolution::AgentEvolutionSystem;
+            
 
-            let evolution = AgentEvolutionSystem::new("cli-agent".to_string());
+            let evolution = load_evolution();
 
             let memory_item = evolution
                 .memory
@@ -4415,9 +4462,9 @@ async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Res
             Ok(())
         }
         MemorySub::Export { format, output: outfile } => {
-            use terraphim_agent_evolution::AgentEvolutionSystem;
+            
 
-            let evolution = AgentEvolutionSystem::new("cli-agent".to_string());
+            let evolution = load_evolution();
 
             let memory_items: Vec<serde_json::Value> = evolution
                 .memory
