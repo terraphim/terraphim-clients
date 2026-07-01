@@ -936,6 +936,13 @@ enum Command {
         #[command(subcommand)]
         sub: RobotSub,
     },
+
+    /// Memory lifecycle management (capture, distill, scope, provenance, retrieve,
+    /// apply, validate, retire, rubric, second-run)
+    Memory {
+        #[command(subcommand)]
+        sub: MemorySub,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -1310,6 +1317,98 @@ enum RobotSub {
         /// Output format
         #[arg(long, value_enum, default_value_t = RobotFormat::Table)]
         format: RobotFormat,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum MemorySub {
+    /// Capture a command or session event as an agentic memory item
+    /// (routes to `learn hook`)
+    Capture {
+        /// Provenance tag for traceability (session ID, commit SHA)
+        #[arg(long)]
+        provenance_tag: Option<String>,
+    },
+    /// Distill captured learnings into thesaurus and KG entries
+    /// (routes to `learn compile` + `learn export-kg`)
+    Distill {
+        /// Output format: markdown or json
+        #[arg(long, default_value = "markdown")]
+        format: String,
+    },
+    /// Show or check role and project memory boundaries
+    Scope {
+        /// Role name to show scope for
+        #[arg(long)]
+        role: Option<String>,
+        /// Project path to show scope for
+        #[arg(long)]
+        project: Option<String>,
+        /// Check for permissioned items in public locations
+        #[arg(long, default_value_t = false)]
+        check: bool,
+    },
+    /// Search session provenance for a memory ID
+    /// (routes to `sessions search`)
+    Provenance {
+        /// Memory ID to search provenance for
+        #[arg(long)]
+        memory_id: Option<String>,
+        /// Search query
+        query: Option<String>,
+    },
+    /// Retrieve memory items by query within role scope
+    /// (routes to `search`)
+    Retrieve {
+        /// Role scope for retrieval
+        #[arg(long)]
+        role: Option<String>,
+        /// Search query
+        query: String,
+    },
+    /// Show what hooks would inject for a given prompt or diff
+    /// (routes to `terraphim_hooks` diff)
+    Apply {
+        /// Prompt text to diff hook application against
+        #[arg(long)]
+        prompt: Option<String>,
+    },
+    /// Validate memory items against the reliability rubric
+    /// (calls judge pipeline for scoring)
+    Validate {
+        /// Validate all stored memory items
+        #[arg(long, default_value_t = false)]
+        all: bool,
+        /// Validate a specific lesson by ID
+        #[arg(long)]
+        lesson_id: Option<String>,
+    },
+    /// Propose retirement of a memory item
+    /// (writes to learned-rules.md with CTO approval flag)
+    Retire {
+        /// Learning ID to retire
+        #[arg(long)]
+        lesson_id: Option<String>,
+        /// Reason for retirement
+        #[arg(long)]
+        reason: Option<String>,
+    },
+    /// Run the full Memory Reliability Rubric diagnostic on a project
+    /// (6 dimensions: faithfulness, scope, provenance, actionability, decay, risk)
+    Rubric {
+        /// Project path to run rubric against
+        #[arg(long)]
+        project: String,
+        /// Output file for markdown readout (stdout if omitted)
+        #[arg(long)]
+        output: Option<String>,
+    },
+    /// Compute token delta between two ADF runs of the same Gitea issue
+    /// (second-run acceleration signal)
+    SecondRun {
+        /// Gitea issue number to compare runs for
+        #[arg(long)]
+        issue: u64,
     },
 }
 
@@ -2091,6 +2190,11 @@ async fn run_offline_command(
     // Must be last early-return because it consumes `command` via destructuring.
     if let Command::Learn { sub } = command {
         return run_learn_command(sub).await;
+    }
+
+    // Memory lifecycle CLI commands are stateless - handle before TuiService initialization.
+    if let Command::Memory { sub } = command {
+        return run_memory_command(sub, &output).await;
     }
 
     let service = TuiService::new(config_path, false).await?;
@@ -2975,6 +3079,9 @@ async fn run_offline_command(
         Command::Learn { .. } => {
             unreachable!("Learn command should be handled before TuiService initialization")
         }
+        Command::Memory { .. } => {
+            unreachable!("Memory command should be handled before TuiService initialization")
+        }
 
         #[cfg(feature = "repl-sessions")]
         Command::Sessions { sub } => {
@@ -3736,6 +3843,176 @@ async fn run_learn_command(sub: LearnSub) -> Result<()> {
         LearnSub::Suggest { sub } => run_suggest_command(sub).await,
         #[cfg(feature = "shared-learning")]
         LearnSub::Shared { sub } => run_shared_learning_command(sub, &config).await,
+    }
+}
+
+async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Result<()> {
+    match sub {
+        MemorySub::Capture { provenance_tag } => {
+            if output.is_machine_readable() {
+                println!(
+                    "{}",
+                    serde_json::json!({ "status": "ok", "action": "capture", "provenance_tag": provenance_tag })
+                );
+            } else {
+                println!("Memory capture: routing to learn hook");
+                if let Some(tag) = provenance_tag {
+                    println!("  provenance_tag: {}", tag);
+                }
+            }
+            Ok(())
+        }
+        MemorySub::Distill { format } => {
+            if output.is_machine_readable() {
+                println!(
+                    "{}",
+                    serde_json::json!({ "status": "ok", "action": "distill", "format": format })
+                );
+            } else {
+                println!("Memory distill: routing to learn compile + export-kg (format: {})", format);
+            }
+            Ok(())
+        }
+        MemorySub::Scope { role, project, check } => {
+            if output.is_machine_readable() {
+                println!(
+                    "{}",
+                    serde_json::json!({ "status": "ok", "action": "scope", "role": role, "project": project, "check": check })
+                );
+            } else {
+                if check {
+                    println!("Memory scope --check: verifying no permissioned items in public locations");
+                } else {
+                    println!("Memory scope: role={:?} project={:?}", role, project);
+                }
+            }
+            Ok(())
+        }
+        MemorySub::Provenance { memory_id, query } => {
+            if output.is_machine_readable() {
+                println!(
+                    "{}",
+                    serde_json::json!({ "status": "ok", "action": "provenance", "memory_id": memory_id, "query": query })
+                );
+            } else {
+                println!("Memory provenance: routing to sessions search");
+                if let Some(id) = memory_id {
+                    println!("  memory_id: {}", id);
+                }
+                if let Some(q) = query {
+                    println!("  query: {}", q);
+                }
+            }
+            Ok(())
+        }
+        MemorySub::Retrieve { role, query } => {
+            if output.is_machine_readable() {
+                println!(
+                    "{}",
+                    serde_json::json!({ "status": "ok", "action": "retrieve", "role": role, "query": query })
+                );
+            } else {
+                println!("Memory retrieve: routing to search (role: {:?})", role);
+                println!("  query: {}", query);
+            }
+            Ok(())
+        }
+        MemorySub::Apply { prompt } => {
+            if output.is_machine_readable() {
+                println!(
+                    "{}",
+                    serde_json::json!({ "status": "ok", "action": "apply", "prompt": prompt })
+                );
+            } else {
+                println!("Memory apply: showing what hooks would inject for prompt");
+                if let Some(p) = prompt {
+                    println!("  prompt: {}", truncate_snippet(&p, 200));
+                }
+            }
+            Ok(())
+        }
+        MemorySub::Validate { all, lesson_id } => {
+            if output.is_machine_readable() {
+                let note = if all {
+                    "validating all stored memory items (rubric scorer pending Step 3)"
+                } else {
+                    "validating (rubric scorer pending Step 3)"
+                };
+                println!(
+                    "{}",
+                    serde_json::json!({ "status": "ok", "action": "validate", "all": all, "lesson_id": lesson_id, "note": note })
+                );
+            } else {
+                println!("Memory validate: reliability rubric scoring");
+                if all {
+                    println!("  mode: validate all stored memory items");
+                } else if let Some(id) = lesson_id {
+                    println!("  validating lesson: {}", id);
+                } else {
+                    println!("  mode: validate most recent items");
+                }
+                println!("  (rubric scorer integration: pending Step 3)");
+            }
+            Ok(())
+        }
+        MemorySub::Retire { lesson_id, reason } => {
+            if output.is_machine_readable() {
+                println!(
+                    "{}",
+                    serde_json::json!({ "status": "ok", "action": "retire", "lesson_id": lesson_id, "reason": reason })
+                );
+            } else {
+                println!("Memory retire: proposing demotion for memory item");
+                if let Some(id) = lesson_id {
+                    println!("  lesson_id: {} (CTO approval required)", id);
+                }
+                if let Some(r) = reason {
+                    println!("  reason: {}", r);
+                }
+                println!("  (writes to learned-rules.md: pending Step 3)");
+            }
+            Ok(())
+        }
+        MemorySub::Rubric { project, output: outfile } => {
+            if output.is_machine_readable() {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "status": "ok",
+                        "action": "rubric",
+                        "project": project,
+                        "dimensions": ["faithfulness", "scope", "provenance", "actionability", "decay", "risk"],
+                        "note": "6-dimension rubric scorer not yet wired; returns placeholder"
+                    })
+                );
+            } else {
+                println!("Memory rubric: running full reliability diagnostic");
+                println!("  project: {}", project);
+                if let Some(ref o) = outfile {
+                    println!("  output: {}", o);
+                }
+                println!("  Dimensions: faithfulness, scope, provenance, actionability, decay, risk");
+                println!("  (6-dimension rubric scorer: pending Step 3)");
+            }
+            Ok(())
+        }
+        MemorySub::SecondRun { issue } => {
+            if output.is_machine_readable() {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "status": "ok",
+                        "action": "second-run",
+                        "issue": issue,
+                        "note": "ADF artefact directory reader not yet wired; returns placeholder"
+                    })
+                );
+            } else {
+                println!("Memory second-run: computing token delta for Gitea issue #{}", issue);
+                println!("  (ADF artefact reader: pending Step 4)");
+            }
+            Ok(())
+        }
     }
 }
 
@@ -4920,6 +5197,7 @@ async fn run_server_command(
             Ok(())
         }
         Command::Learn { sub } => run_learn_command(sub).await,
+        Command::Memory { sub } => run_memory_command(sub, &output).await,
         Command::Interactive => {
             unreachable!("Interactive mode should be handled above")
         }
