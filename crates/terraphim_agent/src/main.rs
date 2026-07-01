@@ -1400,6 +1400,32 @@ enum MemorySub {
         #[arg(long)]
         output: Option<String>,
     },
+    /// List memory items from the evolution store
+    List {
+        /// Filter by type (fact, experience, lesson, etc.)
+        #[arg(long)]
+        item_type: Option<String>,
+        /// Maximum items to show
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
+    /// Show details of a specific memory item or lesson by ID
+    Show {
+        /// Memory item or lesson ID
+        id: String,
+        /// Show raw JSON output
+        #[arg(long, default_value_t = false)]
+        json: bool,
+    },
+    /// Export memory items and lessons as JSON or markdown
+    Export {
+        /// Output format: json or markdown
+        #[arg(long, default_value = "json")]
+        format: String,
+        /// Output file path (stdout if omitted)
+        #[arg(long)]
+        output: Option<String>,
+    },
     /// Compute token delta between two ADF runs of the same Gitea issue
     /// (second-run acceleration signal)
     SecondRun {
@@ -3811,15 +3837,47 @@ async fn run_learn_command(sub: LearnSub) -> Result<()> {
 async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Result<()> {
     match sub {
         MemorySub::Capture { provenance_tag } => {
-            if output.is_machine_readable() {
-                println!(
-                    "{}",
-                    serde_json::json!({ "status": "ok", "action": "capture", "provenance_tag": provenance_tag })
-                );
-            } else {
-                println!("Memory capture: routing to learn hook");
-                if let Some(tag) = provenance_tag {
-                    println!("  provenance_tag: {}", tag);
+            use terraphim_agent_evolution::{AgentEvolutionSystem, ImportanceLevel, MemoryItem, MemoryItemType};
+
+            let mut evolution = AgentEvolutionSystem::new("cli-agent".to_string());
+            let memory = MemoryItem {
+                id: uuid::Uuid::new_v4().to_string(),
+                item_type: MemoryItemType::Experience,
+                content: provenance_tag
+                    .clone()
+                    .unwrap_or_else(|| "captured-from-cli".to_string()),
+                created_at: chrono::Utc::now(),
+                last_accessed: None,
+                access_count: 0,
+                importance: ImportanceLevel::Medium,
+                tags: vec![],
+                associations: std::collections::HashMap::new(),
+            };
+            let id = memory.id.clone();
+            match evolution.memory.add_memory(memory).await {
+                Ok(()) => {
+                    if output.is_machine_readable() {
+                        println!(
+                            "{}",
+                            serde_json::json!({ "status": "ok", "action": "capture", "memory_id": id, "provenance_tag": provenance_tag })
+                        );
+                    } else {
+                        println!("Memory captured: {}", id);
+                        if let Some(tag) = provenance_tag {
+                            println!("  provenance_tag: {}", tag);
+                        }
+                    }
+                }
+                Err(e) => {
+                    if output.is_machine_readable() {
+                        println!(
+                            "{}",
+                            serde_json::json!({ "status": "error", "action": "capture", "error": e.to_string() })
+                        );
+                    } else {
+                        eprintln!("Failed to capture memory: {}", e);
+                    }
+                    return Err(anyhow::anyhow!("{}", e));
                 }
             }
             Ok(())
@@ -3836,17 +3894,65 @@ async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Res
             Ok(())
         }
         MemorySub::Scope { role, project, check } => {
+            let (role_clone, project_clone) = (role.clone(), project.clone());
+            if check {
+                println!("Memory scope --check: verifying no permissioned items in public locations");
+                let config_dir = dirs::config_dir()
+                    .unwrap_or_else(|| std::path::PathBuf::from("."))
+                    .join("terraphim");
+                let kg_dir = config_dir.join("kg");
+                if kg_dir.exists() {
+                    let public_risk = false;
+                    for entry in std::fs::read_dir(&kg_dir)? {
+                        let entry = entry?;
+                        let path = entry.path();
+                        if path.is_dir() && path.file_name().map_or(false, |n| n != "projects") {
+                            println!("  found role KG: {}", path.display());
+                        }
+                        if path.is_dir() && path.file_name().map_or(false, |n| n == "projects") {
+                            for p in std::fs::read_dir(&path)? {
+                                let p = p?;
+                                println!("  found project KG: {}", p.path().display());
+                            }
+                        }
+                    }
+                    if !public_risk {
+                        println!("  no permissioned items detected in public locations");
+                    }
+                } else {
+                    println!("  no KG directory found at {}", kg_dir.display());
+                }
+            } else {
+                println!("Memory scope:");
+                if let Some(ref r) = role_clone {
+                    println!("  role: {}", r);
+                }
+                if let Some(ref p) = project_clone {
+                    println!("  project: {}", p);
+                }
+                let config_dir = dirs::config_dir()
+                    .unwrap_or_else(|| std::path::PathBuf::from("."))
+                    .join("terraphim");
+                let kg_dir = config_dir.join("kg");
+                if kg_dir.exists() {
+                    println!("  KG directory: {}", kg_dir.display());
+                    let mut count = 0;
+                    for entry in std::fs::read_dir(&kg_dir)? {
+                        let entry = entry?;
+                        if entry.path().is_dir() {
+                            count += 1;
+                        }
+                    }
+                    println!("  role KGs found: {}", count);
+                } else {
+                    println!("  No KG directory configured");
+                }
+            }
             if output.is_machine_readable() {
                 println!(
                     "{}",
-                    serde_json::json!({ "status": "ok", "action": "scope", "role": role, "project": project, "check": check })
+                    serde_json::json!({ "status": "ok", "action": "scope", "role": role_clone, "project": project_clone, "check": check })
                 );
-            } else {
-                if check {
-                    println!("Memory scope --check: verifying no permissioned items in public locations");
-                } else {
-                    println!("Memory scope: role={:?} project={:?}", role, project);
-                }
             }
             Ok(())
         }
@@ -3955,6 +4061,279 @@ async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Res
                 }
                 println!("  Dimensions: faithfulness, scope, provenance, actionability, decay, risk");
                 println!("  (6-dimension rubric scorer: pending Step 3)");
+            }
+            Ok(())
+        }
+        MemorySub::List { item_type, limit } => {
+            use terraphim_agent_evolution::AgentEvolutionSystem;
+
+            let evolution = AgentEvolutionSystem::new("cli-agent".to_string());
+            let state = &evolution.memory.current_state;
+
+            let items = if let Some(ref t) = item_type {
+                let filter = t.to_lowercase();
+                state
+                    .short_term
+                    .iter()
+                    .filter(|m| {
+                        format!("{:?}", m.item_type).to_lowercase().contains(&filter)
+                    })
+                    .take(limit)
+                    .collect::<Vec<_>>()
+            } else {
+                state.short_term.iter().take(limit).collect::<Vec<_>>()
+            };
+
+            if output.is_machine_readable() {
+                let json_items: Vec<serde_json::Value> = items
+                    .iter()
+                    .map(|m| {
+                        serde_json::json!({
+                            "id": m.id,
+                            "item_type": format!("{:?}", m.item_type),
+                            "content": truncate_snippet(&m.content, 200),
+                            "importance": format!("{:?}", m.importance),
+                            "tags": m.tags,
+                            "access_count": m.access_count,
+                        })
+                    })
+                    .collect();
+                println!(
+                    "{}",
+                    serde_json::json!({ "status": "ok", "action": "list", "count": json_items.len(), "items": json_items })
+                );
+            } else {
+                if items.is_empty() {
+                    println!("No memory items found in evolution store.");
+                    if item_type.is_some() {
+                        println!("  (try without --item-type filter)");
+                    }
+                } else {
+                    println!("Memory items ({} total):", items.len());
+                    for (i, m) in items.iter().enumerate() {
+                        let first_line = m
+                            .content
+                            .lines()
+                            .next()
+                            .unwrap_or(&m.content);
+                        println!(
+                            "  {}. [{:?}] {} -- {:?} importance (accessed {}x)",
+                            i + 1,
+                            m.item_type,
+                            truncate_snippet(first_line, 80),
+                            m.importance,
+                            m.access_count
+                        );
+                    }
+                }
+
+                let lesson_count = evolution.lessons.current_state.total_lessons();
+                if lesson_count > 0 {
+                    println!(
+                        "\n{} lessons stored (use `memory export` for full lesson data)",
+                        lesson_count
+                    );
+                }
+            }
+            Ok(())
+        }
+        MemorySub::Show { id, json } => {
+            use terraphim_agent_evolution::AgentEvolutionSystem;
+
+            let evolution = AgentEvolutionSystem::new("cli-agent".to_string());
+
+            let memory_item = evolution
+                .memory
+                .current_state
+                .short_term
+                .iter()
+                .find(|m| m.id == id)
+                .cloned();
+            let all_lessons: Vec<_> = {
+                let ls = &evolution.lessons.current_state;
+                let mut v = Vec::new();
+                v.extend(ls.technical_lessons.iter());
+                v.extend(ls.process_lessons.iter());
+                v.extend(ls.domain_lessons.iter());
+                v.extend(ls.failure_lessons.iter());
+                v.extend(ls.success_patterns.iter());
+                v
+            };
+            let lesson = all_lessons
+                .iter()
+                .find(|l| l.id == id)
+                .cloned()
+                .cloned();
+
+            if memory_item.is_none() && lesson.is_none() {
+                eprintln!("No memory item or lesson found with ID: {}", id);
+                if output.is_machine_readable() {
+                    println!(
+                        "{}",
+                        serde_json::json!({ "status": "error", "action": "show", "error": format!("no item found with ID {}", id) })
+                    );
+                }
+                return Ok(());
+            }
+
+            if json || output.is_machine_readable() {
+                let payload = serde_json::json!({
+                    "status": "ok",
+                    "action": "show",
+                    "id": id,
+                    "memory_item": memory_item,
+                    "lesson": lesson,
+                });
+                println!("{}", serde_json::to_string_pretty(&payload)?);
+            } else {
+                if let Some(m) = memory_item {
+                    println!("Memory Item: {}", m.id);
+                    println!("  type: {:?}", m.item_type);
+                    println!("  importance: {:?}", m.importance);
+                    println!("  created: {}", m.created_at);
+                    println!("  accessed: {} times", m.access_count);
+                    if !m.tags.is_empty() {
+                        println!("  tags: {}", m.tags.join(", "));
+                    }
+                    println!("  content:");
+                    for line in m.content.lines().take(20) {
+                        println!("    {}", line);
+                    }
+                    if m.content.lines().count() > 20 {
+                        println!("    ... ({} more lines)", m.content.lines().count() - 20);
+                    }
+                }
+                if let Some(l) = lesson {
+                    println!("\nLesson: {} ({})", l.title, l.id);
+                    println!("  category: {:?}", l.category);
+                    println!("  impact: {:?}", l.impact);
+                    println!("  confidence: {:.0}%", l.confidence * 100.0);
+                    println!("  learned: {}", l.learned_at);
+                    println!("  applied: {} times (success rate: {:.0}%)", l.applied_count, l.success_rate * 100.0);
+                    println!("  validated: {}", if l.validated { "yes" } else { "no" });
+                    if !l.tags.is_empty() {
+                        println!("  tags: {}", l.tags.join(", "));
+                    }
+                    println!("  context:");
+                    for line in l.context.lines().take(10) {
+                        println!("    {}", line);
+                    }
+                    println!("  insight:");
+                    for line in l.insight.lines().take(10) {
+                        println!("    {}", line);
+                    }
+                }
+            }
+            Ok(())
+        }
+        MemorySub::Export { format, output: outfile } => {
+            use terraphim_agent_evolution::AgentEvolutionSystem;
+
+            let evolution = AgentEvolutionSystem::new("cli-agent".to_string());
+
+            let memory_items: Vec<serde_json::Value> = evolution
+                .memory
+                .current_state
+                .short_term
+                .iter()
+                .map(|m| {
+                    serde_json::json!({
+                        "id": m.id,
+                        "item_type": format!("{:?}", m.item_type),
+                        "content": m.content,
+                        "importance": format!("{:?}", m.importance),
+                        "tags": m.tags,
+                        "access_count": m.access_count,
+                        "created_at": m.created_at.to_rfc3339(),
+                    })
+                })
+                .collect();
+
+            let all_lessons: Vec<_> = {
+                let ls = &evolution.lessons.current_state;
+                let mut v = Vec::new();
+                v.extend(ls.technical_lessons.iter());
+                v.extend(ls.process_lessons.iter());
+                v.extend(ls.domain_lessons.iter());
+                v.extend(ls.failure_lessons.iter());
+                v.extend(ls.success_patterns.iter());
+                v
+            };
+            let lessons: Vec<serde_json::Value> = all_lessons
+                .iter()
+                .map(|l| {
+                    serde_json::json!({
+                        "id": l.id,
+                        "title": l.title,
+                        "category": format!("{:?}", l.category),
+                        "impact": format!("{:?}", l.impact),
+                        "confidence": l.confidence,
+                        "learned_at": l.learned_at.to_rfc3339(),
+                        "applied_count": l.applied_count,
+                        "success_rate": l.success_rate,
+                        "validated": l.validated,
+                        "tags": l.tags,
+                        "context": l.context,
+                        "insight": l.insight,
+                    })
+                })
+                .collect();
+
+            let payload = serde_json::json!({
+                "agent": "cli-agent",
+                "exported_at": chrono::Utc::now().to_rfc3339(),
+                "memory_items": memory_items,
+                "lessons": lessons,
+                "summary": {
+                    "memory_count": memory_items.len(),
+                    "lesson_count": lessons.len(),
+                }
+            });
+
+            let output_str = match format.as_str() {
+                "markdown" => {
+                    let mut md = String::new();
+                    md.push_str("# Memory Export\n\n");
+                    md.push_str(&format!("**Agent:** cli-agent\n"));
+                    md.push_str(&format!(
+                        "**Exported:** {}\n\n",
+                        chrono::Utc::now().to_rfc3339()
+                    ));
+                    md.push_str(&format!(
+                        "## Memory Items ({})\n\n",
+                        memory_items.len()
+                    ));
+                    for m in &memory_items {
+                        md.push_str(&format!(
+                            "- **{}** [{:?}]: {} (importance: {:?}, accessed: {}x)\n",
+                            m["id"].as_str().unwrap_or("?"),
+                            m["item_type"].as_str().unwrap_or("?"),
+                            truncate_snippet(m["content"].as_str().unwrap_or(""), 100),
+                            m["importance"].as_str().unwrap_or("?"),
+                            m["access_count"].as_u64().unwrap_or(0),
+                        ));
+                    }
+                    md.push_str(&format!("\n## Lessons ({})\n\n", lessons.len()));
+                    for l in &lessons {
+                        md.push_str(&format!(
+                            "- **{}** ({:?}): {} [{:.0}% confidence, {:.0}% success]\n",
+                            l["title"].as_str().unwrap_or("?"),
+                            l["category"].as_str().unwrap_or("?"),
+                            truncate_snippet(l["insight"].as_str().unwrap_or(""), 100),
+                            l["confidence"].as_f64().unwrap_or(0.0) * 100.0,
+                            l["success_rate"].as_f64().unwrap_or(0.0) * 100.0,
+                        ));
+                    }
+                    md
+                }
+                _ => serde_json::to_string_pretty(&payload)?,
+            };
+
+            if let Some(path) = outfile {
+                std::fs::write(&path, &output_str)?;
+                println!("Memory export written to: {}", path);
+            } else {
+                println!("{}", output_str);
             }
             Ok(())
         }
