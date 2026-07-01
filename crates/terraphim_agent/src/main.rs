@@ -1323,7 +1323,7 @@ enum RobotSub {
 #[derive(Subcommand, Debug)]
 enum MemorySub {
     /// Capture a command or session event as an agentic memory item
-    /// (routes to `learn hook`)
+    /// (writes to evolution store with provenance metadata)
     Capture {
         /// Provenance tag for traceability (session ID, commit SHA)
         #[arg(long)]
@@ -3924,17 +3924,23 @@ async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Res
             use terraphim_agent_evolution::{ImportanceLevel, MemoryItem, MemoryItemType};
 
             let mut evolution = load_evolution();
+            let content = provenance_tag
+                .as_ref()
+                .map(|tag| format!("Memory item captured via CLI with provenance: {}", tag))
+                .unwrap_or_else(|| "Memory item captured via CLI".to_string());
+            let tags: Vec<String> = provenance_tag
+                .clone()
+                .map(|tag| vec![format!("provenance:{}", tag)])
+                .unwrap_or_default();
             let memory = MemoryItem {
                 id: uuid::Uuid::new_v4().to_string(),
                 item_type: MemoryItemType::Experience,
-                content: provenance_tag
-                    .clone()
-                    .unwrap_or_else(|| "captured-from-cli".to_string()),
+                content,
                 created_at: chrono::Utc::now(),
                 last_accessed: None,
                 access_count: 0,
                 importance: ImportanceLevel::Medium,
-                tags: vec![],
+                tags,
                 associations: std::collections::HashMap::new(),
             };
             let id = memory.id.clone();
@@ -4323,8 +4329,8 @@ async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Res
                         "- **{}**: {} (decay: {:.2}, risk: {:.2})\n",
                         item.id,
                         truncate_snippet(first_line, 80),
-                        score_decay(item),
-                        score_risk(item),
+                        compute_decay(item.created_at),
+                        compute_risk(&item.content),
                     ));
                 }
             }
@@ -4611,10 +4617,14 @@ async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Res
             Ok(())
         }
         MemorySub::SecondRun { issue } => {
-            let artefact_base = dirs::cache_dir()
-                .unwrap_or_else(|| std::path::PathBuf::from("."))
-                .join("terraphim")
-                .join("adf-artefacts")
+            let artefact_base = std::env::var("TERRAPHIM_ADF_ARTEFACTS_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| {
+                    dirs::cache_dir()
+                        .unwrap_or_else(|| std::path::PathBuf::from("."))
+                        .join("terraphim")
+                        .join("adf-artefacts")
+                })
                 .join(format!("issue-{}", issue));
 
             let mut runs: Vec<RunMetrics> = Vec::new();
@@ -4753,20 +4763,9 @@ fn score_memory_item(item: &terraphim_agent_evolution::MemoryItem) -> RubricScor
         _ => 0.4,
     };
 
-    let decay = (1.0f64).min(
-        60.0 / (1.0 + (chrono::Utc::now() - item.created_at).num_days() as f64),
-    );
+    let decay = compute_decay(item.created_at);
 
-    let risk = if item.content.contains("sudo")
-        || item.content.contains("rm -rf")
-        || item.content.contains("DROP TABLE")
-    {
-        0.7
-    } else if item.content.contains("unsafe") {
-        0.4
-    } else {
-        0.1
-    };
+    let risk = compute_risk(&item.content);
 
     RubricScore {
         faithfulness,
@@ -4778,14 +4777,19 @@ fn score_memory_item(item: &terraphim_agent_evolution::MemoryItem) -> RubricScor
     }
 }
 
-fn score_decay(item: &terraphim_agent_evolution::MemoryItem) -> f64 {
-    (1.0f64).min(60.0 / (1.0 + (chrono::Utc::now() - item.created_at).num_days() as f64))
+fn compute_decay(created_at: chrono::DateTime<chrono::Utc>) -> f64 {
+    let days = (chrono::Utc::now() - created_at).num_days() as f64;
+    if days < 0.0 {
+        1.0
+    } else {
+        (1.0f64).min(60.0 / (1.0 + days))
+    }
 }
 
-fn score_risk(item: &terraphim_agent_evolution::MemoryItem) -> f64 {
-    if item.content.contains("sudo") || item.content.contains("rm -rf") || item.content.contains("DROP TABLE") {
+fn compute_risk(content: &str) -> f64 {
+    if content.contains("sudo") || content.contains("rm -rf") || content.contains("DROP TABLE") {
         0.7
-    } else if item.content.contains("unsafe") {
+    } else if content.contains("unsafe") {
         0.4
     } else {
         0.1
