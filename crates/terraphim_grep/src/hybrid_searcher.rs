@@ -95,10 +95,10 @@ pub const DEFAULT_KG_BOOST_WEIGHT: f64 = 1.0;
 
 /// Compute the KG boost for a single chunk against a set of matched concepts.
 ///
-/// For each concept whose lowercased `name` (or `display_value`, if set) appears in the
-/// chunk's lowercased source path or content, the concept's normalised score contributes
-/// to the boost. The result is in `[0.0, weight]`; callers add it to the chunk's
-/// `relevance_score`.
+/// For each concept whose `name` (or `display_value`, if set) is matched by
+/// `terraphim_automata` in the chunk's source path or content, the concept's normalised
+/// score contributes to the boost. Matches embedded inside a larger alphanumeric word are
+/// ignored, so a concept like `auth` does not boost `Author`.
 ///
 /// Why path-and-content: matching only paths misses content-defined concepts (a struct
 /// `RetryPolicy` declared in `src/network.rs`); matching only content over-rewards files
@@ -111,24 +111,89 @@ pub fn score_kg_boost(chunk: &RetrievedChunk, concepts: &[KgConcept], weight: f6
     if max_concept_score <= 0.0 {
         return 0.0;
     }
-    let source_lower = chunk.source.to_lowercase();
-    let content_lower = chunk.content.to_lowercase();
-
     let mut boost = 0.0;
     for c in concepts {
-        let needle = c
-            .display_value
-            .as_deref()
-            .unwrap_or(c.name.as_str())
-            .to_lowercase();
+        let needle = c.display_value.as_deref().unwrap_or(c.name.as_str()).trim();
         if needle.is_empty() {
             continue;
         }
-        if source_lower.contains(&needle) || content_lower.contains(&needle) {
+        if automata_concept_matches(&chunk.source, needle)
+            || automata_concept_matches(&chunk.content, needle)
+        {
             boost += c.score / max_concept_score;
         }
     }
     (boost * weight).min(weight * concepts.len() as f64)
+}
+
+fn automata_concept_matches(text: &str, concept: &str) -> bool {
+    let role = terraphim_types::RoleName::new("terraphim-grep-kg-boost");
+    let thesaurus = terraphim_automata::thesaurus_from_terms(&role, std::iter::once(concept));
+    match terraphim_automata::find_matches(text, thesaurus, true) {
+        Ok(matches) => matches.iter().any(|matched| {
+            matched
+                .pos
+                .is_some_and(|pos| has_concept_boundaries(text, pos))
+        }),
+        Err(error) => {
+            tracing::debug!("KG boost automata match failed for concept {concept:?}: {error}");
+            false
+        }
+    }
+}
+
+fn has_concept_boundaries(text: &str, (start, end): (usize, usize)) -> bool {
+    let before = text[..start].chars().next_back();
+    let after = text[end..].chars().next();
+    !before.is_some_and(char::is_alphanumeric) && !after.is_some_and(char::is_alphanumeric)
+}
+
+fn thesaurus_query_concepts(
+    query: &str,
+    thesaurus: &terraphim_types::Thesaurus,
+    limit: usize,
+) -> Vec<KgConcept> {
+    match terraphim_automata::find_matches(query, thesaurus.clone(), false) {
+        Ok(matches) => {
+            let mut seen = std::collections::HashSet::new();
+            let mut matched_values = std::collections::HashSet::new();
+            let mut concepts: Vec<KgConcept> = matches
+                .into_iter()
+                .filter_map(|matched| {
+                    matched_values.insert(matched.normalized_term.value.clone());
+                    if !seen.insert(matched.term.clone()) {
+                        return None;
+                    }
+                    Some(KgConcept {
+                        id: 0,
+                        name: matched.term,
+                        display_value: None,
+                        score: 1.0,
+                    })
+                })
+                .take(limit)
+                .collect();
+
+            for (key, value) in thesaurus.clone().into_iter() {
+                if matched_values.contains(&value.value) && seen.insert(key.to_string()) {
+                    concepts.push(KgConcept {
+                        id: 0,
+                        name: key.to_string(),
+                        display_value: None,
+                        score: 1.0,
+                    });
+                }
+            }
+
+            concepts.sort_by(|a, b| a.name.cmp(&b.name));
+            concepts.truncate(limit);
+            concepts
+        }
+        Err(error) => {
+            tracing::debug!("Thesaurus query automata match failed for {query:?}: {error}");
+            Vec::new()
+        }
+    }
 }
 
 /// Apply KG boost to a batch of chunks and sort by boosted score (descending).
@@ -201,32 +266,15 @@ impl HybridSearcher {
 
         let (kg_concepts, code_results) = match options.haystack {
             Haystack::All | Haystack::Code => {
-                let kg_handle = tokio::spawn({
-                    let query = query_owned.clone();
-                    let graph = role_graph.clone();
-                    let thes = thesaurus.clone();
-                    async move { Self::search_kg(&query, max_results, graph, &thes).await }
-                });
-
-                let code_handle = tokio::spawn({
-                    let query = query_owned.clone();
-                    let paths = search_paths.clone();
-                    async move {
-                        let mut all_results = Vec::new();
-                        for path in paths {
-                            let mut results = Self::search_code(&query, max_results, path).await?;
-                            all_results.append(&mut results);
-                        }
-                        Ok::<Vec<RetrievedChunk>, String>(all_results)
-                    }
-                });
-
-                let kg_concepts = kg_handle
-                    .await
-                    .map_err(|e| format!("KG search join error: {}", e))??;
-                let code_results = code_handle
-                    .await
-                    .map_err(|e| format!("Code search join error: {}", e))??;
+                    Self::search_kg(&query_owned, max_results, role_graph.clone(), &thesaurus)
+                        .await?;
+                let candidate_limit = if kg_concepts.is_empty() {
+                    max_results
+                } else {
+                    max_results.saturating_mul(5).max(max_results).min(1000)
+                };
+                let code_results =
+                    Self::search_code(&query_owned, candidate_limit, search_path.clone()).await?;
                 (kg_concepts, code_results)
             }
             Haystack::Docs => {
@@ -242,9 +290,7 @@ impl HybridSearcher {
         // currently uniform (1.0 per match), so without this step the user's knowledge
         // does not influence ordering at all. Boost in place; the boosted score is what
         // the JSON output reports so downstream tools see why a chunk ranked where it did.
-        let code_results = boost_chunks_with_kg(code_results, &kg_concepts);
-        let code_results: Vec<RetrievedChunk> =
-            code_results.into_iter().take(max_results).collect();
+        code_results.truncate(max_results);
 
         Ok(HybridResults {
             code_results,
@@ -279,31 +325,10 @@ impl HybridSearcher {
         }
 
         // Fallback: rolegraph returned nothing (graph has no indexed documents yet, or no
-        // node matched the query). Fall back to thesaurus-only matching so KG boost still
-        // fires. Match the rolegraph's Aho-Corasick semantics by lowercasing both sides
-        // and scanning each thesaurus key for substring presence in the query.
-        let query_lower = query.to_lowercase();
-        let mut concepts: Vec<KgConcept> = thesaurus
-            .keys()
-            .filter_map(|key| {
-                let key_str = key.as_str();
-                let key_lower = key_str.to_lowercase();
-                if query_lower.contains(&key_lower) || key_lower.contains(&query_lower) {
-                    Some(KgConcept {
-                        id: 0,
-                        name: key_str.to_string(),
-                        display_value: None,
-                        score: 1.0,
-                    })
-                } else {
-                    None
-                }
-            })
-            .take(limit)
-            .collect();
-        // Stable ordering for deterministic boost output across runs.
-        concepts.sort_by(|a, b| a.name.cmp(&b.name));
-        Ok(concepts)
+        // node matched the query). Fall back to thesaurus-only matching through
+        // `terraphim_automata`, preserving the same Aho-Corasick semantics as the rest of
+        // Terraphim rather than using ad-hoc substring matching.
+        Ok(thesaurus_query_concepts(query, thesaurus, limit))
     }
 
     async fn search_code(
@@ -548,6 +573,50 @@ mod tests {
         }
     }
 
+    fn test_thesaurus(terms: &[&str]) -> terraphim_types::Thesaurus {
+        let mut thesaurus = terraphim_types::Thesaurus::new("test".to_string());
+        for (idx, term) in terms.iter().enumerate() {
+            let key = terraphim_types::NormalizedTermValue::from(*term);
+            let normalised = terraphim_types::NormalizedTerm::new(idx as u64, key.clone());
+            thesaurus.insert(key, normalised);
+        }
+        thesaurus
+    }
+
+    #[test]
+    fn thesaurus_query_concepts_uses_automata_not_substring_expansion() {
+        let thesaurus = test_thesaurus(&["auth", "authorisation", "authentication"]);
+
+        let concepts = thesaurus_query_concepts("auth", &thesaurus, 10);
+
+        assert_eq!(concepts.len(), 1);
+        assert_eq!(concepts[0].name, "auth");
+    }
+
+    #[test]
+    fn thesaurus_query_concepts_expands_shared_normalised_term() {
+        let mut thesaurus = terraphim_types::Thesaurus::new("test".to_string());
+        let normalised = terraphim_types::NormalizedTermValue::from("auth");
+        for (idx, term) in ["auth", "authentication", "authorisation"]
+            .iter()
+            .enumerate()
+        {
+            let key = terraphim_types::NormalizedTermValue::from(*term);
+            thesaurus.insert(
+                key,
+                terraphim_types::NormalizedTerm::new(idx as u64, normalised.clone()),
+            );
+        }
+
+        let concepts = thesaurus_query_concepts("auth", &thesaurus, 10);
+        let names = concepts
+            .into_iter()
+            .map(|concept| concept.name)
+            .collect::<Vec<_>>();
+
+        assert_eq!(names, vec!["auth", "authentication", "authorisation"]);
+    }
+
     #[test]
     fn kg_boost_promotes_matching_chunks_to_top() {
         // Two chunks with identical base scores. Only one mentions the KG concept in its
@@ -593,6 +662,41 @@ mod tests {
             b2 > b1,
             "two-concept match must score higher than one-concept match: {b2} vs {b1}"
         );
+    }
+
+    #[test]
+    fn kg_boost_does_not_match_concept_embedded_in_larger_word() {
+        let author_only = chunk("docs/plan.md", "**Author**: OpenCode", 1.0);
+        let concepts = vec![concept("auth", 1.0)];
+
+        let boost = score_kg_boost(&author_only, &concepts, 1.0);
+
+        assert_eq!(boost, 0.0, "auth must not match Author");
+    }
+
+    #[test]
+    fn kg_boost_matches_concept_at_identifier_boundary() {
+        let auth_identifier = chunk("src/auth_middleware.rs", "fn auth_middleware() {}", 1.0);
+        let concepts = vec![concept("auth", 1.0)];
+
+        let boost = score_kg_boost(&auth_identifier, &concepts, 1.0);
+
+        assert!(boost > 0.0, "auth should match auth_middleware");
+    }
+
+    #[test]
+    fn kg_boost_keeps_author_only_chunk_below_real_auth_chunk() {
+        let chunks = vec![
+            chunk("docs/design.md", "**Author**: OpenCode", 1.0),
+            chunk("src/auth_middleware.rs", "fn auth_middleware() {}", 1.0),
+        ];
+        let concepts = vec![concept("auth", 1.0)];
+
+        let ranked = boost_chunks_with_kg(chunks, &concepts);
+
+        assert_eq!(ranked[0].source, "src/auth_middleware.rs");
+        assert_eq!(ranked[1].source, "docs/design.md");
+        assert_eq!(ranked[1].relevance_score, 1.0);
     }
 
     #[test]
