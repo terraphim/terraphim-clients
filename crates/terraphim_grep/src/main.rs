@@ -144,16 +144,61 @@ fn resolve_role_name(
     Ok(explicit_role.unwrap_or("default").to_string())
 }
 
+fn push_unique_candidate(candidates: &mut Vec<String>, candidate: impl Into<String>) {
+    let candidate = candidate.into();
+    if !candidate.is_empty() && !candidates.contains(&candidate) {
+        candidates.push(candidate);
+    }
+}
+
+fn thesaurus_role_candidates(
+    role_name: &str,
+    project_config: Option<&terraphim_config::project::ProjectConfig>,
+) -> Vec<String> {
+    let mut candidates = Vec::new();
+    push_unique_candidate(&mut candidates, role_name);
+
+    if let Some(config) = project_config {
+        if let Some(role) = config.roles.get(role_name)
+            && let Some(shortname) = &role.shortname
+        {
+            push_unique_candidate(&mut candidates, shortname);
+        }
+
+        for (key, role) in &config.roles {
+            if role.name.to_string() == role_name {
+                push_unique_candidate(&mut candidates, key);
+                if let Some(shortname) = &role.shortname {
+                    push_unique_candidate(&mut candidates, shortname);
+                }
+            }
+        }
+    }
+
+    candidates
+}
+
+fn discover_project_thesaurus(dir: &Path, role_name: &str) -> Option<PathBuf> {
+    let project_config = terraphim_config::project::ProjectConfig::load_from_dir(dir).ok();
+    for candidate in thesaurus_role_candidates(role_name, project_config.as_ref()) {
+        if let Some(path) = terraphim_config::project::discover_thesaurus(dir, &candidate) {
+            tracing::info!("Using project thesaurus: {:?}", path);
+            return Some(path);
+        }
+    }
+
+    None
+}
+
 /// Find thesaurus path with project config priority.
 ///
 /// Resolution order:
-///   1. `.terraphim/thesaurus-<role>.json` (project config)
+///   1. `.terraphim/thesaurus-<role>.json` or the matching role shortname (project config)
 ///   2. `*_thesaurus.json` in CWD or nearby directories (filesystem heuristic)
 fn find_default_thesaurus(role_name: &str) -> Option<PathBuf> {
     if let Some(dir) = discover_project_dir()
-        && let Some(path) = terraphim_config::project::discover_thesaurus(&dir, role_name)
+        && let Some(path) = discover_project_thesaurus(&dir, role_name)
     {
-        tracing::info!("Using project thesaurus: {:?}", path);
         return Some(path);
     }
 
@@ -607,5 +652,50 @@ mod tests {
                 .to_string()
                 .contains("multiple project roles found")
         );
+    }
+
+    #[test]
+    fn thesaurus_candidates_include_matching_role_shortname() {
+        let mut config = ProjectConfig::default();
+        let mut role: terraphim_config::Role =
+            serde_json::from_str(&minimal_role_json("Project Developer")).unwrap();
+        role.shortname = Some("projdev".to_string());
+        config.roles.insert("Project Developer".to_string(), role);
+
+        let candidates = thesaurus_role_candidates("Project Developer", Some(&config));
+
+        assert_eq!(
+            candidates,
+            vec!["Project Developer".to_string(), "projdev".to_string()]
+        );
+    }
+
+    #[test]
+    fn project_thesaurus_resolves_by_role_shortname() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let terraphim_dir = tmp.path().join(".terraphim");
+        fs::create_dir(&terraphim_dir).unwrap();
+        fs::write(
+            terraphim_dir.join("config.json"),
+            r#"{
+              "roles": {
+                "Project Developer": {
+                  "shortname": "projdev",
+                  "name": "Project Developer",
+                  "relevance_function": "title-scorer",
+                  "terraphim_it": false,
+                  "theme": "default",
+                  "haystacks": []
+                }
+              }
+            }"#,
+        )
+        .unwrap();
+        let expected = terraphim_dir.join("thesaurus-projdev.json");
+        fs::write(&expected, "{}").unwrap();
+
+        let actual = discover_project_thesaurus(&terraphim_dir, "Project Developer");
+
+        assert_eq!(actual, Some(expected));
     }
 }
