@@ -1835,7 +1835,9 @@ fn main() -> Result<()> {
     // Check for updates on startup (non-blocking, debug logging on failure)
     let rt = Runtime::new()?;
     rt.block_on(async {
-        let config = UpdaterConfig::new("terraphim-agent").with_version(env!("CARGO_PKG_VERSION"));
+        let config = UpdaterConfig::new("terraphim-agent")
+            .with_repo("terraphim", "terraphim-clients")
+            .with_version(env!("CARGO_PKG_VERSION"));
         let updater = TerraphimUpdater::new(config);
         if let Err(e) = updater.check_update().await {
             log::debug!("Update check failed: {}", e);
@@ -2133,7 +2135,9 @@ async fn run_offline_command(
     // CheckUpdate is stateless - handle before TuiService initialization
     if let Command::CheckUpdate = &command {
         println!("Checking for terraphim-agent updates...");
-        let config = UpdaterConfig::new("terraphim-agent").with_version(env!("CARGO_PKG_VERSION"));
+        let config = UpdaterConfig::new("terraphim-agent")
+            .with_repo("terraphim", "terraphim-clients")
+            .with_version(env!("CARGO_PKG_VERSION"));
         let updater = TerraphimUpdater::new(config);
         match updater.check_update().await {
             Ok(status) => {
@@ -2150,7 +2154,9 @@ async fn run_offline_command(
     // Update is stateless - handle before TuiService initialization
     if let Command::Update = &command {
         println!("Updating terraphim-agent...");
-        let config = UpdaterConfig::new("terraphim-agent").with_version(env!("CARGO_PKG_VERSION"));
+        let config = UpdaterConfig::new("terraphim-agent")
+            .with_repo("terraphim", "terraphim-clients")
+            .with_version(env!("CARGO_PKG_VERSION"));
         let updater = TerraphimUpdater::new(config);
         match updater.check_and_update().await {
             Ok(status) => {
@@ -3882,20 +3888,20 @@ fn evolution_path() -> std::path::PathBuf {
 
 fn load_evolution() -> terraphim_agent_evolution::AgentEvolutionSystem {
     let path = evolution_path();
-    if path.exists() {
-        if let Ok(data) = std::fs::read_to_string(&path) {
-            #[derive(serde::Deserialize)]
-            struct EvolutionState {
-                memory: terraphim_agent_evolution::MemoryState,
-                lessons: terraphim_agent_evolution::LessonsState,
-            }
-            if let Ok(state) = serde_json::from_str::<EvolutionState>(&data) {
-                let mut evolution =
-                    terraphim_agent_evolution::AgentEvolutionSystem::new("cli-agent".to_string());
-                evolution.memory.current_state = state.memory;
-                evolution.lessons.current_state = state.lessons;
-                return evolution;
-            }
+    if path.exists()
+        && let Ok(data) = std::fs::read_to_string(&path)
+    {
+        #[derive(serde::Deserialize)]
+        struct EvolutionState {
+            memory: terraphim_agent_evolution::MemoryState,
+            lessons: terraphim_agent_evolution::LessonsState,
+        }
+        if let Ok(state) = serde_json::from_str::<EvolutionState>(&data) {
+            let mut evolution =
+                terraphim_agent_evolution::AgentEvolutionSystem::new("cli-agent".to_string());
+            evolution.memory.current_state = state.memory;
+            evolution.lessons.current_state = state.lessons;
+            return evolution;
         }
     }
     terraphim_agent_evolution::AgentEvolutionSystem::new("cli-agent".to_string())
@@ -3980,14 +3986,23 @@ async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Res
                     serde_json::json!({ "status": "ok", "action": "distill", "format": format })
                 );
             } else {
-                println!("Memory distill: routing to learn compile + export-kg (format: {})", format);
+                println!(
+                    "Memory distill: routing to learn compile + export-kg (format: {})",
+                    format
+                );
             }
             Ok(())
         }
-        MemorySub::Scope { role, project, check } => {
+        MemorySub::Scope {
+            role,
+            project,
+            check,
+        } => {
             let (role_clone, project_clone) = (role.clone(), project.clone());
             if check {
-                println!("Memory scope --check: verifying no permissioned items in public locations");
+                println!(
+                    "Memory scope --check: verifying no permissioned items in public locations"
+                );
                 let config_dir = dirs::config_dir()
                     .unwrap_or_else(|| std::path::PathBuf::from("."))
                     .join("terraphim");
@@ -3997,10 +4012,10 @@ async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Res
                     for entry in std::fs::read_dir(&kg_dir)? {
                         let entry = entry?;
                         let path = entry.path();
-                        if path.is_dir() && path.file_name().map_or(false, |n| n != "projects") {
+                        if path.is_dir() && path.file_name().is_some_and(|n| n != "projects") {
                             println!("  found role KG: {}", path.display());
                         }
-                        if path.is_dir() && path.file_name().map_or(false, |n| n == "projects") {
+                        if path.is_dir() && path.file_name().is_some_and(|n| n == "projects") {
                             for p in std::fs::read_dir(&path)? {
                                 let p = p?;
                                 println!("  found project KG: {}", p.path().display());
@@ -4095,12 +4110,7 @@ async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Res
 
             let evolution = load_evolution();
             let items: Vec<&MemoryItem> = if all {
-                evolution
-                    .memory
-                    .current_state
-                    .short_term
-                    .iter()
-                    .collect()
+                evolution.memory.current_state.short_term.iter().collect()
             } else if let Some(ref id) = lesson_id {
                 evolution
                     .memory
@@ -4165,11 +4175,8 @@ async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Res
                     );
                 }
 
-                let avg_composite = scores
-                    .iter()
-                    .map(|(_, s)| s.composite())
-                    .sum::<f64>()
-                    / scores.len() as f64;
+                let avg_composite =
+                    scores.iter().map(|(_, s)| s.composite()).sum::<f64>() / scores.len() as f64;
                 println!("\nAverage composite score: {:.2}", avg_composite);
             }
             Ok(())
@@ -4217,7 +4224,10 @@ async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Res
             }
             Ok(())
         }
-        MemorySub::Rubric { project, output: outfile } => {
+        MemorySub::Rubric {
+            project,
+            output: outfile,
+        } => {
             use terraphim_agent_evolution::MemoryItem;
 
             let evolution = load_evolution();
@@ -4234,32 +4244,27 @@ async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Res
                 .map(|item| (*item, score_memory_item(item)))
                 .collect();
 
-            let avg_composite = scores
-                .iter()
-                .map(|(_, s)| s.composite())
-                .sum::<f64>()
-                / scores.len() as f64;
+            let avg_composite =
+                scores.iter().map(|(_, s)| s.composite()).sum::<f64>() / scores.len() as f64;
 
             let avg_dimensions = RubricScore {
                 faithfulness: scores.iter().map(|(_, s)| s.faithfulness).sum::<f64>()
                     / scores.len() as f64,
-                scope: scores.iter().map(|(_, s)| s.scope).sum::<f64>()
-                    / scores.len() as f64,
+                scope: scores.iter().map(|(_, s)| s.scope).sum::<f64>() / scores.len() as f64,
                 provenance: scores.iter().map(|(_, s)| s.provenance).sum::<f64>()
                     / scores.len() as f64,
                 actionability: scores.iter().map(|(_, s)| s.actionability).sum::<f64>()
                     / scores.len() as f64,
-                decay: scores.iter().map(|(_, s)| s.decay).sum::<f64>()
-                    / scores.len() as f64,
-                risk: scores.iter().map(|(_, s)| s.risk).sum::<f64>()
-                    / scores.len() as f64,
+                decay: scores.iter().map(|(_, s)| s.decay).sum::<f64>() / scores.len() as f64,
+                risk: scores.iter().map(|(_, s)| s.risk).sum::<f64>() / scores.len() as f64,
             };
 
             let mut offender_list: Vec<(&MemoryItem, f64)> = scores
                 .iter()
                 .map(|(item, s)| (*item, s.composite()))
                 .collect();
-            offender_list.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+            offender_list
+                .sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             let top_offenders: Vec<_> = offender_list.iter().take(3).collect();
 
             let retirement_recs: Vec<&MemoryItem> = scores
@@ -4276,15 +4281,10 @@ async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Res
                 "**Generated:** {}\n",
                 chrono::Utc::now().to_rfc3339()
             ));
-            report.push_str(&format!(
-                "**Items analysed:** {}\n\n",
-                items.len()
-            ));
+            report.push_str(&format!("**Items analysed:** {}\n\n", items.len()));
 
             report.push_str("## Overall Scores\n\n");
-            report.push_str(&format!(
-                "| Dimension | Score | Status |\n|---|---|---|\n"
-            ));
+            report.push_str("| Dimension | Score | Status |\n|---|---|---|\n");
             for (name, value) in [
                 ("Faithfulness", avg_dimensions.faithfulness),
                 ("Scope", avg_dimensions.scope),
@@ -4344,8 +4344,6 @@ async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Res
             Ok(())
         }
         MemorySub::List { item_type, limit } => {
-            
-
             let evolution = load_evolution();
             let state = &evolution.memory.current_state;
 
@@ -4355,7 +4353,9 @@ async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Res
                     .short_term
                     .iter()
                     .filter(|m| {
-                        format!("{:?}", m.item_type).to_lowercase().contains(&filter)
+                        format!("{:?}", m.item_type)
+                            .to_lowercase()
+                            .contains(&filter)
                     })
                     .take(limit)
                     .collect::<Vec<_>>()
@@ -4390,11 +4390,7 @@ async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Res
                 } else {
                     println!("Memory items ({} total):", items.len());
                     for (i, m) in items.iter().enumerate() {
-                        let first_line = m
-                            .content
-                            .lines()
-                            .next()
-                            .unwrap_or(&m.content);
+                        let first_line = m.content.lines().next().unwrap_or(&m.content);
                         println!(
                             "  {}. [{:?}] {} -- {:?} importance (accessed {}x)",
                             i + 1,
@@ -4417,8 +4413,6 @@ async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Res
             Ok(())
         }
         MemorySub::Show { id, json } => {
-            
-
             let evolution = load_evolution();
 
             let memory_item = evolution
@@ -4438,11 +4432,7 @@ async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Res
                 v.extend(ls.success_patterns.iter());
                 v
             };
-            let lesson = all_lessons
-                .iter()
-                .find(|l| l.id == id)
-                .cloned()
-                .cloned();
+            let lesson = all_lessons.iter().find(|l| l.id == id).cloned().cloned();
 
             if memory_item.is_none() && lesson.is_none() {
                 eprintln!("No memory item or lesson found with ID: {}", id);
@@ -4488,7 +4478,11 @@ async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Res
                     println!("  impact: {:?}", l.impact);
                     println!("  confidence: {:.0}%", l.confidence * 100.0);
                     println!("  learned: {}", l.learned_at);
-                    println!("  applied: {} times (success rate: {:.0}%)", l.applied_count, l.success_rate * 100.0);
+                    println!(
+                        "  applied: {} times (success rate: {:.0}%)",
+                        l.applied_count,
+                        l.success_rate * 100.0
+                    );
                     println!("  validated: {}", if l.validated { "yes" } else { "no" });
                     if !l.tags.is_empty() {
                         println!("  tags: {}", l.tags.join(", "));
@@ -4505,9 +4499,10 @@ async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Res
             }
             Ok(())
         }
-        MemorySub::Export { format, output: outfile } => {
-            
-
+        MemorySub::Export {
+            format,
+            output: outfile,
+        } => {
             let evolution = load_evolution();
 
             let memory_items: Vec<serde_json::Value> = evolution
@@ -4573,15 +4568,12 @@ async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Res
                 "markdown" => {
                     let mut md = String::new();
                     md.push_str("# Memory Export\n\n");
-                    md.push_str(&format!("**Agent:** cli-agent\n"));
+                    md.push_str("**Agent:** cli-agent\n");
                     md.push_str(&format!(
                         "**Exported:** {}\n\n",
                         chrono::Utc::now().to_rfc3339()
                     ));
-                    md.push_str(&format!(
-                        "## Memory Items ({})\n\n",
-                        memory_items.len()
-                    ));
+                    md.push_str(&format!("## Memory Items ({})\n\n", memory_items.len()));
                     for m in &memory_items {
                         md.push_str(&format!(
                             "- **{}** [{:?}]: {} (importance: {:?}, accessed: {}x)\n",
@@ -4632,12 +4624,11 @@ async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Res
                 for entry in std::fs::read_dir(&artefact_base)? {
                     let entry = entry?;
                     let path = entry.path();
-                    if path.extension().map_or(false, |e| e == "json") {
-                        if let Ok(data) = std::fs::read_to_string(&path) {
-                            if let Ok(metrics) = serde_json::from_str::<RunMetrics>(&data) {
-                                runs.push(metrics);
-                            }
-                        }
+                    if path.extension().is_some_and(|e| e == "json")
+                        && let Ok(data) = std::fs::read_to_string(&path)
+                        && let Ok(metrics) = serde_json::from_str::<RunMetrics>(&data)
+                    {
+                        runs.push(metrics);
                     }
                 }
             }
@@ -4665,7 +4656,10 @@ async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Res
                     if artefact_base.exists() {
                         println!("  artefact directory: {}", artefact_base.display());
                     } else {
-                        println!("  no artefact directory found (expected at: {})", artefact_base.display());
+                        println!(
+                            "  no artefact directory found (expected at: {})",
+                            artefact_base.display()
+                        );
                     }
                 }
                 return Ok(());
