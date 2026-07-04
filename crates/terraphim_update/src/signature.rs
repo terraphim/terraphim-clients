@@ -48,6 +48,7 @@ pub fn get_embedded_public_key() -> &'static str {
 pub fn get_embedded_public_keys() -> &'static [&'static str] {
     EMBEDDED_PUBLIC_KEYS
 }
+}
 
 /// Metadata for cryptographic keys
 ///
@@ -79,8 +80,8 @@ pub struct KeyMetadata {
 /// is deferred to a future release. The current key has no expiration date.
 pub fn get_active_key_metadata() -> KeyMetadata {
     KeyMetadata {
-        key_id: "terraphim-release-key-2025-01".to_string(),
-        valid_from: "2025-01-12T00:00:00Z".parse().unwrap(),
+        key_id: "terraphim-clients-zipsign-release-key-2026-07".to_string(),
+        valid_from: "2026-07-04T00:00:00Z".parse().unwrap(),
         valid_until: None, // No expiry set yet
         public_key: get_embedded_public_key().to_string(),
     }
