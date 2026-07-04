@@ -58,3 +58,29 @@ fn cli_runs_without_thesaurus() {
         "kg_hits should be zero"
     );
 }
+
+#[test]
+fn cli_help_lists_update_commands() {
+    let bin = env!("CARGO_BIN_EXE_terraphim-grep");
+
+    let output = Command::new(bin)
+        .arg("--help")
+        .output()
+        .expect("failed to run terraphim-grep --help");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        output.status.success(),
+        "terraphim-grep --help should succeed\nstdout: {stdout}\nstderr: {stderr}"
+    );
+    assert!(
+        stdout.contains("check-update"),
+        "help should list check-update command\n{stdout}"
+    );
+    assert!(
+        stdout.contains("update"),
+        "help should list update command\n{stdout}"
+    );
+}

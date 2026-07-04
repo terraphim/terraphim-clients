@@ -2,12 +2,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use clap::{Parser, ValueEnum};
+use clap::{Parser, Subcommand, ValueEnum};
 use terraphim_automata::AutomataPath;
 use terraphim_grep::{
     GrepOptions, GrepResult, Haystack, HybridSearcher, SufficiencyJudge, TerraphimGrep,
 };
 use terraphim_types::Thesaurus;
+use terraphim_update::{TerraphimUpdater, UpdaterConfig};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 #[derive(Parser, Debug)]
@@ -18,7 +19,10 @@ use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 )]
 struct Args {
     #[arg(help = "Search query")]
-    query: String,
+    query: Option<String>,
+
+    #[command(subcommand)]
+    command: Option<Command>,
 
     #[arg(
         short = 'C',
@@ -73,6 +77,14 @@ struct Args {
     kg_path: Option<PathBuf>,
 }
 
+#[derive(Subcommand, Debug)]
+enum Command {
+    /// Check for updates without installing
+    CheckUpdate,
+    /// Update to latest version if available
+    Update,
+}
+
 #[derive(Debug, Clone, ValueEnum)]
 enum HaystackArg {
     All,
@@ -115,6 +127,29 @@ fn init_tracing() {
         .with(fmt::layer().with_writer(std::io::stderr))
         .with(filter)
         .init();
+}
+
+fn grep_updater() -> TerraphimUpdater {
+    let config = UpdaterConfig::new("terraphim-grep")
+        .with_version(env!("CARGO_PKG_VERSION"))
+        .with_repo("terraphim", "terraphim-clients");
+    TerraphimUpdater::new(config)
+}
+
+async fn handle_update_command(command: Command) -> Result<()> {
+    let updater = grep_updater();
+    let status = match command {
+        Command::CheckUpdate => {
+            println!("Checking for terraphim-grep updates...");
+            updater.check_update().await?
+        }
+        Command::Update => {
+            println!("Updating terraphim-grep...");
+            updater.check_and_update().await?
+        }
+    };
+    println!("{status}");
+    Ok(())
 }
 
 /// Discover project-level config from `.terraphim/` directory.
@@ -391,7 +426,16 @@ fn role_from_env(role_name: &str) -> Option<terraphim_config::Role> {
 async fn main() -> Result<()> {
     init_tracing();
 
-    let args = Args::parse();
+    let mut args = Args::parse();
+
+    if let Some(command) = args.command.take() {
+        return handle_update_command(command).await;
+    }
+
+    let query = args
+        .query
+        .as_deref()
+        .context("missing search query; run `terraphim-grep --help` for usage")?;
 
     let options = GrepOptions {
         haystack: args.haystack.into(),
@@ -467,7 +511,7 @@ async fn main() -> Result<()> {
 
     // Perform search
     let result = terraphim_grep
-        .search(&args.query, options)
+        .search(query, options)
         .await
         .context("Search failed")?;
 
