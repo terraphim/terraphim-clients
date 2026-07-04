@@ -154,7 +154,9 @@ fn init_tracing() {
 /// (`downloads.terraphim.ai`) with the GitHub Releases fallback — same as the
 /// agent, via the shared `terraphim_update` crate.
 fn grep_updater() -> TerraphimUpdater {
-    let config = UpdaterConfig::new("terraphim-grep").with_version(env!("CARGO_PKG_VERSION"));
+    let config = UpdaterConfig::new("terraphim-grep")
+        .with_version(env!("CARGO_PKG_VERSION"))
+        .with_repo("terraphim", "terraphim-clients");
     TerraphimUpdater::new(config)
 }
 
@@ -484,6 +486,11 @@ async fn main() -> Result<()> {
         return handle_update_command(command).await;
     }
 
+    let query = args
+        .query
+        .as_deref()
+        .context("missing search query; run `terraphim-grep --help` for usage")?;
+
     let options = GrepOptions {
         haystack: args.haystack.into(),
         context_lines: args.context,
@@ -565,7 +572,7 @@ async fn main() -> Result<()> {
 
     // Perform search
     let result = terraphim_grep
-        .search(args.query.as_deref().unwrap_or(""), options)
+        .search(query, options)
         .await
         .context("Search failed")?;
 

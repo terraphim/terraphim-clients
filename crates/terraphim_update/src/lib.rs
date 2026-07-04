@@ -196,6 +196,13 @@ impl UpdaterConfig {
         self
     }
 
+    /// Set the GitHub repository used for update checks.
+    pub fn with_repo(mut self, owner: impl Into<String>, name: impl Into<String>) -> Self {
+        self.repo_owner = owner.into();
+        self.repo_name = name.into();
+        self
+    }
+
     /// Enable or disable progress display.
     pub fn with_progress(mut self, show: bool) -> Self {
         self.show_progress = show;
@@ -1650,6 +1657,18 @@ mod tests {
 
         let empty = UpdaterConfig::new("test-binary").with_auth_token("");
         assert!(empty.auth_token.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_updater_config_repo_override() {
+        let config = UpdaterConfig::new("test-binary")
+            .with_version("1.0.0")
+            .with_repo("terraphim", "terraphim-clients");
+
+        assert_eq!(config.bin_name, "test-binary");
+        assert_eq!(config.current_version, "1.0.0");
+        assert_eq!(config.repo_owner, "terraphim");
+        assert_eq!(config.repo_name, "terraphim-clients");
     }
 
     #[test]
