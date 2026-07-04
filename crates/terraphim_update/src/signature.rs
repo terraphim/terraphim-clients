@@ -30,10 +30,11 @@ pub use zipsign_api::ZipsignError;
 /// Then add the public key here
 pub fn get_embedded_public_key() -> &'static str {
     // Ed25519 public key for verifying Terraphim AI release signatures
-    // Generated: 2025-01-12
+    // Generated: 2026-07-04
     // Key type: Ed25519 (32 bytes, base64-encoded)
-    // Fingerprint: Calculate with: echo -n "1uLjooBMO+HlpKeiD16WOtT3COWeC8J/o2ERmDiEMc4=" | base64 -d | sha256sum
-    "1uLjooBMO+HlpKeiD16WOtT3COWeC8J/o2ERmDiEMc4="
+    // 1Password item: Terraphim Clients zipsign Release Key 2026-07
+    // Fingerprint: Calculate with: echo -n "iW2sM72/09yfiQ3jMB2GBALCRN+1FLLgD5qBbISFfS0=" | base64 -d | sha256sum
+    "iW2sM72/09yfiQ3jMB2GBALCRN+1FLLgD5qBbISFfS0="
 }
 
 /// Metadata for cryptographic keys
@@ -66,8 +67,8 @@ pub struct KeyMetadata {
 /// is deferred to a future release. The current key has no expiration date.
 pub fn get_active_key_metadata() -> KeyMetadata {
     KeyMetadata {
-        key_id: "terraphim-release-key-2025-01".to_string(),
-        valid_from: "2025-01-12T00:00:00Z".parse().unwrap(),
+        key_id: "terraphim-clients-zipsign-release-key-2026-07".to_string(),
+        valid_from: "2026-07-04T00:00:00Z".parse().unwrap(),
         valid_until: None, // No expiry set yet
         public_key: get_embedded_public_key().to_string(),
     }
