@@ -20,7 +20,7 @@ use self_update::version::bump_is_greater;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
-use tempfile::NamedTempFile;
+use tempfile::TempDir;
 use tracing::{error, info, warn};
 
 // Re-export the backend types for ergonomic access from binaries, e.g.
@@ -768,7 +768,7 @@ impl TerraphimUpdater {
         let latest_version = &release.version;
 
         // Step 2: Download archive to temp location
-        let temp_archive = match Self::download_release_archive(
+        let (_temp_dir, archive_path) = match Self::download_release_archive(
             repo_owner,
             repo_name,
             bin_name,
@@ -783,8 +783,6 @@ impl TerraphimUpdater {
                 )));
             }
         };
-
-        let archive_path = temp_archive.path().to_path_buf();
 
         // Step 3: Verify signature BEFORE installation
         info!("Verifying signature for archive {:?}", archive_path);
@@ -879,7 +877,7 @@ impl TerraphimUpdater {
         bin_name: &str,
         version: &str,
         show_progress: bool,
-    ) -> Result<NamedTempFile> {
+    ) -> Result<(TempDir, PathBuf)> {
         // Normalize binary name (replace underscores with hyphens for GitHub releases)
         let bin_name_in_asset = bin_name.replace('_', "-");
 
@@ -907,8 +905,10 @@ impl TerraphimUpdater {
 
                 info!("Trying to download from: {}", download_url);
 
-                // Create temp file for download
-                let temp_file = NamedTempFile::new()?;
+                // zipsign uses the filename as signature context, so preserve
+                // the release asset filename instead of using a random temp name.
+                let temp_dir = tempfile::tempdir()?;
+                let archive_path = temp_dir.path().join(&asset_name);
                 let download_config = crate::downloader::DownloadConfig {
                     show_progress,
                     ..Default::default()
@@ -916,16 +916,15 @@ impl TerraphimUpdater {
 
                 match crate::downloader::download_with_retry(
                     &download_url,
-                    temp_file.path(),
+                    &archive_path,
                     Some(download_config),
                 ) {
                     Ok(_) => {
                         info!(
                             "Successfully downloaded {} to: {:?}",
-                            asset_name,
-                            temp_file.path()
+                            asset_name, archive_path
                         );
-                        return Ok(temp_file);
+                        return Ok((temp_dir, archive_path));
                     }
                     Err(e) => {
                         info!("Failed to download {}: {}", asset_name, e);
