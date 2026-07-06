@@ -582,6 +582,25 @@ mod tests {
     }
 
     #[test]
+    fn test_assistant_with_thinking_block_parses() {
+        let json_line = r#"{"parentUuid":null,"isSidechain":false,"userType":"external","cwd":"/tmp","sessionId":"s1","version":"1.0","gitBranch":"","message":{"role":"assistant","content":[{"type":"thinking","thinking":"Let me analyze this..."},{"type":"text","text":"Here is my answer"}]},"type":"assistant","uuid":"u1","timestamp":"2025-01-01T09:00:00.000Z"}"#;
+        let entry: SessionEntry = serde_json::from_str(json_line).unwrap();
+        assert_eq!(entry.entry_type, "assistant");
+        if let crate::models::Message::Assistant { content, .. } = &entry.message {
+            assert_eq!(content.len(), 2);
+        } else {
+            panic!("Expected Assistant message");
+        }
+    }
+
+    #[test]
+    fn test_assistant_with_unknown_content_block_parses() {
+        let json_line = r#"{"parentUuid":null,"isSidechain":false,"userType":"external","cwd":"/tmp","sessionId":"s1","version":"1.0","gitBranch":"","message":{"role":"assistant","content":[{"type":"some_future_block_type","data":"whatever"}]},"type":"assistant","uuid":"u1","timestamp":"2025-01-01T09:00:00.000Z"}"#;
+        let entry: SessionEntry = serde_json::from_str(json_line).unwrap();
+        assert_eq!(entry.entry_type, "assistant");
+    }
+
+    #[test]
     fn test_entry_type_peek_extracts_type() {
         let json = r#"{"type":"last-prompt","lastPrompt":"echo hello","sessionId":"abc"}"#;
         let peek: EntryTypePeek = serde_json::from_str(json).unwrap();
