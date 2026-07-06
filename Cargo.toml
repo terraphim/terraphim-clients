@@ -11,6 +11,7 @@ members = [
     "crates/terraphim_hooks",
     "crates/terraphim_update",
     "crates/terraphim_negative_contribution",
+    "crates/terraphim-session-analyzer",
 ]
 
 [workspace.package]
@@ -24,7 +25,7 @@ license = "Apache-2.0"
 readme = "README.md"
 
 [patch.crates-io]
-terraphim_service = { version = "1.20.5", registry = "terraphim" }
+terraphim_service = { version = "=1.20.6", registry = "terraphim" }
 rustls-webpki = { git = "https://github.com/rustls/webpki.git", tag = "v/0.103.12" }
 
 [workspace.dependencies]
