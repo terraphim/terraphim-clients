@@ -423,7 +423,7 @@ impl TerraphimUpdater {
             }
 
             // Set custom install path to preserve underscore naming
-            builder.bin_install_path(format!("/usr/local/bin/{}", bin_name));
+            builder.bin_install_path(platform::get_binary_path(&bin_name)?);
 
             match builder.build() {
                 Ok(updater) => {
@@ -584,7 +584,7 @@ impl TerraphimUpdater {
             }
 
             // Set custom install path to preserve underscore naming
-            builder.bin_install_path(format!("/usr/local/bin/{}", bin_name));
+            builder.bin_install_path(platform::get_binary_path(&bin_name)?);
 
             match builder.build() {
                 Ok(updater) => match updater.update() {
@@ -840,7 +840,7 @@ impl TerraphimUpdater {
         builder.current_version(current_version);
 
         // Set custom install path to preserve underscore naming
-        builder.bin_install_path(format!("/usr/local/bin/{}", bin_name));
+        builder.bin_install_path(platform::get_binary_path(bin_name)?);
 
         let updater = builder.build()?;
 
@@ -1326,7 +1326,7 @@ pub async fn check_for_updates_auto(bin_name: &str, current_version: &str) -> Re
             builder.auth_token(&token);
         }
 
-        builder.bin_install_path(format!("/usr/local/bin/{}", bin_name));
+        builder.bin_install_path(platform::get_binary_path(&bin_name)?);
 
         match builder.build() {
             Ok(updater) => match updater.get_latest_release() {
