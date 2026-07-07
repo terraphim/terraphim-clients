@@ -60,21 +60,17 @@ fn sign_archive(archive_path: &Path, private_key: &str) -> Result<(), Box<dyn st
 // ============================================================================
 
 #[test]
-fn test_real_key_rejects_unsigned_archive() {
+fn test_real_key_reports_missing_signature_for_unsigned_archive() {
     let temp_dir = TempDir::new().unwrap();
     let archive = create_test_archive(temp_dir.path(), "test.tar.gz");
 
-    // With real embedded key, unsigned archives should be rejected
+    // Unsigned archive (no embedded signature trailer) -> MissingSignature,
+    // NOT Invalid. Callers apply their warn-and-proceed posture for the
+    // signing rollout. Invalid is reserved for a signature that is present
+    // but matches no key (tampered / wrong key) -- covered by the
+    // integration-signing tests below.
     let result = verify_archive_signature(&archive, None).unwrap();
-    assert!(matches!(result, VerificationResult::Invalid { .. }));
-    if let VerificationResult::Invalid { reason } = result {
-        // The error message should indicate signature verification failure
-        assert!(
-            reason.contains("Signature verification failed")
-                || reason.contains("Failed to read signatures")
-                || reason.contains("magic")
-        );
-    }
+    assert!(matches!(result, VerificationResult::MissingSignature));
 }
 
 #[test]
@@ -119,9 +115,9 @@ fn test_empty_archive_without_signature() {
     let enc = GzEncoder::new(file, flate2::Compression::default());
     let _tar = Builder::new(enc);
 
-    // With real key, unsigned archives should be rejected
+    // Unsigned empty archive -> MissingSignature.
     let result = verify_archive_signature(&archive_path, None).unwrap();
-    assert!(matches!(result, VerificationResult::Invalid { .. }));
+    assert!(matches!(result, VerificationResult::MissingSignature));
 }
 
 #[test]
@@ -174,17 +170,15 @@ fn test_corrupted_archive_returns_error() {
     let mut file = fs::File::create(&archive_path).unwrap();
     file.write_all(b"This is not a valid gzip file").unwrap();
 
-    // With real key, corrupted archives should be rejected
+    // A corrupted (non-archive) input has no embedded signature trailer, so
+    // it surfaces as MissingSignature at the signature layer. Actual archive
+    // corruption is caught downstream at extraction for unsigned archives;
+    // for signed archives, tampering yields Invalid (integration-signing).
     let result = verify_archive_signature(&archive_path, None).unwrap();
-    assert!(matches!(result, VerificationResult::Invalid { .. }));
-    if let VerificationResult::Invalid { reason } = result {
-        // The error message should indicate a verification failure or format issue
-        assert!(
-            reason.contains("Signature verification failed")
-                || reason.contains("magic")
-                || reason.contains("corrupted")
-        );
-    }
+    assert!(
+        matches!(result, VerificationResult::MissingSignature)
+            || matches!(result, VerificationResult::Invalid { .. })
+    );
 }
 
 #[test]
@@ -197,8 +191,9 @@ fn test_verification_with_custom_public_key() {
 
     let result = verify_archive_signature(&archive, Some(&public_key)).unwrap();
 
-    // Should return Invalid because archive is not signed with this key
-    assert!(matches!(result, VerificationResult::Invalid { .. }));
+    // Unsigned archive -> MissingSignature regardless of which key is supplied
+    // (the key is only consulted once a signature is present).
+    assert!(matches!(result, VerificationResult::MissingSignature));
 }
 
 #[test]
@@ -211,10 +206,10 @@ fn test_multiple_verifications_same_archive() {
     let result2 = verify_archive_signature(&archive, None).unwrap();
     let result3 = verify_archive_signature(&archive, None).unwrap();
 
-    // All should return the same result (Invalid for unsigned archive)
-    assert!(matches!(result1, VerificationResult::Invalid { .. }));
-    assert!(matches!(result2, VerificationResult::Invalid { .. }));
-    assert!(matches!(result3, VerificationResult::Invalid { .. }));
+    // All should return the same result (MissingSignature for unsigned archive)
+    assert!(matches!(result1, VerificationResult::MissingSignature));
+    assert!(matches!(result2, VerificationResult::MissingSignature));
+    assert!(matches!(result3, VerificationResult::MissingSignature));
     assert_eq!(result1, result2);
     assert_eq!(result2, result3);
 }

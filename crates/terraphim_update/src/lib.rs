@@ -21,7 +21,7 @@ use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 
 // Re-export the backend types for ergonomic access from binaries, e.g.
 // `terraphim_update::UpdateBackend` rather than `...::manifest::UpdateBackend`.
@@ -285,6 +285,110 @@ impl TerraphimUpdater {
         }
     }
 
+    /// Install the latest version via the R2 manifest backend.
+    ///
+    /// Flow: fetch manifest -> semver compare -> resolve asset URL ->
+    /// download (retry) -> verify zipsign Ed25519 signature -> install to
+    /// `current_exe().parent()`.
+    ///
+    /// # Return contract (drives GitHub fallback)
+    /// - `Ok(Updated)` / `Ok(UpToDate)` — success
+    /// - `Ok(Failed)` — **definitive** failure (signature rejected, version
+    ///   compare error). Caller must NOT fall back: a signature rejection is a
+    ///   security signal, not a transport failure.
+    /// - `Err` — transport/manifest failure (network, parse). Caller SHOULD
+    ///   fall back to the GitHub backend.
+    pub async fn update_r2(&self) -> Result<UpdateStatus> {
+        let cfg = self.config.manifest.clone();
+        let current_version = self.config.current_version.clone();
+        let bin_name = self.config.bin_name.clone();
+        let show_progress = self.config.show_progress;
+
+        let result = tokio::task::spawn_blocking(move || -> Result<UpdateStatus> {
+            // 1. Fetch manifest. Err propagates so the caller can fall back.
+            let release = manifest::fetch_manifest(&cfg)?;
+
+            // 2. Version compare. A parse error here is definitive (Ok(Failed)).
+            let newer = match is_newer_version_static(&release.version, &current_version) {
+                Ok(v) => v,
+                Err(e) => {
+                    return Ok(UpdateStatus::Failed(format!(
+                        "version compare for {bin_name}: {e}"
+                    )));
+                }
+            };
+            if !newer {
+                return Ok(UpdateStatus::UpToDate(current_version));
+            }
+
+            // 3. Resolve the asset URL for the current target triple. An
+            //    absent asset is definitive (the manifest is wrong, not the
+            //    transport) -> Ok(Failed), do not fall back.
+            let asset_url = match manifest::resolve_asset_url(&release, &cfg) {
+                Ok(u) => u,
+                Err(e) => {
+                    return Ok(UpdateStatus::Failed(format!(
+                        "no asset for current target: {e}"
+                    )));
+                }
+            };
+            info!("Downloading {} from R2", asset_url);
+
+            // 4. Download to a temp file with retry/backoff.
+            let temp_archive = NamedTempFile::new()?;
+            let dl_cfg = downloader::DownloadConfig {
+                show_progress,
+                ..Default::default()
+            };
+            if let Err(e) =
+                downloader::download_with_retry(&asset_url, temp_archive.path(), Some(dl_cfg))
+            {
+                // Transport failure -> Err so the caller can fall back.
+                return Err(anyhow!("download failed: {e}"));
+            }
+
+            // 5. Verify the zipsign Ed25519 signature.
+            //    Invalid -> definitive Ok(Failed) (security rejection).
+            //    MissingSignature -> warn + proceed (matches the existing
+            //    GitHub backend posture; full signing rolls out separately).
+            let vr = signature::verify_archive_signature(temp_archive.path(), None)?;
+            match vr {
+                signature::VerificationResult::Valid => {
+                    info!("Signature verification passed for R2 archive");
+                }
+                signature::VerificationResult::MissingSignature => {
+                    warn!(
+                        "No signature in {:?}; proceeding (signing rollout pending)",
+                        temp_archive.path()
+                    );
+                }
+                signature::VerificationResult::Invalid { reason } => {
+                    return Ok(UpdateStatus::Failed(format!(
+                        "signature rejected: {reason}"
+                    )));
+                }
+                signature::VerificationResult::Error(msg) => {
+                    return Ok(UpdateStatus::Failed(format!(
+                        "signature verify error: {msg}"
+                    )));
+                }
+            }
+
+            // 6. Install (extract + chmod) to current_exe().parent().
+            Self::install_verified_archive(temp_archive.path(), &bin_name)?;
+            Ok(UpdateStatus::Updated {
+                from_version: current_version,
+                to_version: release.version,
+            })
+        })
+        .await;
+
+        match result {
+            Ok(update_result) => update_result,
+            Err(e) => Err(anyhow!("R2 update task failed: {e}")),
+        }
+    }
+
     /// Check for an update via the GitHub Releases backend (fallback).
     async fn check_update_github(&self) -> Result<UpdateStatus> {
         info!(
@@ -406,17 +510,18 @@ impl TerraphimUpdater {
 
     /// Update the binary to the latest version.
     ///
-    /// Dispatches by backend. On the R2 backend the install path proper
-    /// arrives in #65 (Step 3); until then it falls back to the GitHub
-    /// backend with a debug log so `terraphim-agent update` keeps working.
+    /// Dispatches by backend. On the R2 backend, a transport/manifest failure
+    /// (`Err`) transparently falls back to the GitHub backend; a definitive
+    /// failure (`Ok(Failed)`, e.g. signature rejection) does **not** fall back.
     pub async fn update(&self) -> Result<UpdateStatus> {
         match self.config.backend {
-            UpdateBackend::R2 => {
-                debug!(
-                    "R2 self-install path lands in #65; falling back to GitHub backend for install"
-                );
-                self.update_github().await
-            }
+            UpdateBackend::R2 => match self.update_r2().await {
+                Ok(status) => Ok(status),
+                Err(e) => {
+                    warn!("R2 update failed ({e}); falling back to GitHub backend");
+                    self.update_github().await
+                }
+            },
             UpdateBackend::GitHub => self.update_github().await,
         }
     }
@@ -1037,15 +1142,50 @@ impl TerraphimUpdater {
         Ok(())
     }
 
-    /// Check for update and install if available with signature verification
+    /// Check for update and install if available with signature verification.
+    ///
+    /// Dispatches by backend. The R2 path checks the manifest, then installs
+    /// via `update_r2()` with automatic GitHub fallback on transport failure.
     pub async fn check_and_update(&self) -> Result<UpdateStatus> {
-        match self.check_update().await? {
+        match self.config.backend {
+            UpdateBackend::R2 => self.check_and_update_r2().await,
+            UpdateBackend::GitHub => self.check_and_update_github().await,
+        }
+    }
+
+    /// `check_and_update` for the R2 backend: manifest check then R2 install
+    /// with GitHub fallback on transport failure.
+    async fn check_and_update_r2(&self) -> Result<UpdateStatus> {
+        match self.check_update_r2().await? {
             UpdateStatus::Available {
                 current_version,
                 latest_version,
             } => {
                 info!(
-                    "Update available: {} → {}, installing...",
+                    "Update available: {} -> {}, installing...",
+                    current_version, latest_version
+                );
+                match self.update_r2().await {
+                    Ok(status) => Ok(status),
+                    Err(e) => {
+                        warn!("R2 install failed ({e}); falling back to GitHub backend");
+                        self.update_github().await
+                    }
+                }
+            }
+            status => Ok(status),
+        }
+    }
+
+    /// `check_and_update` for the GitHub backend (pre-existing behaviour).
+    async fn check_and_update_github(&self) -> Result<UpdateStatus> {
+        match self.check_update_github().await? {
+            UpdateStatus::Available {
+                current_version,
+                latest_version,
+            } => {
+                info!(
+                    "Update available: {} -> {}, installing...",
                     current_version, latest_version
                 );
                 self.update_with_verification().await

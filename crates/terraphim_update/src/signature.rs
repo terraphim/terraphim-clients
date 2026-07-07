@@ -181,10 +181,27 @@ pub fn verify_archive_signature(
             Ok(VerificationResult::Valid)
         }
         Err(e) => {
-            warn!("Signature verification failed: {}", e);
-            Ok(VerificationResult::Invalid {
-                reason: format!("Signature verification failed: {}", e),
-            })
+            // Distinguish "no signature present" from "signature present but
+            // invalid". zipsign's VerifyTarError::FindDataStartAndLen carries
+            // the stable message below when the archive has no embedded
+            // signature trailer (i.e. an unsigned archive). That maps to
+            // MissingSignature so callers can apply their documented
+            // warn-and-proceed posture for the signing rollout period. Any
+            // other failure (NoMatch = tampered / wrong key, Read = I/O) is a
+            // hard Invalid rejection.
+            let msg = e.to_string();
+            if msg.contains("could not find read signatures") {
+                info!(
+                    "No embedded signature in {:?} (unsigned archive)",
+                    archive_path
+                );
+                Ok(VerificationResult::MissingSignature)
+            } else {
+                warn!("Signature verification failed: {}", msg);
+                Ok(VerificationResult::Invalid {
+                    reason: format!("Signature verification failed: {msg}"),
+                })
+            }
         }
     }
 }
@@ -338,15 +355,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_real_key_rejects_unsigned_file() {
-        // With real public key, unsigned files should be rejected
+    fn test_real_key_reports_missing_signature_for_unsigned_file() {
+        // An unsigned input (no embedded signature trailer) is reported as
+        // MissingSignature, NOT Invalid. This lets callers apply their
+        // documented warn-and-proceed posture during the signing rollout.
+        // A tampered signed archive (signature present but no key matches) is
+        // what yields Invalid -- covered by integration-signing tests.
         let temp_file = tempfile::NamedTempFile::new().unwrap();
 
         // Create a simple test file (not a signed archive)
         let result = verify_archive_signature(temp_file.path(), None).unwrap();
 
-        // Real key rejects unsigned files
-        assert!(matches!(result, VerificationResult::Invalid { .. }));
+        // Unsigned / non-archive -> MissingSignature.
+        assert!(matches!(result, VerificationResult::MissingSignature));
     }
 
     #[test]
@@ -436,8 +457,8 @@ mod tests {
 
         let result = verify_signature_detailed(temp_file.path(), None).unwrap();
 
-        // Real key rejects unsigned files
-        assert!(matches!(result, VerificationResult::Invalid { .. }));
+        // Unsigned / non-archive -> MissingSignature (see note above).
+        assert!(matches!(result, VerificationResult::MissingSignature));
     }
 
     #[test]
@@ -460,8 +481,8 @@ mod tests {
             verify_with_self_update("terraphim", "1.0.0", temp_file.path(), Some(test_key))
                 .unwrap();
 
-        // Unsigned file should be rejected with Invalid result
-        assert!(matches!(result, VerificationResult::Invalid { .. }));
+        // Unsigned file -> MissingSignature (not Invalid).
+        assert!(matches!(result, VerificationResult::MissingSignature));
     }
 
     #[test]
