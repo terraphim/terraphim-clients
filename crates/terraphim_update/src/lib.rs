@@ -314,7 +314,7 @@ impl TerraphimUpdater {
                 Err(e) => {
                     return Ok(UpdateStatus::Failed(format!(
                         "version compare for {bin_name}: {e}"
-                    )));
+                    )))
                 }
             };
             if !newer {
@@ -329,7 +329,7 @@ impl TerraphimUpdater {
                 Err(e) => {
                     return Ok(UpdateStatus::Failed(format!(
                         "no asset for current target: {e}"
-                    )));
+                    )))
                 }
             };
             info!("Downloading {} from R2", asset_url);
@@ -374,8 +374,10 @@ impl TerraphimUpdater {
                 }
             }
 
-            // 6. Install (extract + chmod) to current_exe().parent().
-            Self::install_verified_archive(temp_archive.path(), &bin_name)?;
+            // 6. Install (extract + chmod + atomic rename) to current_exe().parent().
+            if let Err(e) = Self::install_verified_archive(temp_archive.path(), &bin_name) {
+                return Err(anyhow!("install failed: {e}"));
+            }
             Ok(UpdateStatus::Updated {
                 from_version: current_version,
                 to_version: release.version,
@@ -1010,55 +1012,86 @@ impl TerraphimUpdater {
 
         info!("Installing to directory: {:?}", install_dir);
 
-        // Check if the downloaded file is an archive or a raw binary
+        // Stage the extraction into a temp dir *inside* install_dir so the
+        // final move is a same-filesystem `rename(2)`: atomic, and able to
+        // replace a binary that is currently executing. (Directly overwriting
+        // the running exe fails with ETXTBSY on Linux.)
+        let staging = tempfile::tempdir_in(install_dir).or_else(|_| tempfile::tempdir())?;
+        let staging_path = staging.path();
+
+        // Detect whether the downloaded file is an archive or a raw binary.
         let file_magic = std::fs::File::open(archive_path)?;
         let first_bytes = Self::read_file_magic(&file_magic)?;
 
-        // Check file magic to determine if it's an archive or raw binary
         if Self::is_archive(&first_bytes) {
             info!("Detected archive format, extracting...");
-            // Extract and install using self_update's extract functionality
             if cfg!(windows) {
-                // Windows: extract ZIP
-                Self::extract_zip(archive_path, install_dir)?;
+                Self::extract_zip(archive_path, staging_path)?;
             } else {
-                // Unix: extract tar.gz
-                Self::extract_tarball(archive_path, install_dir, bin_name)?;
+                Self::extract_tarball(archive_path, staging_path, bin_name)?;
             }
         } else {
             info!("Detected raw binary, copying directly...");
-            // It's a raw binary, just copy it to the install location
             let normalized_bin_name = bin_name.replace('_', "-");
-            let target_path = install_dir.join(&normalized_bin_name);
-
-            info!("Copying binary to {:?}", target_path);
-            std::fs::copy(archive_path, &target_path)?;
-
-            // Also try the original bin_name in case the release uses underscores
+            std::fs::copy(archive_path, staging_path.join(&normalized_bin_name))?;
             if normalized_bin_name != bin_name {
-                let alt_path = install_dir.join(bin_name);
-                if !alt_path.exists() {
-                    std::fs::copy(archive_path, &alt_path)?;
-                    info!("Also copied to {:?}", alt_path);
-                }
+                std::fs::copy(archive_path, staging_path.join(bin_name))?;
             }
         }
 
-        // Make executable on Unix
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            for name in &[bin_name, &bin_name.replace('_', "-")] {
-                let bin_path = install_dir.join(name);
-                if bin_path.exists() {
-                    let mut perms = fs::metadata(&bin_path)?.permissions();
-                    perms.set_mode(0o755);
-                    fs::set_permissions(&bin_path, perms)?;
-                    info!("Made executable: {:?}", bin_path);
-                }
-            }
-        }
+        // Atomically rename each staged binary over its destination.
+        Self::promote_staged_binaries(staging_path, install_dir, bin_name)?;
 
+        Ok(())
+    }
+
+    /// Move staged binaries from `staging` into `install_dir` via atomic
+    /// `rename`, handling the "replace currently-running executable" case.
+    #[cfg(unix)]
+    fn promote_staged_binaries(
+        staging: &Path,
+        install_dir: &Path,
+        bin_name: &str,
+    ) -> Result<()> {
+        use std::os::unix::fs::PermissionsExt;
+        for name in [bin_name.to_string(), bin_name.replace('_', "-")] {
+            let staged = staging.join(&name);
+            if !staged.exists() {
+                continue;
+            }
+            // chmod 0755 before promoting.
+            let mut perms = fs::metadata(&staged)?.permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&staged, perms)?;
+            let dst = install_dir.join(&name);
+            std::fs::rename(&staged, &dst)
+                .map_err(|e| anyhow!("rename {staged:?} -> {dst:?} failed: {e}"))?;
+            info!("Installed (atomic rename): {:?}", dst);
+        }
+        Ok(())
+    }
+
+    /// Windows variant: rename fails if the destination exists, so remove-then
+    /// -rename, falling back to copy+delete.
+    #[cfg(not(unix))]
+    fn promote_staged_binaries(
+        staging: &Path,
+        install_dir: &Path,
+        bin_name: &str,
+    ) -> Result<()> {
+        for name in [bin_name.to_string(), bin_name.replace('_', "-")] {
+            let staged = staging.join(&name);
+            if !staged.exists() {
+                continue;
+            }
+            let dst = install_dir.join(&name);
+            let _ = std::fs::remove_file(&dst);
+            std::fs::rename(&staged, &dst).or_else(|_| {
+                std::fs::copy(&staged, &dst)?;
+                std::fs::remove_file(&staged)
+            })?;
+            info!("Installed: {:?}", dst);
+        }
         Ok(())
     }
 
