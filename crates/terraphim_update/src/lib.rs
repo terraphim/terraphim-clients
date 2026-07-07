@@ -5,6 +5,7 @@
 
 pub mod config;
 pub mod downloader;
+pub mod manifest;
 pub mod notification;
 pub mod platform;
 pub mod rollback;
