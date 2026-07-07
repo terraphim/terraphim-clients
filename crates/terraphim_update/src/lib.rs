@@ -314,7 +314,7 @@ impl TerraphimUpdater {
                 Err(e) => {
                     return Ok(UpdateStatus::Failed(format!(
                         "version compare for {bin_name}: {e}"
-                    )))
+                    )));
                 }
             };
             if !newer {
@@ -329,7 +329,7 @@ impl TerraphimUpdater {
                 Err(e) => {
                     return Ok(UpdateStatus::Failed(format!(
                         "no asset for current target: {e}"
-                    )))
+                    )));
                 }
             };
             info!("Downloading {} from R2", asset_url);
@@ -543,20 +543,28 @@ impl TerraphimUpdater {
         let show_progress = self.config.show_progress;
         let auth_token = self.config.auth_token.clone();
 
-        // Decode the embedded public key for signature verification
-        let key_bytes = base64::engine::general_purpose::STANDARD
-            .decode(signature::get_embedded_public_key())
-            .context("Failed to decode public key")?;
-
-        // Convert to array (must be exactly 32 bytes for Ed25519)
-        if key_bytes.len() != 32 {
+        // Decode every trusted embedded public key for signature verification
+        // (key-rotation aware: an archive signed with any trusted key passes).
+        let mut verifying_keys: Vec<[u8; 32]> = Vec::new();
+        for key_str in signature::get_embedded_public_keys() {
+            let key_bytes = base64::engine::general_purpose::STANDARD
+                .decode(key_str)
+                .context("Failed to decode public key base64")?;
+            if key_bytes.len() != 32 {
+                return Err(anyhow!(
+                    "Invalid public key length: {} bytes (expected 32)",
+                    key_bytes.len()
+                ));
+            }
+            let mut key_array = [0u8; 32];
+            key_array.copy_from_slice(&key_bytes);
+            verifying_keys.push(key_array);
+        }
+        if verifying_keys.is_empty() {
             return Err(anyhow!(
-                "Invalid public key length: {} bytes (expected 32)",
-                key_bytes.len()
+                "No trusted public keys configured for verification"
             ));
         }
-        let mut key_array = [0u8; 32];
-        key_array.copy_from_slice(&key_bytes);
 
         // Move self_update operations to a blocking task to avoid runtime conflicts
         let result = tokio::task::spawn_blocking(move || {
@@ -570,7 +578,7 @@ impl TerraphimUpdater {
             builder.bin_name(&bin_name_for_asset); // Use hyphenated name for asset lookup
             builder.current_version(&current_version);
             builder.show_download_progress(show_progress);
-            builder.verifying_keys(vec![key_array]); // Enable signature verification
+            builder.verifying_keys(verifying_keys.clone()); // Enable signature verification
             if let Some(token) = &auth_token {
                 builder.auth_token(token);
             }
@@ -1048,11 +1056,7 @@ impl TerraphimUpdater {
     /// Move staged binaries from `staging` into `install_dir` via atomic
     /// `rename`, handling the "replace currently-running executable" case.
     #[cfg(unix)]
-    fn promote_staged_binaries(
-        staging: &Path,
-        install_dir: &Path,
-        bin_name: &str,
-    ) -> Result<()> {
+    fn promote_staged_binaries(staging: &Path, install_dir: &Path, bin_name: &str) -> Result<()> {
         use std::os::unix::fs::PermissionsExt;
         for name in [bin_name.to_string(), bin_name.replace('_', "-")] {
             let staged = staging.join(&name);
@@ -1074,11 +1078,7 @@ impl TerraphimUpdater {
     /// Windows variant: rename fails if the destination exists, so remove-then
     /// -rename, falling back to copy+delete.
     #[cfg(not(unix))]
-    fn promote_staged_binaries(
-        staging: &Path,
-        install_dir: &Path,
-        bin_name: &str,
-    ) -> Result<()> {
+    fn promote_staged_binaries(staging: &Path, install_dir: &Path, bin_name: &str) -> Result<()> {
         for name in [bin_name.to_string(), bin_name.replace('_', "-")] {
             let staged = staging.join(&name);
             if !staged.exists() {

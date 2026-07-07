@@ -76,6 +76,15 @@ jobs:
         if: matrix.target != 'x86_64-unknown-linux-gnu'
         with:
           key: clients-${{ matrix.target }}
+      - name: Set release version (#67 — binaries must report the tag version)
+        shell: bash
+        run: |
+          # Bump the workspace version to the release input so CARGO_PKG_VERSION
+          # baked into the binaries matches the git tag. Not committed to main
+          # (the bump lives only in this CI checkout, like the tag itself).
+          sed -i 's/^version = ".*"/version = "${{ inputs.version }}"/' Cargo.toml
+          grep -n '^version =' Cargo.toml
+          cargo metadata --no-deps --format-version 1 >/dev/null
       - name: Build client binaries
         shell: bash
         run: |
@@ -178,7 +187,7 @@ jobs:
           path: universal/*
 
   upload-to-target-release:
-    name: Attach client binaries to terraphim-ai release
+    name: Sign + attach to GitHub release + publish to R2
     needs: [build-binaries, sign-and-notarize-macos]
     # Attach when macOS sign succeeded; do not require full matrix (Windows is optional).
     if: >-
@@ -188,11 +197,22 @@ jobs:
       needs.build-binaries.result != 'cancelled'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           pattern: client-binaries*
           path: release-assets
           merge-multiple: true
+      - name: Install zipsign
+        run: cargo install zipsign --locked
+      - name: Sign .tar.gz archives (Ed25519, fail-closed)
+        env:
+          ZIPSIGN_PRIVATE_KEY: ${{ secrets.ZIPSIGN_PRIVATE_KEY }}
+        run: |
+          if [ -z "$ZIPSIGN_PRIVATE_KEY" ]; then
+            echo "ERROR: ZIPSIGN_PRIVATE_KEY secret not set" >&2; exit 2
+          fi
+          scripts/sign-release-archives.sh release-assets
       - name: Upload to target GitHub release
         env:
           GH_TOKEN: ${{ secrets.TERRAPHIM_AI_RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
@@ -201,3 +221,35 @@ jobs:
           REPO="terraphim/${{ inputs.target_repo }}"
           find release-assets -type f | sort
           gh release upload "$TAG" release-assets/* --repo "$REPO" --clobber
+      - name: Publish signed artifacts + manifest to R2 (#68)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "WARN: CLOUDFLARE_API_TOKEN not set; skipping R2 publish" >&2; exit 0
+          fi
+          # Upload each signed archive to r2://terraphim-releases/<bin>/<filename>.
+          # (--remote is required: without it wrangler writes to local worker storage
+          # and the object is invisible via the downloads.terraphim.ai custom domain.)
+          for f in release-assets/*.tar.gz; do
+            base="$(basename "$f")"
+            # asset filename pattern: <bin>-<version>-<target>.tar.gz
+            bin="${base%%-$VERSION-*}"
+            bunx wrangler r2 object put "terraphim-releases/${bin}/${base}" --file "$f" --remote
+          done
+          # Publish manifests LAST (atomicity: never point at a missing asset).
+          # One manifest per binary that appears in release-assets.
+          bins="$(ls -1 release-assets/*.tar.gz | sed -E "s/-${VERSION}-.*//" | sort -u)"
+          for bin in $bins; do
+            scripts/build-manifest.sh "$VERSION" "$bin" release-assets > "/tmp/${bin}.stable.json"
+            bunx wrangler r2 object put "terraphim-releases/${bin}/stable.json" \
+              --file "/tmp/${bin}.stable.json" --content-type application/json --remote
+          done
+          # Fail-closed: every published URL must be fetchable.
+          for bin in $bins; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "https://downloads.terraphim.ai/${bin}/stable.json")
+            [ "$code" = "200" ] || { echo "manifest $bin returned $code" >&2; exit 1; }
+          done
+          echo "R2 publish complete; manifests live at https://downloads.terraphim.ai/<bin>/stable.json"
