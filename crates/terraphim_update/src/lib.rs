@@ -334,22 +334,30 @@ impl TerraphimUpdater {
             };
             info!("Downloading {} from R2", asset_url);
 
-            // 4. Download to a temp file with retry/backoff.
-            let temp_archive = NamedTempFile::new()?;
+            // 4. Download to a temp file named after the original asset so
+            //    zipsign's filename-based context matches what was used at
+            //    sign time (a random NamedTempFile name would never match).
+            let filename = asset_url
+                .rsplit_once('/')
+                .map(|(_, name)| name)
+                .filter(|n| !n.is_empty())
+                .unwrap_or("archive.tar.gz");
+            let staging_dir = tempfile::tempdir()?;
+            let archive_path = staging_dir.path().join(filename);
             let dl_cfg = downloader::DownloadConfig {
                 show_progress,
                 ..Default::default()
             };
             if let Err(e) =
-                downloader::download_with_retry(&asset_url, temp_archive.path(), Some(dl_cfg))
+                downloader::download_with_retry(&asset_url, &archive_path, Some(dl_cfg))
             {
                 // Transport failure -> Err so the caller can fall back.
                 return Err(anyhow!("download failed: {e}"));
             }
 
-            // 5. Verify the zipsign Ed25519 signature.  MissingSignature
-            //    is now a hard rejection — all releases are signed.
-            let vr = signature::verify_archive_signature(temp_archive.path(), None)?;
+            // 5. Verify the zipsign Ed25519 signature using the named path
+            //    (context = archive filename, matching sign time).
+            let vr = signature::verify_archive_signature(&archive_path, None)?;
             match vr {
                 signature::VerificationResult::Valid => {
                     info!("Signature verification passed for R2 archive");
@@ -372,7 +380,7 @@ impl TerraphimUpdater {
             }
 
             // 6. Install (extract + chmod + atomic rename) to current_exe().parent().
-            if let Err(e) = Self::install_verified_archive(temp_archive.path(), &bin_name) {
+            if let Err(e) = Self::install_verified_archive(&archive_path, &bin_name) {
                 return Err(anyhow!("install failed: {e}"));
             }
             Ok(UpdateStatus::Updated {

@@ -159,7 +159,11 @@ pub fn verify_archive_signature(
     let archive_bytes = fs::read(archive_path).context("Failed to read archive file")?;
 
     // Get the context (file name) for signature verification.
-    // zipsign uses the file name as context/salt by default.
+    // zipsign uses the file name as context/salt for signing. The archive
+    // must be stored with its original published filename so the context
+    // matches what was used at sign time (callers must ensure this — e.g.
+    // update_r2 names the temp download after the asset, not a random
+    // NamedTempFile path).
     let context: Option<Vec<u8>> = archive_path
         .file_name()
         .map(|n| n.to_string_lossy().as_bytes().to_vec());
