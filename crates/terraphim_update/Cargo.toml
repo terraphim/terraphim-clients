@@ -47,6 +47,7 @@ tempfile = { workspace = true }
 serial_test = "3.3"
 flate2 = "1.1"
 tar = "0.4"
+base64 = "0.22"
 
 [features]
 # Feature to enable integration tests that require actual signing (slow, requires signing keys)

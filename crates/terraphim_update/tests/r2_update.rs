@@ -4,6 +4,7 @@
 //! All HTTP is served by a real local `std::net` server (no mocks). Archives
 //! are real tar.gz files built in-test via flate2 + tar.
 
+use base64::Engine;
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::thread;
@@ -139,31 +140,15 @@ async fn test_update_r2_installs_from_local_server() {
     let _ = std::fs::remove_file(&target_path); // clean pre-existing
 
     let status = updater.update_r2().await.expect("update_r2 should succeed");
-    match status {
-        UpdateStatus::Updated {
-            from_version,
-            to_version,
-        } => {
-            assert_eq!(from_version, "1.0.0");
-            assert_eq!(to_version, "2.0.0");
-        }
-        other => panic!("expected Updated, got {other:?}"),
-    }
-    // The binary must have been installed and made executable.
+    // Unsigned archive is now rejected — MissingSignature is a hard fail.
     assert!(
-        target_path.exists(),
-        "binary not installed at {target_path:?}"
+        matches!(status, UpdateStatus::Failed(_)),
+        "unsigned archive should be Failed, got {status:?}"
     );
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mode = std::fs::metadata(&target_path)
-            .unwrap()
-            .permissions()
-            .mode();
-        assert!(mode & 0o111 != 0, "binary not executable (mode={mode:o})");
-    }
-    std::fs::remove_file(&target_path).ok();
+    assert!(
+        !target_path.exists(),
+        "rejected binary must not be installed"
+    );
 }
 
 #[tokio::test]
@@ -255,4 +240,82 @@ fn test_check_and_update_dispatches_by_backend() {
     let cfg = UpdaterConfig::new("terraphim-test");
     assert_eq!(cfg.manifest.bin_name, "terraphim-test");
     let _ = ManifestConfig::new("terraphim-test");
+}
+
+#[test]
+fn test_signed_archive_verifies_via_explicit_key() {
+    use terraphim_update::signature::{VerificationResult, verify_archive_signature};
+
+    let dir = tempfile::tempdir().unwrap();
+    let archive = dir.path().join("signed.tar.gz");
+    let priv_key = dir.path().join("priv.key");
+    let pub_key = dir.path().join("pub.key");
+
+    // Generate a throwaway Ed25519 keypair.
+    let keygen = std::process::Command::new("zipsign")
+        .args([
+            "gen-key",
+            priv_key.to_str().unwrap(),
+            pub_key.to_str().unwrap(),
+        ])
+        .output()
+        .expect("zipsign gen-key");
+    assert!(
+        keygen.status.success(),
+        "zipsign gen-key failed: {}",
+        String::from_utf8_lossy(&keygen.stderr)
+    );
+
+    // Build a tiny tar.gz.
+    {
+        use flate2::Compression;
+        use flate2::write::GzEncoder;
+        use std::io::Write;
+        let mut tar_buf = std::io::Cursor::new(Vec::new());
+        {
+            let mut tar = tar::Builder::new(&mut tar_buf);
+            let mut hdr = tar::Header::new_gnu();
+            hdr.set_size(3);
+            hdr.set_mode(0o644);
+            hdr.set_cksum();
+            tar.append_data(&mut hdr, "exe", std::io::Cursor::new(b"abc".to_vec()))
+                .unwrap();
+            tar.finish().unwrap();
+        }
+        let mut enc = GzEncoder::new(
+            std::fs::File::create(&archive).unwrap(),
+            Compression::default(),
+        );
+        enc.write_all(&tar_buf.into_inner()).unwrap();
+        enc.finish().unwrap();
+    }
+
+    // Sign with the throwaway private key.
+    let sign = std::process::Command::new("zipsign")
+        .args([
+            "sign",
+            "tar",
+            archive.to_str().unwrap(),
+            priv_key.to_str().unwrap(),
+        ])
+        .output()
+        .expect("zipsign sign");
+    assert!(
+        sign.status.success(),
+        "zipsign sign failed: {}",
+        String::from_utf8_lossy(&sign.stderr)
+    );
+
+    // Read the public key as base64 and verify.
+    let pub_b64: String = {
+        let raw = std::fs::read(&pub_key).expect("read pub.key");
+        base64::engine::general_purpose::STANDARD.encode(raw)
+    };
+    let result = verify_archive_signature(&archive, Some(&pub_b64))
+        .expect("verify_archive_signature should not Err");
+
+    assert!(
+        matches!(result, VerificationResult::Valid),
+        "signed archive must verify with its own key, got {result:?}"
+    );
 }

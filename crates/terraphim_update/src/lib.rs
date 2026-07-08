@@ -347,20 +347,17 @@ impl TerraphimUpdater {
                 return Err(anyhow!("download failed: {e}"));
             }
 
-            // 5. Verify the zipsign Ed25519 signature.
-            //    Invalid -> definitive Ok(Failed) (security rejection).
-            //    MissingSignature -> warn + proceed (matches the existing
-            //    GitHub backend posture; full signing rolls out separately).
+            // 5. Verify the zipsign Ed25519 signature.  MissingSignature
+            //    is now a hard rejection — all releases are signed.
             let vr = signature::verify_archive_signature(temp_archive.path(), None)?;
             match vr {
                 signature::VerificationResult::Valid => {
                     info!("Signature verification passed for R2 archive");
                 }
                 signature::VerificationResult::MissingSignature => {
-                    warn!(
-                        "No signature in {:?}; proceeding (signing rollout pending)",
-                        temp_archive.path()
-                    );
+                    return Ok(UpdateStatus::Failed(
+                        "unsigned archive rejected — all releases are signed".to_string(),
+                    ));
                 }
                 signature::VerificationResult::Invalid { reason } => {
                     return Ok(UpdateStatus::Failed(format!(
@@ -793,10 +790,9 @@ impl TerraphimUpdater {
                 return Ok(UpdateStatus::Failed(error_msg));
             }
             crate::signature::VerificationResult::MissingSignature => {
-                warn!(
-                    "No signature found in archive - proceeding without verification. \
-                       Archives will be signed in a future release."
-                );
+                return Ok(UpdateStatus::Failed(
+                    "unsigned archive rejected — all releases are signed".to_string(),
+                ));
             }
             crate::signature::VerificationResult::Error(msg) => {
                 let error_msg = format!("Verification error: {}", msg);
