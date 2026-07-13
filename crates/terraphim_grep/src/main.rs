@@ -7,6 +7,8 @@ use terraphim_automata::AutomataPath;
 use terraphim_grep::{
     GrepOptions, GrepResult, Haystack, HybridSearcher, SufficiencyJudge, TerraphimGrep,
 };
+#[cfg(feature = "llm")]
+use terraphim_grep::openrouter_client;
 use terraphim_types::Thesaurus;
 use terraphim_update::{TerraphimUpdater, UpdaterConfig};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
@@ -318,6 +320,24 @@ fn build_llm_for_role(
                     }
                 }
             }
+
+            // Prefer a long-timeout OpenRouter client built directly in grep so
+            // slow LLM providers do not hit the shared 10-second API timeout.
+            if let Some(key) = std::env::var("OPENROUTER_API_KEY")
+                .ok()
+                .filter(|s| !s.is_empty())
+            {
+                let model = std::env::var("OPENROUTER_MODEL")
+                    .unwrap_or_else(|_| "qwen/qwen3-coder:free".to_string());
+                match openrouter_client::OpenRouterClient::new(&key, &model) {
+                    Ok(client) => return Some(openrouter_client::into_llm_client(client)),
+                    Err(e) => {
+                        tracing::warn!("Failed to build OpenRouter client: {}", e);
+                        return None;
+                    }
+                }
+            }
+
             role_from_env(role_name)?
         }
     };

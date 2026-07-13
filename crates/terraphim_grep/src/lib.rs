@@ -23,6 +23,8 @@
 pub mod error;
 pub mod hybrid_searcher;
 pub mod kg_curation;
+#[cfg(feature = "llm")]
+pub mod openrouter_client;
 pub mod rlm_context;
 pub mod signatures;
 pub mod sufficiency_judge;
