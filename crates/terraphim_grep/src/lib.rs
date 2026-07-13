@@ -191,17 +191,19 @@ impl TerraphimGrep {
 
         let prompt = ctx.build_prompt();
 
+        let task_instruction = if options.include_answer {
+            format!(
+                "{}\n\nSynthesise an answer based on the context above.",
+                signatures::AnswerSignature {}.instructions()
+            )
+        } else {
+            "List the relevant findings.\n\nProvide a brief answer based on the context above."
+                .to_string()
+        };
+
         let messages = vec![serde_json::json!({
             "role": "user",
-            "content": format!(
-                "{}\n\n{}\n\nProvide a brief answer based on the context above.",
-                prompt,
-                if options.include_answer {
-                    "Synthesise an answer."
-                } else {
-                    "List the relevant findings."
-                }
-            )
+            "content": format!("{}\n\n{}", prompt, task_instruction)
         })];
 
         let llm_response = if let Some(ref client) = self.llm_client {

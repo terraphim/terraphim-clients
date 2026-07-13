@@ -2,6 +2,65 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::TerraphimGrepError;
 
+/// Extract a JSON object or array from a raw LLM response.
+///
+/// Handles two common failure modes:
+/// 1. Markdown code fences (` ```json ... ``` `).
+/// 2. Prose surrounding the JSON payload.
+fn extract_json(raw: &str) -> String {
+    let trimmed = raw.trim();
+
+    // 1. Strip markdown fences if present.
+    if let Some(start) = trimmed.find("```json") {
+        let block = &trimmed[start + 7..];
+        if let Some(end) = block.find("```") {
+            return block[..end].trim().to_string();
+        }
+    }
+    if let Some(start) = trimmed.find("```") {
+        let block = &trimmed[start + 3..];
+        if let Some(end) = block.find("```") {
+            return block[..end].trim().to_string();
+        }
+    }
+
+    // 2. Find the first top-level { or [ and its matching close.
+    if let Some(start) = trimmed.find(['{', '[']) {
+        let bytes = trimmed.as_bytes();
+        let open = bytes[start];
+        let close = if open == b'{' { b'}' } else { b']' };
+        let mut depth: usize = 0;
+        let mut in_string = false;
+        let mut escape = false;
+        for i in start..bytes.len() {
+            let c = bytes[i];
+            if in_string {
+                if escape {
+                    escape = false;
+                } else if c == b'\\' {
+                    escape = true;
+                } else if c == b'"' {
+                    in_string = false;
+                }
+                continue;
+            }
+            match c {
+                b'"' => in_string = true,
+                c if c == open => depth += 1,
+                c if c == close => {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 {
+                        return trimmed[start..=i].to_string();
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    trimmed.to_string()
+}
+
 pub trait RlmSignature: Send + Sync {
     type Output: serde::Serialize + serde::de::DeserializeOwned;
 
@@ -29,7 +88,8 @@ impl RlmSignature for SearchResultSignature {
     }
 
     fn parse(&self, raw: &str) -> Result<Self::Output, TerraphimGrepError> {
-        serde_json::from_str(raw).map_err(|e| {
+        let json_str = extract_json(raw);
+        serde_json::from_str(&json_str).map_err(|e| {
             TerraphimGrepError::RlmFailed(format!("failed to parse search results: {}", e))
         })
     }
@@ -64,7 +124,8 @@ impl RlmSignature for AnswerSignature {
     }
 
     fn parse(&self, raw: &str) -> Result<Self::Output, TerraphimGrepError> {
-        serde_json::from_str(raw)
+        let json_str = extract_json(raw);
+        serde_json::from_str(&json_str)
             .map_err(|e| TerraphimGrepError::RlmFailed(format!("failed to parse answer: {}", e)))
     }
 }
@@ -93,7 +154,8 @@ Return a JSON array of objects with:
     }
 
     fn parse(&self, raw: &str) -> Result<Self::Output, TerraphimGrepError> {
-        serde_json::from_str(raw)
+        let json_str = extract_json(raw);
+        serde_json::from_str(&json_str)
             .map_err(|e| TerraphimGrepError::RlmFailed(format!("failed to parse concepts: {}", e)))
     }
 }
@@ -101,6 +163,37 @@ Return a JSON array of objects with:
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_extract_json_strips_markdown_fences() {
+        let raw = r#"Here is the answer:
+```json
+{
+  "answer": "Retry is configured in src/main.rs",
+  "citations": [],
+  "confidence": 0.95
+}
+```
+Hope that helps!"#;
+        let extracted = extract_json(raw);
+        assert!(extracted.starts_with('{'));
+        assert!(extracted.ends_with('}'));
+        assert!(!extracted.contains("```"));
+    }
+
+    #[test]
+    fn test_extract_json_finds_bare_json_in_prose() {
+        let raw = r#"Sure, here is the result:
+{
+  "answer": "It works",
+  "citations": [{"source": "src/main.rs", "line": 1, "excerpt": "fn main()"}],
+  "confidence": 0.9
+}
+Let me know if you need more."#;
+        let extracted = extract_json(raw);
+        assert!(extracted.starts_with('{'));
+        assert!(extracted.ends_with('}'));
+    }
 
     #[test]
     fn test_search_result_signature_parse() {
@@ -134,6 +227,31 @@ mod tests {
 
         let result = signature.parse(raw);
         assert!(result.is_ok());
+        let answer = result.unwrap();
+        assert!(answer.answer.contains("Retry"));
+        assert_eq!(answer.citations.len(), 1);
+        assert!((answer.confidence - 0.95).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_answer_signature_parse_markdown_wrapped() {
+        let signature = AnswerSignature {};
+        let raw = r#"## Synthesised Answer
+
+The retry policy is configured in `src/main.rs`.
+
+```json
+{
+  "answer": "Retry is configured in src/main.rs",
+  "citations": [
+    {"source": "src/main.rs", "line": 42, "excerpt": "pub retry_policy"}
+  ],
+  "confidence": 0.95
+}
+```"#;
+
+        let result = signature.parse(raw);
+        assert!(result.is_ok(), "parse failed: {:?}", result.as_ref().err());
         let answer = result.unwrap();
         assert!(answer.answer.contains("Retry"));
         assert_eq!(answer.citations.len(), 1);
