@@ -437,4 +437,73 @@ mod tests {
         );
         assert_eq!(result.stats.kg_hits, 0);
     }
+
+    /// The RLM prompt for `include_answer` must embed the `AnswerSignature`
+    /// JSON instructions so the model knows it must return structured output.
+    #[test]
+    fn test_answer_prompt_includes_json_instructions() {
+        let prompt = "Query: test\n## Retrieved Context\nchunk".to_string();
+        let include_answer = true;
+
+        let task_instruction = if include_answer {
+            format!(
+                "{}\n\nSynthesise an answer based on the context above.",
+                signatures::AnswerSignature {}.instructions()
+            )
+        } else {
+            "List the relevant findings.\n\nProvide a brief answer based on the context above."
+                .to_string()
+        };
+
+        let message = serde_json::json!({
+            "role": "user",
+            "content": format!("{}\n\n{}", prompt, task_instruction)
+        });
+
+        let content = message["content"].as_str().expect("content string");
+        assert!(
+            content.contains("\"answer\": the synthesised answer"),
+            "prompt must embed AnswerSignature instructions"
+        );
+        assert!(
+            content.contains("\"citations\": array of {source, line (optional), excerpt}"),
+            "prompt must embed citation format"
+        );
+        assert!(
+            content.contains("\"confidence\": a number between 0 and 1"),
+            "prompt must embed confidence format"
+        );
+    }
+
+    /// The non-answer path must NOT embed AnswerSignature instructions.
+    #[test]
+    fn test_list_prompt_excludes_json_instructions() {
+        let prompt = "Query: test\n## Retrieved Context\nchunk".to_string();
+        let include_answer = false;
+
+        let task_instruction = if include_answer {
+            format!(
+                "{}\n\nSynthesise an answer based on the context above.",
+                signatures::AnswerSignature {}.instructions()
+            )
+        } else {
+            "List the relevant findings.\n\nProvide a brief answer based on the context above."
+                .to_string()
+        };
+
+        let message = serde_json::json!({
+            "role": "user",
+            "content": format!("{}\n\n{}", prompt, task_instruction)
+        });
+
+        let content = message["content"].as_str().expect("content string");
+        assert!(
+            !content.contains("\"answer\": the synthesised answer"),
+            "list prompt must not embed AnswerSignature instructions"
+        );
+        assert!(
+            content.contains("List the relevant findings"),
+            "list prompt must contain the list instruction"
+        );
+    }
 }

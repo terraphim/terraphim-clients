@@ -196,6 +196,66 @@ Let me know if you need more."#;
     }
 
     #[test]
+    fn test_extract_json_strips_generic_markdown_fence() {
+        let raw = r#"Result:
+```
+{
+  "answer": "It works",
+  "citations": [],
+  "confidence": 0.9
+}
+```
+Done."#;
+        let extracted = extract_json(raw);
+        assert!(extracted.starts_with('{'));
+        assert!(extracted.ends_with('}'));
+        assert!(!extracted.contains("```"));
+    }
+
+    #[test]
+    fn test_extract_json_finds_array_in_prose() {
+        let raw = r#"Here are the matches:
+[
+  {"path": "src/main.rs", "line": 1},
+  {"path": "src/lib.rs", "line": 2}
+]
+End of results."#;
+        let extracted = extract_json(raw);
+        assert!(extracted.starts_with('['));
+        assert!(extracted.ends_with(']'));
+    }
+
+    #[test]
+    fn test_extract_json_handles_unterminated_fence() {
+        let raw = r#"```json
+{
+  "answer": "partial",
+  "citations": [],
+  "confidence": 0.5
+}"#;
+        let extracted = extract_json(raw);
+        assert!(extracted.starts_with('{'));
+        assert!(extracted.ends_with('}'));
+    }
+
+    #[test]
+    fn test_extract_json_prefers_json_fence_over_other_language() {
+        let raw = r#"```rust
+fn main() {}
+```
+```json
+{
+  "answer": "correct block",
+  "citations": [],
+  "confidence": 0.9
+}
+```"#;
+        let extracted = extract_json(raw);
+        assert!(extracted.starts_with('{'));
+        assert!(extracted.contains("correct block"));
+    }
+
+    #[test]
     fn test_search_result_signature_parse() {
         let signature = SearchResultSignature {};
         let raw = r#"[
