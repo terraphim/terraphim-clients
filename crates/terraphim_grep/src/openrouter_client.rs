@@ -4,6 +4,17 @@
 //! too short for many LLM providers when the RLM prompt is large. This client
 //! keeps the same request shape but uses a 120-second timeout so RLM synthesis
 //! can complete without aborting the connection mid-response.
+//!
+//! **Maintainability note**: this module intentionally duplicates the shared
+//! `terraphim_service` OpenRouter client rather than modifying it, because
+//! `terraphim_service` is consumed as an external registry dependency and its
+//! timeout is not currently configurable. A TODO item is to upstream a
+//! configurable timeout into `terraphim_service` and remove this duplication.
+//!
+//! **Safety note**: `summarize()` returns a hard error. This is safe only as
+//! long as no `terraphim-grep` code path calls `summarize()` through the
+//! `LlmClient` trait object; all current grep synthesis uses
+//! `chat_completion()`.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -49,7 +60,11 @@ impl LlmClient for OpenRouterClient {
         "openrouter"
     }
 
-    async fn summarize(&self, _content: &str, _opts: SummarizeOptions) -> terraphim_service::Result<String> {
+    async fn summarize(
+        &self,
+        _content: &str,
+        _opts: SummarizeOptions,
+    ) -> terraphim_service::Result<String> {
         Err(terraphim_service::ServiceError::Config(
             "summarize not supported by terraphim-grep openrouter client".to_string(),
         ))
@@ -78,7 +93,9 @@ impl LlmClient for OpenRouterClient {
             .json(&request_body)
             .send()
             .await
-            .map_err(|e| terraphim_service::ServiceError::Config(format!("OpenRouter request failed: {e}")))?;
+            .map_err(|e| {
+                terraphim_service::ServiceError::Config(format!("OpenRouter request failed: {e}"))
+            })?;
 
         if response.status() == 429 {
             return Err(terraphim_service::ServiceError::Config(
@@ -115,8 +132,6 @@ impl LlmClient for OpenRouterClient {
 }
 
 /// Convenience wrapper that returns the client as a trait object.
-pub fn into_llm_client(
-    client: OpenRouterClient,
-) -> Arc<dyn LlmClient> {
+pub fn into_llm_client(client: OpenRouterClient) -> Arc<dyn LlmClient> {
     Arc::new(client) as Arc<dyn LlmClient>
 }

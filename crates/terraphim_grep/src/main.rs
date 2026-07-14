@@ -4,11 +4,11 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use terraphim_automata::AutomataPath;
+#[cfg(feature = "llm")]
+use terraphim_grep::openrouter_client;
 use terraphim_grep::{
     GrepOptions, GrepResult, Haystack, HybridSearcher, SufficiencyJudge, TerraphimGrep,
 };
-#[cfg(feature = "llm")]
-use terraphim_grep::openrouter_client;
 use terraphim_types::Thesaurus;
 use terraphim_update::{TerraphimUpdater, UpdaterConfig};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
@@ -323,17 +323,30 @@ fn build_llm_for_role(
 
             // Prefer a long-timeout OpenRouter client built directly in grep so
             // slow LLM providers do not hit the shared 10-second API timeout.
+            // This takes precedence over `role_from_env` because `OPENROUTER_API_KEY`
+            // is the most common way to configure grep. If the direct client cannot
+            // be built, fall back to `role_from_env` rather than disabling the LLM.
             if let Some(key) = std::env::var("OPENROUTER_API_KEY")
                 .ok()
                 .filter(|s| !s.is_empty())
             {
                 let model = std::env::var("OPENROUTER_MODEL")
                     .unwrap_or_else(|_| "qwen/qwen3-coder:free".to_string());
+                if model.ends_with(":free") {
+                    tracing::warn!(
+                        "Using free-tier default model `{}`. RLM prompts may contain \
+                         repository content excerpts; verify the provider's data-handling \
+                         terms are acceptable for your codebase.",
+                        model
+                    );
+                }
                 match openrouter_client::OpenRouterClient::new(&key, &model) {
                     Ok(client) => return Some(openrouter_client::into_llm_client(client)),
                     Err(e) => {
-                        tracing::warn!("Failed to build OpenRouter client: {}", e);
-                        return None;
+                        tracing::warn!(
+                            "Failed to build direct OpenRouter client ({}); falling back to role_from_env",
+                            e
+                        );
                     }
                 }
             }
