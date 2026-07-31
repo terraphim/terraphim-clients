@@ -61,7 +61,11 @@ struct Args {
     #[arg(long, help = "Output JSON format")]
     json: bool,
 
-    #[arg(long, help = "Search paths (default: current directory)")]
+    #[arg(
+        long,
+        num_args = 1..,
+        help = "Search paths (default: current directory)"
+    )]
     paths: Vec<PathBuf>,
 
     #[arg(long, help = "Role to use for search")]
@@ -507,17 +511,17 @@ async fn main() -> Result<()> {
         tracing::debug!("Loaded thesaurus with {} entries", thesaurus.len());
     }
 
-    // Determine search path
-    let search_path = args
-        .paths
-        .first()
-        .cloned()
-        .unwrap_or_else(|| PathBuf::from("."));
+    // Determine search paths
+    let search_paths = if args.paths.is_empty() {
+        vec![PathBuf::from(".")]
+    } else {
+        args.paths.clone()
+    };
 
     // Create hybrid searcher
     let mut hybrid_searcher = HybridSearcher::new(role_name.clone(), thesaurus)
         .map_err(|e| anyhow::anyhow!("Failed to create hybrid searcher: {}", e))?;
-    hybrid_searcher = hybrid_searcher.with_search_path(search_path);
+    hybrid_searcher = hybrid_searcher.with_search_paths(search_paths);
     let hybrid_searcher = Arc::new(hybrid_searcher);
 
     // Create sufficiency judge
