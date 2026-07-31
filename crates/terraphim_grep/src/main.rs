@@ -185,17 +185,68 @@ fn resolve_role_name(
     Ok(explicit_role.unwrap_or("default").to_string())
 }
 
+/// Alternate thesaurus filename stems for a role, in priority order.
+///
+/// `discover_thesaurus` builds the filename literally from the role *name*
+/// (`thesaurus-<role_name>.json`), but projects commonly name the file after
+/// the role's configured `shortname` (e.g. `thesaurus-odidev.json` for role
+/// "Odilo Developer") or a lowercased hyphen slug (`thesaurus-odilo-developer.json`).
+/// The full role name is tried by the caller first; this returns only the
+/// alternates, deduplicated.
+///
+/// See terraphim/terraphim-clients#79.
+fn thesaurus_name_candidates(
+    role_name: &str,
+    config: &terraphim_config::project::ProjectConfig,
+) -> Vec<String> {
+    let mut candidates = Vec::new();
+
+    if let Some(role) = config.roles.get(role_name)
+        && let Some(shortname) = role.shortname.as_deref()
+        && !shortname.is_empty()
+        && shortname != role_name
+    {
+        candidates.push(shortname.to_string());
+    }
+
+    let slug = role_name
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join("-")
+        .to_lowercase();
+    if slug != role_name && !candidates.contains(&slug) {
+        candidates.push(slug);
+    }
+
+    candidates
+}
+
 /// Find thesaurus path with project config priority.
 ///
 /// Resolution order:
-///   1. `.terraphim/thesaurus-<role>.json` (project config)
-///   2. `*_thesaurus.json` in CWD or nearby directories (filesystem heuristic)
+///   1. `.terraphim/thesaurus-<role>.json` (project config, exact role name)
+///   2. `.terraphim/thesaurus-<shortname>.json` / `thesaurus-<slug>.json`
+///      (project config alternates, see [`thesaurus_name_candidates`])
+///   3. `*_thesaurus.json` in CWD or nearby directories (filesystem heuristic)
 fn find_default_thesaurus(role_name: &str) -> Option<PathBuf> {
-    if let Some(dir) = discover_project_dir()
-        && let Some(path) = terraphim_config::project::discover_thesaurus(&dir, role_name)
-    {
-        tracing::info!("Using project thesaurus: {:?}", path);
-        return Some(path);
+    if let Some(dir) = discover_project_dir() {
+        if let Some(path) = terraphim_config::project::discover_thesaurus(&dir, role_name) {
+            tracing::info!("Using project thesaurus: {:?}", path);
+            return Some(path);
+        }
+
+        // The thesaurus filename stem often differs from the role *name*; try
+        // the role's shortname and a slugified name. Config is loaded lazily,
+        // only on a miss, so the happy path stays allocation-free.
+        if let Ok(config) = terraphim_config::project::ProjectConfig::load_from_dir(&dir) {
+            for candidate in thesaurus_name_candidates(role_name, &config) {
+                if let Some(path) = terraphim_config::project::discover_thesaurus(&dir, &candidate)
+                {
+                    tracing::info!("Using project thesaurus: {:?}", path);
+                    return Some(path);
+                }
+            }
+        }
     }
 
     let possible_paths = vec![
@@ -684,5 +735,77 @@ mod tests {
                 .to_string()
                 .contains("multiple project roles found")
         );
+    }
+
+    // Regression tests: terraphim/terraphim-clients#79
+    // The thesaurus filename stem often differs from the role *name*
+    // (e.g. `thesaurus-odidev.json` for role "Odilo Developer").
+
+    fn role_with_shortname(name: &str, shortname: &str) -> String {
+        format!(
+            r#"{{"shortname":"{}","name":"{}","relevance_function":"title-scorer","terraphim_it":false,"theme":"default","haystacks":[]}}"#,
+            shortname, name
+        )
+    }
+
+    #[test]
+    fn candidates_prefer_shortname_then_slug() {
+        // Mirrors zestic-ai/odilo .terraphim/config.json.
+        let mut config = ProjectConfig {
+            selected_role: Some("Odilo Developer".to_string()),
+            ..Default::default()
+        };
+        config.roles.insert(
+            "Odilo Developer".to_string(),
+            serde_json::from_str(&role_with_shortname("Odilo Developer", "odidev")).unwrap(),
+        );
+
+        let candidates = thesaurus_name_candidates("Odilo Developer", &config);
+        assert_eq!(
+            candidates,
+            vec!["odidev".to_string(), "odilo-developer".to_string()]
+        );
+    }
+
+    #[test]
+    fn candidates_fall_back_to_slug_when_role_not_in_config() {
+        let config = ProjectConfig::default();
+        let candidates = thesaurus_name_candidates("Rust Engineer", &config);
+        assert_eq!(candidates, vec!["rust-engineer".to_string()]);
+    }
+
+    #[test]
+    fn candidates_empty_when_nothing_to_add() {
+        // Lowercase single-word role name: slug is identical, no shortname.
+        let config = ProjectConfig::default();
+        assert!(thesaurus_name_candidates("devops", &config).is_empty());
+    }
+
+    #[test]
+    fn candidates_skip_shortname_equal_to_role_name() {
+        let mut config = ProjectConfig::default();
+        config.roles.insert(
+            "devops".to_string(),
+            serde_json::from_str(&role_with_shortname("devops", "devops")).unwrap(),
+        );
+        assert!(thesaurus_name_candidates("devops", &config).is_empty());
+    }
+
+    #[test]
+    fn candidates_dedupe_shortname_matching_slug() {
+        let mut config = ProjectConfig::default();
+        config.roles.insert(
+            "Rust Engineer".to_string(),
+            serde_json::from_str(&role_with_shortname("Rust Engineer", "rust-engineer")).unwrap(),
+        );
+        let candidates = thesaurus_name_candidates("Rust Engineer", &config);
+        assert_eq!(candidates, vec!["rust-engineer".to_string()]);
+    }
+
+    #[test]
+    fn candidates_slug_collapses_repeated_whitespace() {
+        let config = ProjectConfig::default();
+        let candidates = thesaurus_name_candidates("Odilo   Developer", &config);
+        assert_eq!(candidates, vec!["odilo-developer".to_string()]);
     }
 }
