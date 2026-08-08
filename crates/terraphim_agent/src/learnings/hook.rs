@@ -526,10 +526,7 @@ impl HookInput {
         }
         // Legacy / minimal: { "tool": "Bash", "result": { "exit_code": 1 } } (#2704 sample)
         if value.get("tool").is_some() && value.get("result").is_some() {
-            let tool = value
-                .get("tool")
-                .and_then(|v| v.as_str())
-                .unwrap_or("Bash");
+            let tool = value.get("tool").and_then(|v| v.as_str()).unwrap_or("Bash");
             let result = value.get("result").cloned().unwrap_or_default();
             let exit = result
                 .get("exit_code")
