@@ -107,4 +107,62 @@ export default function activate(pi) {
       /* fail-open */
     }
   });
+
+  // Best-effort user preference capture (event name varies by pi version)
+  const onUserText = async (event) => {
+    try {
+      const text =
+        event?.text ||
+        event?.prompt ||
+        event?.message ||
+        event?.content ||
+        (typeof event === "string" ? event : "");
+      if (!text || typeof text !== "string") return;
+      if (!/\b(use|prefer|switch to)\b/i.test(text)) return;
+      if (!/\b(instead of|over|not|rather than)\b/i.test(text)) return;
+      const payload = {
+        user_prompt: text,
+      };
+      await new Promise((resolve) => {
+        try {
+          const child = spawn(
+            "terraphim-agent",
+            [
+              "learn",
+              "hook",
+              "--format",
+              "claude",
+              "--learn-hook-type",
+              "user-prompt-submit",
+            ],
+            { stdio: ["pipe", "ignore", "ignore"] }
+          );
+          child.on("error", () => resolve());
+          child.on("close", () => resolve());
+          child.stdin.write(JSON.stringify(payload));
+          child.stdin.end();
+          setTimeout(() => {
+            try {
+              child.kill("SIGKILL");
+            } catch {
+              /* ignore */
+            }
+            resolve();
+          }, 5000);
+        } catch {
+          resolve();
+        }
+      });
+    } catch {
+      /* fail-open */
+    }
+  };
+
+  for (const name of ["onMessage", "onUserMessage", "onInput", "input"]) {
+    try {
+      pi.on(name, onUserText);
+    } catch {
+      /* event may not exist */
+    }
+  }
 }

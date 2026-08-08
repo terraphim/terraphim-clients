@@ -721,7 +721,8 @@ const KG_SYNONYMS_KEYWORD: &str = "synonyms";
 
 /// Build a thesaurus synchronously from KG markdown files.
 ///
-/// Reads all `*.md` files in `kg_dir`, extracts the file stem as the concept
+/// Reads all `*.md` files in `kg_dir` **recursively** (so `kg/learned/**` from
+/// `learn export-kg` is included), extracts the file stem as the concept
 /// name, and parses `synonyms:: a, b, c` lines to populate synonyms.
 pub(crate) fn build_kg_thesaurus_from_dir(
     kg_dir: &std::path::Path,
@@ -736,63 +737,58 @@ pub(crate) fn build_kg_thesaurus_from_dir(
         return None;
     }
 
-    let entries: Vec<_> = match fs::read_dir(kg_dir) {
-        Ok(rd) => rd.flatten().collect(),
-        Err(e) => {
-            log::warn!("Cannot read KG directory {:?}: {}", kg_dir, e);
-            return None;
-        }
-    };
+    let mut md_files: Vec<std::path::PathBuf> = Vec::new();
+    collect_kg_markdown_files(kg_dir, &mut md_files);
+    if md_files.is_empty() {
+        log::debug!("No markdown files under {:?}", kg_dir);
+        return None;
+    }
 
     let mut thesaurus = Thesaurus::new("kg_entities".to_string());
     let mut concept_id: u64 = 1;
 
-    for entry in entries {
-        let path = entry.path();
-        if path.extension().map(|e| e == "md").unwrap_or(false) {
-            let stem = match path.file_stem() {
-                Some(s) => s.to_string_lossy().to_string(),
-                None => continue,
-            };
+    for path in md_files {
+        let stem = match path.file_stem() {
+            Some(s) => s.to_string_lossy().to_string(),
+            None => continue,
+        };
 
-            // Read file content to find synonyms lines
-            let content = match fs::read_to_string(&path) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
+        // Read file content to find synonyms lines
+        let content = match fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
 
-            let display_name = stem.clone();
-            let normalized_value = NormalizedTermValue::from(stem.to_lowercase());
-            let nterm = NormalizedTerm::new(concept_id, normalized_value.clone())
-                .with_display_value(display_name.clone());
+        let display_name = stem.clone();
+        let normalized_value = NormalizedTermValue::from(stem.to_lowercase());
+        let nterm = NormalizedTerm::new(concept_id, normalized_value.clone())
+            .with_display_value(display_name.clone());
 
-            // Insert the concept itself
-            thesaurus.insert(normalized_value, nterm.clone());
+        // Insert the concept itself
+        thesaurus.insert(normalized_value, nterm.clone());
 
-            // Parse synonyms lines
-            for line in content.lines() {
-                if let Some((keyword, synonyms_str)) = line.split_once(KG_SYNONYMS_DELIMITER) {
-                    let keyword = keyword.trim().to_lowercase();
-                    if keyword != KG_SYNONYMS_KEYWORD {
-                        continue;
-                    }
-                    for synonym in synonyms_str.split(',') {
-                        let synonym = synonym.trim();
-                        if !synonym.is_empty() {
-                            let syn_nterm = NormalizedTerm::new(
-                                concept_id,
-                                NormalizedTermValue::from(stem.to_lowercase()),
-                            )
-                            .with_display_value(display_name.clone());
-                            thesaurus
-                                .insert(NormalizedTermValue::new(synonym.to_string()), syn_nterm);
-                        }
+        // Parse synonyms lines
+        for line in content.lines() {
+            if let Some((keyword, synonyms_str)) = line.split_once(KG_SYNONYMS_DELIMITER) {
+                let keyword = keyword.trim().to_lowercase();
+                if keyword != KG_SYNONYMS_KEYWORD {
+                    continue;
+                }
+                for synonym in synonyms_str.split(',') {
+                    let synonym = synonym.trim();
+                    if !synonym.is_empty() {
+                        let syn_nterm = NormalizedTerm::new(
+                            concept_id,
+                            NormalizedTermValue::from(stem.to_lowercase()),
+                        )
+                        .with_display_value(display_name.clone());
+                        thesaurus.insert(NormalizedTermValue::new(synonym.to_string()), syn_nterm);
                     }
                 }
             }
-
-            concept_id += 1;
         }
+
+        concept_id += 1;
     }
 
     if thesaurus.is_empty() {
@@ -806,6 +802,34 @@ pub(crate) fn build_kg_thesaurus_from_dir(
         kg_dir
     );
     Some(thesaurus)
+}
+
+/// Recursively collect `*.md` paths under `dir` (depth-first).
+fn collect_kg_markdown_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+    let rd = match fs::read_dir(dir) {
+        Ok(rd) => rd,
+        Err(e) => {
+            log::warn!("Cannot read KG directory {:?}: {}", dir, e);
+            return;
+        }
+    };
+    for entry in rd.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            // Skip hidden dirs (e.g. .git)
+            if path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.starts_with('.'))
+                .unwrap_or(true)
+            {
+                continue;
+            }
+            collect_kg_markdown_files(&path, out);
+        } else if path.extension().map(|e| e == "md").unwrap_or(false) {
+            out.push(path);
+        }
+    }
 }
 
 /// Build a thesaurus synchronously from KG markdown files and compute its source hash.
@@ -2787,5 +2811,32 @@ mod tests {
         );
         let entry2 = LearningEntry::Correction(correction);
         assert!(matches!(entry2, LearningEntry::Correction(_)));
+    }
+
+    #[test]
+    fn test_build_kg_thesaurus_includes_learned_subdir() {
+        // #810 P3: export-kg writes to kg/learned/; replace must see those synonyms.
+        let temp = TempDir::new().unwrap();
+        let kg = temp.path().join("kg");
+        let learned = kg.join("learned");
+        fs::create_dir_all(&learned).unwrap();
+        fs::write(kg.join("top.md"), "# top\n\nsynonyms:: top-syn\n").unwrap();
+        fs::write(
+            learned.join("nested-tool.md"),
+            "# nested-tool\n\nsynonyms:: unique-nested-syn-xyz\n",
+        )
+        .unwrap();
+
+        let thesaurus = build_kg_thesaurus_from_dir(&kg).expect("thesaurus");
+        // concept keys are lowercased stems / synonyms
+        let keys: Vec<String> = thesaurus.keys().map(|k| k.to_string()).collect();
+        assert!(
+            keys.iter().any(|k| k.contains("unique-nested-syn-xyz")),
+            "nested learned/ synonym missing; keys={keys:?}"
+        );
+        assert!(
+            keys.iter().any(|k| k.contains("top-syn")),
+            "top-level synonym missing; keys={keys:?}"
+        );
     }
 }
