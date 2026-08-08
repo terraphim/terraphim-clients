@@ -223,6 +223,9 @@ jobs:
           REPO="terraphim/${{ inputs.target_repo }}"
           find release-assets -type f | sort
           gh release upload "$TAG" release-assets/* --repo "$REPO" --clobber
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
       - name: Publish signed artifacts + manifest to R2 (#68)
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
