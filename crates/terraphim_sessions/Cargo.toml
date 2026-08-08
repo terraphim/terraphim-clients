@@ -12,7 +12,7 @@ keywords = ["sessions", "ai", "search", "claude", "cursor"]
 readme = "../../README.md"
 
 [features]
-default = []
+default = ["terraphim-session-analyzer", "aider-connector", "search-index"]
 
 # Enable terraphim-session-analyzer integration for enhanced parsing
 terraphim-session-analyzer = ["dep:terraphim-session-analyzer"]
@@ -71,7 +71,7 @@ notify = "8.2"
 regex = { version = "1.10", optional = true }
 
 # Feature-gated: Terraphim Session Analyzer
-terraphim-session-analyzer = { path = "../../crates/terraphim-session-analyzer", version = "1.21.0", optional = true }
+terraphim-session-analyzer = { path = "../../crates/terraphim-session-analyzer", version = "1.21.0", optional = true, registry = "terraphim" }
 
 # Feature-gated: Markdown parsing for Aider/Cline connectors
 terraphim-markdown-parser = { version = "1.20.2", optional = true }
