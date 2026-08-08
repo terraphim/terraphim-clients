@@ -82,7 +82,9 @@ jobs:
           # Bump the workspace version to the release input so CARGO_PKG_VERSION
           # baked into the binaries matches the git tag. Not committed to main
           # (the bump lives only in this CI checkout, like the tag itself).
-          sed -i 's/^version = ".*"/version = "${{ inputs.version }}"/' Cargo.toml
+          # Use a backup suffix so the in-place edit works on both GNU and BSD/macOS sed.
+          sed -i.bak 's/^version = ".*"/version = "${{ inputs.version }}"/' Cargo.toml
+          rm -f Cargo.toml.bak
           grep -n '^version =' Cargo.toml
           cargo metadata --no-deps --format-version 1 >/dev/null
       - name: Build client binaries
