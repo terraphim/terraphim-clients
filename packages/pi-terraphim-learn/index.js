@@ -43,11 +43,12 @@ function extractBashFailure(event) {
   const e = event || {};
   const tool =
     e.toolName || e.tool_name || e.name || e.tool || e.type || "";
+  const toolLower = String(tool).toLowerCase();
   const isBash =
-    String(tool).toLowerCase() === "bash" ||
-    String(tool).toLowerCase() === "shell" ||
-    String(tool).toLowerCase() === "tool_call" &&
-      String(e.tool || e.name || "").toLowerCase() === "bash";
+    toolLower === "bash" ||
+    toolLower === "shell" ||
+    (toolLower === "tool_call" &&
+      String(e.tool || e.name || "").toLowerCase() === "bash");
 
   const cmd =
     e.command ||
