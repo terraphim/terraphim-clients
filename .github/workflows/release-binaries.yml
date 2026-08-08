@@ -246,7 +246,7 @@ jobs:
           done
           # Publish manifests LAST (atomicity: never point at a missing asset).
           # One manifest per binary that appears in release-assets.
-          bins="$(ls -1 release-assets/*.tar.gz | sed -E "s/-${VERSION}-.*//" | sort -u)"
+          bins="$(ls -1 release-assets/*.tar.gz | sed -E "s|^release-assets/||;s/-${VERSION}-.*//" | sort -u)"
           for bin in $bins; do
             scripts/build-manifest.sh "$VERSION" "$bin" release-assets > "/tmp/${bin}.stable.json"
             bunx wrangler r2 object put "terraphim-releases/${bin}/stable.json" \
