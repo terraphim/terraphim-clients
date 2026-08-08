@@ -344,7 +344,11 @@ pub struct HookInput {
     pub tool_name: String,
     /// Tool input parameters
     pub tool_input: ToolInput,
-    /// Tool execution result
+    /// Tool execution result.
+    ///
+    /// Claude Code live PostToolUse often sends `tool_response` instead of
+    /// `tool_result` — accept both.
+    #[serde(alias = "tool_response")]
     pub tool_result: ToolResult,
 }
 
@@ -368,7 +372,9 @@ pub struct ToolInput {
 #[derive(Debug, Clone, Deserialize)]
 #[allow(dead_code)]
 pub struct ToolResult {
-    /// Exit code (0 = success, non-zero = failure)
+    /// Exit code (0 = success, non-zero = failure).
+    /// Claude live payloads use camelCase `exitCode`.
+    #[serde(alias = "exitCode")]
     pub exit_code: i32,
     /// Standard output captured from the tool
     #[serde(default)]
@@ -506,8 +512,61 @@ impl HookInput {
         let value: serde_json::Value = serde_json::from_str(json)?;
 
         // Claude / Codex / opencode-normalised: canonical tool event.
-        if value.get("tool_name").is_some() && value.get("tool_result").is_some() {
-            return serde_json::from_str(json);
+        // Live Claude may use `tool_response` instead of `tool_result`.
+        if value.get("tool_name").is_some()
+            && (value.get("tool_result").is_some() || value.get("tool_response").is_some())
+        {
+            return serde_json::from_str(json).map(|mut input: HookInput| {
+                // Normalize tool name so should_capture matches.
+                if input.tool_name.eq_ignore_ascii_case("bash") {
+                    input.tool_name = "Bash".to_string();
+                }
+                input
+            });
+        }
+        // Legacy / minimal: { "tool": "Bash", "result": { "exit_code": 1 } } (#2704 sample)
+        if value.get("tool").is_some() && value.get("result").is_some() {
+            let tool = value
+                .get("tool")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Bash");
+            let result = value.get("result").cloned().unwrap_or_default();
+            let exit = result
+                .get("exit_code")
+                .or_else(|| result.get("exitCode"))
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0) as i32;
+            let cmd = value
+                .get("tool_input")
+                .and_then(|t| t.get("command"))
+                .and_then(|c| c.as_str())
+                .or_else(|| value.get("command").and_then(|c| c.as_str()))
+                .map(|s| s.to_string());
+            let tool_name = if tool.eq_ignore_ascii_case("bash") {
+                "Bash".to_string()
+            } else {
+                tool.to_string()
+            };
+            return Ok(HookInput {
+                tool_name,
+                tool_input: ToolInput {
+                    command: cmd,
+                    extra: HashMap::new(),
+                },
+                tool_result: ToolResult {
+                    exit_code: exit,
+                    stdout: result
+                        .get("stdout")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    stderr: result
+                        .get("stderr")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                },
+            });
         }
         // opencode native: `tool` + (`args` | `output`), no `tool_name`.
         if value.get("tool").is_some()
@@ -611,6 +670,50 @@ mod tests {
         assert_eq!(input.tool_result.exit_code, 1);
         assert_eq!(input.tool_result.stdout, "");
         assert_eq!(input.tool_result.stderr, "rejected");
+    }
+
+    #[test]
+    fn test_hook_input_claude_tool_response_exit_code_alias() {
+        // Live Claude Code PostToolUse shape (2026-08 investigation)
+        let json = r#"{
+            "tool_name": "Bash",
+            "tool_input": {"command": "ls /nope-live"},
+            "tool_response": {
+                "exitCode": 2,
+                "stdout": "",
+                "stderr": "No such file",
+                "interrupted": false,
+                "isImage": false
+            }
+        }"#;
+        let input = HookInput::from_json_with_format(json, AgentFormat::Claude).unwrap();
+        assert_eq!(input.tool_name, "Bash");
+        assert_eq!(input.command(), Some("ls /nope-live"));
+        assert_eq!(input.tool_result.exit_code, 2);
+        assert_eq!(input.tool_result.stderr, "No such file");
+        assert!(input.should_capture());
+    }
+
+    #[test]
+    fn test_hook_input_auto_normalizes_lowercase_bash() {
+        let json = r#"{
+            "tool_name": "bash",
+            "tool_input": {"command": "false"},
+            "tool_result": {"exit_code": 1, "stdout": "", "stderr": "x"}
+        }"#;
+        let input = HookInput::from_json_with_format(json, AgentFormat::Auto).unwrap();
+        assert_eq!(input.tool_name, "Bash");
+        assert!(input.should_capture());
+    }
+
+    #[test]
+    fn test_hook_input_legacy_2704_tool_result_object() {
+        let json = r#"{"tool":"Bash","command":"false","result":{"exit_code":1,"stderr":"fail"}}"#;
+        let input = HookInput::from_json_with_format(json, AgentFormat::Auto).unwrap();
+        assert_eq!(input.tool_name, "Bash");
+        assert_eq!(input.command(), Some("false"));
+        assert_eq!(input.tool_result.exit_code, 1);
+        assert!(input.should_capture());
     }
 
     #[test]
