@@ -158,10 +158,11 @@ impl TerraphimGrep {
                     .await
             }
             sufficiency_judge::Sufficiency::Insufficient(chunks) => {
+                let returned_count = chunks.len();
                 let stats = GrepStats {
                     search_latency_ms,
                     rlm_latency_ms: None,
-                    chunks_returned: 0,
+                    chunks_returned: returned_count,
                     kg_hits: 0,
                 };
 
