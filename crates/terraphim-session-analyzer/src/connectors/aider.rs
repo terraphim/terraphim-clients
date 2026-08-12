@@ -93,10 +93,10 @@ impl SessionConnector for AiderConnector {
                     .is_some_and(|n| n == ".aider.chat.history.md")
             })
         {
-            if let Some(limit) = options.limit {
-                if sessions.len() >= limit {
-                    break;
-                }
+            if let Some(limit) = options.limit
+                && sessions.len() >= limit
+            {
+                break;
             }
 
             match self.parse_history_file(entry.path()) {
@@ -122,10 +122,10 @@ impl AiderConnector {
             // New session starts with "# aider chat started at"
             if line.starts_with("# aider chat started at") {
                 // Save previous session if exists
-                if let Some(builder) = current_session.take() {
-                    if let Some(session) = builder.build(path) {
-                        sessions.push(session);
-                    }
+                if let Some(builder) = current_session.take()
+                    && let Some(session) = builder.build(path)
+                {
+                    sessions.push(session);
                 }
 
                 // Parse timestamp: "# aider chat started at 2025-06-19 14:32:16"
@@ -137,10 +137,10 @@ impl AiderConnector {
         }
 
         // Don't forget the last session
-        if let Some(builder) = current_session {
-            if let Some(session) = builder.build(path) {
-                sessions.push(session);
-            }
+        if let Some(builder) = current_session
+            && let Some(session) = builder.build(path)
+        {
+            sessions.push(session);
         }
 
         Ok(sessions)

@@ -167,10 +167,10 @@ pub fn calculate_tool_statistics(
         stat.total_invocations += 1;
 
         // Track agents
-        if let Some(ref agent) = inv.agent_context {
-            if !stat.agents_using.contains(agent) {
-                stat.agents_using.push(agent.clone());
-            }
+        if let Some(ref agent) = inv.agent_context
+            && !stat.agents_using.contains(agent)
+        {
+            stat.agents_using.push(agent.clone());
         }
 
         // Track sessions

@@ -75,10 +75,10 @@ impl Analyzer {
                 match self.analyze_session(parser, target_file) {
                     Ok(analysis) => {
                         // If target file specified, only include sessions with relevant operations
-                        if let Some(_target) = target_file {
-                            if analysis.file_operations.is_empty() {
-                                return None; // Skip sessions without target file operations
-                            }
+                        if let Some(_target) = target_file
+                            && analysis.file_operations.is_empty()
+                        {
+                            return None; // Skip sessions without target file operations
                         }
                         Some(Ok(analysis))
                     }
