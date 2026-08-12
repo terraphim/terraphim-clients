@@ -336,7 +336,7 @@ impl TerraphimGrep {
 mod tests {
     use super::*;
     #[cfg(feature = "code-search")]
-    use terraphim_types::Thesaurus;
+    use terraphim_types::{NormalizedTerm, NormalizedTermValue, Thesaurus};
 
     #[test]
     fn test_grep_options_default() {
@@ -454,7 +454,13 @@ mod tests {
         let path = tmp.path().join("only_match.rs");
         std::fs::write(&path, "fn unique_target() { /* unique_target */ }\n").unwrap();
 
-        let hybrid = HybridSearcher::new("test-role".to_string(), Thesaurus::new("t".to_string()))
+        let mut thesaurus = Thesaurus::new("t".to_string());
+        let concept_key = NormalizedTermValue::from("unique_target");
+        let concept = NormalizedTerm::new(1, concept_key.clone())
+            .with_display_value("unique_target".to_string());
+        thesaurus.insert(concept_key, concept);
+
+        let hybrid = HybridSearcher::new("test-role".to_string(), thesaurus)
             .expect("build hybrid searcher")
             .with_search_path(tmp.path().to_path_buf());
         let grep = TerraphimGrep::new(Arc::new(hybrid), Arc::new(SufficiencyJudge::default()));
@@ -489,6 +495,14 @@ mod tests {
             result.stats.kg_hits,
             result.concepts.len(),
             "stats.kg_hits must equal concepts.len() when concepts are retained"
+        );
+        assert!(result.stats.kg_hits > 0, "fixture must produce a KG hit");
+        assert!(
+            result
+                .concepts
+                .iter()
+                .any(|concept| concept.name == "unique_target"),
+            "the known KG concept must survive the RlmInsufficient branch"
         );
     }
 
