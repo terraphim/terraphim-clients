@@ -158,17 +158,20 @@ impl TerraphimGrep {
                     .await
             }
             sufficiency_judge::Sufficiency::Insufficient(chunks) => {
+                // Preserve the retrieved chunks and KG concepts and derive the
+                // counters from the actual vectors so the JSON stats stay
+                // truthful even when the judge deems the result insufficient.
                 let stats = GrepStats {
                     search_latency_ms,
                     rlm_latency_ms: None,
-                    chunks_returned: 0,
-                    kg_hits: 0,
+                    chunks_returned: chunks.len(),
+                    kg_hits: hybrid_results.kg_concepts.len(),
                 };
 
                 Ok(GrepResult {
                     chunks,
                     answer: None,
-                    concepts: vec![],
+                    concepts: hybrid_results.kg_concepts,
                     sufficiency: SufficiencyState::RlmInsufficient,
                     stats,
                 })
@@ -436,6 +439,57 @@ mod tests {
             "expected no KG concepts without thesaurus"
         );
         assert_eq!(result.stats.kg_hits, 0);
+    }
+
+    /// When the sufficiency judge returns `Insufficient` with non-empty chunks
+    /// (fewer than `min_results` matches), the returned chunks and KG concepts
+    /// must be preserved and the stats must be truthful:
+    /// `stats.chunks_returned == chunks.len()` and `stats.kg_hits == concepts.len()`.
+    /// This guards the JSON result invariant that blocks release wrapper #3208.
+    #[cfg(feature = "code-search")]
+    #[tokio::test]
+    async fn rlm_insufficient_preserves_chunks_and_reports_truthful_stats() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        // Single match => chunks.len() (1) < min_results (3) => Insufficient branch.
+        let path = tmp.path().join("only_match.rs");
+        std::fs::write(&path, "fn unique_target() { /* unique_target */ }\n").unwrap();
+
+        let hybrid = HybridSearcher::new("test-role".to_string(), Thesaurus::new("t".to_string()))
+            .expect("build hybrid searcher")
+            .with_search_path(tmp.path().to_path_buf());
+        let grep = TerraphimGrep::new(Arc::new(hybrid), Arc::new(SufficiencyJudge::default()));
+
+        let result = grep
+            .search(
+                "unique_target",
+                GrepOptions {
+                    haystack: Haystack::Code,
+                    max_results: 50,
+                    ..GrepOptions::default()
+                },
+            )
+            .await
+            .expect("search should succeed");
+
+        assert!(
+            !result.chunks.is_empty(),
+            "expected at least one chunk from the known-match corpus"
+        );
+        assert!(
+            matches!(result.sufficiency, SufficiencyState::RlmInsufficient),
+            "single match must hit the Insufficient branch, got {:?}",
+            result.sufficiency
+        );
+        assert_eq!(
+            result.stats.chunks_returned,
+            result.chunks.len(),
+            "stats.chunks_returned must equal chunks.len() in the RlmInsufficient branch"
+        );
+        assert_eq!(
+            result.stats.kg_hits,
+            result.concepts.len(),
+            "stats.kg_hits must equal concepts.len() when concepts are retained"
+        );
     }
 
     /// The RLM prompt for `include_answer` must embed the `AnswerSignature`

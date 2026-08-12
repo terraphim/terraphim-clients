@@ -57,4 +57,22 @@ fn cli_runs_without_thesaurus() {
         Some(0),
         "kg_hits should be zero"
     );
+
+    // Truthful-stats invariant (blocks release wrapper #3208): the reported
+    // counter must always match the number of chunks actually returned, even
+    // when the sufficiency heuristic classifies the result as RlmInsufficient
+    // (fewer than min_results matches, as in this single-file corpus).
+    let chunks_returned = result["stats"]["chunks_returned"]
+        .as_u64()
+        .expect("chunks_returned is a number") as usize;
+    assert_eq!(
+        chunks_returned,
+        chunks.len(),
+        "stats.chunks_returned must equal chunks.len() (got {chunks_returned}, chunks = {})",
+        chunks.len()
+    );
+    assert!(
+        chunks_returned >= 1,
+        "known-match corpus must report at least one returned chunk"
+    );
 }
