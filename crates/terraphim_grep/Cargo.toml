@@ -1,6 +1,6 @@
 [package]
 name = "terraphim_grep"
-version.workspace = true
+version = "1.21.2"
 edition.workspace = true
 authors = ["Terraphim AI Team <team@terraphim.ai>"]
 description = "Intelligent hybrid grep with RLM fallback and KG curation"
