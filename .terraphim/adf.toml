@@ -97,7 +97,7 @@ never use the `timeout` command; one PR per run.
 [[agents]]
 name = "disciplined-pr-review"
 layer = "Core"
-cli_tool = "/Users/alex/projects/terraphim/terraphim-clients/.terraphim/bin/structured-pr-review.sh"
+cli_tool = ".terraphim/bin/structured-pr-review.sh"
 task = "Run structural PR review with 9-dimension checklist on the active PR. Posts review comment with Mermaid diagram, confidence score, and severity-tiered findings."
 project = "terraphim-clients"
 schedule = "on_demand"

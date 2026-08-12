@@ -37,7 +37,7 @@ on_fail = "continue"
 [[steps]]
 name = "disciplined-pr-review"
 kind = "action"
-command = "/Users/alex/projects/terraphim/terraphim-clients/.terraphim/bin/structured-pr-review.sh ${PR_NUMBER:-94}"
+command = ".terraphim/bin/structured-pr-review.sh ${PR_NUMBER:-94}"
 timeout_secs = 600
 on_fail = "continue"
 
