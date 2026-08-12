@@ -348,8 +348,7 @@ impl TerraphimUpdater {
                 show_progress,
                 ..Default::default()
             };
-            if let Err(e) =
-                downloader::download_with_retry(&asset_url, &archive_path, Some(dl_cfg))
+            if let Err(e) = downloader::download_with_retry(&asset_url, &archive_path, Some(dl_cfg))
             {
                 // Transport failure -> Err so the caller can fall back.
                 return Err(anyhow!("download failed: {e}"));

@@ -77,10 +77,10 @@ impl SessionParser {
                             if session_id.is_empty() {
                                 session_id.clone_from(&entry.session_id);
                             }
-                            if project_path.is_empty() {
-                                if let Some(cwd) = &entry.cwd {
-                                    project_path.clone_from(cwd);
-                                }
+                            if project_path.is_empty()
+                                && let Some(cwd) = &entry.cwd
+                            {
+                                project_path.clone_from(cwd);
                             }
                             entries.push(entry);
                         }
@@ -178,10 +178,10 @@ impl SessionParser {
             .filter_map(|entry| {
                 if let Message::Assistant { content, .. } = &entry.message {
                     for block in content {
-                        if let ContentBlock::ToolUse { name, input, id } = block {
-                            if name == "Task" {
-                                return self.parse_task_invocation(entry, input, id);
-                            }
+                        if let ContentBlock::ToolUse { name, input, id } = block
+                            && name == "Task"
+                        {
+                            return self.parse_task_invocation(entry, input, id);
                         }
                     }
                 }
@@ -243,30 +243,26 @@ impl SessionParser {
             .filter_map(|entry| {
                 if let Message::Assistant { content, .. } = &entry.message {
                     for block in content {
-                        if let ContentBlock::ToolUse { name, input, .. } = block {
-                            if let Ok(op_type) = name.parse::<FileOpType>() {
-                                if let Some(file_path) = extract_file_path(input) {
-                                    let timestamp = match parse_timestamp(&entry.timestamp) {
-                                        Ok(ts) => ts,
-                                        Err(e) => {
-                                            warn!(
-                                                "Failed to parse timestamp '{}': {}",
-                                                entry.timestamp, e
-                                            );
-                                            continue;
-                                        }
-                                    };
-
-                                    return Some(FileOperation {
-                                        timestamp,
-                                        operation: op_type,
-                                        file_path,
-                                        agent_context: None, // Will be set during analysis
-                                        session_id: self.session_id.clone(),
-                                        message_id: entry.uuid.clone(),
-                                    });
+                        if let ContentBlock::ToolUse { name, input, .. } = block
+                            && let Ok(op_type) = name.parse::<FileOpType>()
+                            && let Some(file_path) = extract_file_path(input)
+                        {
+                            let timestamp = match parse_timestamp(&entry.timestamp) {
+                                Ok(ts) => ts,
+                                Err(e) => {
+                                    warn!("Failed to parse timestamp '{}': {}", entry.timestamp, e);
+                                    continue;
                                 }
-                            }
+                            };
+
+                            return Some(FileOperation {
+                                timestamp,
+                                operation: op_type,
+                                file_path,
+                                agent_context: None, // Will be set during analysis
+                                session_id: self.session_id.clone(),
+                                message_id: entry.uuid.clone(),
+                            });
                         }
                     }
                 }
@@ -316,14 +312,12 @@ impl SessionParser {
             // Look for Task tool invocations
             if let Message::Assistant { content, .. } = &entry.message {
                 for block in content {
-                    if let ContentBlock::ToolUse { name, input, .. } = block {
-                        if name == "Task" {
-                            if let Some(agent_type) =
-                                input.get("subagent_type").and_then(|v| v.as_str())
-                            {
-                                return Some(agent_type.to_string());
-                            }
-                        }
+                    if let ContentBlock::ToolUse { name, input, .. } = block
+                        && name == "Task"
+                        && let Some(agent_type) =
+                            input.get("subagent_type").and_then(|v| v.as_str())
+                    {
+                        return Some(agent_type.to_string());
                     }
                 }
             }
@@ -465,45 +459,45 @@ fn extract_from_bash_command(
     session_id: &str,
 ) -> Option<ToolInvocation> {
     for block in content {
-        if let ContentBlock::ToolUse { name, input, .. } = block {
-            if name == "Bash" {
-                // Extract the command from the input
-                let command = input.get("command").and_then(|v| v.as_str())?;
+        if let ContentBlock::ToolUse { name, input, .. } = block
+            && name == "Bash"
+        {
+            // Extract the command from the input
+            let command = input.get("command").and_then(|v| v.as_str())?;
 
-                // Find tool matches using the pattern matcher
-                let matches = matcher.find_matches(command);
+            // Find tool matches using the pattern matcher
+            let matches = matcher.find_matches(command);
 
-                if let Some(tool_match) = matches.first() {
-                    // Parse command context to extract arguments and flags
-                    if let Some((full_cmd, arguments, flags)) =
-                        tool_analyzer::parse_command_context(command, tool_match.start)
-                    {
-                        // Filter out shell built-ins
-                        if !tool_analyzer::is_actual_tool(&tool_match.tool_name) {
+            if let Some(tool_match) = matches.first() {
+                // Parse command context to extract arguments and flags
+                if let Some((full_cmd, arguments, flags)) =
+                    tool_analyzer::parse_command_context(command, tool_match.start)
+                {
+                    // Filter out shell built-ins
+                    if !tool_analyzer::is_actual_tool(&tool_match.tool_name) {
+                        continue;
+                    }
+
+                    let timestamp = match parse_timestamp(&entry.timestamp) {
+                        Ok(ts) => ts,
+                        Err(e) => {
+                            warn!("Failed to parse timestamp '{}': {}", entry.timestamp, e);
                             continue;
                         }
+                    };
 
-                        let timestamp = match parse_timestamp(&entry.timestamp) {
-                            Ok(ts) => ts,
-                            Err(e) => {
-                                warn!("Failed to parse timestamp '{}': {}", entry.timestamp, e);
-                                continue;
-                            }
-                        };
-
-                        return Some(ToolInvocation {
-                            timestamp,
-                            tool_name: tool_match.tool_name.clone(),
-                            tool_category: ToolCategory::from_string(&tool_match.category),
-                            command_line: full_cmd,
-                            arguments,
-                            flags,
-                            exit_code: None,     // Exit code not available from logs
-                            agent_context: None, // Will be populated later
-                            session_id: session_id.to_string(),
-                            message_id: entry.uuid.clone(),
-                        });
-                    }
+                    return Some(ToolInvocation {
+                        timestamp,
+                        tool_name: tool_match.tool_name.clone(),
+                        tool_category: ToolCategory::from_string(&tool_match.category),
+                        command_line: full_cmd,
+                        arguments,
+                        flags,
+                        exit_code: None,     // Exit code not available from logs
+                        agent_context: None, // Will be populated later
+                        session_id: session_id.to_string(),
+                        message_id: entry.uuid.clone(),
+                    });
                 }
             }
         }

@@ -131,11 +131,11 @@ impl SessionConnector for CursorConnector {
             }
 
             // Apply limit if specified
-            if let Some(limit) = options.limit {
-                if sessions.len() >= limit {
-                    sessions.truncate(limit);
-                    break;
-                }
+            if let Some(limit) = options.limit
+                && sessions.len() >= limit
+            {
+                sessions.truncate(limit);
+                break;
             }
         }
 

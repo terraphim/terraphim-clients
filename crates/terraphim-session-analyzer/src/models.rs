@@ -440,12 +440,11 @@ pub fn extract_file_path(input: &serde_json::Value) -> Option<String> {
     }
 
     // For MultiEdit, check the edits array
-    if let Some(edits) = input.get("edits").and_then(|v| v.as_array()) {
-        if !edits.is_empty() {
-            if let Some(file_path) = input.get("file_path").and_then(|v| v.as_str()) {
-                return Some(file_path.to_string());
-            }
-        }
+    if let Some(edits) = input.get("edits").and_then(|v| v.as_array())
+        && !edits.is_empty()
+        && let Some(file_path) = input.get("file_path").and_then(|v| v.as_str())
+    {
+        return Some(file_path.to_string());
     }
 
     None
