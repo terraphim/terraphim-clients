@@ -113,7 +113,7 @@ Query
   ├── Sufficient ──→ Return chunks (SearchOnly)
   ├── NeedsSynthesis ──→ RLM fallback (if LLM configured)
   ├── NeedsExpansion ──→ RLM fallback with additional chunks
-  └── Insufficient ──→ Return empty (RlmInsufficient)
+  └── Insufficient ──→ Preserve retrieved chunks + KG metadata (RlmInsufficient)
 ```
 
 ## Key Types
