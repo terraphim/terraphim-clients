@@ -17,6 +17,9 @@ mod opencode;
 #[cfg(feature = "codex-connector")]
 mod codex;
 
+#[cfg(feature = "cursor-connector")]
+mod cursor;
+
 pub use native::NativeClaudeConnector;
 
 #[cfg(feature = "aider-connector")]
@@ -30,6 +33,9 @@ pub use opencode::OpenCodeConnector;
 
 #[cfg(feature = "codex-connector")]
 pub use codex::CodexConnector;
+
+#[cfg(feature = "cursor-connector")]
+pub use cursor::CursorConnector;
 
 use crate::model::Session;
 use anyhow::Result;
@@ -172,6 +178,10 @@ impl ConnectorRegistry {
         // Add Codex connector if feature enabled
         #[cfg(feature = "codex-connector")]
         connectors.push(Box::new(CodexConnector));
+
+        // Add Cursor connector if feature enabled
+        #[cfg(feature = "cursor-connector")]
+        connectors.push(Box::new(CursorConnector));
 
         // Add TSA-based connectors if feature enabled
         #[cfg(feature = "terraphim-session-analyzer")]
