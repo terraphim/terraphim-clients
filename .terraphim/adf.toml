@@ -90,3 +90,41 @@ Constraints: subscription models only; British English in any prose; no emoji;
 never use the `timeout` command; one PR per run.
 '''
 
+
+# Disciplined structural PR review agent (9-dimension checklist).
+# Triggered by the release-guardian-response flow after implementation.
+# Posts structured review with severity-tiered findings (P0/P1/P2) and confidence score.
+[[agents]]
+name = "disciplined-pr-review"
+layer = "Growth"
+cli_tool = ".terraphim/bin/structured-pr-review.sh"
+task = "Run structural PR review with 9-dimension checklist on the active PR. Posts review comment with Mermaid diagram, confidence score, and severity-tiered findings."
+project = "terraphim-clients"
+
+[[agents]]
+name = "disciplined-research"
+layer = "Growth"
+cli_tool = "echo"
+task = "Research phase: analyze issue, understand context, identify affected code paths"
+project = "terraphim-clients"
+
+[[agents]]
+name = "disciplined-specification"
+layer = "Growth"
+cli_tool = "echo"
+task = "Specification phase: define acceptance criteria, test cases, and implementation plan"
+project = "terraphim-clients"
+
+[[agents]]
+name = "disciplined-implementation"
+layer = "Growth"
+cli_tool = "echo"
+task = "Implementation phase: write code and tests, run quality gates"
+project = "terraphim-clients"
+
+[[agents]]
+name = "disciplined-quality-evaluation"
+layer = "Growth"
+cli_tool = "echo"
+task = "Quality phase: run test suite, clippy, fmt, verify acceptance criteria"
+project = "terraphim-clients"
