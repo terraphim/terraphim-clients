@@ -1,6 +1,8 @@
 [package]
 name = "terraphim_agent"
-version.workspace = true
+# Pinned ahead of the workspace: 1.21.1 on the terraphim registry carries the
+# broken install set (#95), so the next published agent must be 1.21.2.
+version = "1.21.2"
 edition.workspace = true
 authors = ["Terraphim Contributors"]
 description = "Terraphim AI Agent CLI - Command-line interface with interactive REPL and ASCII graph visualization"
@@ -80,8 +82,12 @@ terraphim_rolegraph = { version = "1.0.0" }
 terraphim_hooks = { path = "../terraphim_hooks", version = "1.0.0" }
 terraphim_tracker = { version = "1.0.0" }
 terraphim_orchestrator = { version = "1.0.0" }
-# Session search - uses workspace version (path for dev, version for crates.io)
-terraphim_sessions = { path = "../terraphim_sessions", version = "1.6.0", optional = true, features = ["tsa-full", "aider-connector", "cursor-connector", "search-index"] }
+# Session search (#95): depend on the canonical terraphim-registry release.
+# crates.io only has stale terraphim_sessions (<= 1.21.1, no cursor-connector
+# and a broken terraphim-markdown-parser resolution), so the floor is 1.21.2
+# from the private registry. Do not use a workspace path here: the exact
+# published package is the release artifact being validated.
+terraphim_sessions = { version = "1.21.2", registry = "terraphim", optional = true, features = ["tsa-full", "aider-connector", "cursor-connector", "search-index"] }
 
 [dev-dependencies]
 assert_cmd = "2"
@@ -96,6 +102,9 @@ wiremock = "0.6"
 
 terraphim_test_utils = { version = "1.20.3" }
 insta = { version = "1.41", features = ["yaml", "redactions"] }
+# Packaged-install-graph regression test (#95)
+toml = "0.8"
+semver = "1"
 
 # Enable REPL features for testing
 terraphim_agent = { path = ".", features = ["repl-full"] }

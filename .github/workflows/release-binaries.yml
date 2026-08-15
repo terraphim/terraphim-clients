@@ -78,15 +78,87 @@ jobs:
           key: clients-${{ matrix.target }}
       - name: Set release version (#67 — binaries must report the tag version)
         shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          TARGET_REPO: ${{ inputs.target_repo }}
         run: |
-          # Bump the workspace version to the release input so CARGO_PKG_VERSION
-          # baked into the binaries matches the git tag. Not committed to main
-          # (the bump lives only in this CI checkout, like the tag itself).
-          # Use a backup suffix so the in-place edit works on both GNU and BSD/macOS sed.
-          sed -i.bak 's/^version = ".*"/version = "${{ inputs.version }}"/' Cargo.toml
-          rm -f Cargo.toml.bak
-          grep -n '^version =' Cargo.toml
-          cargo metadata --no-deps --format-version 1 >/dev/null
+          # Bump the workspace version AND terraphim_agent's explicit package
+          # version (#95: the agent pins its own version ahead of the
+          # workspace) to the release input so CARGO_PKG_VERSION baked into
+          # the binaries matches the git tag. Not committed to main (the bump
+          # lives only in this CI checkout, like the tag itself).
+          python3 - <<'PY'
+          import os, pathlib, re, sys
+
+          VERSION = os.environ["VERSION"]
+          RELEASE_TAG = os.environ["RELEASE_TAG"]
+          TARGET_REPO = os.environ["TARGET_REPO"]
+
+          # Strict semver validation (semver.org BNF) before touching files.
+          SEMVER = re.compile(
+              r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+              r"(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)"
+              r"(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?"
+              r"(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"
+          )
+          if not SEMVER.match(VERSION):
+              sys.exit(f"input version {VERSION!r} is not valid semver")
+          if RELEASE_TAG != f"v{VERSION}":
+              sys.exit(
+                  f"release_tag {RELEASE_TAG!r} must equal 'v' plus version {VERSION!r}"
+              )
+          if not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9._-]{0,99})", TARGET_REPO):
+              sys.exit(f"target_repo {TARGET_REPO!r} is not a valid repository name")
+
+          def set_section_version(path: str, section: str) -> None:
+              """Rewrite exactly one `version = "..."` line inside `[section]`."""
+              p = pathlib.Path(path)
+              text = p.read_text()
+              pattern = re.compile(
+                  r"(\[" + re.escape(section) + r"\][^\[]*?)"
+                  r'version = "[^"]*"',
+                  re.S,
+              )
+              new, count = pattern.subn(r'\g<1>version = "' + VERSION + '"', text)
+              if count != 1:
+                  sys.exit(
+                      f"{path}: expected exactly 1 version line in [{section}], "
+                      f"replaced {count}"
+                  )
+              p.write_text(new)
+              print(f"{path}: [{section}] version -> {VERSION}")
+
+          set_section_version("Cargo.toml", "workspace.package")
+          set_section_version("crates/terraphim_agent/Cargo.toml", "package")
+          PY
+          # Assert the release input propagated to every shipped binary crate.
+          cargo metadata --no-deps --format-version 1 | python3 -c '
+          import json, os, sys
+          meta = json.load(sys.stdin)
+          want = os.environ["VERSION"]
+          versions = {p["name"]: p["version"] for p in meta["packages"]}
+          for name in ("terraphim_agent", "terraphim-cli", "terraphim_grep"):
+              got = versions.get(name)
+              if got != want:
+                  sys.exit(f"{name} version is {got!r}, expected {want!r}")
+              print(f"{name} {got} OK")
+          '
+      - name: Assert host binary reports the release version (#67, #95)
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          # Build/run on the host (no cross) before the target matrix builds so
+          # a version mismatch fails fast. The binary's --version final token
+          # must equal the release input exactly.
+          out="$(cargo run -q -p terraphim_agent --bin terraphim-agent -- --version)"
+          echo "$out"
+          reported="$(printf '%s\n' "$out" | tail -n1 | awk '{print $NF}')"
+          if [ "$reported" != "$VERSION" ]; then
+            echo "ERROR: terraphim-agent --version reported '$reported', expected '$VERSION'" >&2
+            exit 1
+          fi
       - name: Build client binaries
         shell: bash
         run: |
@@ -191,12 +263,12 @@ jobs:
   upload-to-target-release:
     name: Sign + attach to GitHub release + publish to R2
     needs: [build-binaries, sign-and-notarize-macos]
-    # Attach when macOS sign succeeded; do not require full matrix (Windows is optional).
+    # Fail closed: attach only when every build target and macOS signing succeeded.
     if: >-
       always() &&
       !cancelled() &&
       needs.sign-and-notarize-macos.result == 'success' &&
-      needs.build-binaries.result != 'cancelled'
+      needs.build-binaries.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -218,9 +290,11 @@ jobs:
       - name: Upload to target GitHub release
         env:
           GH_TOKEN: ${{ secrets.TERRAPHIM_AI_RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          TARGET_REPO: ${{ inputs.target_repo }}
         run: |
-          TAG="${{ inputs.release_tag }}"
-          REPO="terraphim/${{ inputs.target_repo }}"
+          TAG="$RELEASE_TAG"
+          REPO="terraphim/$TARGET_REPO"
           find release-assets -type f | sort
           gh release upload "$TAG" release-assets/* --repo "$REPO" --clobber
       - uses: oven-sh/setup-bun@v2
