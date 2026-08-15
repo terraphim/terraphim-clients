@@ -23,3 +23,5 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo build --workspace
       - run: cargo test --workspace --lib --no-fail-fast
+      # #95: isolated packaged install-graph regression.
+      - run: cargo test -p terraphim_agent --test packaged_install_graph_regression -- --nocapture

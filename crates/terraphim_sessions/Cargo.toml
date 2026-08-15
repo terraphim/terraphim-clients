@@ -1,6 +1,8 @@
 [package]
 name = "terraphim_sessions"
-version.workspace = true
+# Pinned ahead of the workspace (1.21.1): #95 requires the 1.21.2 release
+# on the terraphim registry, which is what terraphim_agent depends on.
+version = "1.21.2"
 edition.workspace = true
 description = "Session management for AI coding assistant history - search across Claude Code, Cursor, Aider sessions"
 license = "Apache-2.0"
