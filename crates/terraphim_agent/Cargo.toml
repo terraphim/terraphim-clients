@@ -1,8 +1,10 @@
 [package]
 name = "terraphim_agent"
 # Pinned ahead of the workspace: 1.21.1 on the terraphim registry carries the
-# broken install set (#95), so the next published agent must be 1.21.2.
-version = "1.21.2"
+# broken install set (#95), so published agent releases must stay >= 1.21.2.
+# v1.21.12 consolidates canonical main after the divergent v1.21.11 release
+# branch (#97).
+version = "1.21.12"
 edition.workspace = true
 authors = ["Terraphim Contributors"]
 description = "Terraphim AI Agent CLI - Command-line interface with interactive REPL and ASCII graph visualization"
