@@ -2,6 +2,22 @@
 
 All notable changes to terraphim_agent are documented here.
 
+## [1.21.12] - 2026-08-16
+
+### Fixed
+- Packaged dependency graph repair (#95, #96): the published package resolves
+  `terraphim_sessions >= 1.21.2` from the canonical terraphim sparse index;
+  guarded by the `packaged_install_graph_regression` end-to-end test.
+- Release-workflow hardening: strict semver/`release_tag`/`target_repo` input
+  validation, version propagation asserted across shipped binaries (#67, #95).
+
+### Added
+- Cursor IDE session import via `terraphim_sessions` `CursorConnector` (#2515).
+
+### Changed
+- Canonical-main consolidation after the divergent v1.21.11 release branch (#97);
+  explicit package version moves 1.21.2 -> 1.21.12 in lockstep with the workspace.
+
 ## Unreleased
 
 ### Changed
