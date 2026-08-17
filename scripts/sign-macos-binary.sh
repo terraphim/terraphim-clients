@@ -89,7 +89,7 @@ xcrun notarytool log "$SUBMISSION_ID" \
 
 # Verify with spctl
 echo "==> Verifying Gatekeeper acceptance"
-spctl --assess --type execute --verbose "$BINARY_PATH" || true
+spctl --assess --type execute --verbose "$BINARY_PATH"
 
 # Cleanup
 echo "==> Cleaning up"

@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "release-binaries.yml"
+SIGN_MACOS_BINARY = ROOT / "scripts" / "sign-macos-binary.sh"
 
 
 def workflow_text() -> str:
@@ -20,6 +21,15 @@ def preflight_python_validator() -> str:
     end = text.index("          PY\n", start)
     lines = text[start:end].splitlines()
     return textwrap.dedent("\n".join(line[10:] for line in lines) + "\n")
+
+
+def job_block(job_name: str) -> str:
+    text = workflow_text()
+    start = text.index(f"  {job_name}:")
+    match = re.search(r"\n  [a-zA-Z0-9_-]+:\n", text[start + 1 :])
+    if match is None:
+        return text[start:]
+    return text[start : start + 1 + match.start()]
 
 
 class ReleaseBinariesWorkflowContract(unittest.TestCase):
@@ -169,20 +179,25 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
         self.assertEqual(expected_lanes, actual_lanes)
         self.assertIn("fail-fast: false", text)
 
-    def test_windows_builds_release_binary_with_msvc_stack_and_asserts_version(self) -> None:
-        text = workflow_text()
+    def test_windows_builds_and_asserts_the_actual_release_binary(self) -> None:
+        block = job_block("build-binaries")
 
-        self.assertIn("Diagnostic Windows build/run without /STACK:8388608", text)
-        self.assertIn("set +e", text)
-        self.assertIn("windows-no-stack-diagnostic.log", text)
-        self.assertIn("Assert Windows mitigated release binary reports the release version", text)
-        self.assertIn("/STACK:8388608", text)
-        self.assertIn("cargo build --release --target ${{ matrix.target }} -p terraphim_agent --bin terraphim-agent", text)
-        self.assertIn("target/${{ matrix.target }}/release/terraphim-agent.exe", text)
-        self.assertIn("--version", text)
-        self.assertIn("awk '{print $NF}'", text)
-        self.assertIn('if [ "$reported" != "$VERSION" ]; then', text)
-        self.assertIn("Build client binaries (Windows stack reserve)", text)
+        self.assertIn(
+            "Assert Windows release binary reports the release version (#67, #95, #103)",
+            block,
+        )
+        self.assertIn(
+            "cargo build --release --target ${{ matrix.target }} -p terraphim_agent --bin terraphim-agent",
+            block,
+        )
+        self.assertIn("target/${{ matrix.target }}/release/terraphim-agent.exe", block)
+        self.assertIn("--version", block)
+        self.assertIn("awk '{print $NF}'", block)
+        self.assertIn('if [ "$reported" != "$VERSION" ]; then', block)
+        self.assertIn("Build client binaries (Windows)", block)
+        self.assertNotIn("/STACK:8388608", block)
+        self.assertNotIn("windows-no-stack-diagnostic", block)
+        self.assertNotIn("set +e", block)
 
     def test_non_windows_builds_do_not_set_empty_rustflags(self) -> None:
         text = workflow_text()
@@ -195,26 +210,60 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
         )
         self.assertRegex(
             text,
-            r"- name: Build client binaries \(Windows stack reserve\)\n\s+if: matrix\.os == 'windows-latest'\n\s+shell: bash\n\s+env:\n\s+RUSTFLAGS: -C link-arg=/STACK:8388608",
+            r"- name: Build client binaries \(Windows\)\n\s+if: matrix\.os == 'windows-latest'\n\s+shell: bash\n\s+run:",
         )
 
-    def test_upload_and_r2_are_fail_closed_on_preflight_and_builds(self) -> None:
-        text = workflow_text()
+    def test_job_gates_and_r2_are_fail_closed_on_specific_needs(self) -> None:
+        create_universal = job_block("create-universal-macos")
+        sign_and_notarize = job_block("sign-and-notarize-macos")
+        upload = job_block("upload-to-target-release")
 
-        self.assertIn("needs: [preflight, build-binaries]", text)
-        self.assertIn("needs.preflight.result == 'success'", text)
-        self.assertIn("needs.build-binaries.result == 'success'", text)
-        self.assertNotIn("needs.build-binaries.result != 'cancelled'", text)
-        self.assertIn("needs: [preflight, build-binaries, sign-and-notarize-macos]", text)
-        self.assertIn("needs.preflight.result == 'success'", text)
-        self.assertIn("needs.build-binaries.result == 'success'", text)
-        self.assertIn("needs.sign-and-notarize-macos.result == 'success'", text)
-        self.assertIn("needs: [preflight, create-universal-macos]", text)
-        self.assertIn("needs.preflight.result == 'success'", text)
-        self.assertIn("needs.create-universal-macos.result == 'success'", text)
-        self.assertIn("RELEASE_TAG: ${{ needs.preflight.outputs.release_tag }}", text)
-        self.assertIn("TARGET_REPO: ${{ needs.preflight.outputs.target_repo }}", text)
-        self.assertIn("VERSION: ${{ needs.preflight.outputs.version }}", text)
+        self.assertIn("needs: [preflight, build-binaries]", create_universal)
+        self.assertIn("always() &&", create_universal)
+        self.assertIn("!cancelled() &&", create_universal)
+        self.assertIn("needs.preflight.result == 'success'", create_universal)
+        self.assertIn("needs.build-binaries.result == 'success'", create_universal)
+        self.assertNotIn("needs.build-binaries.result != 'cancelled'", create_universal)
+
+        self.assertIn("needs: [preflight, create-universal-macos]", sign_and_notarize)
+        self.assertIn("always() &&", sign_and_notarize)
+        self.assertIn("!cancelled() &&", sign_and_notarize)
+        self.assertIn("needs.preflight.result == 'success'", sign_and_notarize)
+        self.assertIn("needs.create-universal-macos.result == 'success'", sign_and_notarize)
+
+        self.assertIn("needs: [preflight, build-binaries, sign-and-notarize-macos]", upload)
+        self.assertIn("always() &&", upload)
+        self.assertIn("!cancelled() &&", upload)
+        self.assertIn("needs.preflight.result == 'success'", upload)
+        self.assertIn("needs.build-binaries.result == 'success'", upload)
+        self.assertIn("needs.sign-and-notarize-macos.result == 'success'", upload)
+        self.assertIn("RELEASE_TAG: ${{ needs.preflight.outputs.release_tag }}", upload)
+        self.assertIn("TARGET_REPO: ${{ needs.preflight.outputs.target_repo }}", upload)
+        self.assertIn("VERSION: ${{ needs.preflight.outputs.version }}", upload)
+        self.assertIn("ERROR: CLOUDFLARE_API_TOKEN not set; failing R2 publish closed", upload)
+        self.assertIn("exit 1", upload)
+        self.assertNotIn("WARN: CLOUDFLARE_API_TOKEN not set; skipping R2 publish", upload)
+
+    def test_restricted_jobs_have_read_only_contents_permissions(self) -> None:
+        for name in (
+            "preflight",
+            "build-binaries",
+            "create-universal-macos",
+            "sign-and-notarize-macos",
+        ):
+            with self.subTest(job=name):
+                block = job_block(name)
+                self.assertIn("permissions:\n      contents: read", block)
+
+        upload = job_block("upload-to-target-release")
+        self.assertNotIn("permissions:\n      contents: read", upload)
+
+    def test_macos_gatekeeper_assessment_is_fatal(self) -> None:
+        text = SIGN_MACOS_BINARY.read_text()
+        line = 'spctl --assess --type execute --verbose "$BINARY_PATH"'
+
+        self.assertIn(line, text)
+        self.assertNotIn(f"{line} || true", text)
 
     def test_upload_downloads_platform_artifacts_and_only_signed_universal(self) -> None:
         text = workflow_text()

@@ -35,6 +35,8 @@ jobs:
   preflight:
     name: Validate release source contract
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       version: ${{ steps.contract.outputs.version }}
       release_tag: ${{ steps.contract.outputs.release_tag }}
@@ -124,6 +126,8 @@ jobs:
   build-binaries:
     name: Build client binaries for ${{ matrix.target }}
     needs: preflight
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -253,30 +257,9 @@ jobs:
         env:
           VERSION: ${{ needs.preflight.outputs.version }}
         run: |
-          set +e
-          rustup run stable cargo build --release --target ${{ matrix.target }} -p terraphim_agent --bin terraphim-agent
-          build_status=$?
-          if [ "$build_status" -eq 0 ]; then
-            out="$(target/${{ matrix.target }}/release/terraphim-agent.exe --version 2>&1)"
-            run_status=$?
-          else
-            out="cargo build failed before running terraphim-agent.exe"
-            run_status=127
-          fi
-          set -e
-          {
-            echo "Diagnostic Windows build/run without /STACK:8388608"
-            echo "build_status=$build_status"
-            echo "run_status=$run_status"
-            printf '%s\n' "$out"
-          } | tee windows-no-stack-diagnostic.log
-      - name: Assert Windows mitigated release binary reports the release version (#67, #95, #103)
-        if: matrix.os == 'windows-latest'
-        shell: bash
-        env:
-          VERSION: ${{ needs.preflight.outputs.version }}
-          RUSTFLAGS: -C link-arg=/STACK:8388608
-        run: |
+          # Empirical recovery run 32060761712 proved the release profile alone
+          # exits successfully and reports 1.21.12; the historical failure was
+          # confined to the debug-profile assertion, not the shipped artifact.
           rustup run stable cargo build --release --target ${{ matrix.target }} -p terraphim_agent --bin terraphim-agent
           out="$(target/${{ matrix.target }}/release/terraphim-agent.exe --version)"
           echo "$out"
@@ -297,11 +280,9 @@ jobs:
           $BUILD build --release --target ${{ matrix.target }} -p terraphim_agent --bin terraphim-agent
           $BUILD build --release --target ${{ matrix.target }} -p terraphim-cli --bin terraphim-cli
           $BUILD build --release --target ${{ matrix.target }} -p terraphim_grep --bin terraphim-grep --features "code-search openrouter"
-      - name: Build client binaries (Windows stack reserve)
+      - name: Build client binaries (Windows)
         if: matrix.os == 'windows-latest'
         shell: bash
-        env:
-          RUSTFLAGS: -C link-arg=/STACK:8388608
         run: |
           rustup run stable cargo build --release --target ${{ matrix.target }} -p terraphim_agent --bin terraphim-agent
           rustup run stable cargo build --release --target ${{ matrix.target }} -p terraphim-cli --bin terraphim-cli
@@ -342,8 +323,11 @@ jobs:
   create-universal-macos:
     name: Create macOS universal client binaries
     needs: [preflight, build-binaries]
+    permissions:
+      contents: read
     if: >-
       always() &&
+      !cancelled() &&
       needs.preflight.result == 'success' &&
       needs.build-binaries.result == 'success'
     runs-on: macos-latest
@@ -369,8 +353,11 @@ jobs:
   sign-and-notarize-macos:
     name: Sign and notarize macOS client binaries
     needs: [preflight, create-universal-macos]
+    permissions:
+      contents: read
     if: >-
       always() &&
+      !cancelled() &&
       needs.preflight.result == 'success' &&
       needs.create-universal-macos.result == 'success'
     runs-on: macos-latest
@@ -491,7 +478,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
-            echo "WARN: CLOUDFLARE_API_TOKEN not set; skipping R2 publish" >&2; exit 0
+            echo "ERROR: CLOUDFLARE_API_TOKEN not set; failing R2 publish closed" >&2; exit 1
           fi
           # Upload each signed archive to r2://terraphim-releases/<bin>/<filename>.
           # (--remote is required: without it wrangler writes to local worker storage
