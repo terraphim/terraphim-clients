@@ -258,12 +258,16 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
         upload = job_block("upload-to-target-release")
         self.assertNotIn("permissions:\n      contents: read", upload)
 
-    def test_macos_gatekeeper_assessment_is_fatal(self) -> None:
+    def test_macos_notarization_binds_exact_submission_and_fails_closed(self) -> None:
         text = SIGN_MACOS_BINARY.read_text()
-        line = 'spctl --assess --type execute --verbose "$BINARY_PATH"'
 
-        self.assertIn(line, text)
-        self.assertNotIn(f"{line} || true", text)
+        self.assertIn("--output-format json", text)
+        self.assertIn('data["id"], data["status"]', text)
+        self.assertIn('if [ "$SUBMISSION_STATUS" != "Accepted" ]; then', text)
+        self.assertIn('notarytool log "$SUBMISSION_ID"', text)
+        self.assertIn("for attempt in 1 2 3 4 5", text)
+        self.assertNotIn("notarytool history", text)
+        self.assertNotIn("spctl --assess", text)
 
     def test_upload_downloads_platform_artifacts_and_only_signed_universal(self) -> None:
         text = workflow_text()
