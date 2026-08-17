@@ -80,16 +80,17 @@ jobs:
               sys.exit(
                   f"expected_source_sha {expected_source_sha!r} is not a 40-character lowercase hex SHA"
               )
-          if target_repo not in {"terraphim-clients"}:
+          if target_repo not in {"terraphim-clients", "terraphim-ai"}:
               sys.exit(f"target_repo {target_repo!r} is not allowed")
           PY
 
           peel_tag_ref() {
             local ref_name="$1"
-            local object_sha object_type
+            local ref_json object_sha object_type tag_json
 
-            object_sha="$(gh api "repos/${{ github.repository }}/git/ref/tags/${ref_name}" --jq '.object.sha')"
-            object_type="$(gh api "repos/${{ github.repository }}/git/ref/tags/${ref_name}" --jq '.object.type')"
+            ref_json="$(gh api "repos/${{ github.repository }}/git/ref/tags/${ref_name}")"
+            object_sha="$(jq -r '.object.sha' <<<"$ref_json")"
+            object_type="$(jq -r '.object.type' <<<"$ref_json")"
 
             # Recursively peel annotated tags until the object is a commit: while object_type != "commit".
             while [ "$object_type" != "commit" ]; do
@@ -97,20 +98,16 @@ jobs:
                 echo "ERROR: ref '$ref_name' resolved to unsupported object type '$object_type'" >&2
                 exit 1
               fi
-              object_type="$(gh api "repos/${{ github.repository }}/git/tags/${object_sha}" --jq '.object.type')"
-              object_sha="$(gh api "repos/${{ github.repository }}/git/tags/${object_sha}" --jq '.object.sha')"
+              tag_json="$(gh api "repos/${{ github.repository }}/git/tags/${object_sha}")"
+              object_type="$(jq -r '.object.type' <<<"$tag_json")"
+              object_sha="$(jq -r '.object.sha' <<<"$tag_json")"
             done
 
             printf '%s\n' "$object_sha"
           }
 
           source_sha="$(peel_tag_ref "$SOURCE_REF")"
-          release_sha="$(peel_tag_ref "$RELEASE_TAG")"
 
-          if [ "$source_sha" != "$release_sha" ]; then
-            echo "ERROR: source_ref '$SOURCE_REF' peeled to '$source_sha' but release_tag '$RELEASE_TAG' peeled to '$release_sha'" >&2
-            exit 1
-          fi
           if [ "$source_sha" != "$EXPECTED_SOURCE_SHA" ]; then
             echo "ERROR: peeled source SHA '$source_sha' does not match expected_source_sha '$EXPECTED_SOURCE_SHA'" >&2
             exit 1
@@ -190,9 +187,6 @@ jobs:
         shell: bash
         env:
           VERSION: ${{ needs.preflight.outputs.version }}
-          RELEASE_TAG: ${{ needs.preflight.outputs.release_tag }}
-          SOURCE_REF: ${{ needs.preflight.outputs.source_ref }}
-          TARGET_REPO: ${{ needs.preflight.outputs.target_repo }}
         run: |
           # Bump the workspace version AND terraphim_agent's explicit package
           # version (#95: the agent pins its own version ahead of the
@@ -203,27 +197,6 @@ jobs:
           import os, pathlib, re, sys
 
           VERSION = os.environ["VERSION"]
-          RELEASE_TAG = os.environ["RELEASE_TAG"]
-          SOURCE_REF = os.environ["SOURCE_REF"]
-          TARGET_REPO = os.environ["TARGET_REPO"]
-
-          # Strict semver validation (semver.org BNF) before touching files.
-          SEMVER = re.compile(
-              r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
-              r"(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)"
-              r"(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?"
-              r"(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"
-          )
-          if not SEMVER.match(VERSION):
-              sys.exit(f"input version {VERSION!r} is not valid semver")
-          if RELEASE_TAG != f"v{VERSION}":
-              sys.exit(
-                  f"release_tag {RELEASE_TAG!r} must equal 'v' plus version {VERSION!r}"
-              )
-          if SOURCE_REF != RELEASE_TAG:
-              sys.exit(f"release_tag {RELEASE_TAG!r} must equal source_ref {SOURCE_REF!r}")
-          if TARGET_REPO not in {"terraphim-clients"}:
-              sys.exit(f"target_repo {TARGET_REPO!r} is not allowed")
 
           def set_section_version(path: str, section: str) -> None:
               """Rewrite exactly one `version = "..."` line inside `[section]`."""
@@ -279,6 +252,29 @@ jobs:
         shell: bash
         env:
           VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          set +e
+          rustup run stable cargo build --release --target ${{ matrix.target }} -p terraphim_agent --bin terraphim-agent
+          build_status=$?
+          if [ "$build_status" -eq 0 ]; then
+            out="$(target/${{ matrix.target }}/release/terraphim-agent.exe --version 2>&1)"
+            run_status=$?
+          else
+            out="cargo build failed before running terraphim-agent.exe"
+            run_status=127
+          fi
+          set -e
+          {
+            echo "Diagnostic Windows build/run without /STACK:8388608"
+            echo "build_status=$build_status"
+            echo "run_status=$run_status"
+            printf '%s\n' "$out"
+          } | tee windows-no-stack-diagnostic.log
+      - name: Assert Windows mitigated release binary reports the release version (#67, #95, #103)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
           RUSTFLAGS: -C link-arg=/STACK:8388608
         run: |
           rustup run stable cargo build --release --target ${{ matrix.target }} -p terraphim_agent --bin terraphim-agent
@@ -290,9 +286,8 @@ jobs:
             exit 1
           fi
       - name: Build client binaries
+        if: matrix.os != 'windows-latest'
         shell: bash
-        env:
-          RUSTFLAGS: ${{ matrix.os == 'windows-latest' && '-C link-arg=/STACK:8388608' || '' }}
         run: |
           if [ "${{ matrix.use_cross }}" = "true" ]; then
             BUILD="rustup run stable cross"
@@ -302,6 +297,15 @@ jobs:
           $BUILD build --release --target ${{ matrix.target }} -p terraphim_agent --bin terraphim-agent
           $BUILD build --release --target ${{ matrix.target }} -p terraphim-cli --bin terraphim-cli
           $BUILD build --release --target ${{ matrix.target }} -p terraphim_grep --bin terraphim-grep --features "code-search openrouter"
+      - name: Build client binaries (Windows stack reserve)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        env:
+          RUSTFLAGS: -C link-arg=/STACK:8388608
+        run: |
+          rustup run stable cargo build --release --target ${{ matrix.target }} -p terraphim_agent --bin terraphim-agent
+          rustup run stable cargo build --release --target ${{ matrix.target }} -p terraphim-cli --bin terraphim-cli
+          rustup run stable cargo build --release --target ${{ matrix.target }} -p terraphim_grep --bin terraphim-grep --features "code-search openrouter"
       - name: Package artifacts (Unix)
         if: matrix.os != 'windows-latest'
         env:
@@ -365,7 +369,10 @@ jobs:
   sign-and-notarize-macos:
     name: Sign and notarize macOS client binaries
     needs: [preflight, create-universal-macos]
-    if: always() && needs.create-universal-macos.result == 'success'
+    if: >-
+      always() &&
+      needs.preflight.result == 'success' &&
+      needs.create-universal-macos.result == 'success'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -428,9 +435,32 @@ jobs:
           fi
       - uses: actions/download-artifact@v4
         with:
-          pattern: client-binaries*
+          name: client-binaries-x86_64-unknown-linux-gnu
           path: release-assets
-          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: client-binaries-x86_64-unknown-linux-musl
+          path: release-assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: client-binaries-aarch64-unknown-linux-musl
+          path: release-assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: client-binaries-x86_64-apple-darwin
+          path: release-assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: client-binaries-aarch64-apple-darwin
+          path: release-assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: client-binaries-x86_64-pc-windows-msvc
+          path: release-assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: client-binaries-signed-universal-apple-darwin
+          path: release-assets
       - name: Install zipsign
         run: cargo install zipsign --locked
       - name: Sign .tar.gz archives (Ed25519, fail-closed)

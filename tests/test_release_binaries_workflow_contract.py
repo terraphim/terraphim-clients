@@ -48,25 +48,27 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
         self.assertIn("does not match expected_source_sha", text)
 
     def test_preflight_python_validator_accepts_recovery_contract(self) -> None:
-        env = os.environ.copy()
-        env.update(
-            {
-                "VERSION": "1.21.12",
-                "RELEASE_TAG": "v1.21.12",
-                "SOURCE_REF": "v1.21.12",
-                "EXPECTED_SOURCE_SHA": "e080475ac26f44ad4674a438d753f6ab185fb787",
-                "TARGET_REPO": "terraphim-clients",
-            }
-        )
+        for target_repo in ("terraphim-clients", "terraphim-ai"):
+            with self.subTest(target_repo=target_repo):
+                env = os.environ.copy()
+                env.update(
+                    {
+                        "VERSION": "1.21.12",
+                        "RELEASE_TAG": "v1.21.12",
+                        "SOURCE_REF": "v1.21.12",
+                        "EXPECTED_SOURCE_SHA": "e080475ac26f44ad4674a438d753f6ab185fb787",
+                        "TARGET_REPO": target_repo,
+                    }
+                )
 
-        result = subprocess.run(
-            ["python3", "-c", preflight_python_validator()],
-            env=env,
-            text=True,
-            capture_output=True,
-        )
+                result = subprocess.run(
+                    ["python3", "-c", preflight_python_validator()],
+                    env=env,
+                    text=True,
+                    capture_output=True,
+                )
 
-        self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_preflight_python_validator_rejects_hostile_inputs(self) -> None:
         base_env = os.environ.copy()
@@ -84,7 +86,7 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
             ("RELEASE_TAG", "v1.21.13", "must equal 'v' plus version"),
             ("SOURCE_REF", "main", "must equal source_ref"),
             ("EXPECTED_SOURCE_SHA", "E080475AC26F44AD4674A438D753F6AB185FB787", "40-character lowercase hex SHA"),
-            ("TARGET_REPO", "terraphim-ai", "is not allowed"),
+            ("TARGET_REPO", "terraphim", "is not allowed"),
         )
 
         for key, value, error in cases:
@@ -106,8 +108,29 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
         self.assertIn("gh api", text)
         self.assertIn("repos/${{ github.repository }}/git/ref/tags/", text)
         self.assertIn("repos/${{ github.repository }}/git/tags/", text)
+        self.assertIn('ref_json="$(gh api "repos/${{ github.repository }}/git/ref/tags/${ref_name}")"', text)
+        self.assertIn('tag_json="$(gh api "repos/${{ github.repository }}/git/tags/${object_sha}")"', text)
         self.assertIn("while object_type != \"commit\"", text)
         self.assertIn("source_sha=", text)
+        self.assertNotIn("release_sha=", text)
+
+    def test_build_mutation_trusts_preflight_and_only_rewrites_versions(self) -> None:
+        text = workflow_text()
+        start = text.index("      - name: Set release version")
+        end = text.index("      - name: Assert host binary reports", start)
+        block = text[start:end]
+
+        self.assertIn('VERSION = os.environ["VERSION"]', block)
+        self.assertIn('set_section_version("Cargo.toml", "workspace.package")', block)
+        self.assertIn(
+            'set_section_version("crates/terraphim_agent/Cargo.toml", "package")',
+            block,
+        )
+        self.assertIn("cargo metadata --no-deps --format-version 1", block)
+        self.assertNotIn("SEMVER", block)
+        self.assertNotIn("RELEASE_TAG", block)
+        self.assertNotIn("SOURCE_REF", block)
+        self.assertNotIn("TARGET_REPO", block)
 
     def test_all_source_checkouts_use_preflight_sha_and_assert_head(self) -> None:
         text = workflow_text()
@@ -149,12 +172,31 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
     def test_windows_builds_release_binary_with_msvc_stack_and_asserts_version(self) -> None:
         text = workflow_text()
 
+        self.assertIn("Diagnostic Windows build/run without /STACK:8388608", text)
+        self.assertIn("set +e", text)
+        self.assertIn("windows-no-stack-diagnostic.log", text)
+        self.assertIn("Assert Windows mitigated release binary reports the release version", text)
         self.assertIn("/STACK:8388608", text)
         self.assertIn("cargo build --release --target ${{ matrix.target }} -p terraphim_agent --bin terraphim-agent", text)
         self.assertIn("target/${{ matrix.target }}/release/terraphim-agent.exe", text)
         self.assertIn("--version", text)
         self.assertIn("awk '{print $NF}'", text)
         self.assertIn('if [ "$reported" != "$VERSION" ]; then', text)
+        self.assertIn("Build client binaries (Windows stack reserve)", text)
+
+    def test_non_windows_builds_do_not_set_empty_rustflags(self) -> None:
+        text = workflow_text()
+
+        self.assertNotIn("|| ''", text)
+        self.assertNotIn("RUSTFLAGS: ${{ matrix.os == 'windows-latest'", text)
+        self.assertRegex(
+            text,
+            r"- name: Build client binaries\n\s+if: matrix\.os != 'windows-latest'\n\s+shell: bash\n\s+run:",
+        )
+        self.assertRegex(
+            text,
+            r"- name: Build client binaries \(Windows stack reserve\)\n\s+if: matrix\.os == 'windows-latest'\n\s+shell: bash\n\s+env:\n\s+RUSTFLAGS: -C link-arg=/STACK:8388608",
+        )
 
     def test_upload_and_r2_are_fail_closed_on_preflight_and_builds(self) -> None:
         text = workflow_text()
@@ -167,9 +209,34 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
         self.assertIn("needs.preflight.result == 'success'", text)
         self.assertIn("needs.build-binaries.result == 'success'", text)
         self.assertIn("needs.sign-and-notarize-macos.result == 'success'", text)
+        self.assertIn("needs: [preflight, create-universal-macos]", text)
+        self.assertIn("needs.preflight.result == 'success'", text)
+        self.assertIn("needs.create-universal-macos.result == 'success'", text)
         self.assertIn("RELEASE_TAG: ${{ needs.preflight.outputs.release_tag }}", text)
         self.assertIn("TARGET_REPO: ${{ needs.preflight.outputs.target_repo }}", text)
         self.assertIn("VERSION: ${{ needs.preflight.outputs.version }}", text)
+
+    def test_upload_downloads_platform_artifacts_and_only_signed_universal(self) -> None:
+        text = workflow_text()
+        start = text.index("  upload-to-target-release:")
+        end = text.index("      - name: Install zipsign", start)
+        block = text[start:end]
+
+        expected_artifacts = (
+            "client-binaries-x86_64-unknown-linux-gnu",
+            "client-binaries-x86_64-unknown-linux-musl",
+            "client-binaries-aarch64-unknown-linux-musl",
+            "client-binaries-x86_64-apple-darwin",
+            "client-binaries-aarch64-apple-darwin",
+            "client-binaries-x86_64-pc-windows-msvc",
+            "client-binaries-signed-universal-apple-darwin",
+        )
+        for artifact in expected_artifacts:
+            self.assertIn(f"name: {artifact}", block)
+
+        self.assertNotIn("pattern: client-binaries", block)
+        self.assertNotIn("merge-multiple", block)
+        self.assertNotIn("name: client-binaries-universal-apple-darwin", block)
 
 
 if __name__ == "__main__":
