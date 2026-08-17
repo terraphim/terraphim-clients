@@ -47,6 +47,10 @@ pub struct GrepResult {
     pub answer: Option<AnswerWithCitations>,
     pub concepts: Vec<KgConcept>,
     pub sufficiency: SufficiencyState,
+    /// Human-readable account of why `sufficiency` took the value it did, including the
+    /// heuristic metrics and the thresholds they were compared against. Additive: the
+    /// `sufficiency` values themselves are unchanged.
+    pub sufficiency_explanation: String,
     pub stats: GrepStats,
 }
 
@@ -129,7 +133,9 @@ impl TerraphimGrep {
 
         let search_latency_ms = start.elapsed().as_millis() as u64;
 
-        let sufficiency = self.sufficiency_judge.judge(&hybrid_results, query);
+        let (sufficiency, explanation) = self
+            .sufficiency_judge
+            .judge_explained(&hybrid_results, query);
 
         match sufficiency {
             sufficiency_judge::Sufficiency::Sufficient(chunks) => {
@@ -145,17 +151,32 @@ impl TerraphimGrep {
                     answer: None,
                     concepts: hybrid_results.kg_concepts,
                     sufficiency: SufficiencyState::SearchOnly,
+                    sufficiency_explanation: explanation,
                     stats,
                 })
             }
             sufficiency_judge::Sufficiency::NeedsSynthesis(chunks) => {
-                self.search_with_rlm_fallback(query, options, chunks, hybrid_results, start)
-                    .await
+                self.search_with_rlm_fallback(
+                    query,
+                    options,
+                    chunks,
+                    hybrid_results,
+                    start,
+                    explanation,
+                )
+                .await
             }
             sufficiency_judge::Sufficiency::NeedsExpansion(mut chunks) => {
                 chunks.extend(hybrid_results.to_chunks());
-                self.search_with_rlm_fallback(query, options, chunks, hybrid_results, start)
-                    .await
+                self.search_with_rlm_fallback(
+                    query,
+                    options,
+                    chunks,
+                    hybrid_results,
+                    start,
+                    explanation,
+                )
+                .await
             }
             sufficiency_judge::Sufficiency::Insufficient(chunks) => {
                 let returned_count = chunks.len();
@@ -171,6 +192,7 @@ impl TerraphimGrep {
                     answer: None,
                     concepts: vec![],
                     sufficiency: SufficiencyState::RlmInsufficient,
+                    sufficiency_explanation: explanation,
                     stats,
                 })
             }
@@ -185,6 +207,7 @@ impl TerraphimGrep {
         chunks: Vec<RetrievedChunk>,
         hybrid_results: HybridResults,
         start: std::time::Instant,
+        explanation: String,
     ) -> Result<GrepResult> {
         let rlm_start = std::time::Instant::now();
 
@@ -236,6 +259,12 @@ impl TerraphimGrep {
                 answer: None,
                 concepts: hybrid_results.kg_concepts,
                 sufficiency: SufficiencyState::SearchOnly,
+                // The judge asked for synthesis; say so, then say why it did not happen,
+                // otherwise the explanation would contradict the reported state.
+                sufficiency_explanation: format!(
+                    "{explanation} No LLM client is configured, so the search results are \
+                     returned without synthesis."
+                ),
                 stats,
             });
         };
@@ -280,6 +309,7 @@ impl TerraphimGrep {
             answer,
             concepts: hybrid_results.kg_concepts,
             sufficiency: SufficiencyState::RlmSynthesis,
+            sufficiency_explanation: explanation,
             stats,
         })
     }
@@ -292,6 +322,7 @@ impl TerraphimGrep {
         _chunks: Vec<RetrievedChunk>,
         _hybrid_results: HybridResults,
         _start: std::time::Instant,
+        _explanation: String,
     ) -> Result<GrepResult> {
         Err(TerraphimGrepError::LlmNotConfigured(
             "LLM feature not enabled".to_string(),
@@ -310,12 +341,20 @@ impl TerraphimGrep {
             .await
             .map_err(TerraphimGrepError::SearchFailed)?;
 
+        // The heuristics did not pick this path, but their metrics still explain what the
+        // LLM was given, so report them behind a note that the decision was forced.
+        let (_, metrics) = self
+            .sufficiency_judge
+            .judge_explained(&hybrid_results, query);
+        let explanation = format!("RLM synthesis was requested explicitly. {metrics}");
+
         self.search_with_rlm_fallback(
             query,
             options,
             hybrid_results.to_chunks(),
             hybrid_results,
             start,
+            explanation,
         )
         .await
     }
@@ -335,6 +374,35 @@ mod tests {
     use super::*;
     #[cfg(feature = "code-search")]
     use terraphim_types::Thesaurus;
+
+    /// The explanation must reach the JSON payload as an additive field, leaving the
+    /// existing `sufficiency` string untouched for backward compatibility.
+    #[test]
+    fn grep_result_json_carries_sufficiency_explanation() {
+        let result = GrepResult {
+            chunks: vec![],
+            answer: None,
+            concepts: vec![],
+            sufficiency: SufficiencyState::RlmInsufficient,
+            sufficiency_explanation: "No chunks matched 'migration tree'.".to_string(),
+            stats: GrepStats {
+                search_latency_ms: 1,
+                rlm_latency_ms: None,
+                chunks_returned: 0,
+                kg_hits: 0,
+            },
+        };
+
+        let json: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&result).expect("serialize"))
+                .expect("parse");
+
+        assert_eq!(json["sufficiency"], "RlmInsufficient");
+        assert_eq!(
+            json["sufficiency_explanation"],
+            "No chunks matched 'migration tree'."
+        );
+    }
 
     #[test]
     fn test_grep_options_default() {
@@ -394,6 +462,11 @@ mod tests {
             result.sufficiency
         );
         assert!(result.answer.is_none(), "no LLM -> no synthesised answer");
+        assert!(
+            result.sufficiency_explanation.contains("Metrics: coverage"),
+            "explanation should report the heuristic metrics, got {:?}",
+            result.sufficiency_explanation
+        );
     }
 
     /// When no thesaurus is available, the searcher must still run the `fff-search` code path
