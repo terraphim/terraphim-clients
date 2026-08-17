@@ -159,6 +159,10 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
     def test_upload_and_r2_are_fail_closed_on_preflight_and_builds(self) -> None:
         text = workflow_text()
 
+        self.assertIn("needs: [preflight, build-binaries]", text)
+        self.assertIn("needs.preflight.result == 'success'", text)
+        self.assertIn("needs.build-binaries.result == 'success'", text)
+        self.assertNotIn("needs.build-binaries.result != 'cancelled'", text)
         self.assertIn("needs: [preflight, build-binaries, sign-and-notarize-macos]", text)
         self.assertIn("needs.preflight.result == 'success'", text)
         self.assertIn("needs.build-binaries.result == 'success'", text)

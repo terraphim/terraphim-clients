@@ -338,7 +338,10 @@ jobs:
   create-universal-macos:
     name: Create macOS universal client binaries
     needs: [preflight, build-binaries]
-    if: always() && needs.build-binaries.result != 'cancelled'
+    if: >-
+      always() &&
+      needs.preflight.result == 'success' &&
+      needs.build-binaries.result == 'success'
     runs-on: macos-latest
     steps:
       - uses: actions/download-artifact@v4
