@@ -339,12 +339,12 @@ Because the local worktree does not contain the full Gitea #103 text, the accept
 **Tests**: Positive recovery dispatch from fix branch or `main` confirms every checkout is at `e080475ac26f44ad4674a438d753f6ab185fb787`.  
 **Expected Result**: The fixed workflow executes from fix branch or `main`, but all release source operations run against the immutable release commit.
 
-### Step 3: Implement H2 Windows Stack Probe/Fix First
+### Step 3: Use the Proven Windows Release Profile (H4)
 
 **Files**: `.github/workflows/release-binaries.yml`  
-**Description**: On Windows, build `terraphim-agent` with `RUSTFLAGS="-C link-arg=/STACK:8388608"` and run the produced executable directly with `--version`. Keep the assertion that the final output token equals the preflight `version`. This is the first implementation because the log proves runtime stack overflow and the linker stack reserve is reversible and build-only.  
-**Tests**: Windows job for `x86_64-pc-windows-msvc` exits `0` for `terraphim-agent --version` and reports `1.21.12`.  
-**Expected Result**: H2 greens and no source-level CLI change is needed.
+**Description**: Build `terraphim-agent` in the same unmodified `--release` profile shipped to users and execute that exact target binary with `--version`; require the final output token to equal the preflight version. Recovery run `32060761712` isolated the original debug-profile failure: the unmodified release build returned `build_status=0`, `run_status=0`, and `terraphim-agent 1.21.12`. A second `/STACK:8388608` build also passed, proving the linker override was unnecessary rather than causal. Remove the one-shot diagnostic and do not ship an unevidenced stack override.
+**Tests**: Windows `x86_64-pc-windows-msvc` release job exits `0`, reports `1.21.12`, contains no debug assertion or `/STACK:8388608`, and packages the same release-target executable.
+**Expected Result**: H4 greens using the actual shipped profile with no source or linker behavior change.
 
 ### Step 4: Preserve and Re-run Full Matrix
 
@@ -360,9 +360,9 @@ Because the local worktree does not contain the full Gitea #103 text, the accept
 **Tests**: Successful full workflow reaches upload/R2 only after all build targets and macOS signing pass. Negative preflight cases never reach upload/R2.  
 **Expected Result**: Publication remains gated and source identity is auditable.
 
-### Step 6: Use H3 Fallback Only if H2 Reds
+### Step 6: Use H3 Fallback Only if the Release Profile Reds
 
 **Files**: `crates/terraphim_agent/src/main.rs`; `.github/workflows/release-binaries.yml`  
-**Description**: If H2 fails with the same stack overflow or cannot produce the expected version output, add a minimal early `--version`/`-V` path before `Cli::parse_from`, then rerun Windows validation.  
-**Tests**: Unit or integration coverage for `--version` output if the source fallback is implemented, plus full workflow validation.  
-**Expected Result**: H3 is used only when H2 evidence proves the build-only fix is insufficient.
+**Description**: If the unmodified release profile fails with the same stack overflow or cannot produce the expected version output, add a minimal early `--version`/`-V` path before `Cli::parse_from`, then rerun Windows validation. Recovery run `32060761712` passed H4, so this fallback is not implemented.
+**Tests**: Unit or integration coverage for `--version` output only if the source fallback becomes necessary, plus full workflow validation.
+**Expected Result**: H3 remains an unimplemented contingency because the actual release artifact is proven healthy.

@@ -258,6 +258,21 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
         upload = job_block("upload-to-target-release")
         self.assertNotIn("permissions:\n      contents: read", upload)
 
+    def test_signing_credentials_are_masked_and_never_persisted_to_github_env(self) -> None:
+        signing = job_block("sign-and-notarize-macos")
+
+        self.assertIn("printf '::add-mask::%s\\n' \"$value\"", signing)
+        self.assertNotIn("$GITHUB_ENV", signing)
+        self.assertNotIn("- name: Load signing credentials", signing)
+        for name in (
+            "APPLE_ID",
+            "APPLE_TEAM_ID",
+            "APPLE_APP_PASSWORD",
+            "CERT_BASE64",
+            "CERT_PASSWORD",
+        ):
+            self.assertIn(f"load_masked {name} ", signing)
+
     def test_macos_notarization_binds_exact_submission_and_fails_closed(self) -> None:
         text = SIGN_MACOS_BINARY.read_text()
 

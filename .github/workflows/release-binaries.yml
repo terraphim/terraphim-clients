@@ -377,19 +377,30 @@ jobs:
           name: client-binaries-universal-apple-darwin
           path: universal
       - uses: 1password/install-cli-action@v2
-      - name: Load signing credentials
+      - name: Load masked credentials, sign, and notarize agent and grep
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-        run: |
-          echo "APPLE_ID=$(op read 'op://TerraphimPlatform/apple.developer.credentials/username' --no-newline)" >> $GITHUB_ENV
-          echo "APPLE_TEAM_ID=$(op read 'op://TerraphimPlatform/apple.developer.credentials/APPLE_TEAM_ID' --no-newline)" >> $GITHUB_ENV
-          echo "APPLE_APP_PASSWORD=$(op read 'op://TerraphimPlatform/apple.developer.credentials/APPLE_APP_SPECIFIC_PASSWORD' --no-newline)" >> $GITHUB_ENV
-          echo "CERT_BASE64=$(op read 'op://TerraphimPlatform/apple.developer.certificate/base64' --no-newline)" >> $GITHUB_ENV
-          echo "CERT_PASSWORD=$(op read 'op://TerraphimPlatform/apple.developer.certificate/password' --no-newline)" >> $GITHUB_ENV
-      - name: Sign and notarize agent and grep
-        env:
           RUNNER_TEMP: ${{ runner.temp }}
         run: |
+          set -euo pipefail
+          load_masked() {
+            local name="$1" reference="$2" value
+            value="$(op read "$reference" --no-newline)"
+            if [ -z "$value" ]; then
+              echo "ERROR: empty signing credential for $name" >&2
+              exit 1
+            fi
+            printf '::add-mask::%s\n' "$value"
+            printf -v "$name" '%s' "$value"
+            export "$name"
+          }
+
+          load_masked APPLE_ID 'op://TerraphimPlatform/apple.developer.credentials/username'
+          load_masked APPLE_TEAM_ID 'op://TerraphimPlatform/apple.developer.credentials/APPLE_TEAM_ID'
+          load_masked APPLE_APP_PASSWORD 'op://TerraphimPlatform/apple.developer.credentials/APPLE_APP_SPECIFIC_PASSWORD'
+          load_masked CERT_BASE64 'op://TerraphimPlatform/apple.developer.certificate/base64'
+          load_masked CERT_PASSWORD 'op://TerraphimPlatform/apple.developer.certificate/password'
+
           chmod +x scripts/sign-macos-binary.sh
           ./scripts/sign-macos-binary.sh universal/terraphim-agent-universal-apple-darwin "$APPLE_ID" "$APPLE_TEAM_ID" "$APPLE_APP_PASSWORD" "$CERT_BASE64" "$CERT_PASSWORD"
           ./scripts/sign-macos-binary.sh universal/terraphim-grep-universal-apple-darwin "$APPLE_ID" "$APPLE_TEAM_ID" "$APPLE_APP_PASSWORD" "$CERT_BASE64" "$CERT_PASSWORD"
