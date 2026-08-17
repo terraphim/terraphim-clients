@@ -11,10 +11,18 @@ on:
         description: 'GitHub release tag (e.g. v1.20.5)'
         required: true
         type: string
+      source_ref:
+        description: 'Release source ref to resolve and checkout (must equal release_tag)'
+        required: true
+        type: string
+      expected_source_sha:
+        description: 'Expected peeled 40-character source commit SHA'
+        required: true
+        type: string
       target_repo:
         description: 'GitHub repo to attach binaries to'
         required: false
-        default: terraphim-ai
+        default: terraphim-clients
         type: string
 
 permissions:
@@ -24,8 +32,110 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  preflight:
+    name: Validate release source contract
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.contract.outputs.version }}
+      release_tag: ${{ steps.contract.outputs.release_tag }}
+      source_ref: ${{ steps.contract.outputs.source_ref }}
+      source_sha: ${{ steps.contract.outputs.source_sha }}
+      workflow_sha: ${{ steps.contract.outputs.workflow_sha }}
+      target_repo: ${{ steps.contract.outputs.target_repo }}
+    steps:
+      - name: Validate inputs and peel source tag
+        id: contract
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+          EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
+          WORKFLOW_SHA: ${{ github.sha }}
+          TARGET_REPO: ${{ inputs.target_repo }}
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          import os, re, sys
+
+          version = os.environ["VERSION"]
+          release_tag = os.environ["RELEASE_TAG"]
+          source_ref = os.environ["SOURCE_REF"]
+          expected_source_sha = os.environ["EXPECTED_SOURCE_SHA"]
+          workflow_sha = os.environ["WORKFLOW_SHA"]
+          target_repo = os.environ["TARGET_REPO"]
+
+          semver = re.compile(
+              r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+              r"(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)"
+              r"(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?"
+              r"(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"
+          )
+          if not semver.fullmatch(version):
+              sys.exit(f"input version {version!r} is not valid semver")
+          if release_tag != f"v{version}":
+              sys.exit(f"release_tag {release_tag!r} must equal 'v' plus version {version!r}")
+          if source_ref != release_tag:
+              sys.exit(f"release_tag {release_tag!r} must equal source_ref {source_ref!r}")
+          if not re.fullmatch(r"[0-9a-f]{40}", expected_source_sha):
+              sys.exit(
+                  f"expected_source_sha {expected_source_sha!r} is not a 40-character lowercase hex SHA"
+              )
+          if not re.fullmatch(r"[0-9a-f]{40}", workflow_sha):
+              sys.exit(
+                  f"workflow_sha {workflow_sha!r} is not a 40-character lowercase hex SHA"
+              )
+          if target_repo not in {"terraphim-clients", "terraphim-ai"}:
+              sys.exit(f"target_repo {target_repo!r} is not allowed")
+          PY
+
+          peel_tag_ref() {
+            local ref_name="$1"
+            local ref_json object_sha object_type tag_json
+
+            ref_json="$(gh api "repos/${{ github.repository }}/git/ref/tags/${ref_name}")"
+            object_sha="$(jq -r '.object.sha' <<<"$ref_json")"
+            object_type="$(jq -r '.object.type' <<<"$ref_json")"
+
+            # Recursively peel annotated tags until the object is a commit: while object_type != "commit".
+            while [ "$object_type" != "commit" ]; do
+              if [ "$object_type" != "tag" ]; then
+                echo "ERROR: ref '$ref_name' resolved to unsupported object type '$object_type'" >&2
+                exit 1
+              fi
+              tag_json="$(gh api "repos/${{ github.repository }}/git/tags/${object_sha}")"
+              object_type="$(jq -r '.object.type' <<<"$tag_json")"
+              object_sha="$(jq -r '.object.sha' <<<"$tag_json")"
+            done
+
+            printf '%s\n' "$object_sha"
+          }
+
+          source_sha="$(peel_tag_ref "$SOURCE_REF")"
+
+          if [ "$source_sha" != "$EXPECTED_SOURCE_SHA" ]; then
+            echo "ERROR: peeled source SHA '$source_sha' does not match expected_source_sha '$EXPECTED_SOURCE_SHA'" >&2
+            exit 1
+          fi
+
+          {
+            echo "version=$VERSION"
+            echo "release_tag=$RELEASE_TAG"
+            echo "source_ref=$SOURCE_REF"
+            echo "source_sha=$source_sha"
+            echo "workflow_sha=$WORKFLOW_SHA"
+            echo "target_repo=$TARGET_REPO"
+          } >> "$GITHUB_OUTPUT"
+
   build-binaries:
     name: Build client binaries for ${{ matrix.target }}
+    needs: preflight
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -54,6 +164,15 @@ jobs:
       CARGO_REGISTRIES_TERRAPHIM_TOKEN: ${{ secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.source_sha }}
+      - name: Assert checkout source SHA
+        shell: bash
+        run: |
+          if [ "$(git rev-parse HEAD)" != "${{ needs.preflight.outputs.source_sha }}" ]; then
+            echo "ERROR: checkout HEAD $(git rev-parse HEAD) does not match expected source SHA ${{ needs.preflight.outputs.source_sha }}" >&2
+            exit 1
+          fi
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -79,9 +198,7 @@ jobs:
       - name: Set release version (#67 — binaries must report the tag version)
         shell: bash
         env:
-          VERSION: ${{ inputs.version }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
-          TARGET_REPO: ${{ inputs.target_repo }}
+          VERSION: ${{ needs.preflight.outputs.version }}
         run: |
           # Bump the workspace version AND terraphim_agent's explicit package
           # version (#95: the agent pins its own version ahead of the
@@ -92,24 +209,6 @@ jobs:
           import os, pathlib, re, sys
 
           VERSION = os.environ["VERSION"]
-          RELEASE_TAG = os.environ["RELEASE_TAG"]
-          TARGET_REPO = os.environ["TARGET_REPO"]
-
-          # Strict semver validation (semver.org BNF) before touching files.
-          SEMVER = re.compile(
-              r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
-              r"(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)"
-              r"(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?"
-              r"(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"
-          )
-          if not SEMVER.match(VERSION):
-              sys.exit(f"input version {VERSION!r} is not valid semver")
-          if RELEASE_TAG != f"v{VERSION}":
-              sys.exit(
-                  f"release_tag {RELEASE_TAG!r} must equal 'v' plus version {VERSION!r}"
-              )
-          if not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9._-]{0,99})", TARGET_REPO):
-              sys.exit(f"target_repo {TARGET_REPO!r} is not a valid repository name")
 
           def set_section_version(path: str, section: str) -> None:
               """Rewrite exactly one `version = "..."` line inside `[section]`."""
@@ -145,9 +244,10 @@ jobs:
               print(f"{name} {got} OK")
           '
       - name: Assert host binary reports the release version (#67, #95)
+        if: matrix.os != 'windows-latest'
         shell: bash
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ needs.preflight.outputs.version }}
         run: |
           # Build/run on the host (no cross) before the target matrix builds so
           # a version mismatch fails fast. The binary's --version final token
@@ -159,7 +259,25 @@ jobs:
             echo "ERROR: terraphim-agent --version reported '$reported', expected '$VERSION'" >&2
             exit 1
           fi
+      - name: Assert Windows release binary reports the release version (#67, #95, #103)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          # Empirical recovery run 32060761712 proved the release profile alone
+          # exits successfully and reports 1.21.12; the historical failure was
+          # confined to the debug-profile assertion, not the shipped artifact.
+          rustup run stable cargo build --release --target ${{ matrix.target }} -p terraphim_agent --bin terraphim-agent
+          out="$(target/${{ matrix.target }}/release/terraphim-agent.exe --version)"
+          echo "$out"
+          reported="$(printf '%s\n' "$out" | tail -n1 | awk '{print $NF}')"
+          if [ "$reported" != "$VERSION" ]; then
+            echo "ERROR: terraphim-agent.exe --version reported '$reported', expected \"$VERSION\"" >&2
+            exit 1
+          fi
       - name: Build client binaries
+        if: matrix.os != 'windows-latest'
         shell: bash
         run: |
           if [ "${{ matrix.use_cross }}" = "true" ]; then
@@ -170,10 +288,17 @@ jobs:
           $BUILD build --release --target ${{ matrix.target }} -p terraphim_agent --bin terraphim-agent
           $BUILD build --release --target ${{ matrix.target }} -p terraphim-cli --bin terraphim-cli
           $BUILD build --release --target ${{ matrix.target }} -p terraphim_grep --bin terraphim-grep --features "code-search openrouter"
+      - name: Build client binaries (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          rustup run stable cargo build --release --target ${{ matrix.target }} -p terraphim_agent --bin terraphim-agent
+          rustup run stable cargo build --release --target ${{ matrix.target }} -p terraphim-cli --bin terraphim-cli
+          rustup run stable cargo build --release --target ${{ matrix.target }} -p terraphim_grep --bin terraphim-grep --features "code-search openrouter"
       - name: Package artifacts (Unix)
         if: matrix.os != 'windows-latest'
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ needs.preflight.outputs.version }}
         run: |
           mkdir -p artifacts
           tar -czf "artifacts/terraphim-agent-${VERSION}-${{ matrix.target }}.tar.gz" -C "target/${{ matrix.target }}/release" terraphim-agent
@@ -187,7 +312,7 @@ jobs:
         if: matrix.os == 'windows-latest'
         shell: bash
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ needs.preflight.outputs.version }}
         run: |
           mkdir -p artifacts
           cd "target/${{ matrix.target }}/release"
@@ -205,8 +330,14 @@ jobs:
 
   create-universal-macos:
     name: Create macOS universal client binaries
-    needs: build-binaries
-    if: always() && needs.build-binaries.result != 'cancelled'
+    needs: [preflight, build-binaries]
+    permissions:
+      contents: read
+    if: >-
+      always() &&
+      !cancelled() &&
+      needs.preflight.result == 'success' &&
+      needs.build-binaries.result == 'success'
     runs-on: macos-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -229,32 +360,71 @@ jobs:
 
   sign-and-notarize-macos:
     name: Sign and notarize macOS client binaries
-    needs: create-universal-macos
-    if: always() && needs.create-universal-macos.result == 'success'
+    needs: [preflight, create-universal-macos]
+    permissions:
+      contents: read
+    if: >-
+      always() &&
+      !cancelled() &&
+      needs.preflight.result == 'success' &&
+      needs.create-universal-macos.result == 'success'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.source_sha }}
+      - name: Assert checkout source SHA
+        shell: bash
+        run: |
+          if [ "$(git rev-parse HEAD)" != "${{ needs.preflight.outputs.source_sha }}" ]; then
+            echo "ERROR: checkout HEAD $(git rev-parse HEAD) does not match expected source SHA ${{ needs.preflight.outputs.source_sha }}" >&2
+            exit 1
+          fi
+      - name: Checkout reviewed recovery tooling
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.workflow_sha }}
+          path: recovery-tooling
+          sparse-checkout: scripts
       - uses: actions/download-artifact@v4
         with:
           name: client-binaries-universal-apple-darwin
           path: universal
       - uses: 1password/install-cli-action@v2
-      - name: Load signing credentials
+      - name: Load masked credentials, sign, and notarize agent and grep
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-        run: |
-          echo "APPLE_ID=$(op read 'op://TerraphimPlatform/apple.developer.credentials/username' --no-newline)" >> $GITHUB_ENV
-          echo "APPLE_TEAM_ID=$(op read 'op://TerraphimPlatform/apple.developer.credentials/APPLE_TEAM_ID' --no-newline)" >> $GITHUB_ENV
-          echo "APPLE_APP_PASSWORD=$(op read 'op://TerraphimPlatform/apple.developer.credentials/APPLE_APP_SPECIFIC_PASSWORD' --no-newline)" >> $GITHUB_ENV
-          echo "CERT_BASE64=$(op read 'op://TerraphimPlatform/apple.developer.certificate/base64' --no-newline)" >> $GITHUB_ENV
-          echo "CERT_PASSWORD=$(op read 'op://TerraphimPlatform/apple.developer.certificate/password' --no-newline)" >> $GITHUB_ENV
-      - name: Sign and notarize agent and grep
-        env:
           RUNNER_TEMP: ${{ runner.temp }}
         run: |
-          chmod +x scripts/sign-macos-binary.sh
-          ./scripts/sign-macos-binary.sh universal/terraphim-agent-universal-apple-darwin "$APPLE_ID" "$APPLE_TEAM_ID" "$APPLE_APP_PASSWORD" "$CERT_BASE64" "$CERT_PASSWORD"
-          ./scripts/sign-macos-binary.sh universal/terraphim-grep-universal-apple-darwin "$APPLE_ID" "$APPLE_TEAM_ID" "$APPLE_APP_PASSWORD" "$CERT_BASE64" "$CERT_PASSWORD"
+          set -euo pipefail
+          load_masked() {
+            local name="$1" reference="$2" value
+            value="$(op read "$reference" --no-newline)"
+            if [ -z "$value" ]; then
+              echo "ERROR: empty signing credential for $name" >&2
+              exit 1
+            fi
+            if [ "$name" = "CERT_BASE64" ]; then
+              value="${value//$'\r'/}"
+              value="${value//$'\n'/}"
+            elif [[ "$value" == *$'\r'* || "$value" == *$'\n'* ]]; then
+              echo "ERROR: multiline signing credential is not allowed for $name" >&2
+              exit 1
+            fi
+            printf '::add-mask::%s\n' "$value"
+            printf -v "$name" '%s' "$value"
+            export "$name"
+          }
+
+          load_masked APPLE_ID 'op://TerraphimPlatform/apple.developer.credentials/username'
+          load_masked APPLE_TEAM_ID 'op://TerraphimPlatform/apple.developer.credentials/APPLE_TEAM_ID'
+          load_masked APPLE_APP_PASSWORD 'op://TerraphimPlatform/apple.developer.credentials/APPLE_APP_SPECIFIC_PASSWORD'
+          load_masked CERT_BASE64 'op://TerraphimPlatform/apple.developer.certificate/base64'
+          load_masked CERT_PASSWORD 'op://TerraphimPlatform/apple.developer.certificate/password'
+
+          chmod +x recovery-tooling/scripts/sign-macos-binary.sh
+          recovery-tooling/scripts/sign-macos-binary.sh universal/terraphim-agent-universal-apple-darwin "$APPLE_ID" "$APPLE_TEAM_ID" "$APPLE_APP_PASSWORD" "$CERT_BASE64" "$CERT_PASSWORD"
+          recovery-tooling/scripts/sign-macos-binary.sh universal/terraphim-grep-universal-apple-darwin "$APPLE_ID" "$APPLE_TEAM_ID" "$APPLE_APP_PASSWORD" "$CERT_BASE64" "$CERT_PASSWORD"
       - uses: actions/upload-artifact@v4
         with:
           name: client-binaries-signed-universal-apple-darwin
@@ -262,21 +432,60 @@ jobs:
 
   upload-to-target-release:
     name: Sign + attach to GitHub release + publish to R2
-    needs: [build-binaries, sign-and-notarize-macos]
+    needs: [preflight, build-binaries, sign-and-notarize-macos]
     # Fail closed: attach only when every build target and macOS signing succeeded.
     if: >-
       always() &&
       !cancelled() &&
+      needs.preflight.result == 'success' &&
       needs.sign-and-notarize-macos.result == 'success' &&
       needs.build-binaries.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.source_sha }}
+      - name: Assert checkout source SHA
+        shell: bash
+        run: |
+          if [ "$(git rev-parse HEAD)" != "${{ needs.preflight.outputs.source_sha }}" ]; then
+            echo "ERROR: checkout HEAD $(git rev-parse HEAD) does not match expected source SHA ${{ needs.preflight.outputs.source_sha }}" >&2
+            exit 1
+          fi
+      - name: Checkout reviewed recovery tooling
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.workflow_sha }}
+          path: recovery-tooling
+          sparse-checkout: scripts
       - uses: actions/download-artifact@v4
         with:
-          pattern: client-binaries*
+          name: client-binaries-x86_64-unknown-linux-gnu
           path: release-assets
-          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: client-binaries-x86_64-unknown-linux-musl
+          path: release-assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: client-binaries-aarch64-unknown-linux-musl
+          path: release-assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: client-binaries-x86_64-apple-darwin
+          path: release-assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: client-binaries-aarch64-apple-darwin
+          path: release-assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: client-binaries-x86_64-pc-windows-msvc
+          path: release-assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: client-binaries-signed-universal-apple-darwin
+          path: release-assets
       - name: Install zipsign
         run: cargo install zipsign --locked
       - name: Sign .tar.gz archives (Ed25519, fail-closed)
@@ -286,12 +495,12 @@ jobs:
           if [ -z "$ZIPSIGN_PRIVATE_KEY" ]; then
             echo "ERROR: ZIPSIGN_PRIVATE_KEY secret not set" >&2; exit 2
           fi
-          scripts/sign-release-archives.sh release-assets
+          recovery-tooling/scripts/sign-release-archives.sh release-assets
       - name: Upload to target GitHub release
         env:
           GH_TOKEN: ${{ secrets.TERRAPHIM_AI_RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
-          TARGET_REPO: ${{ inputs.target_repo }}
+          RELEASE_TAG: ${{ needs.preflight.outputs.release_tag }}
+          TARGET_REPO: ${{ needs.preflight.outputs.target_repo }}
         run: |
           TAG="$RELEASE_TAG"
           REPO="terraphim/$TARGET_REPO"
@@ -303,11 +512,11 @@ jobs:
       - name: Publish signed artifacts + manifest to R2 (#68)
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ needs.preflight.outputs.version }}
         run: |
           set -euo pipefail
           if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
-            echo "WARN: CLOUDFLARE_API_TOKEN not set; skipping R2 publish" >&2; exit 0
+            echo "ERROR: CLOUDFLARE_API_TOKEN not set; failing R2 publish closed" >&2; exit 1
           fi
           # Upload each signed archive to r2://terraphim-releases/<bin>/<filename>.
           # (--remote is required: without it wrangler writes to local worker storage
@@ -322,7 +531,7 @@ jobs:
           # One manifest per binary that appears in release-assets.
           bins="$(ls -1 release-assets/*.tar.gz | sed -E "s|^release-assets/||;s/-${VERSION}-.*//" | sort -u)"
           for bin in $bins; do
-            scripts/build-manifest.sh "$VERSION" "$bin" release-assets > "/tmp/${bin}.stable.json"
+            recovery-tooling/scripts/build-manifest.sh "$VERSION" "$bin" release-assets > "/tmp/${bin}.stable.json"
             bunx wrangler r2 object put "terraphim-releases/${bin}/stable.json" \
               --file "/tmp/${bin}.stable.json" --content-type application/json --remote
           done
