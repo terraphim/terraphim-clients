@@ -257,8 +257,9 @@ None for implementation. This plan document already exists as the approved Phase
 
 | File | Exact Intended Change |
 | --- | --- |
-| `.github/workflows/release-binaries.yml` | Add `workflow_dispatch` inputs `source_ref` and `expected_source_sha`. Add a required `preflight` job that validates `version`, `release_tag`, `source_ref`, `target_repo`, and `expected_source_sha`; resolves and recursively peels `source_ref`/`release_tag` through the GitHub API; fails on hostile input or SHA mismatch; emits immutable outputs. Make all jobs that read source depend on `preflight`. Set every source/script `actions/checkout@v4` to `ref: ${{ needs.preflight.outputs.source_sha }}` and assert `git rev-parse HEAD` matches that SHA. Replace raw input usage in build/upload jobs with preflight outputs. Add Windows H2 validation: build `terraphim-agent` with `RUSTFLAGS="-C link-arg=/STACK:8388608"` and run the produced `.exe --version`, asserting final token equals the preflight `version`. Retain non-Windows host assertion equivalently. Keep upload/R2 fail-closed behind successful preflight, build matrix, and macOS signing. |
-| `crates/terraphim_agent/src/main.rs` | Fallback only if H2 reds. Add a minimal early `--version`/`-V` path before `Cli::parse_from` that prints Clap-compatible version output using `env!("CARGO_PKG_VERSION")`, then exits `0`. Do not alter command behavior for other args. |
+| `.github/workflows/release-binaries.yml` | Add `workflow_dispatch` inputs `source_ref` and `expected_source_sha`. Add a required `preflight` job that validates `version`, `release_tag`, `source_ref`, `target_repo`, `expected_source_sha`, and immutable `github.sha`; recursively peel the release tag through the GitHub API; fail on hostile input or SHA mismatch; and emit distinct `source_sha` and `workflow_sha` outputs. Source/build checkouts remain pinned to `source_sha`; recovery-only signing, archive, and manifest scripts come from a path-scoped sparse checkout pinned to `workflow_sha`. Replace raw input usage in build/upload jobs with preflight outputs. Build Windows in the same unmodified release profile shipped to users and execute the packaged `.exe --version`; do not ship `/STACK:8388608`, because hosted evidence proved it unnecessary. Keep signing credentials in one step, normalize certificate base64 before registering it with `::add-mask::`, reject multiline scalar credentials, and never persist credentials to `GITHUB_ENV`. Keep upload/R2 fail-closed behind successful preflight, build matrix, and macOS signing. |
+| `scripts/sign-macos-binary.sh` | Bind notarization verification to the exact JSON submission ID returned by `notarytool submit --wait`, require `Accepted`, retrieve that exact log with bounded retry, and clean keychain/certificate/ZIP on every exit path. This reviewed recovery-tooling script is executed from `workflow_sha`, not from the historical release-source checkout. |
+| `crates/terraphim_agent/src/main.rs` | No change after H4 passed. A minimal early `--version`/`-V` path remains a contingency only if the unmodified release-profile executable later reproduces the startup failure. |
 
 ### Deleted Files
 
@@ -332,12 +333,12 @@ Because the local worktree does not contain the full Gitea #103 text, the accept
 **Tests**: Run hostile-input preflight cases and the approved positive recovery case.  
 **Expected Result**: Wrong tags, mutable refs, malformed SHAs, unauthorized target repos, and SHA mismatches fail before checkout or mutation.
 
-### Step 2: Pin All Source Checkouts to Preflight SHA
+### Step 2: Separate Immutable Source from Reviewed Recovery Tooling
 
 **Files**: `.github/workflows/release-binaries.yml`  
-**Description**: Make source-reading jobs depend on `preflight`. Set each source/script checkout to `ref: ${{ needs.preflight.outputs.source_sha }}` and assert `git rev-parse HEAD` equals that output. Replace raw dispatch input usage with preflight outputs where jobs mutate manifests, build artifacts, upload release assets, or publish to R2.  
-**Tests**: Positive recovery dispatch from fix branch or `main` confirms every checkout is at `e080475ac26f44ad4674a438d753f6ab185fb787`.  
-**Expected Result**: The fixed workflow executes from fix branch or `main`, but all release source operations run against the immutable release commit.
+**Description**: Make source-reading jobs depend on `preflight`. Set build/source checkouts to `ref: ${{ needs.preflight.outputs.source_sha }}` and assert `git rev-parse HEAD` equals that output. Emit the immutable dispatch `github.sha` as `workflow_sha`; signing and upload jobs use a second path-scoped sparse checkout at that exact commit for recovery-only scripts. Replace raw dispatch input usage with preflight outputs where jobs mutate manifests, build artifacts, upload release assets, or publish to R2.
+**Tests**: Positive recovery dispatch confirms every build/source checkout is at `e080475ac26f44ad4674a438d753f6ab185fb787`, while signing/archive/manifest scripts resolve from exact `workflow_sha` and never from a mutable branch ref.
+**Expected Result**: Historical release payloads remain reproducible, while repaired orchestration and security tooling actually execute without pretending to be part of the tagged source.
 
 ### Step 3: Use the Proven Windows Release Profile (H4)
 

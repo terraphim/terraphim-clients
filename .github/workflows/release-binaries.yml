@@ -42,6 +42,7 @@ jobs:
       release_tag: ${{ steps.contract.outputs.release_tag }}
       source_ref: ${{ steps.contract.outputs.source_ref }}
       source_sha: ${{ steps.contract.outputs.source_sha }}
+      workflow_sha: ${{ steps.contract.outputs.workflow_sha }}
       target_repo: ${{ steps.contract.outputs.target_repo }}
     steps:
       - name: Validate inputs and peel source tag
@@ -53,6 +54,7 @@ jobs:
           RELEASE_TAG: ${{ inputs.release_tag }}
           SOURCE_REF: ${{ inputs.source_ref }}
           EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
+          WORKFLOW_SHA: ${{ github.sha }}
           TARGET_REPO: ${{ inputs.target_repo }}
         run: |
           set -euo pipefail
@@ -64,6 +66,7 @@ jobs:
           release_tag = os.environ["RELEASE_TAG"]
           source_ref = os.environ["SOURCE_REF"]
           expected_source_sha = os.environ["EXPECTED_SOURCE_SHA"]
+          workflow_sha = os.environ["WORKFLOW_SHA"]
           target_repo = os.environ["TARGET_REPO"]
 
           semver = re.compile(
@@ -81,6 +84,10 @@ jobs:
           if not re.fullmatch(r"[0-9a-f]{40}", expected_source_sha):
               sys.exit(
                   f"expected_source_sha {expected_source_sha!r} is not a 40-character lowercase hex SHA"
+              )
+          if not re.fullmatch(r"[0-9a-f]{40}", workflow_sha):
+              sys.exit(
+                  f"workflow_sha {workflow_sha!r} is not a 40-character lowercase hex SHA"
               )
           if target_repo not in {"terraphim-clients", "terraphim-ai"}:
               sys.exit(f"target_repo {target_repo!r} is not allowed")
@@ -120,6 +127,7 @@ jobs:
             echo "release_tag=$RELEASE_TAG"
             echo "source_ref=$SOURCE_REF"
             echo "source_sha=$source_sha"
+            echo "workflow_sha=$WORKFLOW_SHA"
             echo "target_repo=$TARGET_REPO"
           } >> "$GITHUB_OUTPUT"
 
@@ -372,6 +380,12 @@ jobs:
             echo "ERROR: checkout HEAD $(git rev-parse HEAD) does not match expected source SHA ${{ needs.preflight.outputs.source_sha }}" >&2
             exit 1
           fi
+      - name: Checkout reviewed recovery tooling
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.workflow_sha }}
+          path: recovery-tooling
+          sparse-checkout: scripts
       - uses: actions/download-artifact@v4
         with:
           name: client-binaries-universal-apple-darwin
@@ -390,6 +404,13 @@ jobs:
               echo "ERROR: empty signing credential for $name" >&2
               exit 1
             fi
+            if [ "$name" = "CERT_BASE64" ]; then
+              value="${value//$'\r'/}"
+              value="${value//$'\n'/}"
+            elif [[ "$value" == *$'\r'* || "$value" == *$'\n'* ]]; then
+              echo "ERROR: multiline signing credential is not allowed for $name" >&2
+              exit 1
+            fi
             printf '::add-mask::%s\n' "$value"
             printf -v "$name" '%s' "$value"
             export "$name"
@@ -401,9 +422,9 @@ jobs:
           load_masked CERT_BASE64 'op://TerraphimPlatform/apple.developer.certificate/base64'
           load_masked CERT_PASSWORD 'op://TerraphimPlatform/apple.developer.certificate/password'
 
-          chmod +x scripts/sign-macos-binary.sh
-          ./scripts/sign-macos-binary.sh universal/terraphim-agent-universal-apple-darwin "$APPLE_ID" "$APPLE_TEAM_ID" "$APPLE_APP_PASSWORD" "$CERT_BASE64" "$CERT_PASSWORD"
-          ./scripts/sign-macos-binary.sh universal/terraphim-grep-universal-apple-darwin "$APPLE_ID" "$APPLE_TEAM_ID" "$APPLE_APP_PASSWORD" "$CERT_BASE64" "$CERT_PASSWORD"
+          chmod +x recovery-tooling/scripts/sign-macos-binary.sh
+          recovery-tooling/scripts/sign-macos-binary.sh universal/terraphim-agent-universal-apple-darwin "$APPLE_ID" "$APPLE_TEAM_ID" "$APPLE_APP_PASSWORD" "$CERT_BASE64" "$CERT_PASSWORD"
+          recovery-tooling/scripts/sign-macos-binary.sh universal/terraphim-grep-universal-apple-darwin "$APPLE_ID" "$APPLE_TEAM_ID" "$APPLE_APP_PASSWORD" "$CERT_BASE64" "$CERT_PASSWORD"
       - uses: actions/upload-artifact@v4
         with:
           name: client-binaries-signed-universal-apple-darwin
@@ -431,6 +452,12 @@ jobs:
             echo "ERROR: checkout HEAD $(git rev-parse HEAD) does not match expected source SHA ${{ needs.preflight.outputs.source_sha }}" >&2
             exit 1
           fi
+      - name: Checkout reviewed recovery tooling
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.workflow_sha }}
+          path: recovery-tooling
+          sparse-checkout: scripts
       - uses: actions/download-artifact@v4
         with:
           name: client-binaries-x86_64-unknown-linux-gnu
@@ -468,7 +495,7 @@ jobs:
           if [ -z "$ZIPSIGN_PRIVATE_KEY" ]; then
             echo "ERROR: ZIPSIGN_PRIVATE_KEY secret not set" >&2; exit 2
           fi
-          scripts/sign-release-archives.sh release-assets
+          recovery-tooling/scripts/sign-release-archives.sh release-assets
       - name: Upload to target GitHub release
         env:
           GH_TOKEN: ${{ secrets.TERRAPHIM_AI_RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
@@ -504,7 +531,7 @@ jobs:
           # One manifest per binary that appears in release-assets.
           bins="$(ls -1 release-assets/*.tar.gz | sed -E "s|^release-assets/||;s/-${VERSION}-.*//" | sort -u)"
           for bin in $bins; do
-            scripts/build-manifest.sh "$VERSION" "$bin" release-assets > "/tmp/${bin}.stable.json"
+            recovery-tooling/scripts/build-manifest.sh "$VERSION" "$bin" release-assets > "/tmp/${bin}.stable.json"
             bunx wrangler r2 object put "terraphim-releases/${bin}/stable.json" \
               --file "/tmp/${bin}.stable.json" --content-type application/json --remote
           done

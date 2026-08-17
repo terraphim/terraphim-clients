@@ -67,6 +67,7 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
                         "RELEASE_TAG": "v1.21.12",
                         "SOURCE_REF": "v1.21.12",
                         "EXPECTED_SOURCE_SHA": "e080475ac26f44ad4674a438d753f6ab185fb787",
+                        "WORKFLOW_SHA": "8bc89a9d22f14cb4cecd066ec4a148f413771fa3",
                         "TARGET_REPO": target_repo,
                     }
                 )
@@ -88,6 +89,7 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
                 "RELEASE_TAG": "v1.21.12",
                 "SOURCE_REF": "v1.21.12",
                 "EXPECTED_SOURCE_SHA": "e080475ac26f44ad4674a438d753f6ab185fb787",
+                "WORKFLOW_SHA": "8bc89a9d22f14cb4cecd066ec4a148f413771fa3",
                 "TARGET_REPO": "terraphim-clients",
             }
         )
@@ -96,6 +98,7 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
             ("RELEASE_TAG", "v1.21.13", "must equal 'v' plus version"),
             ("SOURCE_REF", "main", "must equal source_ref"),
             ("EXPECTED_SOURCE_SHA", "E080475AC26F44AD4674A438D753F6AB185FB787", "40-character lowercase hex SHA"),
+            ("WORKFLOW_SHA", "main", "workflow_sha"),
             ("TARGET_REPO", "terraphim", "is not allowed"),
         )
 
@@ -142,21 +145,30 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
         self.assertNotIn("SOURCE_REF", block)
         self.assertNotIn("TARGET_REPO", block)
 
-    def test_all_source_checkouts_use_preflight_sha_and_assert_head(self) -> None:
+    def test_source_and_recovery_tooling_checkouts_are_distinct_and_immutable(self) -> None:
         text = workflow_text()
 
         checkout_blocks = re.findall(
-            r"- uses: actions/checkout@v4\n(?:\s+with:\n(?:\s{10,}.+\n)+)?",
+            r"- (?:name: Checkout reviewed recovery tooling\n\s+)?uses: actions/checkout@v4\n(?:\s+with:\n(?:\s{10,}.+\n)+)?",
             text,
         )
-        self.assertGreaterEqual(len(checkout_blocks), 3)
-        for block in checkout_blocks:
+        source_blocks = [block for block in checkout_blocks if "path: recovery-tooling" not in block]
+        tooling_blocks = [block for block in checkout_blocks if "path: recovery-tooling" in block]
+        self.assertGreaterEqual(len(source_blocks), 3)
+        self.assertEqual(len(tooling_blocks), 2)
+        for block in source_blocks:
             self.assertIn("ref: ${{ needs.preflight.outputs.source_sha }}", block)
+        for block in tooling_blocks:
+            self.assertIn("ref: ${{ needs.preflight.outputs.workflow_sha }}", block)
+            self.assertIn("sparse-checkout: scripts", block)
 
         self.assertGreaterEqual(
             text.count('git rev-parse HEAD)" != "${{ needs.preflight.outputs.source_sha }}"'),
             3,
         )
+        self.assertIn("recovery-tooling/scripts/sign-macos-binary.sh", text)
+        self.assertIn("recovery-tooling/scripts/sign-release-archives.sh", text)
+        self.assertIn("recovery-tooling/scripts/build-manifest.sh", text)
 
     def test_matrix_preserves_six_mandatory_lanes(self) -> None:
         text = workflow_text()
@@ -262,8 +274,16 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
         signing = job_block("sign-and-notarize-macos")
 
         self.assertIn("printf '::add-mask::%s\\n' \"$value\"", signing)
-        self.assertNotIn("$GITHUB_ENV", signing)
+        self.assertNotIn("$GITHUB_ENV", workflow_text())
         self.assertNotIn("- name: Load signing credentials", signing)
+        normalize_cr = "value=\"${value//$'\\r'/}\""
+        normalize_lf = "value=\"${value//$'\\n'/}\""
+        mask = "printf '::add-mask::%s\\n' \"$value\""
+        self.assertIn(normalize_cr, signing)
+        self.assertIn(normalize_lf, signing)
+        self.assertIn("multiline signing credential is not allowed", signing)
+        self.assertLess(signing.index(normalize_cr), signing.index(mask))
+        self.assertLess(signing.index(normalize_lf), signing.index(mask))
         for name in (
             "APPLE_ID",
             "APPLE_TEAM_ID",
