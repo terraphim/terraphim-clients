@@ -127,10 +127,10 @@ impl SessionConnector for CodexConnector {
             .filter_map(|e| e.ok())
             .filter(|e| e.path().extension().is_some_and(|ext| ext == "jsonl"))
         {
-            if let Some(limit) = options.limit {
-                if sessions.len() >= limit {
-                    break;
-                }
+            if let Some(limit) = options.limit
+                && sessions.len() >= limit
+            {
+                break;
             }
 
             match self.parse_session_file(entry.path()) {

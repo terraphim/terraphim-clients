@@ -440,12 +440,11 @@ pub fn extract_file_path(input: &serde_json::Value) -> Option<String> {
     }
 
     // For MultiEdit, check the edits array
-    if let Some(edits) = input.get("edits").and_then(|v| v.as_array()) {
-        if !edits.is_empty() {
-            if let Some(file_path) = input.get("file_path").and_then(|v| v.as_str()) {
-                return Some(file_path.to_string());
-            }
-        }
+    if let Some(edits) = input.get("edits").and_then(|v| v.as_array())
+        && !edits.is_empty()
+        && let Some(file_path) = input.get("file_path").and_then(|v| v.as_str())
+    {
+        return Some(file_path.to_string());
     }
 
     None
@@ -517,6 +516,50 @@ mod tests {
 
         let path = extract_file_path(&input);
         assert_eq!(path, Some("/path/to/file.rs".to_string()));
+    }
+
+    #[test]
+    fn test_extract_file_path_prefers_direct_fields() {
+        // `path` and `pattern` are checked when `file_path` is absent.
+        assert_eq!(
+            extract_file_path(&serde_json::json!({"path": "/from/path.rs"})),
+            Some("/from/path.rs".to_string())
+        );
+        assert_eq!(
+            extract_file_path(&serde_json::json!({"pattern": "**/*.rs"})),
+            Some("**/*.rs".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_file_path_multiedit_branch() {
+        // Non-empty edits with a file_path resolves via the direct-field loop.
+        let multi_edit = serde_json::json!({
+            "file_path": "/path/to/file.rs",
+            "edits": [{"old_string": "a", "new_string": "b"}]
+        });
+        assert_eq!(
+            extract_file_path(&multi_edit),
+            Some("/path/to/file.rs".to_string())
+        );
+
+        // An empty edits array with no usable path field yields nothing.
+        let empty_edits = serde_json::json!({"edits": []});
+        assert_eq!(extract_file_path(&empty_edits), None);
+
+        // Edits present but no path anywhere yields nothing.
+        let edits_without_path = serde_json::json!({
+            "edits": [{"old_string": "a", "new_string": "b"}]
+        });
+        assert_eq!(extract_file_path(&edits_without_path), None);
+    }
+
+    #[test]
+    fn test_extract_file_path_returns_none_for_unrelated_input() {
+        assert_eq!(
+            extract_file_path(&serde_json::json!({"command": "cargo build"})),
+            None
+        );
     }
 
     #[test]

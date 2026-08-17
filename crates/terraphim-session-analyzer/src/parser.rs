@@ -77,10 +77,10 @@ impl SessionParser {
                             if session_id.is_empty() {
                                 session_id.clone_from(&entry.session_id);
                             }
-                            if project_path.is_empty() {
-                                if let Some(cwd) = &entry.cwd {
-                                    project_path.clone_from(cwd);
-                                }
+                            if project_path.is_empty()
+                                && let Some(cwd) = &entry.cwd
+                            {
+                                project_path.clone_from(cwd);
                             }
                             entries.push(entry);
                         }
@@ -178,10 +178,10 @@ impl SessionParser {
             .filter_map(|entry| {
                 if let Message::Assistant { content, .. } = &entry.message {
                     for block in content {
-                        if let ContentBlock::ToolUse { name, input, id } = block {
-                            if name == "Task" {
-                                return self.parse_task_invocation(entry, input, id);
-                            }
+                        if let ContentBlock::ToolUse { name, input, id } = block
+                            && name == "Task"
+                        {
+                            return self.parse_task_invocation(entry, input, id);
                         }
                     }
                 }
@@ -243,30 +243,26 @@ impl SessionParser {
             .filter_map(|entry| {
                 if let Message::Assistant { content, .. } = &entry.message {
                     for block in content {
-                        if let ContentBlock::ToolUse { name, input, .. } = block {
-                            if let Ok(op_type) = name.parse::<FileOpType>() {
-                                if let Some(file_path) = extract_file_path(input) {
-                                    let timestamp = match parse_timestamp(&entry.timestamp) {
-                                        Ok(ts) => ts,
-                                        Err(e) => {
-                                            warn!(
-                                                "Failed to parse timestamp '{}': {}",
-                                                entry.timestamp, e
-                                            );
-                                            continue;
-                                        }
-                                    };
-
-                                    return Some(FileOperation {
-                                        timestamp,
-                                        operation: op_type,
-                                        file_path,
-                                        agent_context: None, // Will be set during analysis
-                                        session_id: self.session_id.clone(),
-                                        message_id: entry.uuid.clone(),
-                                    });
+                        if let ContentBlock::ToolUse { name, input, .. } = block
+                            && let Ok(op_type) = name.parse::<FileOpType>()
+                            && let Some(file_path) = extract_file_path(input)
+                        {
+                            let timestamp = match parse_timestamp(&entry.timestamp) {
+                                Ok(ts) => ts,
+                                Err(e) => {
+                                    warn!("Failed to parse timestamp '{}': {}", entry.timestamp, e);
+                                    continue;
                                 }
-                            }
+                            };
+
+                            return Some(FileOperation {
+                                timestamp,
+                                operation: op_type,
+                                file_path,
+                                agent_context: None, // Will be set during analysis
+                                session_id: self.session_id.clone(),
+                                message_id: entry.uuid.clone(),
+                            });
                         }
                     }
                 }
@@ -316,14 +312,12 @@ impl SessionParser {
             // Look for Task tool invocations
             if let Message::Assistant { content, .. } = &entry.message {
                 for block in content {
-                    if let ContentBlock::ToolUse { name, input, .. } = block {
-                        if name == "Task" {
-                            if let Some(agent_type) =
-                                input.get("subagent_type").and_then(|v| v.as_str())
-                            {
-                                return Some(agent_type.to_string());
-                            }
-                        }
+                    if let ContentBlock::ToolUse { name, input, .. } = block
+                        && name == "Task"
+                        && let Some(agent_type) =
+                            input.get("subagent_type").and_then(|v| v.as_str())
+                    {
+                        return Some(agent_type.to_string());
                     }
                 }
             }
@@ -465,45 +459,45 @@ fn extract_from_bash_command(
     session_id: &str,
 ) -> Option<ToolInvocation> {
     for block in content {
-        if let ContentBlock::ToolUse { name, input, .. } = block {
-            if name == "Bash" {
-                // Extract the command from the input
-                let command = input.get("command").and_then(|v| v.as_str())?;
+        if let ContentBlock::ToolUse { name, input, .. } = block
+            && name == "Bash"
+        {
+            // Extract the command from the input
+            let command = input.get("command").and_then(|v| v.as_str())?;
 
-                // Find tool matches using the pattern matcher
-                let matches = matcher.find_matches(command);
+            // Find tool matches using the pattern matcher
+            let matches = matcher.find_matches(command);
 
-                if let Some(tool_match) = matches.first() {
-                    // Parse command context to extract arguments and flags
-                    if let Some((full_cmd, arguments, flags)) =
-                        tool_analyzer::parse_command_context(command, tool_match.start)
-                    {
-                        // Filter out shell built-ins
-                        if !tool_analyzer::is_actual_tool(&tool_match.tool_name) {
+            if let Some(tool_match) = matches.first() {
+                // Parse command context to extract arguments and flags
+                if let Some((full_cmd, arguments, flags)) =
+                    tool_analyzer::parse_command_context(command, tool_match.start)
+                {
+                    // Filter out shell built-ins
+                    if !tool_analyzer::is_actual_tool(&tool_match.tool_name) {
+                        continue;
+                    }
+
+                    let timestamp = match parse_timestamp(&entry.timestamp) {
+                        Ok(ts) => ts,
+                        Err(e) => {
+                            warn!("Failed to parse timestamp '{}': {}", entry.timestamp, e);
                             continue;
                         }
+                    };
 
-                        let timestamp = match parse_timestamp(&entry.timestamp) {
-                            Ok(ts) => ts,
-                            Err(e) => {
-                                warn!("Failed to parse timestamp '{}': {}", entry.timestamp, e);
-                                continue;
-                            }
-                        };
-
-                        return Some(ToolInvocation {
-                            timestamp,
-                            tool_name: tool_match.tool_name.clone(),
-                            tool_category: ToolCategory::from_string(&tool_match.category),
-                            command_line: full_cmd,
-                            arguments,
-                            flags,
-                            exit_code: None,     // Exit code not available from logs
-                            agent_context: None, // Will be populated later
-                            session_id: session_id.to_string(),
-                            message_id: entry.uuid.clone(),
-                        });
-                    }
+                    return Some(ToolInvocation {
+                        timestamp,
+                        tool_name: tool_match.tool_name.clone(),
+                        tool_category: ToolCategory::from_string(&tool_match.category),
+                        command_line: full_cmd,
+                        arguments,
+                        flags,
+                        exit_code: None,     // Exit code not available from logs
+                        agent_context: None, // Will be populated later
+                        session_id: session_id.to_string(),
+                        message_id: entry.uuid.clone(),
+                    });
                 }
             }
         }
@@ -685,5 +679,156 @@ mod tests {
         );
         assert_eq!(parser.entries[0].entry_type, "user");
         assert_eq!(parser.entries[1].entry_type, "assistant");
+    }
+
+    #[test]
+    fn test_project_path_taken_from_first_entry_carrying_cwd() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("cwd-order.jsonl");
+        std::fs::write(
+            &path,
+            concat!(
+                r#"{"parentUuid":null,"isSidechain":false,"userType":"external","sessionId":"s1","version":"1.0","gitBranch":"","type":"user","message":{"role":"user","content":"no cwd on this entry"},"uuid":"u1","timestamp":"2025-01-01T09:00:00.000Z"}"#,
+                "\n",
+                r#"{"parentUuid":"u1","isSidechain":false,"userType":"external","cwd":"/first/cwd","sessionId":"s1","version":"1.0","gitBranch":"","type":"user","message":{"role":"user","content":"first cwd"},"uuid":"u2","timestamp":"2025-01-01T09:00:01.000Z"}"#,
+                "\n",
+                r#"{"parentUuid":"u2","isSidechain":false,"userType":"external","cwd":"/second/cwd","sessionId":"s1","version":"1.0","gitBranch":"","type":"user","message":{"role":"user","content":"later cwd must not win"},"uuid":"u3","timestamp":"2025-01-01T09:00:02.000Z"}"#,
+                "\n",
+            ),
+        )
+        .unwrap();
+
+        let parser = SessionParser::from_file(&path).unwrap();
+        let (_, project_path, _, _) = parser.get_session_info();
+        assert_eq!(
+            project_path, "/first/cwd",
+            "project path comes from the first entry that carries a cwd, and is never overwritten"
+        );
+    }
+
+    #[test]
+    fn test_extract_agent_invocations_ignores_non_task_tool_use() {
+        let json_line = r#"{"parentUuid":"parent-uuid","isSidechain":false,"userType":"external","cwd":"/home/alex/projects","sessionId":"test-session","version":"1.0.111","gitBranch":"","message":{"role":"assistant","content":[{"type":"tool_use","id":"tool-id","name":"Write","input":{"subagent_type":"architect","file_path":"/path/to/file.rs"}}]},"type":"assistant","uuid":"msg-uuid","timestamp":"2025-10-01T09:05:21.902Z"}"#;
+
+        let entry: SessionEntry = serde_json::from_str(json_line).unwrap();
+        let parser = SessionParser {
+            entries: vec![entry],
+            session_id: "test-session".to_string(),
+            project_path: "/home/alex/projects".to_string(),
+        };
+
+        assert!(
+            parser.extract_agent_invocations().is_empty(),
+            "only Task tool uses yield agent invocations, even when subagent_type is present"
+        );
+    }
+
+    #[test]
+    fn test_extract_file_operations_ignores_unknown_tool_and_missing_path() {
+        // Bash is not a FileOpType, and a Write without any path field yields nothing.
+        let unknown_tool = r#"{"parentUuid":null,"isSidechain":false,"userType":"external","cwd":"/p","sessionId":"s1","version":"1.0","gitBranch":"","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"file_path":"/path/to/file.rs"}}]},"type":"assistant","uuid":"u1","timestamp":"2025-10-01T09:05:21.902Z"}"#;
+        let no_path = r#"{"parentUuid":null,"isSidechain":false,"userType":"external","cwd":"/p","sessionId":"s1","version":"1.0","gitBranch":"","message":{"role":"assistant","content":[{"type":"tool_use","id":"t2","name":"Write","input":{"content":"no path here"}}]},"type":"assistant","uuid":"u2","timestamp":"2025-10-01T09:05:22.902Z"}"#;
+
+        let parser = SessionParser {
+            entries: vec![
+                serde_json::from_str(unknown_tool).unwrap(),
+                serde_json::from_str(no_path).unwrap(),
+            ],
+            session_id: "s1".to_string(),
+            project_path: "/p".to_string(),
+        };
+
+        assert!(
+            parser.extract_file_operations().is_empty(),
+            "a file operation needs both a parseable op type and an extractable path"
+        );
+    }
+
+    #[test]
+    fn test_find_active_agent_returns_most_recent_prior_task() {
+        let earlier = r#"{"parentUuid":null,"isSidechain":false,"userType":"external","cwd":"/p","sessionId":"s1","version":"1.0","gitBranch":"","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Task","input":{"subagent_type":"architect"}}]},"type":"assistant","uuid":"u1","timestamp":"2025-10-01T09:00:00.000Z"}"#;
+        let later = r#"{"parentUuid":"u1","isSidechain":false,"userType":"external","cwd":"/p","sessionId":"s1","version":"1.0","gitBranch":"","message":{"role":"assistant","content":[{"type":"tool_use","id":"t2","name":"Task","input":{"subagent_type":"developer"}}]},"type":"assistant","uuid":"u2","timestamp":"2025-10-01T09:00:01.000Z"}"#;
+        let target = r#"{"parentUuid":"u2","isSidechain":false,"userType":"external","cwd":"/p","sessionId":"s1","version":"1.0","gitBranch":"","message":{"role":"assistant","content":[{"type":"tool_use","id":"t3","name":"Write","input":{"file_path":"/a.rs"}}]},"type":"assistant","uuid":"u3","timestamp":"2025-10-01T09:00:02.000Z"}"#;
+
+        let parser = SessionParser {
+            entries: vec![
+                serde_json::from_str(earlier).unwrap(),
+                serde_json::from_str(later).unwrap(),
+                serde_json::from_str(target).unwrap(),
+            ],
+            session_id: "s1".to_string(),
+            project_path: "/p".to_string(),
+        };
+
+        assert_eq!(
+            parser.find_active_agent("u3"),
+            Some("developer".to_string())
+        );
+    }
+
+    #[test]
+    fn test_find_active_agent_skips_task_without_subagent_type() {
+        let untyped_task = r#"{"parentUuid":null,"isSidechain":false,"userType":"external","cwd":"/p","sessionId":"s1","version":"1.0","gitBranch":"","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Task","input":{"description":"no subagent_type"}}]},"type":"assistant","uuid":"u1","timestamp":"2025-10-01T09:00:00.000Z"}"#;
+        let target = r#"{"parentUuid":"u1","isSidechain":false,"userType":"external","cwd":"/p","sessionId":"s1","version":"1.0","gitBranch":"","message":{"role":"assistant","content":[{"type":"tool_use","id":"t2","name":"Write","input":{"file_path":"/a.rs"}}]},"type":"assistant","uuid":"u2","timestamp":"2025-10-01T09:00:01.000Z"}"#;
+
+        let parser = SessionParser {
+            entries: vec![
+                serde_json::from_str(untyped_task).unwrap(),
+                serde_json::from_str(target).unwrap(),
+            ],
+            session_id: "s1".to_string(),
+            project_path: "/p".to_string(),
+        };
+
+        assert_eq!(parser.find_active_agent("u2"), None);
+    }
+
+    /// Real Aho-Corasick matcher initialised with a single `cargo` pattern.
+    fn cargo_matcher() -> crate::patterns::AhoCorasickMatcher {
+        use crate::patterns::{PatternMatcher as _, ToolMetadata, ToolPattern};
+
+        let mut matcher = crate::patterns::AhoCorasickMatcher::new();
+        matcher
+            .initialize(&[ToolPattern {
+                name: "cargo".to_string(),
+                patterns: vec!["cargo ".to_string()],
+                metadata: ToolMetadata {
+                    category: "build-tool".to_string(),
+                    description: Some("Rust build tool".to_string()),
+                    confidence: 0.95,
+                },
+            }])
+            .unwrap();
+        matcher
+    }
+
+    #[test]
+    fn test_extract_from_bash_command_ignores_non_bash_tool_use() {
+        let json_line = r#"{"parentUuid":null,"isSidechain":false,"userType":"external","cwd":"/p","sessionId":"s1","version":"1.0","gitBranch":"","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Write","input":{"command":"cargo build","file_path":"/a.rs"}}]},"type":"assistant","uuid":"u1","timestamp":"2025-10-01T09:00:00.000Z"}"#;
+        let entry: SessionEntry = serde_json::from_str(json_line).unwrap();
+        let Message::Assistant { content, .. } = &entry.message else {
+            panic!("Expected Assistant message");
+        };
+        let matcher = cargo_matcher();
+
+        assert!(
+            extract_from_bash_command(&entry, content, &matcher, "s1").is_none(),
+            "a command field on a non-Bash tool use must not produce a tool invocation"
+        );
+    }
+
+    #[test]
+    fn test_extract_from_bash_command_reads_bash_tool_use() {
+        let json_line = r#"{"parentUuid":null,"isSidechain":false,"userType":"external","cwd":"/p","sessionId":"s1","version":"1.0","gitBranch":"","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"cargo build --release"}}]},"type":"assistant","uuid":"u1","timestamp":"2025-10-01T09:00:00.000Z"}"#;
+        let entry: SessionEntry = serde_json::from_str(json_line).unwrap();
+        let Message::Assistant { content, .. } = &entry.message else {
+            panic!("Expected Assistant message");
+        };
+        let matcher = cargo_matcher();
+
+        let invocation = extract_from_bash_command(&entry, content, &matcher, "s1")
+            .expect("cargo should be recognised in a Bash command");
+        assert_eq!(invocation.tool_name, "cargo");
+        assert_eq!(invocation.session_id, "s1");
     }
 }

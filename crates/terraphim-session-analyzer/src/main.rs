@@ -351,10 +351,10 @@ fn list_sessions(cli: &Cli, detailed: bool, project_filter: Option<&str>) -> Res
 
     for analysis in &analyses {
         // Apply project filter if specified
-        if let Some(filter) = &project_filter {
-            if !analysis.project_path.contains(filter) {
-                continue;
-            }
+        if let Some(filter) = &project_filter
+            && !analysis.project_path.contains(filter)
+        {
+            continue;
         }
 
         println!("{} {}", "Session:".bold(), analysis.session_id.yellow());
@@ -401,7 +401,7 @@ fn list_sessions(cli: &Cli, detailed: bool, project_filter: Option<&str>) -> Res
             .filter(|a| {
                 project_filter
                     .as_ref()
-                    .map_or(true, |f| a.project_path.contains(f))
+                    .is_none_or(|f| a.project_path.contains(f))
             })
             .count()
     } else {
@@ -1003,24 +1003,22 @@ fn analyze_tools(
         .into_iter()
         .filter(|(name, stats)| {
             // Tool name filter
-            if let Some(tool_filter_str) = tool_filter {
-                if !name
+            if let Some(tool_filter_str) = tool_filter
+                && !name
                     .to_lowercase()
                     .contains(&tool_filter_str.to_lowercase())
-                {
-                    return false;
-                }
+            {
+                return false;
             }
 
             // Agent filter
-            if let Some(agent_filter_str) = agent_filter {
-                if !stats
+            if let Some(agent_filter_str) = agent_filter
+                && !stats
                     .agents_using
                     .iter()
                     .any(|a| a.to_lowercase().contains(&agent_filter_str.to_lowercase()))
-                {
-                    return false;
-                }
+            {
+                return false;
             }
 
             // Minimum usage filter
@@ -1124,12 +1122,12 @@ fn find_session_path(session_id: &str, cli: &Cli) -> Result<PathBuf> {
         .into_iter()
         .filter_map(|e| e.ok())
     {
-        if entry.file_type().is_file() {
-            if let Some(name) = entry.file_name().to_str() {
-                if name.ends_with(".jsonl") && name.contains(session_id) {
-                    return Ok(entry.path().to_path_buf());
-                }
-            }
+        if entry.file_type().is_file()
+            && let Some(name) = entry.file_name().to_str()
+            && name.ends_with(".jsonl")
+            && name.contains(session_id)
+        {
+            return Ok(entry.path().to_path_buf());
         }
     }
 
@@ -1147,43 +1145,40 @@ fn extract_tool_invocations_from_session(
     for entry in parser.entries() {
         if let Message::Assistant { content, .. } = &entry.message {
             for block in content {
-                if let ContentBlock::ToolUse { name, input, .. } = block {
-                    if name == "Bash" {
-                        if let Some(command) = input.get("command").and_then(|v| v.as_str()) {
-                            let matches = matcher.find_matches(command);
+                if let ContentBlock::ToolUse { name, input, .. } = block
+                    && name == "Bash"
+                    && let Some(command) = input.get("command").and_then(|v| v.as_str())
+                {
+                    let matches = matcher.find_matches(command);
 
-                            for tool_match in matches {
-                                // Parse the command context
-                                if let Some((full_cmd, args, flags)) =
-                                    tool_analyzer::parse_command_context(command, tool_match.start)
-                                {
-                                    if let Ok(timestamp) = models::parse_timestamp(&entry.timestamp)
-                                    {
-                                        // Map category string to ToolCategory enum
-                                        let category = match tool_match.category.as_str() {
-                                            "package-manager" => ToolCategory::PackageManager,
-                                            "version-control" => ToolCategory::Git,
-                                            "testing" => ToolCategory::Testing,
-                                            "linting" => ToolCategory::Linting,
-                                            "cloudflare" => ToolCategory::CloudDeploy,
-                                            _ => ToolCategory::Other(tool_match.category.clone()),
-                                        };
+                    for tool_match in matches {
+                        // Parse the command context
+                        if let Some((full_cmd, args, flags)) =
+                            tool_analyzer::parse_command_context(command, tool_match.start)
+                            && let Ok(timestamp) = models::parse_timestamp(&entry.timestamp)
+                        {
+                            // Map category string to ToolCategory enum
+                            let category = match tool_match.category.as_str() {
+                                "package-manager" => ToolCategory::PackageManager,
+                                "version-control" => ToolCategory::Git,
+                                "testing" => ToolCategory::Testing,
+                                "linting" => ToolCategory::Linting,
+                                "cloudflare" => ToolCategory::CloudDeploy,
+                                _ => ToolCategory::Other(tool_match.category.clone()),
+                            };
 
-                                        invocations.push(ToolInvocation {
-                                            timestamp,
-                                            tool_name: tool_match.tool_name.clone(),
-                                            tool_category: category,
-                                            command_line: full_cmd,
-                                            arguments: args,
-                                            flags,
-                                            exit_code: None,
-                                            agent_context: None,
-                                            session_id: entry.session_id.clone(),
-                                            message_id: entry.uuid.clone(),
-                                        });
-                                    }
-                                }
-                            }
+                            invocations.push(ToolInvocation {
+                                timestamp,
+                                tool_name: tool_match.tool_name.clone(),
+                                tool_category: category,
+                                command_line: full_cmd,
+                                arguments: args,
+                                flags,
+                                exit_code: None,
+                                agent_context: None,
+                                session_id: entry.session_id.clone(),
+                                message_id: entry.uuid.clone(),
+                            });
                         }
                     }
                 }

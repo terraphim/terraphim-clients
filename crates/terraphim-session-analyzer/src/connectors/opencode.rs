@@ -86,30 +86,29 @@ impl SessionConnector for OpenCodeConnector {
             if line.trim().is_empty() {
                 continue;
             }
-            if let Ok(entry) = serde_json::from_str::<OpenCodeEntry>(line) {
-                if let Some(input) = entry.input {
-                    if !input.is_empty() {
-                        messages.push(NormalizedMessage {
-                            idx,
-                            role: "user".to_string(),
-                            author: None,
-                            content: input,
-                            created_at: None,
-                            extra: serde_json::json!({
-                                "mode": entry.mode,
-                                "parts": entry.parts,
-                            }),
-                        });
-                    }
-                }
+            if let Ok(entry) = serde_json::from_str::<OpenCodeEntry>(line)
+                && let Some(input) = entry.input
+                && !input.is_empty()
+            {
+                messages.push(NormalizedMessage {
+                    idx,
+                    role: "user".to_string(),
+                    author: None,
+                    content: input,
+                    created_at: None,
+                    extra: serde_json::json!({
+                        "mode": entry.mode,
+                        "parts": entry.parts,
+                    }),
+                });
             }
         }
 
         // Apply limit if specified
-        if let Some(limit) = options.limit {
-            if limit > 0 {
-                messages.truncate(limit);
-            }
+        if let Some(limit) = options.limit
+            && limit > 0
+        {
+            messages.truncate(limit);
         }
 
         if messages.is_empty() {
