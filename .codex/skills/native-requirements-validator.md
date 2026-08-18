@@ -20,39 +20,79 @@
 
 ## Evidence Prompt Sections
 
-The dispatched prompt is bounded and deterministic. Sections and their trust level:
+The dispatch prompt is rendered by the orchestrator (`build_pr_gate_prompt`).
+Sections as dispatched, in order, with their trust level:
 
 ```
-## PR Metadata (always present)
-Project, PR number, title, author, head SHA, diff LOC, linked issue.
+Rules (always present)
+  Bounded-evidence rules: no tools, no side-effects, one gate-result block.
 
-## Changed Files (always present)
-Path list from the PR diff.
+Gate-specific instructions (always present)
+  One-line validation mandate for this gate.
 
-## Terraphim Matched Concepts (always present)
-Concepts the orchestrator matched for this PR. Context only; never evidence of correctness.
+Evidence quality (always present)
+  PR change classification (unknown | doc_only | config_only | infrastructure | code)
+  and evidence_truncated (true | false). See Change-Kind Calibration.
 
-## Diff Evidence (always present)
-Unified diff excerpt, capped by the orchestrator. May be truncated.
+PR metadata (always present)
+  Project, PR number, title, author, head SHA, diff LOC, linked issue.
 
-## API Contract Snapshot (recommended)
-Crate or twin name, routes, request/response types, status codes, error variants.
-Write "N/A" when no API changes are present.
+Changed files (always present)
+  Path list from the PR diff. May be empty in fallback packs.
 
-## SDK Validation Results (recommended)
-Suite name, pass/fail counts, failing endpoints, coverage JSON excerpt.
-Write "N/A" when SDK tests were not run.
+Terraphim matched concepts (always present)
+  Orchestrator-matched concepts. Context only; never evidence of correctness.
 
-## CI Status (recommended)
-cargo build / test / clippy / fmt outcomes.
-Write "N/A" when CI was not run.
+Diff evidence (always present)
+  Unified diff excerpt in a fenced block, capped by the orchestrator. May be
+  truncated (evidence_truncated=true).
+
+Relevant context (optional)
+  KG-matched chunks with source attribution. Best-effort context only.
+
+Required final block shape (always present)
+  Template block embedding the verbatim agent, context, pr_number, and
+  head_sha this run must echo.
 ```
+
+Sections that are part of this gate's target contract for digital-twin API
+PRs but are **not yet dispatched by the orchestrator**:
+
+```
+## API Contract Snapshot (future)
+  Crate or twin name, routes, request/response types, status codes,
+  error variants.
+
+## SDK Validation Results (future)
+  Suite name, pass/fail counts, failing endpoints, coverage JSON.
+
+## CI Status (future)
+  cargo build / test / clippy / fmt outcomes.
+```
+
+Treat every absent, empty, or `N/A` section as `skip` (non-blocking), never
+as failure, and reduce confidence per the derivation below.
 
 ---
 
 ## Validation Dimensions
 
 Work through all three dimensions in order. Record all findings before rendering output.
+
+### Change-Kind Calibration
+
+The `PR change classification` in Evidence quality calibrates every dimension:
+
+| Classification | Calibration |
+|---------------|-------------|
+| `code` | Full three-dimension evaluation. |
+| `infrastructure` | Config and documentation only. Do not demand tests, API contracts, or SDK runs; evaluate acceptance-criteria traceability and consistency. |
+| `config_only` | As `infrastructure`, scoped to configuration correctness and orchestrator contract consistency. |
+| `doc_only` | Evaluate documentation accuracy against the linked issue only. |
+| `unknown` | Fall back to full evaluation; treat missing code evidence as unverifiable, not failed. |
+
+Never block a `doc_only` or `config_only` PR for absent SDK validation or
+API contract evidence.
 
 ### Dimension 1 -- Acceptance Criteria
 
@@ -64,6 +104,7 @@ For each acceptance criterion stated in the linked issue evidence:
    - **unsatisfied**: no corresponding change can be traced -- `BLOCKER`
    - **unverifiable**: evidence lacks sufficient diff context to decide -- `WARN`
 3. When no linked issue is present: dimension verdict is `skip` (non-blocking). Reduce confidence by one.
+4. When the linked issue is present but no acceptance criteria were dispatched -- the orchestrator does not yet populate issue bodies, so this is the common case today -- dimension verdict is `skip`; note the evidence gap in the report, reduce confidence by one, and record no finding.
 
 ### Dimension 2 -- API Contract Fidelity
 
@@ -126,13 +167,16 @@ These rules are authoritative. The prose dimensions above are the derivation pat
 `confidence` is an integer from 1 to 5 reflecting evidence quality, not verdict severity:
 
 1. Start at 5.
-2. Subtract one for each absent recommended section (`API Contract Snapshot`, `SDK Validation Results`, `CI Status`).
+2. Subtract one for each absent recommended section (`API Contract Snapshot`, `SDK Validation Results`, `CI Status`) **that the change-kind calibration makes relevant** -- for `doc_only`, `config_only`, and `infrastructure` PRs the API and SDK sections are out of scope and cost nothing.
 3. Subtract one when the `Diff Evidence` excerpt is truncated and left criteria unverifiable.
 4. Floor at 1; never exceed 5.
 
 ### Blocking Findings Count
 
 `blocking_findings` is the integer count of `BLOCKER`-severity findings across all three dimensions.
+
+The dispatch prompt phrases this as "the count of P0/P1 findings"; `BLOCKER`
+is this gate's equivalent tier. `WARN` and `INFO` never count.
 
 ---
 
@@ -147,24 +191,33 @@ Two parts, in this order. No text between or after them.
 
 **Verdict**: PASS | NEEDS-REVISION | FAIL
 
+### Summary
+<two or three lines: what the PR claims, what was checked, overall outcome>
+
 ### Acceptance Criteria
 | ID    | Criterion (short) | Status       | Notes |
 |-------|-------------------|--------------|-------|
 | AC-1  | ...               | SATISFIED    | ...   |
 
 ### API Contract Fidelity
-<prose findings; one short paragraph per route or type checked>
+<prose findings; one short paragraph per route or type checked;
+write "skipped: no contract snapshot dispatched" when absent>
 
 ### SDK Compatibility
-<prose findings: suite name, pass rate, failing endpoints if any>
+<prose findings: suite name, pass rate, failing endpoints if any;
+write "skipped: no SDK results dispatched" when absent>
 
-### CI Status
-<one-line summary>
+### Evidence
+<what the dispatch supplied: change classification, truncation state,
+linked-issue criteria, sections present or absent>
 
 ### Findings
 | Severity | Dimension              | Finding                              |
 |----------|------------------------|--------------------------------------|
 | BLOCKER  | api-contract-fidelity  | response field `id` missing          |
+
+### Verdict
+<one line restating PASS | NEEDS-REVISION | FAIL with the decisive reason>
 ```
 
 The report must be self-contained. A human reading it without the evidence prompt must understand what was checked and what was found.
@@ -192,10 +245,7 @@ Field rules:
 | Field | Rule |
 |-------|------|
 | `schema_version` | always the integer `1` |
-| `agent` | copy **verbatim** from the dispatched prompt's required block shape; the orchestrator rejects mismatches |
-| `context` | copy **verbatim** from the dispatched prompt; typically `"adf/validation"` |
-| `pr_number` | integer PR number from the dispatched prompt metadata |
-| `head_sha` | copy **verbatim** from the dispatched prompt; the orchestrator rejects mismatches |
+| `agent`, `context`, `pr_number`, `head_sha` | copy **verbatim** from the `Required final block shape` embedded in the dispatch prompt; the orchestrator validates all four against dispatch metadata and fails the gate closed on any mismatch |
 | `status` | exactly one of `"pass"`, `"concerns"`, `"fail"` per the verdict table |
 | `confidence` | integer 1 to 5 per the confidence derivation |
 | `blocking_findings` | integer count of BLOCKER findings |
@@ -211,7 +261,7 @@ The block must be the **last** element of the output. Exactly one block per run;
 |-----------|-----------|
 | Evidence prompt has no recognisable sections | `status: "fail"`, `confidence: 1`, explain in report |
 | No linked issue | skip AC dimension; reduce confidence by one |
-| `Diff Evidence` truncated | note truncation in report; unverifiable criteria become `WARN` |
+| `Diff evidence` truncated (`evidence_truncated: true`) | truncation alone is at most concerns, never blocking; unverifiable criteria become `WARN` |
 | Recommended section `N/A` | skip that dimension where it is the sole ground truth; reduce confidence by one |
 | Multiple linked issues | evaluate all AC lists; overall AC verdict is the worst across issues |
 | Multiple twins in diff | evaluate contract fidelity per twin; overall is the worst across twins |
