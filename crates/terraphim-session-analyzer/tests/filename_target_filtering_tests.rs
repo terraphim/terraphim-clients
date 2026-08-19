@@ -752,16 +752,16 @@ mod cli_integration_tests {
 
             if let Some(start_idx) = json_start {
                 let json_content = lines[start_idx..].join("\n");
-                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&json_content) {
-                    if let Some(analyses) = parsed.as_array() {
-                        for analysis in analyses {
-                            // Each analysis should have file_to_agents with content
-                            if let Some(file_to_agents) = analysis.get("file_to_agents") {
-                                assert!(
-                                    !file_to_agents.as_object().unwrap().is_empty(),
-                                    "With --files-only, each session should have modified files"
-                                );
-                            }
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&json_content)
+                    && let Some(analyses) = parsed.as_array()
+                {
+                    for analysis in analyses {
+                        // Each analysis should have file_to_agents with content
+                        if let Some(file_to_agents) = analysis.get("file_to_agents") {
+                            assert!(
+                                !file_to_agents.as_object().unwrap().is_empty(),
+                                "With --files-only, each session should have modified files"
+                            );
                         }
                     }
                 }

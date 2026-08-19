@@ -75,10 +75,8 @@ impl Analyzer {
                 match self.analyze_session(parser, target_file) {
                     Ok(analysis) => {
                         // If target file specified, only include sessions with relevant operations
-                        if let Some(_target) = target_file {
-                            if analysis.file_operations.is_empty() {
-                                return None; // Skip sessions without target file operations
-                            }
+                        if target_file.is_some() && analysis.file_operations.is_empty() {
+                            return None; // Skip sessions without target file operations
                         }
                         Some(Ok(analysis))
                     }
@@ -961,6 +959,42 @@ mod tests {
 
         assert!(confidence > 0.5);
         assert!(confidence <= 1.0);
+    }
+
+    #[test]
+    fn test_analyze_drops_sessions_without_target_file_operations() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("session.jsonl");
+        std::fs::write(
+            &path,
+            concat!(
+                r#"{"parentUuid":null,"isSidechain":false,"userType":"external","cwd":"/p","sessionId":"s1","version":"1.0","gitBranch":"","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Write","input":{"file_path":"/p/src/lib.rs","content":"x"}}]},"type":"assistant","uuid":"u1","timestamp":"2025-10-01T09:00:00.000Z"}"#,
+                "\n",
+            ),
+        )
+        .unwrap();
+
+        let analyzer = Analyzer {
+            parsers: vec![SessionParser::from_file(&path).unwrap()],
+            config: AnalyzerConfig::default(),
+        };
+
+        // No target: the session is always kept.
+        assert_eq!(analyzer.analyze(None).unwrap().len(), 1);
+
+        // Matching target: kept, with the matching operation retained.
+        let matched = analyzer.analyze(Some("lib.rs")).unwrap();
+        assert_eq!(matched.len(), 1);
+        assert_eq!(matched[0].file_operations.len(), 1);
+
+        // Non-matching target: the whole session is dropped.
+        assert!(
+            analyzer
+                .analyze(Some("no_such_file.rs"))
+                .unwrap()
+                .is_empty(),
+            "sessions with no operations on the target file are excluded"
+        );
     }
 
     #[test]

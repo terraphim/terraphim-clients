@@ -167,10 +167,10 @@ pub fn calculate_tool_statistics(
         stat.total_invocations += 1;
 
         // Track agents
-        if let Some(ref agent) = inv.agent_context {
-            if !stat.agents_using.contains(agent) {
-                stat.agents_using.push(agent.clone());
-            }
+        if let Some(ref agent) = inv.agent_context
+            && !stat.agents_using.contains(agent)
+        {
+            stat.agents_using.push(agent.clone());
         }
 
         // Track sessions
@@ -206,6 +206,40 @@ pub fn calculate_tool_statistics(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_calculate_tool_statistics_deduplicates_agents() {
+        use crate::models::ToolCategory;
+        use jiff::Timestamp;
+
+        let invocation = |agent: Option<&str>| ToolInvocation {
+            timestamp: Timestamp::from_second(1_700_000_000).unwrap(),
+            tool_name: "cargo".to_string(),
+            tool_category: ToolCategory::BuildTool,
+            command_line: "cargo build".to_string(),
+            arguments: vec!["build".to_string()],
+            flags: HashMap::new(),
+            exit_code: None,
+            agent_context: agent.map(str::to_string),
+            session_id: "s1".to_string(),
+            message_id: "m1".to_string(),
+        };
+
+        let stats = calculate_tool_statistics(&[
+            invocation(Some("developer")),
+            invocation(Some("developer")),
+            invocation(Some("architect")),
+            invocation(None),
+        ]);
+
+        let cargo = stats.get("cargo").expect("cargo statistics");
+        assert_eq!(cargo.total_invocations, 4);
+        assert_eq!(
+            cargo.agents_using,
+            vec!["developer".to_string(), "architect".to_string()],
+            "each agent is recorded once, and a missing agent context adds nothing"
+        );
+    }
 
     #[test]
     fn test_parse_command_context() {
