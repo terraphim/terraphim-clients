@@ -58,6 +58,18 @@ struct Args {
     #[arg(long, help = "Include LLM-generated answer")]
     answer: bool,
 
+    /// Hard-disable LLM synthesis for this run (see terraphim/terraphim-clients#81).
+    ///
+    /// Synthesis is already opt-in, but this also skips building the LLM client, so a
+    /// stray `OPENROUTER_API_KEY` in the environment cannot cost a single network call.
+    #[arg(
+        long,
+        visible_alias = "no-rlm",
+        conflicts_with_all = ["answer", "force_rlm"],
+        help = "Never use the LLM: return retrieved chunks only"
+    )]
+    search_only: bool,
+
     #[arg(long, help = "Output JSON format")]
     json: bool,
 
@@ -531,7 +543,14 @@ async fn main() -> Result<()> {
     // Create TerraphimGrep and optionally attach an LLM client
     let terraphim_grep = TerraphimGrep::new(hybrid_searcher, sufficiency_judge);
     #[cfg(feature = "llm")]
-    let terraphim_grep = match build_llm_for_role(&role_name, args.role_config.as_deref()) {
+    let llm_client = if args.search_only {
+        tracing::debug!("--search-only: skipping LLM client setup");
+        None
+    } else {
+        build_llm_for_role(&role_name, args.role_config.as_deref())
+    };
+    #[cfg(feature = "llm")]
+    let terraphim_grep = match llm_client {
         Some(client) => {
             tracing::info!("LLM client wired: {}", client.name());
             let mut grep = terraphim_grep.with_llm_client(client.clone());
@@ -811,5 +830,50 @@ mod tests {
         let config = ProjectConfig::default();
         let candidates = thesaurus_name_candidates("Odilo   Developer", &config);
         assert_eq!(candidates, vec!["odilo-developer".to_string()]);
+    }
+
+    // Regression tests: terraphim/terraphim-clients#81
+    // RLM synthesis is opt-in; `--search-only` makes that explicit and mutually
+    // exclusive with the two flags that request synthesis.
+
+    #[test]
+    fn plain_query_requests_no_synthesis() {
+        let args = Args::try_parse_from(["terraphim-grep", "needle"]).expect("parse");
+        assert!(!args.answer, "--answer must default off");
+        assert!(!args.force_rlm, "--force-rlm must default off");
+        assert!(!args.search_only, "--search-only must default off");
+    }
+
+    #[test]
+    fn search_only_parses_and_sets_flag() {
+        let args =
+            Args::try_parse_from(["terraphim-grep", "needle", "--search-only"]).expect("parse");
+        assert!(args.search_only);
+    }
+
+    #[test]
+    fn no_rlm_alias_sets_search_only() {
+        let args = Args::try_parse_from(["terraphim-grep", "needle", "--no-rlm"]).expect("parse");
+        assert!(args.search_only, "--no-rlm is an alias for --search-only");
+    }
+
+    #[test]
+    fn search_only_conflicts_with_answer() {
+        let result =
+            Args::try_parse_from(["terraphim-grep", "needle", "--search-only", "--answer"]);
+        assert!(
+            result.is_err(),
+            "--search-only and --answer are contradictory and must be rejected"
+        );
+    }
+
+    #[test]
+    fn search_only_conflicts_with_force_rlm() {
+        let result =
+            Args::try_parse_from(["terraphim-grep", "needle", "--search-only", "--force-rlm"]);
+        assert!(
+            result.is_err(),
+            "--search-only and --force-rlm are contradictory and must be rejected"
+        );
     }
 }

@@ -2,6 +2,18 @@
 
 All notable changes to terraphim_grep are documented here.
 
+## [Unreleased]
+
+### Fixed
+- RLM synthesis is now opt-in (#81). A `NeedsSynthesis`/`NeedsExpansion` verdict no
+  longer triggers a chat completion unless `--answer` or `--force-rlm` was passed, so
+  an `OPENROUTER_API_KEY` present in the environment can no longer turn a millisecond
+  grep into a ~20s LLM round trip (and time out the caller's tool budget).
+
+### Added
+- `--search-only` (alias `--no-rlm`): hard-disables LLM synthesis for a run and skips
+  building the LLM client entirely. Mutually exclusive with `--answer`/`--force-rlm`.
+
 ## [1.21.12] - 2026-08-16
 
 ### Fixed
