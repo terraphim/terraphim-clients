@@ -838,7 +838,7 @@ fn collect_kg_markdown_files(dir: &std::path::Path, out: &mut Vec<std::path::Pat
 ///
 /// This function combines thesaurus building with hash computation to avoid
 /// reading the KG directory twice.
-pub(crate) fn build_kg_thesaurus_with_hash(
+pub fn build_kg_thesaurus_with_hash(
     kg_dir: &std::path::Path,
 ) -> Option<(terraphim_types::Thesaurus, String)> {
     use terraphim_automata::builder::compute_kg_source_hash;
@@ -856,7 +856,7 @@ pub(crate) fn build_kg_thesaurus_with_hash(
 ///
 /// Tries the current working directory first, then walks up parent directories
 /// looking for `docs/src/kg/`.
-pub(crate) fn find_kg_dir() -> Option<PathBuf> {
+pub fn find_kg_dir() -> Option<PathBuf> {
     let cwd = std::env::current_dir().ok()?;
 
     // Walk up from cwd looking for docs/src/kg
