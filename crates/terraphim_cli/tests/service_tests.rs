@@ -73,7 +73,7 @@ mod automata_tests {
         };
 
         let text = "npm install packages";
-        let matches = terraphim_automata::find_matches(text, thesaurus, true);
+        let matches = terraphim_automata::find_matches(text, &thesaurus, true);
 
         assert!(matches.is_ok(), "find_matches should succeed");
     }
@@ -88,7 +88,7 @@ mod automata_tests {
         let text = "npm install";
         let result = terraphim_automata::replace_matches(
             text,
-            thesaurus,
+            &thesaurus,
             terraphim_automata::LinkType::MarkdownLinks,
         );
 
@@ -110,7 +110,7 @@ mod automata_tests {
         let text = "yarn add dependencies";
         let result = terraphim_automata::replace_matches(
             text,
-            thesaurus,
+            &thesaurus,
             terraphim_automata::LinkType::HTMLLinks,
         );
 
@@ -127,7 +127,7 @@ mod automata_tests {
         let text = "pnpm install";
         let result = terraphim_automata::replace_matches(
             text,
-            thesaurus,
+            &thesaurus,
             terraphim_automata::LinkType::WikiLinks,
         );
 
@@ -144,7 +144,7 @@ mod automata_tests {
         let text = "npm run build";
         let result = terraphim_automata::replace_matches(
             text,
-            thesaurus,
+            &thesaurus,
             terraphim_automata::LinkType::PlainText,
         );
 
@@ -162,7 +162,7 @@ mod automata_tests {
         };
 
         let text = "testing npm with yarn and pnpm";
-        let matches = terraphim_automata::find_matches(text, thesaurus, true);
+        let matches = terraphim_automata::find_matches(text, &thesaurus, true);
 
         if let Ok(matches) = matches {
             for m in &matches {
@@ -514,7 +514,7 @@ mod ontology_schema_tests {
 
         // Text containing "Chapter" and "Concept" from the schema
         let text = "This chapter covers the concept of knowledge graphs";
-        let matches = terraphim_automata::find_matches(text, thesaurus, true)
+        let matches = terraphim_automata::find_matches(text, &thesaurus, true)
             .expect("find_matches should succeed");
 
         assert!(
@@ -548,7 +548,7 @@ mod ontology_schema_tests {
             thesaurus.insert(nterm_value, nterm);
         }
 
-        let matches = terraphim_automata::find_matches("", thesaurus, true)
+        let matches = terraphim_automata::find_matches("", &thesaurus, true)
             .expect("find_matches on empty text should succeed");
         assert!(matches.is_empty(), "Empty text should produce no matches");
     }
@@ -569,7 +569,7 @@ mod ontology_schema_tests {
         }
 
         let text = "completely unrelated text about cooking recipes";
-        let matches = terraphim_automata::find_matches(text, thesaurus, true)
+        let matches = terraphim_automata::find_matches(text, &thesaurus, true)
             .expect("find_matches should succeed");
         assert!(
             matches.is_empty(),

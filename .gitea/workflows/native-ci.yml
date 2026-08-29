@@ -12,3 +12,7 @@ jobs:
       - run: cargo test --workspace --lib --no-fail-fast
       # #95: isolated packaged install-graph regression.
       - run: cargo test -p terraphim_agent --test packaged_install_graph_regression -- --nocapture
+      # #112: keep the publish provenance gate working. The gate itself runs at
+      # release time, not here -- a branch HEAD is legitimately untagged, so
+      # invoking it on every push would always fail. This runs its tests.
+      - run: scripts/tests/publish-gate-test.sh

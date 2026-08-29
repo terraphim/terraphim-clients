@@ -519,7 +519,7 @@ impl TuiService {
         // Use automata to extract paragraphs
         let results = terraphim_automata::matcher::extract_paragraphs_from_automata(
             text,
-            thesaurus,
+            &thesaurus,
             !exclude_term, // include_term is opposite of exclude_term
         )?;
 
@@ -568,7 +568,7 @@ impl TuiService {
         let thesaurus = self.get_thesaurus(role_name).await?;
 
         // Find matches
-        Ok(terraphim_automata::find_matches(text, thesaurus, true)?)
+        Ok(terraphim_automata::find_matches(text, &thesaurus, true)?)
     }
 
     /// Replace matches in text with links using thesaurus
@@ -583,7 +583,7 @@ impl TuiService {
         let thesaurus = self.get_thesaurus(role_name).await?;
 
         // Replace matches
-        let result = terraphim_automata::replace_matches(text, thesaurus, link_type)?;
+        let result = terraphim_automata::replace_matches(text, &thesaurus, link_type)?;
         Ok(String::from_utf8(result).unwrap_or_else(|_| text.to_string()))
     }
 
