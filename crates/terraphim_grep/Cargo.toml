@@ -21,7 +21,7 @@ anyhow.workspace = true
 log.workspace = true
 # Shared self-update backend (R2 manifest + GitHub fallback). Same crate the
 # agent uses; provides `terraphim-grep check-update` / `terraphim-grep update`.
-terraphim_update = { path = "../terraphim_update", version = "1.20.2" }
+terraphim_update = { path = "../terraphim_update", version = "1.20.2", registry = "terraphim" }
 
 # Path deps include `version` so `cargo publish` accepts the manifest. The script
 # `scripts/publish-crates.sh` rewrites these versions at publish time to align with
