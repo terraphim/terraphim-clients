@@ -72,12 +72,12 @@ colored = { version = "3.0", optional = true }
 comfy-table = { version = "7.0", optional = true }
 dirs = { version = "5.0" }
 directories = "5.0"
-terraphim_types = { version = "1.0.0" }
+terraphim_types = { version = "1.21.0", registry = "terraphim" }
 terraphim_settings = { version = "1.0.0" }
 terraphim_persistence = { version = "1.0.0" }
 terraphim_config = { version = "1.0.0" }
 terraphim_command_runtime = { path = "../terraphim_command_runtime", version = "0.1.0" }
-terraphim_automata = { version = "1.19.2" }
+terraphim_automata = { version = "1.21.0", registry = "terraphim" }
 terraphim_service = { version = "1.21.1", default-features = false, registry = "terraphim" }
 # Upstream 1.21.3 moved McpToolIndex here; `mcp_tool_index` is now a deprecated
 # re-export shim and lib.rs re-exports the real type. Refs #112.

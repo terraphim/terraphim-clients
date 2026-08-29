@@ -85,12 +85,9 @@ terraphim-session-analyzer = { path = "../../crates/terraphim-session-analyzer",
 terraphim-markdown-parser = { version = "1.20.2", optional = true }
 
 # Feature-gated: Terraphim enrichment (uses published crates.io versions)
-terraphim_automata = { version = ">=1.4.10", optional = true }
+terraphim_automata = { version = "1.21.0", registry = "terraphim", optional = true }
 terraphim_rolegraph = { version = ">=1.4.10", optional = true }
-terraphim_types = { version = ">=1.4.10", optional = true }
-
-
-
+terraphim_types = { version = "1.21.0", registry = "terraphim", optional = true }
 [dev-dependencies]
 tempfile = { workspace = true }
 

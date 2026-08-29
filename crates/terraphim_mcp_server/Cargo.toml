@@ -23,13 +23,13 @@ rmcp = { version = "0.9.0", features = ["server", "transport-sse-server", "trans
 serde_json = { workspace = true }
 
 fff-search = { version = "0.8.4" }
-terraphim_automata = { version = "1.20.2", features = ["tokio-runtime"] }
+terraphim_automata = { version = "1.21.0", registry = "terraphim", features = ["tokio-runtime"] }
 terraphim_config = { version = "1.20.2" }
 terraphim_file_search = { version = "1.20.3" }
 terraphim_hooks = { version = "1.20.2", path = "../terraphim_hooks" }
 terraphim_rolegraph = { version = "1.20.2" }
 terraphim_service = { version = "1.20.2" }
-terraphim_types = { version = "1.20.2" }
+terraphim_types = { version = "1.21.0", registry = "terraphim" }
 thiserror = { workspace = true }
 
 tokio = { workspace = true, features = ["full"] }
@@ -58,7 +58,7 @@ serde_json = { workspace = true }
 serial_test = "3.3"
 tempfile = { workspace = true }
 
-terraphim_automata = { version = "1.20.2" }  # For AutomataPath
+terraphim_automata = { version = "1.21.0", registry = "terraphim" }  # For AutomataPath
 terraphim_config = { version = "1.20.2" }
 terraphim_middleware = { version = "1.20.3" }  # For Logseq builder
 terraphim_persistence = { version = "1.20.2",  features = ["memory"] }
