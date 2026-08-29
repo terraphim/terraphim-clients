@@ -6,6 +6,10 @@ jobs:
   build:
     runs-on: terraphim-native
     steps:
+      # #118: a duplicate terraphim_* crate makes clippy report
+      # `expected ConfigState, found ConfigState`, which reads as a bug in the
+      # calling code and is not. Name the real problem before clippy misdescribes it.
+      - run: scripts/ci/check-no-duplicate-terraphim.sh
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo build --workspace
