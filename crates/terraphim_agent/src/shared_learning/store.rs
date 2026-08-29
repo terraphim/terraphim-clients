@@ -800,7 +800,10 @@ mod tests {
         let retrieved = store.get(&id).await.unwrap();
         assert_eq!(retrieved.id, id);
         assert_eq!(retrieved.title, "Test Learning");
-        assert_eq!(retrieved.trust_level, TrustLevel::L0);
+        // terraphim_types 1.21.0: SharedLearning::new() starts at L1 (matching the
+        // `#[default]` on TrustLevel). L0 is reserved for raw extract before an entry
+        // enters the shared store. Refs #112.
+        assert_eq!(retrieved.trust_level, TrustLevel::L1);
     }
 
     #[tokio::test]
@@ -1110,7 +1113,8 @@ mod tests {
             retrieved.rejection_reason.as_deref(),
             Some("not applicable")
         );
-        assert_eq!(retrieved.trust_level, TrustLevel::L0);
+        // Rejection does not change trust level; new() now yields L1. Refs #112.
+        assert_eq!(retrieved.trust_level, TrustLevel::L1);
     }
 
     #[tokio::test]
@@ -1233,7 +1237,7 @@ mod tests {
             );
             let id = dyn_store.insert(learning).unwrap();
 
-            assert_eq!(dyn_store.get(&id).unwrap().trust_level, Tl::L0);
+            assert_eq!(dyn_store.get(&id).unwrap().trust_level, Tl::L1);
 
             dyn_store.record_effective(&id, "agent-a").unwrap();
             dyn_store.record_effective(&id, "agent-b").unwrap();

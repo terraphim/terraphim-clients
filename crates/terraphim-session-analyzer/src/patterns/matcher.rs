@@ -249,7 +249,7 @@ impl PatternMatcher for TerraphimMatcher {
         };
 
         // Call the actual terraphim_automata find_matches function
-        match terraphim_find_matches(text, thesaurus.clone(), true) {
+        match terraphim_find_matches(text, thesaurus, true) {
             Ok(matches) => {
                 // Convert terraphim matches to our ToolMatch format
                 matches

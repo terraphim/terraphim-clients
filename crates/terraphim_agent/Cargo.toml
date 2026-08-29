@@ -78,7 +78,7 @@ terraphim_persistence = { version = "1.0.0" }
 terraphim_config = { version = "1.0.0" }
 terraphim_command_runtime = { path = "../terraphim_command_runtime", version = "0.1.0" }
 terraphim_automata = { version = "1.19.2" }
-terraphim_service = { version = "1.20.4", default-features = false, registry = "terraphim" }
+terraphim_service = { version = "1.21.1", default-features = false, registry = "terraphim" }
 terraphim_middleware = { version = "1.0.0" }
 terraphim_rolegraph = { version = "1.0.0" }
 terraphim_hooks = { path = "../terraphim_hooks", version = "1.0.0" }
@@ -89,7 +89,9 @@ terraphim_orchestrator = { version = "1.0.0" }
 # and a broken terraphim-markdown-parser resolution), so the floor is 1.21.2
 # from the private registry. Do not use a workspace path here: the exact
 # published package is the release artifact being validated.
-terraphim_sessions = { version = "1.21.2", registry = "terraphim", optional = true, features = ["tsa-full", "aider-connector", "cursor-connector", "search-index"] }
+# Sibling workspace crate: must be a path dep, otherwise the workspace compiles
+# two different terraphim_sessions (the local one and a published copy). Refs #112.
+terraphim_sessions = { path = "../terraphim_sessions", version = "1.21.2", optional = true, features = ["tsa-full", "aider-connector", "cursor-connector", "search-index"] }
 
 [dev-dependencies]
 assert_cmd = "2"

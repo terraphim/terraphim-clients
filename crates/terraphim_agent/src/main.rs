@@ -4572,7 +4572,7 @@ async fn run_server_command(
             // Extract paragraphs using automata
             let results = terraphim_automata::matcher::extract_paragraphs_from_automata(
                 &text,
-                thesaurus,
+                &thesaurus,
                 !exclude_term, // include_term is opposite of exclude_term
             )?;
 

@@ -122,7 +122,7 @@ fn get_thesaurus_with_auto_rebuild() -> Option<Thesaurus> {
 /// This function is the core matching logic, separated from the global cache
 /// so it can be tested with custom thesauruses.
 pub fn validate_command_with_thesaurus(command: &str, thesaurus: Thesaurus) -> KgValidationResult {
-    let matches = match terraphim_automata::find_matches(command, thesaurus, false) {
+    let matches = match terraphim_automata::find_matches(command, &thesaurus, false) {
         Ok(m) => m,
         Err(_) => return KgValidationResult::empty(),
     };

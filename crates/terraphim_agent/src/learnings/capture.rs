@@ -885,7 +885,7 @@ pub fn annotate_with_entities(text: &str) -> Vec<String> {
         None => return Vec::new(),
     };
 
-    match terraphim_automata::matcher::find_matches(text, thesaurus, false) {
+    match terraphim_automata::matcher::find_matches(text, &thesaurus, false) {
         Ok(matches) => {
             let mut seen = std::collections::HashSet::new();
             let mut entities = Vec::new();
@@ -909,7 +909,7 @@ pub fn annotate_with_entities(text: &str) -> Vec<String> {
 /// This is useful for testing or when a pre-built thesaurus is available.
 #[allow(dead_code)]
 pub fn annotate_with_thesaurus(text: &str, thesaurus: terraphim_types::Thesaurus) -> Vec<String> {
-    match terraphim_automata::matcher::find_matches(text, thesaurus, false) {
+    match terraphim_automata::matcher::find_matches(text, &thesaurus, false) {
         Ok(matches) => {
             let mut seen = std::collections::HashSet::new();
             let mut entities = Vec::new();
