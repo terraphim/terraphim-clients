@@ -241,15 +241,15 @@ impl SharedLearningStore {
                 })
                 .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
 
-            if let Some((existing_id, score)) = best_match {
-                if score >= self.config.similarity_threshold {
-                    debug!(
-                        "Merging with existing learning {} (score={:.3})",
-                        existing_id, score
-                    );
-                    self.merge_learning(&existing_id, &learning).await?;
-                    return Ok(StoreResult::Merged(existing_id));
-                }
+            if let Some((existing_id, score)) = best_match
+                && score >= self.config.similarity_threshold
+            {
+                debug!(
+                    "Merging with existing learning {} (score={:.3})",
+                    existing_id, score
+                );
+                self.merge_learning(&existing_id, &learning).await?;
+                return Ok(StoreResult::Merged(existing_id));
             }
         }
 
@@ -660,29 +660,26 @@ impl terraphim_types::shared_learning::LearningStore for SharedLearningStore {
 
         if !context.is_empty() {
             let context_lower = context.to_lowercase();
-            if let Some(ref graph_lock) = self.role_graph {
-                if let Ok(graph) = graph_lock.read() {
-                    if let Ok(graph_results) = graph.query_graph(context, None, None) {
-                        if !graph_results.is_empty() {
-                            let graph_id_rank: std::collections::HashMap<String, u64> =
-                                graph_results
-                                    .into_iter()
-                                    .map(|(id, doc)| (id, doc.rank))
-                                    .collect();
-                            candidates.retain(|l| {
-                                graph_id_rank.contains_key(&l.id)
-                                    || l.extract_searchable_text().contains(&context_lower)
-                            });
-                            candidates.sort_by(|a, b| {
-                                let a_rank = graph_id_rank.get(&a.id).copied().unwrap_or(0);
-                                let b_rank = graph_id_rank.get(&b.id).copied().unwrap_or(0);
-                                b_rank.cmp(&a_rank)
-                            });
-                            candidates.truncate(limit);
-                            return Ok(candidates);
-                        }
-                    }
-                }
+            if let Some(ref graph_lock) = self.role_graph
+                && let Ok(graph) = graph_lock.read()
+                && let Ok(graph_results) = graph.query_graph(context, None, None)
+                && !graph_results.is_empty()
+            {
+                let graph_id_rank: std::collections::HashMap<String, u64> = graph_results
+                    .into_iter()
+                    .map(|(id, doc)| (id, doc.rank))
+                    .collect();
+                candidates.retain(|l| {
+                    graph_id_rank.contains_key(&l.id)
+                        || l.extract_searchable_text().contains(&context_lower)
+                });
+                candidates.sort_by(|a, b| {
+                    let a_rank = graph_id_rank.get(&a.id).copied().unwrap_or(0);
+                    let b_rank = graph_id_rank.get(&b.id).copied().unwrap_or(0);
+                    b_rank.cmp(&a_rank)
+                });
+                candidates.truncate(limit);
+                return Ok(candidates);
             }
 
             candidates.retain(|l| l.extract_searchable_text().contains(&context_lower));

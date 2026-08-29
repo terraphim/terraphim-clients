@@ -533,8 +533,10 @@ mod tests {
 
     #[test]
     fn gitea_wiki_config_token_redacted_in_debug() {
-        let mut cfg = GiteaWikiConfig::default();
-        cfg.token = "secret-gitea-token".to_string();
+        let cfg = GiteaWikiConfig {
+            token: "secret-gitea-token".to_string(),
+            ..Default::default()
+        };
         let dbg = format!("{:?}", cfg);
         assert!(
             !dbg.contains("secret-gitea-token"),

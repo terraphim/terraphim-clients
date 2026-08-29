@@ -526,13 +526,13 @@ impl SessionService {
         let mut unenriched: Vec<Session> = Vec::new();
 
         for session in sessions {
-            if let Some(ref sc) = session.metadata.enrichment {
-                if !sc.concepts.is_empty() {
-                    let concept_set: HashSet<String> = sc.concepts.keys().cloned().collect();
-                    enriched_sessions.push(session);
-                    enriched_concepts.push(concept_set);
-                    continue;
-                }
+            if let Some(ref sc) = session.metadata.enrichment
+                && !sc.concepts.is_empty()
+            {
+                let concept_set: HashSet<String> = sc.concepts.keys().cloned().collect();
+                enriched_sessions.push(session);
+                enriched_concepts.push(concept_set);
+                continue;
             }
             unenriched.push(session);
         }
