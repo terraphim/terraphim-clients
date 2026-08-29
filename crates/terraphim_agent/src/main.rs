@@ -2046,6 +2046,41 @@ async fn run_offline_command(
         return run_config_validate().await;
     }
 
+    // `config show` and the read-only `roles` subcommands need the configuration but not
+    // the thesaurus or rolegraph that `ConfigState::new` builds. Profiling put that build at
+    // ~63% of startup -- a full markdown AST parse per knowledge-graph file, done twice --
+    // so they load the config directly and skip it. The integration suite drives exactly
+    // these commands 20-30 times per test. Refs #120.
+    if let Command::Config {
+        sub: ConfigSub::Show,
+    } = &command
+    {
+        let config = TuiService::load_config(config_path, false).await?;
+        println!("{}", serde_json::to_string_pretty(&config)?);
+        return Ok(());
+    }
+
+    if let Command::Roles {
+        sub: RolesSub::List,
+    } = &command
+    {
+        let config = TuiService::load_config(config_path, false).await?;
+        let selected = TuiService::selected_role_of(&config);
+        for (name, shortname) in TuiService::roles_with_info_of(&config) {
+            let marker = if name == selected.to_string() {
+                "*"
+            } else {
+                " "
+            };
+            if let Some(short) = shortname {
+                println!("{} {} ({})", marker, name, short);
+            } else {
+                println!("{} {}", marker, name);
+            }
+        }
+        return Ok(());
+    }
+
     // Cache is stateless - handle before TuiService initialization
     if let Command::Cache { sub } = &command {
         return run_cache_command(sub).await;
