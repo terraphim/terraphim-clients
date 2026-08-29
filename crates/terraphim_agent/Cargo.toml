@@ -4,7 +4,7 @@ name = "terraphim_agent"
 # broken install set (#95), so published agent releases must stay >= 1.21.2.
 # v1.21.12 consolidates canonical main after the divergent v1.21.11 release
 # branch (#97).
-version = "1.21.12"
+version.workspace = true
 edition.workspace = true
 authors = ["Terraphim Contributors"]
 description = "Terraphim AI Agent CLI - Command-line interface with interactive REPL and ASCII graph visualization"
