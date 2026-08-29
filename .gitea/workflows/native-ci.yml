@@ -12,7 +12,8 @@ jobs:
       - run: cargo test --workspace --lib --no-fail-fast
       # #95: isolated packaged install-graph regression.
       - run: cargo test -p terraphim_agent --test packaged_install_graph_regression -- --nocapture
-      # #112: keep the publish provenance gate working. The gate itself runs at
-      # release time, not here -- a branch HEAD is legitimately untagged, so
-      # invoking it on every push would always fail. This runs its tests.
-      - run: scripts/tests/publish-gate-test.sh
+      # #118: repo guards -- duplicate-crate detection and the publish gate's own
+      # tests. Rust tests, not shell steps: the runner allowlist rejects any
+      # program that is not cargo ("policy rejected command: ... not on the
+      # allowlist"), which is what took CI down from #112 until now.
+      - run: cargo test -p terraphim_agent --test ci_guards -- --nocapture
