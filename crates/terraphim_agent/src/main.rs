@@ -2065,8 +2065,8 @@ async fn run_offline_command(
     } = &command
     {
         let config = TuiService::load_config(config_path, false).await?;
-        let selected = terraphim_command_runtime::selected_role_of(&config);
-        for (name, shortname) in terraphim_command_runtime::roles_with_info_of(&config) {
+        let selected = TuiService::selected_role_of(&config);
+        for (name, shortname) in TuiService::roles_with_info_of(&config) {
             let marker = if name == selected.to_string() {
                 "*"
             } else {

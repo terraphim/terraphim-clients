@@ -228,6 +228,26 @@ impl TuiService {
         Ok(config)
     }
 
+    /// Selected role, read straight from a `Config`.
+    ///
+    /// These three mirror the `ConfigState` helpers in `terraphim_command_runtime`, which lock
+    /// and read the same fields. They live here rather than in that crate because
+    /// `packaged_install_graph_regression` builds terraphim_agent from a packaged tarball, where
+    /// `terraphim_command_runtime` resolves from the registry -- adding functions there would
+    /// make this crate depend on unpublished API. Refs #120.
+    pub fn selected_role_of(config: &Config) -> RoleName {
+        config.selected_role.clone()
+    }
+
+    /// See [`TuiService::selected_role_of`].
+    pub fn roles_with_info_of(config: &Config) -> Vec<(String, Option<String>)> {
+        config
+            .roles
+            .iter()
+            .map(|(name, role)| (name.to_string(), role.shortname.clone()))
+            .collect()
+    }
+
     async fn from_config(mut config: Config) -> Result<Self> {
         let config_state = ConfigState::new(&mut config).await?;
         let service = TerraphimService::new(config_state.clone());

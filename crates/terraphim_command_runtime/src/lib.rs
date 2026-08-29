@@ -20,43 +20,6 @@ pub async fn get_config(config_state: &ConfigState) -> Config {
 }
 
 /// Return the currently selected role.
-/// Role helpers that operate on a plain `Config`.
-///
-/// `ConfigState::new` builds the thesaurus and rolegraph -- ~63% of CLI startup, since it
-/// parses a full markdown AST per knowledge-graph file. Read-only role commands need none
-/// of that, so they use these instead of the `ConfigState` variants below. The two sets
-/// must stay in agreement; the `ConfigState` versions simply lock and delegate. Refs #120.
-pub fn selected_role_of(config: &Config) -> RoleName {
-    config.selected_role.clone()
-}
-
-/// See [`selected_role_of`].
-pub fn roles_with_info_of(config: &Config) -> Vec<(String, Option<String>)> {
-    config
-        .roles
-        .iter()
-        .map(|(name, role)| (name.to_string(), role.shortname.clone()))
-        .collect()
-}
-
-/// See [`selected_role_of`].
-pub fn find_role_of(config: &Config, query: &str) -> Option<RoleName> {
-    let query_lower = query.to_lowercase();
-    for name in config.roles.keys() {
-        if name.to_string().to_lowercase() == query_lower {
-            return Some(name.clone());
-        }
-    }
-    for (name, role) in config.roles.iter() {
-        if let Some(ref shortname) = role.shortname
-            && shortname.to_lowercase() == query_lower
-        {
-            return Some(name.clone());
-        }
-    }
-    None
-}
-
 pub async fn get_selected_role(config_state: &ConfigState) -> RoleName {
     let config = config_state.config.lock().await;
     config.selected_role.clone()
