@@ -347,6 +347,9 @@ impl SharedLearningStore {
         let learning = index
             .get_mut(id)
             .ok_or_else(|| StoreError::NotFound(id.to_string()))?;
+        if learning.trust_level == TrustLevel::L0 {
+            learning.promote_to_l1();
+        }
         learning.promote_to_l2();
         let updated = learning.clone();
         drop(index);
@@ -726,7 +729,6 @@ impl terraphim_types::shared_learning::LearningStore for SharedLearningStore {
     ) -> Result<usize, terraphim_types::shared_learning::StoreError> {
         let cutoff = chrono::Utc::now() - chrono::Duration::days(max_age_days as i64);
         let mut index = block_on(self.index.write());
-        let before = index.len();
         let stale: Vec<(String, String)> = index
             .iter()
             .filter(|(_, l)| {
@@ -744,7 +746,10 @@ impl terraphim_types::shared_learning::LearningStore for SharedLearningStore {
                 warn!("Failed to delete markdown for stale learning {}: {e}", id);
             }
         }
-        let removed = before - stale.len();
+        // `archive_stale` returns the number of stale learnings removed, matching
+        // the `LearningStore::archive_stale` contract (the count archived, not the
+        // count remaining).
+        let removed = stale.len();
         Ok(removed)
     }
 }
@@ -1340,6 +1345,14 @@ mod tests {
             );
             l0_stale.trust_level = Tl::L0;
             l0_stale.updated_at = chrono::Utc::now() - chrono::Duration::days(60);
+            let mut l0_stale_2 = SharedLearning::new(
+                "stale two".to_string(),
+                "c".to_string(),
+                LearningSource::Manual,
+                "a".to_string(),
+            );
+            l0_stale_2.trust_level = Tl::L0;
+            l0_stale_2.updated_at = chrono::Utc::now() - chrono::Duration::days(45);
             let mut l1_old = SharedLearning::new(
                 "old but L1".to_string(),
                 "c".to_string(),
@@ -1351,10 +1364,14 @@ mod tests {
 
             let dyn_store: &dyn LearningStore = &store;
             dyn_store.insert(l0_stale).unwrap();
+            dyn_store.insert(l0_stale_2).unwrap();
             dyn_store.insert(l1_old).unwrap();
 
+            // Two stale L0 entries are archived; the L1 entry is retained. The
+            // return value must be the count archived (2), not the count
+            // remaining (`before - stale == 3 - 2 == 1`).
             let archived = dyn_store.archive_stale(30).unwrap();
-            assert_eq!(archived, 1);
+            assert_eq!(archived, 2);
 
             let remaining = dyn_store.list_by_trust(Tl::L0).unwrap();
             assert_eq!(remaining.len(), 1);

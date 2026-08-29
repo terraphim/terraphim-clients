@@ -74,7 +74,7 @@ pub fn validate_command_against_kg(command: &str) -> KgValidationResult {
         None => return KgValidationResult::empty(),
     };
 
-    validate_command_with_thesaurus(command, thesaurus)
+    validate_command_with_thesaurus(command, &thesaurus)
 }
 
 /// Get the thesaurus with automatic rebuild on source change.
@@ -121,8 +121,8 @@ fn get_thesaurus_with_auto_rebuild() -> Option<Thesaurus> {
 ///
 /// This function is the core matching logic, separated from the global cache
 /// so it can be tested with custom thesauruses.
-pub fn validate_command_with_thesaurus(command: &str, thesaurus: Thesaurus) -> KgValidationResult {
-    let matches = match terraphim_automata::find_matches(command, &thesaurus, false) {
+pub fn validate_command_with_thesaurus(command: &str, thesaurus: &Thesaurus) -> KgValidationResult {
+    let matches = match terraphim_automata::find_matches(command, thesaurus, false) {
         Ok(m) => m,
         Err(_) => return KgValidationResult::empty(),
     };
@@ -194,7 +194,7 @@ mod tests {
     #[test]
     fn test_npm_install_suggests_bun_install() {
         let thesaurus = create_test_thesaurus();
-        let result = validate_command_with_thesaurus("npm install express", thesaurus);
+        let result = validate_command_with_thesaurus("npm install express", &thesaurus);
 
         assert!(result.has_findings);
         assert!(!result.findings.is_empty());
@@ -211,7 +211,7 @@ mod tests {
     #[test]
     fn test_cargo_build_no_findings() {
         let thesaurus = create_test_thesaurus();
-        let result = validate_command_with_thesaurus("cargo build --release", thesaurus);
+        let result = validate_command_with_thesaurus("cargo build --release", &thesaurus);
 
         assert!(!result.has_findings);
         assert!(result.findings.is_empty());
@@ -220,7 +220,7 @@ mod tests {
     #[test]
     fn test_bun_install_no_findings_for_canonical() {
         let thesaurus = create_test_thesaurus();
-        let result = validate_command_with_thesaurus("bun install express", thesaurus);
+        let result = validate_command_with_thesaurus("bun install express", &thesaurus);
 
         // The canonical term "bun install" should not produce findings
         // since matched_term == suggested_replacement
@@ -230,7 +230,7 @@ mod tests {
     #[test]
     fn test_yarn_install_suggests_bun_install() {
         let thesaurus = create_test_thesaurus();
-        let result = validate_command_with_thesaurus("yarn install", thesaurus);
+        let result = validate_command_with_thesaurus("yarn install", &thesaurus);
 
         assert!(result.has_findings);
         let finding = result
@@ -253,7 +253,7 @@ mod tests {
     #[test]
     fn test_finding_serialization() {
         let thesaurus = create_test_thesaurus();
-        let result = validate_command_with_thesaurus("npm install", thesaurus);
+        let result = validate_command_with_thesaurus("npm install", &thesaurus);
 
         let json = serde_json::to_string(&result).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
@@ -265,14 +265,14 @@ mod tests {
     #[test]
     fn test_empty_command() {
         let thesaurus = create_test_thesaurus();
-        let result = validate_command_with_thesaurus("", thesaurus);
+        let result = validate_command_with_thesaurus("", &thesaurus);
         assert!(!result.has_findings);
     }
 
     #[test]
     fn test_pnpm_install_suggests_bun_install() {
         let thesaurus = create_test_thesaurus();
-        let result = validate_command_with_thesaurus("pnpm install lodash", thesaurus);
+        let result = validate_command_with_thesaurus("pnpm install lodash", &thesaurus);
 
         assert!(result.has_findings);
         let finding = result
