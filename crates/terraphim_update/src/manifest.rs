@@ -334,10 +334,17 @@ mod tests {
 
     #[test]
     fn test_resolve_asset_finds_present_target() {
+        // Build the manifest from the host's own triples rather than reusing
+        // `sample_manifest()`, which carries Linux assets only and so could
+        // never resolve on macOS. Deriving the fixture keeps this test correct
+        // on any host and cannot rot when a target is added. Refs #116.
         let cfg = ManifestConfig::new("terraphim-agent");
-        let manifest = sample_manifest();
-        // current_target_triples()[0] must be present in the sample manifest.
         let first = current_target_triples()[0].clone();
+        let mut manifest = sample_manifest();
+        manifest.assets.insert(
+            first.clone(),
+            format!("terraphim-agent/terraphim-agent-1.21.9-{first}.tar.gz"),
+        );
         let url = resolve_asset_url(&manifest, &cfg).unwrap();
         assert!(url.contains(&first));
         assert!(url.starts_with("https://downloads.terraphim.ai/"));
