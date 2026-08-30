@@ -158,10 +158,6 @@ async fn test_updater_configuration() {
     assert_eq!(config.repo_owner, "terraphim");
     assert_eq!(config.repo_name, "terraphim-ai");
 
-    // terraphim-agent CLI release assets live in terraphim-clients.
-    let config = UpdaterConfig::new("terraphim-agent").with_repo("terraphim", "terraphim-clients");
-    assert_eq!(config.repo_owner, "terraphim");
-    assert_eq!(config.repo_name, "terraphim-clients");
     assert!(config.show_progress);
 
     // Test custom configuration

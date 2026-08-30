@@ -154,9 +154,7 @@ fn init_tracing() {
 /// (`downloads.terraphim.ai`) with the GitHub Releases fallback — same as the
 /// agent, via the shared `terraphim_update` crate.
 fn grep_updater() -> TerraphimUpdater {
-    let config = UpdaterConfig::new("terraphim-grep")
-        .with_version(env!("CARGO_PKG_VERSION"))
-        .with_repo("terraphim", "terraphim-clients");
+    let config = UpdaterConfig::new("terraphim-grep").with_version(env!("CARGO_PKG_VERSION"));
     TerraphimUpdater::new(config)
 }
 
