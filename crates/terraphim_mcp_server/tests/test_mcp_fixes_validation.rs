@@ -11,22 +11,8 @@ use tokio::process::Command;
 async fn test_mcp_log_separation_and_tools() -> Result<()> {
     println!("🧪 Testing MCP server log separation and tool availability");
 
-    // Build the server first
-    let mut build = Command::new("cargo");
-    build
-        .arg("build")
-        .arg("--package")
-        .arg("terraphim_mcp_server");
-
-    if std::env::var_os("CI").is_some() {
-        build.arg("--features").arg("zlob");
-    }
-
-    let build_status = build.status().await?;
-
-    if !build_status.success() {
-        anyhow::bail!("Failed to build terraphim_mcp_server");
-    }
+    // Cargo builds terraphim_mcp_server before this test runs; a nested
+    // `cargo build` would deadlock on the outer build lock. Refs #113.
 
     let mut cmd = Command::new(support::mcp_server_binary()?);
     cmd.stdin(Stdio::piped())

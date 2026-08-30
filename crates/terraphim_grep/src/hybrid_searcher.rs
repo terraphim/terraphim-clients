@@ -157,7 +157,7 @@ pub struct HybridSearcher {
     /// return meaningful query results; the raw thesaurus is enough to identify which
     /// of the user's known concepts touch the query.
     thesaurus: terraphim_types::Thesaurus,
-    search_path: PathBuf,
+    search_paths: Vec<PathBuf>,
 }
 
 impl HybridSearcher {
@@ -173,12 +173,17 @@ impl HybridSearcher {
         Ok(Self {
             role_graph: Arc::new(tokio::sync::RwLock::new(rolegraph)),
             thesaurus,
-            search_path: PathBuf::from("."),
+            search_paths: vec![PathBuf::from(".")],
         })
     }
 
     pub fn with_search_path(mut self, path: PathBuf) -> Self {
-        self.search_path = path;
+        self.search_paths = vec![path];
+        self
+    }
+
+    pub fn with_search_paths(mut self, paths: Vec<PathBuf>) -> Self {
+        self.search_paths = paths;
         self
     }
 
@@ -188,7 +193,7 @@ impl HybridSearcher {
         options: &GrepOptions,
     ) -> Result<HybridResults, String> {
         let max_results = options.max_results;
-        let search_path = self.search_path.clone();
+        let search_paths = self.search_paths.clone();
         let role_graph = self.role_graph.clone();
         let query_owned = query.to_string();
 
@@ -205,8 +210,15 @@ impl HybridSearcher {
 
                 let code_handle = tokio::spawn({
                     let query = query_owned.clone();
-                    let path = search_path.clone();
-                    async move { Self::search_code(&query, max_results, path).await }
+                    let paths = search_paths.clone();
+                    async move {
+                        let mut all_results = Vec::new();
+                        for path in paths {
+                            let mut results = Self::search_code(&query, max_results, path).await?;
+                            all_results.append(&mut results);
+                        }
+                        Ok::<Vec<RetrievedChunk>, String>(all_results)
+                    }
                 });
 
                 let kg_concepts = kg_handle
@@ -231,6 +243,8 @@ impl HybridSearcher {
         // does not influence ordering at all. Boost in place; the boosted score is what
         // the JSON output reports so downstream tools see why a chunk ranked where it did.
         let code_results = boost_chunks_with_kg(code_results, &kg_concepts);
+        let code_results: Vec<RetrievedChunk> =
+            code_results.into_iter().take(max_results).collect();
 
         Ok(HybridResults {
             code_results,
@@ -361,6 +375,18 @@ impl HybridSearcher {
         #[cfg(not(feature = "code-search"))]
         {
             let _ = (query, limit, search_path);
+            // `code-search` is a default feature, so reaching here means the binary was
+            // built with `--no-default-features` (or a custom set omitting it). Returning
+            // an empty Vec silently makes every query look like "0 results" with no
+            // explanation -- warn once so the cause is obvious rather than mysterious.
+            static WARNED: std::sync::Once = std::sync::Once::new();
+            WARNED.call_once(|| {
+                tracing::warn!(
+                    "terraphim-grep was built without the `code-search` feature; \
+                     file-content search is disabled and every query returns no matches. \
+                     Rebuild with `--features code-search` (the default) to enable grep."
+                );
+            });
             Ok(vec![])
         }
     }
@@ -415,6 +441,91 @@ mod tests {
         let chunks = results.to_chunks();
         assert_eq!(chunks.len(), 2);
         assert_eq!(results.total_results(), 2);
+    }
+
+    /// Regression for #47: a default build (which now enables `code-search`) must grep
+    /// file contents over a populated directory and return matches. Before the fix the
+    /// `code-search` feature was off by default, so `search_code` compiled to a no-op stub
+    /// and this exact scenario silently produced zero chunks.
+    #[cfg(feature = "code-search")]
+    #[tokio::test]
+    async fn default_build_greps_populated_directory() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("alpha.rs"),
+            "fn configure_pipeline() { /* pipeline setup */ }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.path().join("beta.rs"),
+            "fn run_pipeline() { configure_pipeline(); }\n",
+        )
+        .unwrap();
+
+        let searcher = HybridSearcher::new(
+            "test-role".to_string(),
+            terraphim_types::Thesaurus::new("t".to_string()),
+        )
+        .expect("build hybrid searcher")
+        .with_search_path(tmp.path().to_path_buf());
+
+        let results = searcher
+            .search(
+                "pipeline",
+                &GrepOptions {
+                    haystack: Haystack::Code,
+                    max_results: 50,
+                    ..GrepOptions::default()
+                },
+            )
+            .await
+            .expect("search should succeed");
+
+        assert!(
+            !results.code_results.is_empty(),
+            "default build must return file-content matches over {:?}, got none",
+            tmp.path()
+        );
+    }
+
+    /// Multiple search paths must be scanned and their results merged.
+    #[cfg(feature = "code-search")]
+    #[tokio::test]
+    async fn multiple_search_paths_merge_results() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let dir_a = tmp.path().join("a");
+        let dir_b = tmp.path().join("b");
+        std::fs::create_dir(&dir_a).unwrap();
+        std::fs::create_dir(&dir_b).unwrap();
+        std::fs::write(dir_a.join("alpha.rs"), "fn shared_term() {}\n").unwrap();
+        std::fs::write(dir_b.join("beta.rs"), "fn shared_term() {}\n").unwrap();
+
+        let searcher = HybridSearcher::new(
+            "test-role".to_string(),
+            terraphim_types::Thesaurus::new("t".to_string()),
+        )
+        .expect("build hybrid searcher")
+        .with_search_paths(vec![dir_a.clone(), dir_b.clone()]);
+
+        let results = searcher
+            .search(
+                "shared_term",
+                &GrepOptions {
+                    haystack: Haystack::Code,
+                    max_results: 50,
+                    ..GrepOptions::default()
+                },
+            )
+            .await
+            .expect("search should succeed");
+
+        assert_eq!(
+            results.code_results.len(),
+            2,
+            "expected one match from each of {:?} and {:?}",
+            dir_a,
+            dir_b
+        );
     }
 
     fn chunk(source: &str, content: &str, score: f64) -> RetrievedChunk {

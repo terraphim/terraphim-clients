@@ -121,8 +121,7 @@ async fn create_autocomplete_test_config() -> Result<String> {
 
 /// Start the MCP server as a subprocess and return the transport
 async fn start_mcp_server() -> Result<TokioChildProcess> {
-    let mut cmd = Command::new("cargo");
-    cmd.arg("run").arg("--bin").arg("terraphim_mcp_server");
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_terraphim_mcp_server"));
 
     if std::env::var_os("CI").is_some() {
         cmd.arg("--features").arg("zlob");

@@ -241,15 +241,15 @@ impl SharedLearningStore {
                 })
                 .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
 
-            if let Some((existing_id, score)) = best_match {
-                if score >= self.config.similarity_threshold {
-                    debug!(
-                        "Merging with existing learning {} (score={:.3})",
-                        existing_id, score
-                    );
-                    self.merge_learning(&existing_id, &learning).await?;
-                    return Ok(StoreResult::Merged(existing_id));
-                }
+            if let Some((existing_id, score)) = best_match
+                && score >= self.config.similarity_threshold
+            {
+                debug!(
+                    "Merging with existing learning {} (score={:.3})",
+                    existing_id, score
+                );
+                self.merge_learning(&existing_id, &learning).await?;
+                return Ok(StoreResult::Merged(existing_id));
             }
         }
 
@@ -347,6 +347,9 @@ impl SharedLearningStore {
         let learning = index
             .get_mut(id)
             .ok_or_else(|| StoreError::NotFound(id.to_string()))?;
+        if learning.trust_level == TrustLevel::L0 {
+            learning.promote_to_l1();
+        }
         learning.promote_to_l2();
         let updated = learning.clone();
         drop(index);
@@ -660,29 +663,26 @@ impl terraphim_types::shared_learning::LearningStore for SharedLearningStore {
 
         if !context.is_empty() {
             let context_lower = context.to_lowercase();
-            if let Some(ref graph_lock) = self.role_graph {
-                if let Ok(graph) = graph_lock.read() {
-                    if let Ok(graph_results) = graph.query_graph(context, None, None) {
-                        if !graph_results.is_empty() {
-                            let graph_id_rank: std::collections::HashMap<String, u64> =
-                                graph_results
-                                    .into_iter()
-                                    .map(|(id, doc)| (id, doc.rank))
-                                    .collect();
-                            candidates.retain(|l| {
-                                graph_id_rank.contains_key(&l.id)
-                                    || l.extract_searchable_text().contains(&context_lower)
-                            });
-                            candidates.sort_by(|a, b| {
-                                let a_rank = graph_id_rank.get(&a.id).copied().unwrap_or(0);
-                                let b_rank = graph_id_rank.get(&b.id).copied().unwrap_or(0);
-                                b_rank.cmp(&a_rank)
-                            });
-                            candidates.truncate(limit);
-                            return Ok(candidates);
-                        }
-                    }
-                }
+            if let Some(ref graph_lock) = self.role_graph
+                && let Ok(graph) = graph_lock.read()
+                && let Ok(graph_results) = graph.query_graph(context, None, None)
+                && !graph_results.is_empty()
+            {
+                let graph_id_rank: std::collections::HashMap<String, u64> = graph_results
+                    .into_iter()
+                    .map(|(id, doc)| (id, doc.rank))
+                    .collect();
+                candidates.retain(|l| {
+                    graph_id_rank.contains_key(&l.id)
+                        || l.extract_searchable_text().contains(&context_lower)
+                });
+                candidates.sort_by(|a, b| {
+                    let a_rank = graph_id_rank.get(&a.id).copied().unwrap_or(0);
+                    let b_rank = graph_id_rank.get(&b.id).copied().unwrap_or(0);
+                    b_rank.cmp(&a_rank)
+                });
+                candidates.truncate(limit);
+                return Ok(candidates);
             }
 
             candidates.retain(|l| l.extract_searchable_text().contains(&context_lower));
@@ -729,7 +729,6 @@ impl terraphim_types::shared_learning::LearningStore for SharedLearningStore {
     ) -> Result<usize, terraphim_types::shared_learning::StoreError> {
         let cutoff = chrono::Utc::now() - chrono::Duration::days(max_age_days as i64);
         let mut index = block_on(self.index.write());
-        let before = index.len();
         let stale: Vec<(String, String)> = index
             .iter()
             .filter(|(_, l)| {
@@ -747,7 +746,10 @@ impl terraphim_types::shared_learning::LearningStore for SharedLearningStore {
                 warn!("Failed to delete markdown for stale learning {}: {e}", id);
             }
         }
-        let removed = before - stale.len();
+        // `archive_stale` returns the number of stale learnings removed, matching
+        // the `LearningStore::archive_stale` contract (the count archived, not the
+        // count remaining).
+        let removed = stale.len();
         Ok(removed)
     }
 }
@@ -800,7 +802,10 @@ mod tests {
         let retrieved = store.get(&id).await.unwrap();
         assert_eq!(retrieved.id, id);
         assert_eq!(retrieved.title, "Test Learning");
-        assert_eq!(retrieved.trust_level, TrustLevel::L0);
+        // terraphim_types 1.21.0: SharedLearning::new() starts at L1 (matching the
+        // `#[default]` on TrustLevel). L0 is reserved for raw extract before an entry
+        // enters the shared store. Refs #112.
+        assert_eq!(retrieved.trust_level, TrustLevel::L1);
     }
 
     #[tokio::test]
@@ -1110,7 +1115,8 @@ mod tests {
             retrieved.rejection_reason.as_deref(),
             Some("not applicable")
         );
-        assert_eq!(retrieved.trust_level, TrustLevel::L0);
+        // Rejection does not change trust level; new() now yields L1. Refs #112.
+        assert_eq!(retrieved.trust_level, TrustLevel::L1);
     }
 
     #[tokio::test]
@@ -1233,7 +1239,7 @@ mod tests {
             );
             let id = dyn_store.insert(learning).unwrap();
 
-            assert_eq!(dyn_store.get(&id).unwrap().trust_level, Tl::L0);
+            assert_eq!(dyn_store.get(&id).unwrap().trust_level, Tl::L1);
 
             dyn_store.record_effective(&id, "agent-a").unwrap();
             dyn_store.record_effective(&id, "agent-b").unwrap();
@@ -1339,6 +1345,14 @@ mod tests {
             );
             l0_stale.trust_level = Tl::L0;
             l0_stale.updated_at = chrono::Utc::now() - chrono::Duration::days(60);
+            let mut l0_stale_2 = SharedLearning::new(
+                "stale two".to_string(),
+                "c".to_string(),
+                LearningSource::Manual,
+                "a".to_string(),
+            );
+            l0_stale_2.trust_level = Tl::L0;
+            l0_stale_2.updated_at = chrono::Utc::now() - chrono::Duration::days(45);
             let mut l1_old = SharedLearning::new(
                 "old but L1".to_string(),
                 "c".to_string(),
@@ -1350,10 +1364,14 @@ mod tests {
 
             let dyn_store: &dyn LearningStore = &store;
             dyn_store.insert(l0_stale).unwrap();
+            dyn_store.insert(l0_stale_2).unwrap();
             dyn_store.insert(l1_old).unwrap();
 
+            // Two stale L0 entries are archived; the L1 entry is retained. The
+            // return value must be the count archived (2), not the count
+            // remaining (`before - stale == 3 - 2 == 1`).
             let archived = dyn_store.archive_stale(30).unwrap();
-            assert_eq!(archived, 1);
+            assert_eq!(archived, 2);
 
             let remaining = dyn_store.list_by_trust(Tl::L0).unwrap();
             assert_eq!(remaining.len(), 1);

@@ -1,2 +1,6 @@
 /target
-Cargo.lock
+# Cargo.lock is committed: this workspace ships binaries (terraphim-agent,
+# terraphim-cli, terraphim-grep, ...), and CI must build the same graph a
+# human verified. Leaving it untracked let CI resolve differently from every
+# local check and turned up as duplicate terraphim_config copies (#118).
+**/__pycache__/
