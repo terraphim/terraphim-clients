@@ -4,3 +4,6 @@
 # human verified. Leaving it untracked let CI resolve differently from every
 # local check and turned up as duplicate terraphim_config copies (#118).
 **/__pycache__/
+
+# cachebro SQLite caches -- agent exploration tool, transient
+.cachebro/
