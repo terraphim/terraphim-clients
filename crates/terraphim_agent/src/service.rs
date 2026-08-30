@@ -45,10 +45,12 @@ impl TuiService {
         config_path: Option<String>,
         no_project_config: bool,
     ) -> Result<Config> {
-        // Initialize logging
-        terraphim_service::logging::init_logging(
-            terraphim_service::logging::detect_logging_config(),
-        );
+        // Initialize logging. We install the agent's own filtered logger
+        // (rather than `terraphim_service::logging`) so that the benign
+        // thesaurus-not-found `ERROR` logged by `ensure_thesaurus_loaded`
+        // is suppressed while every other line is preserved. See
+        // `crate::logging` and terraphim/terraphim-clients#48.
+        crate::logging::init_logging();
 
         log::info!("Initializing TUI service");
 
