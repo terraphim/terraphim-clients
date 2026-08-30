@@ -377,14 +377,75 @@ impl SelfDocumentation {
             },
         ];
 
-        // Add feature-gated commands
-        #[cfg(feature = "repl-chat")]
+        // Add the top-level CLI `chat` subcommand. This is `Command::Chat`
+        // in `main.rs` (gated by `--features llm`, default-on). It is
+        // separate from the REPL `chat` command below, which is registered
+        // by `repl::commands` and gated by `--features repl-chat`. Both can
+        // appear in schemas in a `repl-chat` build (which transitively
+        // enables `llm`); the REPL one is `repl_only: true`, the CLI one is
+        // `repl_only: false`. Refs structural-pr-review P1 (terraphim-clients#134).
+        #[cfg(feature = "llm")]
         {
-            // Chat command is REPL-only, not a top-level CLI subcommand.
             docs.push(CommandDoc {
                 name: "chat".to_string(),
                 aliases: vec![],
-                description: "Interactive chat with AI".to_string(),
+                description: "One-shot chat with the AI for a specific role (top-level CLI subcommand).".to_string(),
+                arguments: vec![ArgumentDoc {
+                    name: "prompt".to_string(),
+                    arg_type: "string".to_string(),
+                    required: true,
+                    description: "Prompt to send to the model.".to_string(),
+                    default: None,
+                }],
+                flags: vec![
+                    FlagDoc {
+                        name: "--role".to_string(),
+                        short: Some("-r".to_string()),
+                        flag_type: "string".to_string(),
+                        default: None,
+                        description: "Role to scope the chat to.".to_string(),
+                    },
+                    FlagDoc {
+                        name: "--model".to_string(),
+                        short: Some("-m".to_string()),
+                        flag_type: "string".to_string(),
+                        default: None,
+                        description: "Model override (defaults to the role's configured model).".to_string(),
+                    },
+                ],
+                examples: vec![
+                    ExampleDoc {
+                        description: "One-shot chat with the active role".to_string(),
+                        command: "terraphim-agent chat \"What is the guard priority order?\"".to_string(),
+                        output: None,
+                    },
+                    ExampleDoc {
+                        description: "Chat scoped to a specific role and model".to_string(),
+                        command: "terraphim-agent --role \"Terraphim Engineer\" chat \"Summarise the ADR-002 rationale\" --model gpt-4o-mini".to_string(),
+                        output: None,
+                    },
+                ],
+                response_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "response": {"type": "string"}
+                    }
+                }),
+                repl_only: false,
+            });
+        }
+
+        // Add the REPL `chat` and `summarize` commands. These are registered
+        // by `repl::commands` (gated by `--features repl-chat`) and have no
+        // top-level CLI parity. The CLI `chat` subcommand above is a separate
+        // entry. Refs structural-pr-review P1 (terraphim-clients#134) and
+        // P2 (summarize `repl_only` correctness).
+        #[cfg(feature = "repl-chat")]
+        {
+            docs.push(CommandDoc {
+                name: "chat".to_string(),
+                aliases: vec![],
+                description: "Interactive chat with AI (REPL command).".to_string(),
                 arguments: vec![ArgumentDoc {
                     name: "message".to_string(),
                     arg_type: "string".to_string(),
@@ -410,7 +471,7 @@ impl SelfDocumentation {
             docs.push(CommandDoc {
                 name: "summarize".to_string(),
                 aliases: vec![],
-                description: "Summarize content".to_string(),
+                description: "Summarize content (REPL command).".to_string(),
                 arguments: vec![ArgumentDoc {
                     name: "target".to_string(),
                     arg_type: "string".to_string(),
@@ -430,7 +491,7 @@ impl SelfDocumentation {
                         "summary": {"type": "string"}
                     }
                 }),
-                repl_only: false,
+                repl_only: true,
             });
         }
 
