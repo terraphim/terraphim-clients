@@ -879,6 +879,11 @@ enum Command {
         /// Path to custom allowlist thesaurus JSON file
         #[arg(long)]
         guard_allowlist: Option<String>,
+        /// Print per-stage evaluation trace (allowlist > destructive > suspicious > default)
+        /// showing which stage matched and short-circuited. Requires `--json` for structured
+        /// output; without `--json` the trace is printed to stderr in a readable form.
+        #[arg(long, default_value_t = false)]
+        explain: bool,
     },
     /// Start fullscreen interactive TUI mode (requires running server)
     Interactive,
@@ -1965,6 +1970,7 @@ async fn run_offline_command(
         fail_open,
         guard_thesaurus,
         guard_allowlist,
+        explain,
     } = &command
     {
         let input_command = match command {
@@ -2007,6 +2013,38 @@ async fn run_offline_command(
             (None, None) => guard_patterns::CommandGuard::new(),
         };
         let result = guard.check(&input_command);
+
+        if *explain {
+            // Recompute the trace so we can show the per-stage path even
+            // when the final decision came from a short-circuit.
+            let trace = guard.check_with_trace(&input_command);
+            if *json {
+                println!("{}", serde_json::to_string(&trace)?);
+            } else {
+                eprintln!("# guard evaluation trace");
+                eprintln!("# command: {}", input_command);
+                for stage in &trace.stages {
+                    let term = stage
+                        .matched_term
+                        .as_deref()
+                        .map(|t| format!(" term=`{}`", t))
+                        .unwrap_or_default();
+                    eprintln!(
+                        "# stage={:<12} matched={:<5} outcome={}{}",
+                        stage.stage, stage.matched, stage.outcome, term
+                    );
+                }
+                eprintln!("# decision={:?}", trace.result.decision);
+            }
+            // Still respect the normal exit-code semantics when --explain is on
+            // so scripts can use `--explain --fail-on-empty` style gating.
+            if trace.result.decision == guard_patterns::GuardDecision::Block
+                && !*fail_open
+            {
+                std::process::exit(1);
+            }
+            return Ok(());
+        }
 
         if *json {
             println!("{}", serde_json::to_string(&result)?);
@@ -4843,6 +4881,7 @@ async fn run_server_command(
             fail_open,
             guard_thesaurus,
             guard_allowlist,
+            explain,
         } => {
             // Guard works the same in server mode - no server needed for pattern matching
             let input_command = match command {
@@ -4887,6 +4926,32 @@ async fn run_server_command(
                 (None, None) => guard_patterns::CommandGuard::new(),
             };
             let result = guard.check(&input_command);
+
+            if explain {
+                let trace = guard.check_with_trace(&input_command);
+                if json {
+                    println!("{}", serde_json::to_string(&trace)?);
+                } else {
+                    eprintln!("# guard evaluation trace");
+                    eprintln!("# command: {}", input_command);
+                    for stage in &trace.stages {
+                        let term = stage
+                            .matched_term
+                            .as_deref()
+                            .map(|t| format!(" term=`{}`", t))
+                            .unwrap_or_default();
+                        eprintln!(
+                            "# stage={:<12} matched={:<5} outcome={}{}",
+                            stage.stage, stage.matched, stage.outcome, term
+                        );
+                    }
+                    eprintln!("# decision={:?}", trace.result.decision);
+                }
+                if trace.result.decision == guard_patterns::GuardDecision::Block && !fail_open {
+                    std::process::exit(1);
+                }
+                return Ok(());
+            }
 
             if json {
                 println!("{}", serde_json::to_string(&result)?);

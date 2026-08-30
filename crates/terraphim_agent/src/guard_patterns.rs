@@ -42,6 +42,33 @@ pub struct GuardResult {
     pub pattern: Option<String>,
 }
 
+/// One stage's trace during guard evaluation. Used by `--explain`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuardStageTrace {
+    /// Stage name: `allowlist`, `destructive`, `suspicious`, or `default`.
+    pub stage: String,
+    /// Whether the thesaurus matched anything for this stage.
+    pub matched: bool,
+    /// Term that matched (when `matched` is true).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub matched_term: Option<String>,
+    /// Outcome of this stage: `allow`, `block`, `sandbox`, `continue`, or `no_match`.
+    pub outcome: String,
+}
+
+/// Result of `check_with_trace`: a final `GuardResult` plus per-stage traces.
+///
+/// Returned by `terraphim-agent guard --explain` so users can see exactly
+/// why a command was allowed or blocked, and which stage short-circuited.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuardTrace {
+    /// Final decision (same fields as `GuardResult`).
+    #[serde(flatten)]
+    pub result: GuardResult,
+    /// Per-stage trace in priority order: allowlist, destructive, suspicious, default.
+    pub stages: Vec<GuardStageTrace>,
+}
+
 impl GuardResult {
     /// Create an "allow" result
     pub fn allow(command: String) -> Self {
@@ -195,6 +222,127 @@ impl CommandGuard {
 
         // No match -- allow
         GuardResult::allow(command.to_string())
+    }
+
+    /// Same as `check` but additionally returns per-stage traces showing
+    /// which stage matched and how the final decision was reached.
+    ///
+    /// Priority: allowlist first, then destructive, then suspicious, then default.
+    pub fn check_with_trace(&self, command: &str) -> GuardTrace {
+        let mut stages = Vec::with_capacity(4);
+
+        // Stage 1: allowlist (short-circuits to Allow).
+        match find_matches(command, &self.allowlist_thesaurus, false) {
+            Ok(matches) if !matches.is_empty() => {
+                let term = matches[0].term.clone();
+                stages.push(GuardStageTrace {
+                    stage: "allowlist".into(),
+                    matched: true,
+                    matched_term: Some(term),
+                    outcome: "allow".into(),
+                });
+                return GuardTrace {
+                    result: GuardResult::allow(command.to_string()),
+                    stages,
+                };
+            }
+            Ok(_) => stages.push(GuardStageTrace {
+                stage: "allowlist".into(),
+                matched: false,
+                matched_term: None,
+                outcome: "no_match".into(),
+            }),
+            Err(_) => stages.push(GuardStageTrace {
+                stage: "allowlist".into(),
+                matched: false,
+                matched_term: None,
+                outcome: "continue".into(),
+            }),
+        }
+
+        // Stage 2: destructive (short-circuits to Block).
+        match find_matches(command, &self.destructive_thesaurus, false) {
+            Ok(matches) if !matches.is_empty() => {
+                let first_match = &matches[0];
+                let reason = first_match.normalized_term.url.clone().unwrap_or_else(|| {
+                    format!(
+                        "Blocked: matched destructive pattern '{}'",
+                        first_match.term
+                    )
+                });
+                let pattern = first_match.term.clone();
+                stages.push(GuardStageTrace {
+                    stage: "destructive".into(),
+                    matched: true,
+                    matched_term: Some(pattern.clone()),
+                    outcome: "block".into(),
+                });
+                return GuardTrace {
+                    result: GuardResult::block(command.to_string(), reason, pattern),
+                    stages,
+                };
+            }
+            Ok(_) => stages.push(GuardStageTrace {
+                stage: "destructive".into(),
+                matched: false,
+                matched_term: None,
+                outcome: "no_match".into(),
+            }),
+            Err(_) => stages.push(GuardStageTrace {
+                stage: "destructive".into(),
+                matched: false,
+                matched_term: None,
+                outcome: "continue".into(),
+            }),
+        }
+
+        // Stage 3: suspicious (short-circuits to Sandbox).
+        match find_matches(command, &self.suspicious_thesaurus, false) {
+            Ok(matches) if !matches.is_empty() => {
+                let first_match = &matches[0];
+                let reason = first_match.normalized_term.url.clone().unwrap_or_else(|| {
+                    format!(
+                        "Sandboxed: matched suspicious pattern '{}'",
+                        first_match.term
+                    )
+                });
+                let pattern = first_match.term.clone();
+                stages.push(GuardStageTrace {
+                    stage: "suspicious".into(),
+                    matched: true,
+                    matched_term: Some(pattern.clone()),
+                    outcome: "sandbox".into(),
+                });
+                return GuardTrace {
+                    result: GuardResult::sandbox(command.to_string(), reason, pattern),
+                    stages,
+                };
+            }
+            Ok(_) => stages.push(GuardStageTrace {
+                stage: "suspicious".into(),
+                matched: false,
+                matched_term: None,
+                outcome: "no_match".into(),
+            }),
+            Err(_) => stages.push(GuardStageTrace {
+                stage: "suspicious".into(),
+                matched: false,
+                matched_term: None,
+                outcome: "continue".into(),
+            }),
+        }
+
+        // Stage 4: default allow.
+        stages.push(GuardStageTrace {
+            stage: "default".into(),
+            matched: false,
+            matched_term: None,
+            outcome: "allow".into(),
+        });
+        GuardTrace {
+            result: GuardResult::allow(command.to_string()),
+            stages,
+        }
     }
 }
 
