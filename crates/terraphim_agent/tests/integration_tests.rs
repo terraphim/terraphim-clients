@@ -339,6 +339,7 @@ async fn test_end_to_end_offline_workflow() -> Result<()> {
 
 #[tokio::test]
 #[serial]
+#[ignore = "Requires a prebuilt terraphim_server: export TERRAPHIM_SERVER_BIN=<path> (Refs #113)"]
 async fn test_end_to_end_server_workflow() -> Result<()> {
     println!("=== Testing Complete Server Workflow ===");
 
@@ -559,6 +560,7 @@ async fn test_end_to_end_server_workflow() -> Result<()> {
 
 #[tokio::test]
 #[serial]
+#[ignore = "Requires a prebuilt terraphim_server: export TERRAPHIM_SERVER_BIN=<path> (Refs #113)"]
 async fn test_offline_vs_server_mode_comparison() -> Result<()> {
     cleanup_test_files()?;
     println!("=== Comparing Offline vs Server Modes ===");

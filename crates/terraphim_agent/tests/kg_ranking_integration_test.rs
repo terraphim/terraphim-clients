@@ -470,6 +470,7 @@ fn compare_rankings(
 
 #[tokio::test]
 #[serial]
+#[ignore = "Requires a prebuilt terraphim_server: export TERRAPHIM_SERVER_BIN=<path> (Refs #113)"]
 async fn test_knowledge_graph_ranking_impact() -> Result<()> {
     println!("\n╔════════════════════════════════════════════════════════════════════════╗");
     println!("║     Knowledge Graph Ranking Impact Integration Test                    ║");
@@ -628,6 +629,7 @@ async fn test_knowledge_graph_ranking_impact() -> Result<()> {
 
 #[tokio::test]
 #[serial]
+#[ignore = "Requires a prebuilt terraphim_server: export TERRAPHIM_SERVER_BIN=<path> (Refs #113)"]
 async fn test_term_specific_boosting() -> Result<()> {
     println!("\n╔════════════════════════════════════════════════════════════════════════╗");
     println!("║     Term-Specific Boosting Test                                        ║");
@@ -676,6 +678,7 @@ async fn test_term_specific_boosting() -> Result<()> {
 
 #[tokio::test]
 #[serial]
+#[ignore = "Requires a prebuilt terraphim_server: export TERRAPHIM_SERVER_BIN=<path> (Refs #113)"]
 async fn test_role_switching() -> Result<()> {
     println!("\n╔════════════════════════════════════════════════════════════════════════╗");
     println!("║     Role Switching Test                                                ║");

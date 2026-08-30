@@ -409,6 +409,7 @@ Search algorithms find data in structures.
 
 #[tokio::test]
 #[serial]
+#[ignore = "Requires a prebuilt terraphim_server: export TERRAPHIM_SERVER_BIN=<path> (Refs #113)"]
 async fn test_cross_mode_consistency() -> Result<()> {
     println!("\n");
     println!("╔════════════════════════════════════════════════════════════════════════╗");
@@ -525,6 +526,7 @@ async fn test_cross_mode_consistency() -> Result<()> {
 
 #[tokio::test]
 #[serial]
+#[ignore = "Requires a prebuilt terraphim_server: export TERRAPHIM_SERVER_BIN=<path> (Refs #113)"]
 async fn test_mode_specific_verification() -> Result<()> {
     println!("\n");
     println!("╔════════════════════════════════════════════════════════════════════════╗");
