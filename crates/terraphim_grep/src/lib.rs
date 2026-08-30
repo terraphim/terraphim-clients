@@ -619,10 +619,12 @@ mod tests {
             std::fs::write(&path, format!("fn sparse_fn_{i}() {{ /* sparse */ }}\n")).unwrap();
         }
 
-        let hybrid =
-            HybridSearcher::new("test-role".to_string(), terraphim_types::Thesaurus::new("t".to_string()))
-                .expect("build hybrid searcher")
-                .with_search_path(tmp.path().to_path_buf());
+        let hybrid = HybridSearcher::new(
+            "test-role".to_string(),
+            terraphim_types::Thesaurus::new("t".to_string()),
+        )
+        .expect("build hybrid searcher")
+        .with_search_path(tmp.path().to_path_buf());
         let judge = SufficiencyJudge::default(); // min_results = 3
         let grep = TerraphimGrep::new(Arc::new(hybrid), Arc::new(judge));
 
