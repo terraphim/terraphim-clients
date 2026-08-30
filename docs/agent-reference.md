@@ -79,11 +79,29 @@ thesaurus entries).
 terraphim-agent kg --top-k 5
 ```
 
+### `chat` (CLI, `--features llm` — default-on)
+
+One-shot chat with the AI for a specific role. Takes a required
+`prompt` argument and optional `--role` and `--model` flags. Always
+available in default builds (the `llm` feature is on by default). This
+is the top-level CLI subcommand; the interactive `/chat` REPL command
+is a separate entry in `robot schemas` with `repl_only: true`. Refs
+terraphim-clients#134 P1.
+
+```bash
+# One-shot chat with the active role
+terraphim-agent chat "What is the guard priority order?"
+
+# Chat scoped to a specific role and model
+terraphim-agent --role "Terraphim Engineer" chat "Summarise the ADR-002 rationale" --model gpt-4o-mini
+```
+
 ### `chat` (REPL-only, `--features repl-chat`)
 
-Open an interactive chat REPL scoped to a role. Not a top-level
-scriptable command — the REPL command is what consumers should
-expect; see `terraphim-agent robot schemas` (`repl_only: true` flag).
+Open an interactive chat REPL scoped to a role. The REPL command is
+what consumers should expect; see `terraphim-agent robot schemas`
+(the entry with `repl_only: true`). Distinct from the CLI `chat`
+subcommand above.
 
 ```bash
 terraphim-agent --features repl-chat chat
