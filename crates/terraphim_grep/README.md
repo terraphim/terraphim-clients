@@ -89,9 +89,18 @@ terraphim-grep "error handling" -C 3 --json
 # Force LLM synthesis
 terraphim-grep "explain token budget" --force-rlm --answer
 
+# Never touch the LLM, even if OPENROUTER_API_KEY is exported
+terraphim-grep "async fn spawn" --search-only
+
 # Search specific paths
 terraphim-grep "struct Config" --paths src/ crates/
 ```
+
+> **LLM synthesis is opt-in.** A plain query always returns retrieved chunks at grep
+> speed; the LLM is only called when you pass `--answer` or `--force-rlm`. Having
+> `OPENROUTER_API_KEY` in the environment is not, on its own, a request for synthesis
+> (terraphim/terraphim-clients#81). Use `--search-only` (alias `--no-rlm`) to also skip
+> building the LLM client.
 
 ## Architecture
 
@@ -111,8 +120,8 @@ Query
 └──────────────────┘
   │
   ├── Sufficient ──→ Return chunks (SearchOnly)
-  ├── NeedsSynthesis ──→ RLM fallback (if LLM configured)
-  ├── NeedsExpansion ──→ RLM fallback with additional chunks
+  ├── NeedsSynthesis ──→ --answer/--force-rlm ? RLM fallback : chunks (SearchOnly)
+  ├── NeedsExpansion ──→ --answer/--force-rlm ? RLM fallback + extra chunks : chunks (SearchOnly)
   └── Insufficient ──→ Return empty (RlmInsufficient)
 ```
 

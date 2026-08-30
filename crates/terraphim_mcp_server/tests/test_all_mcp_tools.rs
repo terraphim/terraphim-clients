@@ -15,11 +15,7 @@ fn test_all_mcp_tools() {
     println!("Starting comprehensive MCP server test for all tools...");
 
     // Start the MCP server
-    let mut command = Command::new("cargo");
-    command.arg("run");
-    if std::env::var_os("CI").is_some() {
-        command.arg("--features").arg("zlob");
-    }
+    let mut command = Command::new(env!("CARGO_BIN_EXE_terraphim_mcp_server"));
     let mut child = command
         .args(["--", "--verbose"])
         .current_dir(".")

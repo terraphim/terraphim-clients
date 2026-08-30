@@ -56,17 +56,13 @@ fn ensure_server_binary() -> Result<PathBuf> {
     let workspace_root = get_workspace_root()?;
     let binary_path = workspace_root.join("target/debug/terraphim_server");
 
+    // terraphim_server is not a workspace member here, so there is nothing to
+    // build -- and a nested `cargo build` under `cargo test` would deadlock on
+    // the outer build lock regardless. Refs #113.
     if !binary_path.exists() {
-        println!("Pre-compiling terraphim_server (one-time)...");
-        let status = Command::new("cargo")
-            .args(["build", "-p", "terraphim_server"])
-            .current_dir(&workspace_root)
-            .status()?;
-
-        if !status.success() {
-            return Err(anyhow::anyhow!("Failed to compile server"));
-        }
-        println!("✓ Server binary compiled");
+        return Err(anyhow::anyhow!(
+            "terraphim_server is not a member of this workspace, so it cannot be built here. Set TERRAPHIM_SERVER_BIN to a prebuilt binary to run this test. Refs #113"
+        ));
     }
 
     Ok(binary_path)
@@ -275,7 +271,12 @@ Domain: Information Management
 Related: semantic-web, ontologies, linked-data
 "#;
 
-    fs::write("docs/src/kg/test_ranking_kg.md", kg_content)?;
+    // Write under the target dir, never the source tree: this file was
+    // committed by accident once (#112) because a test run left it untracked
+    // in docs/src/kg/. Refs #113.
+    let kg_dir = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("kg");
+    fs::create_dir_all(&kg_dir)?;
+    fs::write(kg_dir.join("test_ranking_kg.md"), kg_content)?;
     println!("Created test knowledge graph");
     Ok(())
 }
@@ -333,14 +334,8 @@ async fn search_via_server(
 /// Search via CLI mode
 #[allow(dead_code)] // Kept for future CLI mode implementation
 fn search_via_cli(server_url: &str, query: &str, role: &str) -> Result<(Vec<Document>, Vec<f64>)> {
-    let output = Command::new("cargo")
+    let output = Command::new(env!("CARGO_BIN_EXE_terraphim-agent"))
         .args([
-            "run",
-            "-p",
-            "terraphim_agent",
-            "--features",
-            "server",
-            "--",
             "--server",
             "--server-url",
             server_url,

@@ -1,0 +1,27 @@
+{
+  "name": "sample-ontology",
+  "version": "1.0.0",
+  "entity_types": [
+    {
+      "id": "chapter",
+      "label": "chapter",
+      "uri_prefix": "https://schema.org/Chapter",
+      "aliases": ["chapters"],
+      "category": "core"
+    },
+    {
+      "id": "concept",
+      "label": "concept",
+      "uri_prefix": "https://schema.org/DefinedTerm",
+      "aliases": ["concepts"],
+      "category": "core"
+    },
+    {
+      "id": "knowledge_graph",
+      "label": "knowledge graph",
+      "uri_prefix": "https://terraphim.ai/kg/KnowledgeGraph",
+      "aliases": ["knowledge graphs"],
+      "category": "core"
+    }
+  ]
+}
