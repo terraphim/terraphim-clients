@@ -26,5 +26,7 @@ jobs:
       - run: cargo test --workspace --lib --no-fail-fast
 # #2171: enrichment-feature test invocation.
       - run: cargo test -p terraphim_sessions --features enrichment --lib --no-fail-fast
+      # #4325: zero-chunk smoke for terraphim_grep default features.
+      - run: cargo test -p terraphim_grep --test default_feature_smoke
       # #95: isolated packaged install-graph regression.
       - run: cargo test -p terraphim_agent --test packaged_install_graph_regression -- --nocapture
