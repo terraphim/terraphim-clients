@@ -842,8 +842,26 @@ enum Command {
         #[arg(long, default_value_t = true)]
         json: bool,
         /// Include guard check for destructive commands (git reset --hard, rm -rf, etc.)
+        ///
+        /// Defaults to true for pre-tool-use; for other hooks (post-tool-use,
+        /// pre-commit, prepare-commit-msg) the default is false because they
+        /// fire after execution or on text inputs that do not need a guard.
         #[arg(long, default_value_t = false)]
         with_guard: bool,
+        /// Force the guard check off (overrides `--with-guard` and the per-hook-type default).
+        ///
+        /// Use this escape hatch only when you have already vetted the command and
+        /// need to bypass the safety net. Clap does not auto-derive `--no-with-guard`,
+        /// hence this explicit negation flag.
+        #[arg(long, default_value_t = false, conflicts_with = "with_guard")]
+        no_with_guard: bool,
+        /// Allow thesaurus-based command rewriting (e.g. `npm install` -> `bun add`)
+        ///
+        /// Defaults to **false**. Substitution is opt-in so a stray substring
+        /// match cannot silently mutate a destructive command. Pass `--rewrite`
+        /// to enable KG-driven rewriting.
+        #[arg(long, default_value_t = false)]
+        rewrite: bool,
     },
     /// Check command against safety guard patterns (blocks destructive git/fs commands)
     Guard {
@@ -2718,7 +2736,17 @@ async fn run_offline_command(
             role,
             json: _,
             with_guard,
+            no_with_guard,
+            rewrite,
         } => {
+            // For pre-tool-use, default the guard check to ON so destructive
+            // commands are denied unless the user explicitly opts out. Other
+            // hook types (post-tool-use, pre-commit, prepare-commit-msg) fire
+            // after execution or on text inputs and do not need a guard, so
+            // they keep the user's explicit `--with-guard` setting. An
+            // explicit `--no-with-guard` overrides everything.
+            let with_guard =
+                !no_with_guard && (with_guard || matches!(hook_type, HookType::PreToolUse));
             // Read JSON input from argument or stdin
             let input_json = match input {
                 Some(i) => i,
@@ -2751,7 +2779,8 @@ async fn run_offline_command(
                             .and_then(|v| v.get("command"))
                             .and_then(|v| v.as_str())
                         {
-                            // Guard check if --with-guard flag is set
+                            // Guard check if --with-guard flag is set (default ON
+                            // for pre-tool-use; see the Hook args doc comment).
                             if with_guard {
                                 let guard = guard_patterns::CommandGuard::new();
                                 let guard_result = guard.check(command);
@@ -2773,35 +2802,67 @@ async fn run_offline_command(
                                 }
                             }
 
-                            // KG validation: find patterns with known alternatives
-                            let kg_validation = kg_validation::validate_command_against_kg(command);
-
-                            // Get thesaurus and perform replacement
+                            // Substitution is opt-in. We always probe the
+                            // replacement so we can warn the user when their
+                            // command contained KG-replaceable substrings, but
+                            // we only emit a rewritten command when `--rewrite`
+                            // is set. This prevents the previous behaviour
+                            // where any substring match could silently mutate
+                            // a destructive command (Refs #126).
                             let thesaurus = service.get_thesaurus(&role_name).await?;
                             let replacement_service =
                                 terraphim_hooks::ReplacementService::new(thesaurus);
                             let hook_result = replacement_service.replace_fail_open(command);
 
-                            // If replacement occurred or KG validation has findings, output modified input
-                            if hook_result.replacements > 0 || kg_validation.has_findings {
-                                let mut output = input_value.clone();
-                                if hook_result.replacements > 0
-                                    && let Some(tool_input) = output.get_mut("tool_input")
-                                    && let Some(obj) = tool_input.as_object_mut()
-                                {
-                                    obj.insert(
-                                        "command".to_string(),
-                                        serde_json::Value::String(hook_result.result.clone()),
-                                    );
+                            let kg_validation =
+                                kg_validation::validate_command_against_kg(command);
+
+                            let mut output = input_value.clone();
+                            let mut emitted_warning = false;
+
+                            if hook_result.replacements > 0 {
+                                if rewrite {
+                                    // Opt-in: actually substitute
+                                    if let Some(tool_input) = output.get_mut("tool_input")
+                                        && let Some(obj) = tool_input.as_object_mut()
+                                    {
+                                        obj.insert(
+                                            "command".to_string(),
+                                            serde_json::Value::String(
+                                                hook_result.result.clone(),
+                                            ),
+                                        );
+                                    }
+                                } else {
+                                    // Suppressed: warn the user
+                                    if let Some(obj) = output.as_object_mut() {
+                                        let warnings = obj
+                                            .entry("warnings".to_string())
+                                            .or_insert(serde_json::Value::Array(vec![]));
+                                        if let Some(arr) = warnings.as_array_mut() {
+                                            arr.push(serde_json::Value::String(format!(
+                                                "command contained {} KG-replaceable substring(s); pass --rewrite to enable substitution. Original: `{}`",
+                                                hook_result.replacements, command
+                                            )));
+                                        }
+                                    }
+                                    emitted_warning = true;
                                 }
-                                if kg_validation.has_findings
-                                    && let Some(obj) = output.as_object_mut()
-                                {
-                                    obj.insert(
-                                        "validations".to_string(),
-                                        serde_json::to_value(&kg_validation).unwrap_or_default(),
-                                    );
-                                }
+                            }
+
+                            if kg_validation.has_findings
+                                && let Some(obj) = output.as_object_mut()
+                            {
+                                obj.insert(
+                                    "validations".to_string(),
+                                    serde_json::to_value(&kg_validation).unwrap_or_default(),
+                                );
+                            }
+
+                            if emitted_warning
+                                || (rewrite && hook_result.replacements > 0)
+                                || kg_validation.has_findings
+                            {
                                 println!("{}", serde_json::to_string(&output)?);
                             } else {
                                 // No changes, pass through
