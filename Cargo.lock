@@ -6409,6 +6409,7 @@ dependencies = [
  "dialoguer",
  "directories 5.0.1",
  "dirs 5.0.1",
+ "env_logger",
  "futures",
  "glob",
  "insta",
