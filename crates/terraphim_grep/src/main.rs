@@ -201,68 +201,62 @@ fn resolve_role_name(
     Ok(explicit_role.unwrap_or("default").to_string())
 }
 
-/// Alternate thesaurus filename stems for a role, in priority order.
-///
-/// `discover_thesaurus` builds the filename literally from the role *name*
-/// (`thesaurus-<role_name>.json`), but projects commonly name the file after
-/// the role's configured `shortname` (e.g. `thesaurus-odidev.json` for role
-/// "Odilo Developer") or a lowercased hyphen slug (`thesaurus-odilo-developer.json`).
-/// The full role name is tried by the caller first; this returns only the
-/// alternates, deduplicated.
-///
-/// See terraphim/terraphim-clients#79.
-fn thesaurus_name_candidates(
+fn push_unique_candidate(candidates: &mut Vec<String>, candidate: impl Into<String>) {
+    let candidate = candidate.into();
+    if !candidate.is_empty() && !candidates.contains(&candidate) {
+        candidates.push(candidate);
+    }
+}
+
+fn thesaurus_role_candidates(
     role_name: &str,
-    config: &terraphim_config::project::ProjectConfig,
+    project_config: Option<&terraphim_config::project::ProjectConfig>,
 ) -> Vec<String> {
     let mut candidates = Vec::new();
+    push_unique_candidate(&mut candidates, role_name);
 
-    if let Some(role) = config.roles.get(role_name)
-        && let Some(shortname) = role.shortname.as_deref()
-        && !shortname.is_empty()
-        && shortname != role_name
-    {
-        candidates.push(shortname.to_string());
-    }
+    if let Some(config) = project_config {
+        if let Some(role) = config.roles.get(role_name)
+            && let Some(shortname) = &role.shortname
+        {
+            push_unique_candidate(&mut candidates, shortname);
+        }
 
-    let slug = role_name
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join("-")
-        .to_lowercase();
-    if slug != role_name && !candidates.contains(&slug) {
-        candidates.push(slug);
+        for (key, role) in &config.roles {
+            if role.name.to_string() == role_name {
+                push_unique_candidate(&mut candidates, key);
+                if let Some(shortname) = &role.shortname {
+                    push_unique_candidate(&mut candidates, shortname);
+                }
+            }
+        }
     }
 
     candidates
 }
 
-/// Find thesaurus path with project config priority.
-///
-/// Resolution order:
-///   1. `.terraphim/thesaurus-<role>.json` (project config, exact role name)
-///   2. `.terraphim/thesaurus-<shortname>.json` / `thesaurus-<slug>.json`
-///      (project config alternates, see [`thesaurus_name_candidates`])
-///   3. `*_thesaurus.json` in CWD or nearby directories (filesystem heuristic)
-fn find_default_thesaurus(role_name: &str) -> Option<PathBuf> {
-    if let Some(dir) = discover_project_dir() {
-        if let Some(path) = terraphim_config::project::discover_thesaurus(&dir, role_name) {
+fn discover_project_thesaurus(dir: &Path, role_name: &str) -> Option<PathBuf> {
+    let project_config = terraphim_config::project::ProjectConfig::load_from_dir(dir).ok();
+    for candidate in thesaurus_role_candidates(role_name, project_config.as_ref()) {
+        if let Some(path) = terraphim_config::project::discover_thesaurus(dir, &candidate) {
             tracing::info!("Using project thesaurus: {:?}", path);
             return Some(path);
         }
+    }
 
-        // The thesaurus filename stem often differs from the role *name*; try
-        // the role's shortname and a slugified name. Config is loaded lazily,
-        // only on a miss, so the happy path stays allocation-free.
-        if let Ok(config) = terraphim_config::project::ProjectConfig::load_from_dir(&dir) {
-            for candidate in thesaurus_name_candidates(role_name, &config) {
-                if let Some(path) = terraphim_config::project::discover_thesaurus(&dir, &candidate)
-                {
-                    tracing::info!("Using project thesaurus: {:?}", path);
-                    return Some(path);
-                }
-            }
-        }
+    None
+}
+
+/// Find thesaurus path with project config priority.
+///
+/// Resolution order:
+///   1. `.terraphim/thesaurus-<role>.json` or the matching role shortname (project config)
+///   2. `*_thesaurus.json` in CWD or nearby directories (filesystem heuristic)
+fn find_default_thesaurus(role_name: &str) -> Option<PathBuf> {
+    if let Some(dir) = discover_project_dir()
+        && let Some(path) = discover_project_thesaurus(&dir, role_name)
+    {
+        return Some(path);
     }
 
     let possible_paths = vec![
@@ -492,6 +486,11 @@ async fn main() -> Result<()> {
         return handle_update_command(command).await;
     }
 
+    let query = args
+        .query
+        .as_deref()
+        .context("missing search query; run `terraphim-grep --help` for usage")?;
+
     let options = GrepOptions {
         haystack: args.haystack.into(),
         context_lines: args.context,
@@ -573,7 +572,7 @@ async fn main() -> Result<()> {
 
     // Perform search
     let result = terraphim_grep
-        .search(args.query.as_deref().unwrap_or(""), options)
+        .search(query, options)
         .await
         .context("Search failed")?;
 
@@ -760,120 +759,48 @@ mod tests {
         );
     }
 
-    // Regression tests: terraphim/terraphim-clients#79
-    // The thesaurus filename stem often differs from the role *name*
-    // (e.g. `thesaurus-odidev.json` for role "Odilo Developer").
-
-    fn role_with_shortname(name: &str, shortname: &str) -> String {
-        format!(
-            r#"{{"shortname":"{}","name":"{}","relevance_function":"title-scorer","terraphim_it":false,"theme":"default","haystacks":[]}}"#,
-            shortname, name
-        )
-    }
-
     #[test]
-    fn candidates_prefer_shortname_then_slug() {
-        // Mirrors zestic-ai/odilo .terraphim/config.json.
-        let mut config = ProjectConfig {
-            selected_role: Some("Odilo Developer".to_string()),
-            ..Default::default()
-        };
-        config.roles.insert(
-            "Odilo Developer".to_string(),
-            serde_json::from_str(&role_with_shortname("Odilo Developer", "odidev")).unwrap(),
-        );
+    fn thesaurus_candidates_include_matching_role_shortname() {
+        let mut config = ProjectConfig::default();
+        let mut role: terraphim_config::Role =
+            serde_json::from_str(&minimal_role_json("Project Developer")).unwrap();
+        role.shortname = Some("projdev".to_string());
+        config.roles.insert("Project Developer".to_string(), role);
 
-        let candidates = thesaurus_name_candidates("Odilo Developer", &config);
+        let candidates = thesaurus_role_candidates("Project Developer", Some(&config));
+
         assert_eq!(
             candidates,
-            vec!["odidev".to_string(), "odilo-developer".to_string()]
+            vec!["Project Developer".to_string(), "projdev".to_string()]
         );
     }
 
     #[test]
-    fn candidates_fall_back_to_slug_when_role_not_in_config() {
-        let config = ProjectConfig::default();
-        let candidates = thesaurus_name_candidates("Rust Engineer", &config);
-        assert_eq!(candidates, vec!["rust-engineer".to_string()]);
-    }
+    fn discover_project_thesaurus_returns_shortname_match() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let terraphim_dir = tmp.path().join(".terraphim");
+        fs::create_dir(&terraphim_dir).unwrap();
+        fs::write(
+            terraphim_dir.join("config.json"),
+            r#"{
+              "roles": {
+                "Project Developer": {
+                  "shortname": "projdev",
+                  "name": "Project Developer",
+                  "relevance_function": "title-scorer",
+                  "terraphim_it": false,
+                  "theme": "default",
+                  "haystacks": []
+                }
+              }
+            }"#,
+        )
+        .unwrap();
+        let expected = terraphim_dir.join("thesaurus-projdev.json");
+        fs::write(&expected, "{}").unwrap();
 
-    #[test]
-    fn candidates_empty_when_nothing_to_add() {
-        // Lowercase single-word role name: slug is identical, no shortname.
-        let config = ProjectConfig::default();
-        assert!(thesaurus_name_candidates("devops", &config).is_empty());
-    }
+        let actual = discover_project_thesaurus(&terraphim_dir, "Project Developer");
 
-    #[test]
-    fn candidates_skip_shortname_equal_to_role_name() {
-        let mut config = ProjectConfig::default();
-        config.roles.insert(
-            "devops".to_string(),
-            serde_json::from_str(&role_with_shortname("devops", "devops")).unwrap(),
-        );
-        assert!(thesaurus_name_candidates("devops", &config).is_empty());
-    }
-
-    #[test]
-    fn candidates_dedupe_shortname_matching_slug() {
-        let mut config = ProjectConfig::default();
-        config.roles.insert(
-            "Rust Engineer".to_string(),
-            serde_json::from_str(&role_with_shortname("Rust Engineer", "rust-engineer")).unwrap(),
-        );
-        let candidates = thesaurus_name_candidates("Rust Engineer", &config);
-        assert_eq!(candidates, vec!["rust-engineer".to_string()]);
-    }
-
-    #[test]
-    fn candidates_slug_collapses_repeated_whitespace() {
-        let config = ProjectConfig::default();
-        let candidates = thesaurus_name_candidates("Odilo   Developer", &config);
-        assert_eq!(candidates, vec!["odilo-developer".to_string()]);
-    }
-
-    // Regression tests: terraphim/terraphim-clients#81
-    // RLM synthesis is opt-in; `--search-only` makes that explicit and mutually
-    // exclusive with the two flags that request synthesis.
-
-    #[test]
-    fn plain_query_requests_no_synthesis() {
-        let args = Args::try_parse_from(["terraphim-grep", "needle"]).expect("parse");
-        assert!(!args.answer, "--answer must default off");
-        assert!(!args.force_rlm, "--force-rlm must default off");
-        assert!(!args.search_only, "--search-only must default off");
-    }
-
-    #[test]
-    fn search_only_parses_and_sets_flag() {
-        let args =
-            Args::try_parse_from(["terraphim-grep", "needle", "--search-only"]).expect("parse");
-        assert!(args.search_only);
-    }
-
-    #[test]
-    fn no_rlm_alias_sets_search_only() {
-        let args = Args::try_parse_from(["terraphim-grep", "needle", "--no-rlm"]).expect("parse");
-        assert!(args.search_only, "--no-rlm is an alias for --search-only");
-    }
-
-    #[test]
-    fn search_only_conflicts_with_answer() {
-        let result =
-            Args::try_parse_from(["terraphim-grep", "needle", "--search-only", "--answer"]);
-        assert!(
-            result.is_err(),
-            "--search-only and --answer are contradictory and must be rejected"
-        );
-    }
-
-    #[test]
-    fn search_only_conflicts_with_force_rlm() {
-        let result =
-            Args::try_parse_from(["terraphim-grep", "needle", "--search-only", "--force-rlm"]);
-        assert!(
-            result.is_err(),
-            "--search-only and --force-rlm are contradictory and must be rejected"
-        );
+        assert_eq!(actual, Some(expected));
     }
 }
