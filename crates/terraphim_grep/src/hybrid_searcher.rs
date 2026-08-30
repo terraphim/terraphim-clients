@@ -129,7 +129,7 @@ pub fn score_kg_boost(chunk: &RetrievedChunk, concepts: &[KgConcept], weight: f6
 fn automata_concept_matches(text: &str, concept: &str) -> bool {
     let role = terraphim_types::RoleName::new("terraphim-grep-kg-boost");
     let thesaurus = terraphim_automata::thesaurus_from_terms(&role, std::iter::once(concept));
-    match terraphim_automata::find_matches(text, thesaurus, true) {
+    match terraphim_automata::find_matches(text, &thesaurus, true) {
         Ok(matches) => matches.iter().any(|matched| {
             matched
                 .pos
@@ -153,7 +153,7 @@ fn thesaurus_query_concepts(
     thesaurus: &terraphim_types::Thesaurus,
     limit: usize,
 ) -> Vec<KgConcept> {
-    match terraphim_automata::find_matches(query, thesaurus.clone(), false) {
+    match terraphim_automata::find_matches(query, thesaurus, false) {
         Ok(matches) => {
             let mut seen = std::collections::HashSet::new();
             let mut matched_values = std::collections::HashSet::new();
@@ -266,6 +266,7 @@ impl HybridSearcher {
 
         let (kg_concepts, code_results) = match options.haystack {
             Haystack::All | Haystack::Code => {
+                let kg_concepts =
                     Self::search_kg(&query_owned, max_results, role_graph.clone(), &thesaurus)
                         .await?;
                 let candidate_limit = if kg_concepts.is_empty() {
@@ -273,8 +274,19 @@ impl HybridSearcher {
                 } else {
                     max_results.saturating_mul(5).max(max_results).min(1000)
                 };
-                let code_results =
-                    Self::search_code(&query_owned, candidate_limit, search_path.clone()).await?;
+                let mut all_results = Vec::new();
+                for path in search_paths.iter() {
+                    let mut results =
+                        Self::search_code(&query_owned, candidate_limit, path.clone()).await?;
+                    all_results.append(&mut results);
+                }
+                // Boost KG matches above generic matches; the boosted score is what the
+                // JSON output reports so downstream tools see why a chunk ranked where
+                // it did. Truncate to max_results AFTER boosting so the KG-ranked tail
+                // survives the candidate cut.
+                let boosted = boost_chunks_with_kg(all_results, &kg_concepts);
+                let code_results: Vec<RetrievedChunk> =
+                    boosted.into_iter().take(max_results).collect();
                 (kg_concepts, code_results)
             }
             Haystack::Docs => {
@@ -285,12 +297,8 @@ impl HybridSearcher {
             }
         };
 
-        // KG boost: re-rank code_results so chunks whose source path or content matches
-        // a thesaurus concept rank above generic matches. The base relevance from fff is
-        // currently uniform (1.0 per match), so without this step the user's knowledge
-        // does not influence ordering at all. Boost in place; the boosted score is what
-        // the JSON output reports so downstream tools see why a chunk ranked where it did.
-        code_results.truncate(max_results);
+        // (KG boost and truncation are done inside the match arm above so the
+        // multi-path search loop shares one ordering pass.)
 
         Ok(HybridResults {
             code_results,

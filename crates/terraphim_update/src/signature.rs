@@ -48,7 +48,6 @@ pub fn get_embedded_public_key() -> &'static str {
 pub fn get_embedded_public_keys() -> &'static [&'static str] {
     EMBEDDED_PUBLIC_KEYS
 }
-}
 
 /// Metadata for cryptographic keys
 ///

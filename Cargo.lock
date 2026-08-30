@@ -6431,6 +6431,7 @@ dependencies = [
  "strsim",
  "tempfile",
  "terraphim_agent",
+ "terraphim_agent_evolution",
  "terraphim_automata",
  "terraphim_command_runtime",
  "terraphim_config",

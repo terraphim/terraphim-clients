@@ -203,6 +203,7 @@ fn resolve_role_name(
     Ok(explicit_role.unwrap_or("default").to_string())
 }
 
+fn push_unique_candidate(candidates: &mut Vec<String>, candidate: impl Into<String>) {
     let candidate = candidate.into();
     if !candidate.is_empty() && !candidates.contains(&candidate) {
         candidates.push(candidate);
@@ -236,6 +237,7 @@ fn thesaurus_role_candidates(
     candidates
 }
 
+fn discover_project_thesaurus(dir: &Path, role_name: &str) -> Option<PathBuf> {
     let project_config = terraphim_config::project::ProjectConfig::load_from_dir(dir).ok();
     for candidate in thesaurus_role_candidates(role_name, project_config.as_ref()) {
         if let Some(path) = terraphim_config::project::discover_thesaurus(dir, &candidate) {
@@ -759,6 +761,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn thesaurus_candidates_include_matching_role_shortname() {
         let mut config = ProjectConfig::default();
         let mut role: terraphim_config::Role =
@@ -775,7 +778,7 @@ mod tests {
     }
 
     #[test]
-    #[test]
+    fn discover_project_thesaurus_returns_shortname_match() {
         let tmp = tempfile::TempDir::new().unwrap();
         let terraphim_dir = tmp.path().join(".terraphim");
         fs::create_dir(&terraphim_dir).unwrap();
