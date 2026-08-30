@@ -87,9 +87,55 @@ terraphim-agent --server --server-url http://127.0.0.1:8000 interactive
 
 ### Robot / automation output
 
+`--robot` and `--format` are global flags defined on the top-level
+`Cli` struct, so they must come **before** the subcommand:
+
 ```bash
-terraphim-agent search "retry policy" --robot --format json
+terraphim-agent --robot --format json search "retry policy"
 ```
+
+(Placing them after the subcommand — `terraphim-agent search "retry policy" --robot --format json` — fails with `error: unexpected argument '--robot' found`.)
+
+### Safety guard
+
+`terraphim-agent guard` checks a command against destructive patterns before
+it runs. Pass `--explain` to see the per-stage evaluation trace.
+
+**Priority order** (first match wins, then short-circuits):
+
+| # | Stage         | Decision when matched |
+|---|---------------|-----------------------|
+| 1 | Allowlist     | `Allow`               |
+| 2 | Destructive   | `Block`               |
+| 3 | Suspicious    | `Sandbox`             |
+| 4 | Default       | `Allow`               |
+
+The allowlist contains paths that the user has explicitly opted into
+(recursive delete in `/tmp/`, `/var/folders/`, etc.), so a destructive
+match that *also* appears in the allowlist is still allowed.
+
+```bash
+# Show which stage matched and short-circuited
+echo "rm -rf /tmp/foo" | terraphim-agent guard --explain
+# # stage=allowlist    matched=true  outcome=allow term=`rm -rf /tmp/`
+# # decision=Allow
+
+echo "rm -rf /" | terraphim-agent guard --explain --fail-open
+# # stage=allowlist    matched=false outcome=no_match
+# # stage=destructive  matched=true  outcome=block term=`rm -rf`
+# # decision=Block
+```
+
+Without `--explain`, `guard` is silent on `Allow` (suitable for shell pipelines)
+and prints `BLOCKED: <reason>` to stderr with exit code 1 on `Block` (unless
+`--fail-open` is set). Use `--json` for structured output.
+
+The hook pipeline (`terraphim-agent hook --hook-type pre-tool-use`) runs the
+guard by default for pre-tool-use and skips it for post-tool-use / pre-commit /
+prepare-commit-msg (those hooks fire after execution or on text inputs). See
+`docs/plans/research-terraphim-grep-agent-2026-08-30.md` for the rationale
+and `adr/ADR-002-guard-priority-order.md` for the architectural decision
+record.
 
 ## Configuration
 
