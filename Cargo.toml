@@ -11,10 +11,11 @@ members = [
     "crates/terraphim_hooks",
     "crates/terraphim_update",
     "crates/terraphim_negative_contribution",
+    "crates/terraphim-session-analyzer",
 ]
 
 [workspace.package]
-version = "1.21.0"
+version = "1.21.13"
 edition = "2024"
 authors = ["Terraphim Team <team@terraphim.ai>"]
 documentation = "https://terraphim.ai"
@@ -24,7 +25,29 @@ license = "Apache-2.0"
 readme = "README.md"
 
 [patch.crates-io]
-terraphim_service = { version = "1.20.5", registry = "terraphim" }
+# The 1.21.x family: terraphim_automata 1.21.0 takes `&Thesaurus` where 1.20.x took
+# an owned `Thesaurus`. crates.io tops out at 1.20.4 (owned), so the whole family has
+# to come from the Gitea registry or the copies disagree about the signature.
+# Mirrors the block terraphim-ai already runs. Refs #112.
+terraphim_types = { version = "1.21.0", registry = "terraphim" }
+terraphim_automata = { version = "1.21.0", registry = "terraphim" }
+# file_search/middleware 1.20.x still pass owned Thesaurus into automata.
+terraphim_file_search = { version = "1.21.0", registry = "terraphim" }
+terraphim_middleware = { version = "1.21.0", registry = "terraphim" }
+terraphim_rolegraph = { version = "1.20.2", registry = "terraphim" }
+# 1.20.4 is yanked on the Gitea registry; pin exactly so transitive deps cannot
+# drag in a crates.io 1.20.4 copy.
+terraphim_config = { version = "=1.20.2", registry = "terraphim" }
+terraphim_persistence = { version = "=1.20.2", registry = "terraphim" }
+terraphim_service = { version = "1.21.1", registry = "terraphim" }
+terraphim_orchestrator = { version = "1.21.0", registry = "terraphim" }
+# Remaining family members: crates.io has 1.20.4 copies of these, which drag in a
+# second terraphim_config/types graph and produce "expected ConfigState, found
+# ConfigState" errors. Gitea has 1.20.2 for all four.
+terraphim_settings = { version = "1.20.2", registry = "terraphim" }
+terraphim_router = { version = "1.20.2", registry = "terraphim" }
+terraphim_tracker = { version = "1.20.2", registry = "terraphim" }
+terraphim-markdown-parser = { version = "1.20.2", registry = "terraphim" }
 rustls-webpki = { git = "https://github.com/rustls/webpki.git", tag = "v/0.103.12" }
 
 [workspace.dependencies]
@@ -40,7 +63,7 @@ anyhow = "1.0"
 log = "0.4"
 tracing = "0.1"
 tempfile = "3.27"
-rustls = { version = "0.23", default-features = false }
+rustls = { version = "0.23", default-features = false, features = ["logging", "std", "ring"] }
 rustls-webpki = "0.103.12"
 
 [profile.release]

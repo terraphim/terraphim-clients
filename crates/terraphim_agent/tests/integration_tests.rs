@@ -31,24 +31,11 @@ fn agent_binary_path() -> Result<PathBuf> {
                     return Ok(path);
                 }
             }
-            let workspace = get_workspace_root().map_err(|e| e.to_string())?;
-            let status = Command::new("cargo")
-                .args([
-                    "build",
-                    "-p",
-                    "terraphim_agent",
-                    "--features",
-                    "server",
-                    "--bin",
-                    "terraphim-agent",
-                ])
-                .current_dir(&workspace)
-                .status()
-                .map_err(|e| format!("failed to spawn cargo build: {}", e))?;
-            if !status.success() {
-                return Err(format!("cargo build failed with status {}", status));
-            }
-            Ok(workspace.join("target/debug/terraphim-agent"))
+            // Cargo built the binary before this test ran; a nested `cargo build`
+            // deadlocks on the outer build lock. Note this is the binary as built
+            // for this test target, so the `server` feature is present only if the
+            // test target was built with it. Refs #113.
+            Ok(PathBuf::from(env!("CARGO_BIN_EXE_terraphim-agent")))
         })
         .clone()
         .map_err(anyhow::Error::msg)
@@ -63,22 +50,7 @@ fn server_binary_path() -> Result<PathBuf> {
                     return Ok(path);
                 }
             }
-            let workspace = get_workspace_root().map_err(|e| e.to_string())?;
-            let status = Command::new("cargo")
-                .args([
-                    "build",
-                    "-p",
-                    "terraphim_server",
-                    "--bin",
-                    "terraphim_server",
-                ])
-                .current_dir(&workspace)
-                .status()
-                .map_err(|e| format!("failed to spawn cargo build: {}", e))?;
-            if !status.success() {
-                return Err(format!("cargo build failed with status {}", status));
-            }
-            Ok(workspace.join("target/debug/terraphim_server"))
+            Err("terraphim_server is not a member of this workspace, so it cannot be built here. Set TERRAPHIM_SERVER_BIN to a prebuilt binary to run this test. Refs #113".to_string())
         })
         .clone()
         .map_err(anyhow::Error::msg)

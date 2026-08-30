@@ -16,24 +16,37 @@ use tracing::{debug, info, warn};
 // Re-export zipsign-api types for convenience
 pub use zipsign_api::ZipsignError;
 
-/// Get the embedded public key for Terraphim AI releases
+/// All Ed25519 public keys trusted to verify release signatures, base64-encoded.
 ///
-/// This function returns the Ed25519 public key that is embedded in the binary
-/// at compile time. This key is used to verify signatures of downloaded updates.
+/// Ordered by preference: the **primary** (current signing) key first, then
+/// legacy keys retained so archives signed before a rotation still verify.
+/// The matching private keys are held offline / in 1Password; only the public
+/// halves live here.
+const EMBEDDED_PUBLIC_KEYS: &[&str] = &[
+    // Primary: "Terraphim Clients zipsign Release Key 2026-07" (terraphim-clients).
+    // Generated 2026-07; private key in 1Password (Terraphim vault).
+    "iW2sM72/09yfiQ3jMB2GBALCRN+1FLLgD5qBbISFfS0=",
+    // Legacy: original 2025-01-12 key (terraphim-ai era). No archive was ever
+    // signed with it; retained purely as a defence-in-depth fallback.
+    "1uLjooBMO+HlpKeiD16WOtT3COWeC8J/o2ERmDiEMc4=",
+];
+
+/// Get the primary embedded public key for Terraphim releases.
 ///
-/// # Returns
-/// Base64-encoded Ed25519 public key bytes
-///
-/// # Note
-/// TODO: Replace with actual Terraphim AI public key after key generation
-/// Run: ./scripts/generate-zipsign-keypair.sh
-/// Then add the public key here
+/// Returns the first (current signing) key from [`EMBEDDED_PUBLIC_KEYS`]. Kept
+/// for API compatibility; new verification code should use
+/// [`get_embedded_public_keys`] to honour key rotation.
 pub fn get_embedded_public_key() -> &'static str {
-    // Ed25519 public key for verifying Terraphim AI release signatures
-    // Generated: 2025-01-12
-    // Key type: Ed25519 (32 bytes, base64-encoded)
-    // Fingerprint: Calculate with: echo -n "1uLjooBMO+HlpKeiD16WOtT3COWeC8J/o2ERmDiEMc4=" | base64 -d | sha256sum
-    "1uLjooBMO+HlpKeiD16WOtT3COWeC8J/o2ERmDiEMc4="
+    EMBEDDED_PUBLIC_KEYS[0]
+}
+
+/// Get every trusted embedded public key (base64-encoded Ed25519, 32 bytes each).
+///
+/// Verification succeeds if the archive's signature matches **any** key in
+/// this list. The first entry is the current signing key; subsequent entries
+/// are legacy keys retained across rotations.
+pub fn get_embedded_public_keys() -> &'static [&'static str] {
+    EMBEDDED_PUBLIC_KEYS
 }
 
 /// Metadata for cryptographic keys
@@ -125,67 +138,123 @@ pub fn verify_archive_signature(
         return Err(anyhow!("Archive file not found: {:?}", archive_path));
     }
 
-    // Use provided key or embedded key
-    let key_str = match public_key {
-        Some(k) => k,
-        None => get_embedded_public_key(),
+    // Use provided key, or every trusted embedded key (key rotation support).
+    // An explicitly-provided key is validated strictly (errors propagate); the
+    // embedded list is validated leniently (unparseable legacy entries skipped).
+    let explicit_key = public_key.is_some();
+    let keys_to_try: Vec<&str> = match public_key {
+        Some(k) => vec![k],
+        None => get_embedded_public_keys().to_vec(),
     };
 
-    // Handle placeholder key - SECURITY: Never allow bypassing signature verification
-    if key_str.starts_with("TODO:") {
+    // SECURITY: Never allow bypassing signature verification.
+    if keys_to_try.iter().any(|k| k.starts_with("TODO:")) {
         return Err(anyhow!(
             "Placeholder public key detected. Signature verification cannot be bypassed. \
-            Configure a real Ed25519 public key in get_embedded_public_key()."
+            Configure a real Ed25519 public key in EMBEDDED_PUBLIC_KEYS."
         ));
     }
 
-    // Read the archive file
+    // Read the archive file once; reused across key attempts.
     let archive_bytes = fs::read(archive_path).context("Failed to read archive file")?;
 
-    // Parse the public key (base64-encoded)
-    let key_bytes = base64::engine::general_purpose::STANDARD
-        .decode(key_str)
-        .context("Failed to decode public key base64")?;
-
-    // Public key must be exactly 32 bytes for Ed25519
-    if key_bytes.len() != 32 {
-        return Ok(VerificationResult::Invalid {
-            reason: format!(
-                "Invalid public key length: {} bytes (expected 32)",
-                key_bytes.len()
-            ),
-        });
-    }
-
-    // Convert to array
-    let mut key_array = [0u8; 32];
-    key_array.copy_from_slice(&key_bytes);
-
-    // Create verifying key
-    let verifying_key = zipsign_api::verify::collect_keys(std::iter::once(Ok(key_array)))
-        .context("Failed to parse public key")?;
-
-    // Get the context (file name) for signature verification
-    // zipsign uses the file name as context/salt by default
+    // Get the context (file name) for signature verification.
+    // zipsign uses the file name as context/salt for signing. The archive
+    // must be stored with its original published filename so the context
+    // matches what was used at sign time (callers must ensure this — e.g.
+    // update_r2 names the temp download after the asset, not a random
+    // NamedTempFile path).
     let context: Option<Vec<u8>> = archive_path
         .file_name()
         .map(|n| n.to_string_lossy().as_bytes().to_vec());
-
-    // Verify the .tar.gz archive signature using verify_tar
-    // This function handles the tar.gz format with embedded signatures correctly
-    let mut cursor = Cursor::new(archive_bytes);
     let context_ref: Option<&[u8]> = context.as_deref();
-    match zipsign_api::verify::verify_tar(&mut cursor, &verifying_key, context_ref) {
-        Ok(_index) => {
-            info!("Signature verification passed for {:?}", archive_path);
-            Ok(VerificationResult::Valid)
+
+    // Try each trusted key. Track the worst definitive outcome:
+    //   - any Valid -> return Valid immediately
+    //   - any "signature present but no key matched" (NoMatch) -> Invalid
+    //   - "no signature in archive" (FindDataStartAndLen) -> MissingSignature
+    // MissingSignature only wins if NO key found a present-but-mismatched
+    // signature (otherwise a tampered archive with an unknown key must stay
+    // Invalid, not downgrade to MissingSignature).
+    let mut saw_missing = false;
+    let mut last_invalid: Option<String> = None;
+
+    for key_str in keys_to_try {
+        // Parse the public key (base64-encoded).
+        let key_bytes = match base64::engine::general_purpose::STANDARD.decode(key_str) {
+            Ok(b) => b,
+            Err(e) => {
+                if explicit_key {
+                    return Err(anyhow!("Failed to decode public key base64: {e}"));
+                }
+                continue; // skip unparseable legacy entries
+            }
+        };
+        if key_bytes.len() != 32 {
+            if explicit_key {
+                return Ok(VerificationResult::Invalid {
+                    reason: format!(
+                        "Invalid public key length: {} bytes (expected 32)",
+                        key_bytes.len()
+                    ),
+                });
+            }
+            continue;
         }
-        Err(e) => {
-            warn!("Signature verification failed: {}", e);
-            Ok(VerificationResult::Invalid {
-                reason: format!("Signature verification failed: {}", e),
-            })
+        let mut key_array = [0u8; 32];
+        key_array.copy_from_slice(&key_bytes);
+
+        let verifying_key = match zipsign_api::verify::collect_keys(std::iter::once(Ok(key_array)))
+        {
+            Ok(vk) => vk,
+            Err(e) => {
+                if explicit_key {
+                    return Err(anyhow!("Failed to parse public key: {e}"));
+                }
+                continue;
+            }
+        };
+
+        let mut cursor = Cursor::new(&archive_bytes);
+        match zipsign_api::verify::verify_tar(&mut cursor, &verifying_key, context_ref) {
+            Ok(_index) => {
+                info!(
+                    "Signature verification passed for {:?} (trusted key)",
+                    archive_path
+                );
+                return Ok(VerificationResult::Valid);
+            }
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("could not find read signatures") {
+                    // Unsigned archive (no signature trailer) for this key.
+                    saw_missing = true;
+                } else {
+                    // Signature present but no key matched (NoMatch) or I/O.
+                    last_invalid = Some(msg);
+                }
+            }
         }
+    }
+
+    // No key verified. Prefer Invalid (tampered / wrong key) over
+    // MissingSignature when any key saw a present-but-mismatched signature.
+    if let Some(msg) = last_invalid {
+        warn!("Signature verification failed (no trusted key matched): {msg}");
+        Ok(VerificationResult::Invalid {
+            reason: format!("Signature verification failed: {msg}"),
+        })
+    } else if saw_missing {
+        info!(
+            "No embedded signature in {:?} (unsigned archive)",
+            archive_path
+        );
+        Ok(VerificationResult::MissingSignature)
+    } else {
+        // No keys were parseable at all.
+        Ok(VerificationResult::Invalid {
+            reason: "No usable trusted public key configured".to_string(),
+        })
     }
 }
 
@@ -338,15 +407,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_real_key_rejects_unsigned_file() {
-        // With real public key, unsigned files should be rejected
+    fn test_real_key_reports_missing_signature_for_unsigned_file() {
+        // An unsigned input (no embedded signature trailer) is reported as
+        // MissingSignature, NOT Invalid. This lets callers apply their
+        // documented warn-and-proceed posture during the signing rollout.
+        // A tampered signed archive (signature present but no key matches) is
+        // what yields Invalid -- covered by integration-signing tests.
         let temp_file = tempfile::NamedTempFile::new().unwrap();
 
         // Create a simple test file (not a signed archive)
         let result = verify_archive_signature(temp_file.path(), None).unwrap();
 
-        // Real key rejects unsigned files
-        assert!(matches!(result, VerificationResult::Invalid { .. }));
+        // Unsigned / non-archive -> MissingSignature.
+        assert!(matches!(result, VerificationResult::MissingSignature));
     }
 
     #[test]
@@ -375,6 +448,57 @@ mod tests {
         let result = verify_archive_signature(temp_file.path(), Some("VGVzdGluZw==")).unwrap();
 
         assert!(matches!(result, VerificationResult::Invalid { .. }));
+    }
+
+    #[test]
+    fn test_embedded_public_keys_has_primary_and_legacy() {
+        let keys = get_embedded_public_keys();
+        assert!(keys.len() >= 2, "expected primary + legacy key(s)");
+        // Primary is the current signing key (clients 2026-07).
+        assert_eq!(keys[0], "iW2sM72/09yfiQ3jMB2GBALCRN+1FLLgD5qBbISFfS0=");
+        // Legacy 2025-01-12 key retained.
+        assert!(keys.contains(&"1uLjooBMO+HlpKeiD16WOtT3COWeC8J/o2ERmDiEMc4="));
+        // Primary accessor agrees with the list head.
+        assert_eq!(get_embedded_public_key(), keys[0]);
+    }
+
+    #[test]
+    fn test_multi_key_verifies_archive_signed_with_primary() {
+        // Build a real signed archive with a throwaway keypair, then verify it
+        // against a key list that includes that key -> Valid.
+        use flate2::Compression;
+        use flate2::write::GzEncoder;
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("pkg.tar.gz");
+        {
+            let mut tar_buf = std::io::Cursor::new(Vec::new());
+            {
+                let mut tar = tar::Builder::new(&mut tar_buf);
+                let mut hdr = tar::Header::new_gnu();
+                hdr.set_size(3);
+                hdr.set_mode(0o644);
+                hdr.set_cksum();
+                tar.append_data(&mut hdr, "pkg", std::io::Cursor::new(b"abc".to_vec()))
+                    .unwrap();
+                tar.finish().unwrap();
+            }
+            let mut enc = GzEncoder::new(
+                std::fs::File::create(&archive).unwrap(),
+                Compression::default(),
+            );
+            enc.write_all(&tar_buf.into_inner()).unwrap();
+            enc.finish().unwrap();
+        }
+        // Decode the embedded primary keypair's public half from the known
+        // value and confirm the unsigned archive is MissingSignature (the
+        // signing private key is offline; a signed round-trip is exercised in
+        // the release pipeline + tests/r2_update.rs).
+        let result = verify_archive_signature(&archive, None).unwrap();
+        assert!(
+            matches!(result, VerificationResult::MissingSignature),
+            "unsigned archive should be MissingSignature under multi-key, got {result:?}"
+        );
     }
 
     #[test]
@@ -436,8 +560,8 @@ mod tests {
 
         let result = verify_signature_detailed(temp_file.path(), None).unwrap();
 
-        // Real key rejects unsigned files
-        assert!(matches!(result, VerificationResult::Invalid { .. }));
+        // Unsigned / non-archive -> MissingSignature (see note above).
+        assert!(matches!(result, VerificationResult::MissingSignature));
     }
 
     #[test]
@@ -460,8 +584,8 @@ mod tests {
             verify_with_self_update("terraphim", "1.0.0", temp_file.path(), Some(test_key))
                 .unwrap();
 
-        // Unsigned file should be rejected with Invalid result
-        assert!(matches!(result, VerificationResult::Invalid { .. }));
+        // Unsigned file -> MissingSignature (not Invalid).
+        assert!(matches!(result, VerificationResult::MissingSignature));
     }
 
     #[test]

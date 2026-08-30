@@ -5,6 +5,7 @@
 
 pub mod config;
 pub mod downloader;
+pub mod manifest;
 pub mod notification;
 pub mod platform;
 pub mod rollback;
@@ -21,6 +22,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
 use tracing::{error, info, warn};
+
+// Re-export the backend types for ergonomic access from binaries, e.g.
+// `terraphim_update::UpdateBackend` rather than `...::manifest::UpdateBackend`.
+pub use manifest::{ManifestConfig, ManifestError, ReleaseManifest, UpdateBackend};
 
 /// Represents the status of an update operation
 #[derive(Debug, Clone)]
@@ -54,6 +59,28 @@ fn is_newer_version_static(version1: &str, version2: &str) -> Result<bool, anyho
         .map_err(|e| anyhow::anyhow!("Invalid version '{}': {}", version2, e))?;
 
     Ok(v1 > v2)
+}
+
+/// Log an [`UpdateStatus`] at the appropriate level (shared by backends).
+fn log_status(status: &UpdateStatus) {
+    match status {
+        UpdateStatus::Available {
+            current_version,
+            latest_version,
+        } => info!(
+            "Update available: {} -> {}",
+            current_version, latest_version
+        ),
+        UpdateStatus::UpToDate(version) => info!("Already up to date: {}", version),
+        UpdateStatus::Updated {
+            from_version,
+            to_version,
+        } => info!(
+            "Successfully updated from {} to {}",
+            from_version, to_version
+        ),
+        UpdateStatus::Failed(error) => error!("Update check failed: {}", error),
+    }
 }
 
 impl fmt::Display for UpdateStatus {
@@ -90,26 +117,36 @@ impl fmt::Display for UpdateStatus {
 pub struct UpdaterConfig {
     /// Name of the binary (e.g., "terraphim_server")
     pub bin_name: String,
-    /// GitHub repository owner (e.g., "terraphim")
+    /// GitHub repository owner (used by the GitHub fallback backend)
     pub repo_owner: String,
-    /// GitHub repository name (e.g., "terraphim-ai")
+    /// GitHub repository name (used by the GitHub fallback backend)
     pub repo_name: String,
     /// Current version of the binary
     pub current_version: String,
     /// Whether to show download progress
     pub show_progress: bool,
+    /// Distribution backend to use. Defaults to [`manifest::UpdateBackend::R2`].
+    pub backend: manifest::UpdateBackend,
+    /// Configuration for the manifest (R2) backend.
+    pub manifest: manifest::ManifestConfig,
+    /// Optional GitHub auth token, forwarded to the GitHub fallback backend to
+    /// avoid rate limiting. Picked up from `GITHUB_TOKEN` by [`Self::new`].
+    pub auth_token: Option<String>,
 }
 
 impl UpdaterConfig {
-    /// Create a new updater config for Terraphim AI binaries
+    /// Create a new updater config for Terraphim AI binaries.
+    ///
+    /// Defaults: backend = R2, repo = `terraphim/terraphim-clients`, manifest
+    /// base url = `https://downloads.terraphim.ai`. The backend and base url
+    /// can be overridden at runtime via the `TERRAPHIM_UPDATE_BACKEND`
+    /// (`r2`|`github`) and `TERRAPHIM_UPDATE_BASE_URL` env vars, and the
+    /// GitHub fallback picks up `GITHUB_TOKEN` automatically.
     ///
     /// **IMPORTANT**: The default version returned by this constructor is the
     /// version of the `terraphim_update` library crate, NOT the version of the
-    /// binary being updated. This is because `cargo_crate_version!()` returns
-    /// the version of the crate where the macro is invoked.
-    ///
-    /// To report the correct version, always chain `.with_version()` when
-    /// creating the config from a binary:
+    /// binary being updated. Always chain `.with_version()` when creating the
+    /// config from a binary:
     ///
     /// ```rust
     /// use terraphim_update::UpdaterConfig;
@@ -118,16 +155,39 @@ impl UpdaterConfig {
     ///     .with_version(env!("CARGO_PKG_VERSION"));
     /// ```
     pub fn new(bin_name: impl Into<String>) -> Self {
+        let bin = bin_name.into();
+        let backend = std::env::var("TERRAPHIM_UPDATE_BACKEND")
+            .ok()
+            .and_then(|v| match v.trim().to_ascii_lowercase().as_str() {
+                "github" => Some(manifest::UpdateBackend::GitHub),
+                "r2" => Some(manifest::UpdateBackend::R2),
+                _ => None,
+            })
+            .unwrap_or_default();
+        let manifest = match std::env::var("TERRAPHIM_UPDATE_BASE_URL") {
+            Ok(url) if !url.trim().is_empty() => {
+                manifest::ManifestConfig::new(&bin).with_base_url(url.trim())
+            }
+            _ => manifest::ManifestConfig::new(&bin),
+        };
         Self {
-            bin_name: bin_name.into(),
+            bin_name: bin,
             repo_owner: "terraphim".to_string(),
-            repo_name: "terraphim-ai".to_string(),
+            // FIX: releases live on terraphim-clients, not terraphim-ai.
+            repo_name: "terraphim-clients".to_string(),
             current_version: cargo_crate_version!().to_string(),
             show_progress: true,
+            backend,
+            manifest,
+            // FIX: pick up GITHUB_TOKEN so the fallback backend isn't rate-limited.
+            auth_token: std::env::var("GITHUB_TOKEN")
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
         }
     }
 
-    /// Set the current version of the binary being updated
+    /// Set the current version of the binary being updated.
     ///
     /// This should be called with `env!("CARGO_PKG_VERSION")` from the binary
     /// crate to ensure the updater reports the correct version.
@@ -136,9 +196,28 @@ impl UpdaterConfig {
         self
     }
 
-    /// Enable or disable progress display
+    /// Enable or disable progress display.
     pub fn with_progress(mut self, show: bool) -> Self {
         self.show_progress = show;
+        self
+    }
+
+    /// Override the distribution backend (default R2).
+    pub fn with_backend(mut self, backend: manifest::UpdateBackend) -> Self {
+        self.backend = backend;
+        self
+    }
+
+    /// Override the manifest base URL (e.g. for a staging bucket).
+    pub fn with_manifest_base_url(mut self, url: impl Into<String>) -> Self {
+        self.manifest = self.manifest.with_base_url(url);
+        self
+    }
+
+    /// Explicitly set the GitHub auth token for the fallback backend.
+    pub fn with_auth_token(mut self, token: impl Into<String>) -> Self {
+        let t = token.into();
+        self.auth_token = if t.is_empty() { None } else { Some(t) };
         self
     }
 }
@@ -154,11 +233,173 @@ impl TerraphimUpdater {
         Self { config }
     }
 
-    /// Check if an update is available without installing
+    /// Check if an update is available without installing.
+    ///
+    /// Dispatches to the configured [`UpdateBackend`]: R2 (manifest) by
+    /// default, GitHub as fallback. On the R2 backend, a manifest fetch
+    /// failure does **not** fall back here — callers that want fallback
+    /// behaviour should use [`Self::check_and_update`].
     pub async fn check_update(&self) -> Result<UpdateStatus> {
         info!(
-            "Checking for updates: {} v{}",
-            self.config.bin_name, self.config.current_version
+            "Checking for updates: {} v{} (backend: {:?})",
+            self.config.bin_name, self.config.current_version, self.config.backend
+        );
+        match self.config.backend {
+            UpdateBackend::R2 => self.check_update_r2().await,
+            UpdateBackend::GitHub => self.check_update_github().await,
+        }
+    }
+
+    /// Check for an update via the R2 manifest backend.
+    ///
+    /// Fetches `{base_url}/{bin}/stable.json`, compares the manifest version
+    /// against the current version using semver. No secrets, no per-IP rate
+    /// limit.
+    pub async fn check_update_r2(&self) -> Result<UpdateStatus> {
+        let cfg = self.config.manifest.clone();
+        let current_version = self.config.current_version.clone();
+        let bin_name = self.config.bin_name.clone();
+
+        let result = tokio::task::spawn_blocking(move || match manifest::fetch_manifest(&cfg) {
+            Ok(m) => match is_newer_version_static(&m.version, &current_version) {
+                Ok(true) => UpdateStatus::Available {
+                    current_version: current_version.clone(),
+                    latest_version: m.version,
+                },
+                Ok(false) => UpdateStatus::UpToDate(current_version),
+                Err(e) => UpdateStatus::Failed(format!("version compare for {bin_name}: {e}")),
+            },
+            Err(e) => UpdateStatus::Failed(format!("manifest fetch: {e}")),
+        })
+        .await;
+
+        match result {
+            Ok(status) => {
+                log_status(&status);
+                Ok(status)
+            }
+            Err(e) => {
+                error!("Failed to spawn blocking task: {}", e);
+                Ok(UpdateStatus::Failed(format!("Task spawn error: {}", e)))
+            }
+        }
+    }
+
+    /// Install the latest version via the R2 manifest backend.
+    ///
+    /// Flow: fetch manifest -> semver compare -> resolve asset URL ->
+    /// download (retry) -> verify zipsign Ed25519 signature -> install to
+    /// `current_exe().parent()`.
+    ///
+    /// # Return contract (drives GitHub fallback)
+    /// - `Ok(Updated)` / `Ok(UpToDate)` — success
+    /// - `Ok(Failed)` — **definitive** failure (signature rejected, version
+    ///   compare error). Caller must NOT fall back: a signature rejection is a
+    ///   security signal, not a transport failure.
+    /// - `Err` — transport/manifest failure (network, parse). Caller SHOULD
+    ///   fall back to the GitHub backend.
+    pub async fn update_r2(&self) -> Result<UpdateStatus> {
+        let cfg = self.config.manifest.clone();
+        let current_version = self.config.current_version.clone();
+        let bin_name = self.config.bin_name.clone();
+        let show_progress = self.config.show_progress;
+
+        let result = tokio::task::spawn_blocking(move || -> Result<UpdateStatus> {
+            // 1. Fetch manifest. Err propagates so the caller can fall back.
+            let release = manifest::fetch_manifest(&cfg)?;
+
+            // 2. Version compare. A parse error here is definitive (Ok(Failed)).
+            let newer = match is_newer_version_static(&release.version, &current_version) {
+                Ok(v) => v,
+                Err(e) => {
+                    return Ok(UpdateStatus::Failed(format!(
+                        "version compare for {bin_name}: {e}"
+                    )));
+                }
+            };
+            if !newer {
+                return Ok(UpdateStatus::UpToDate(current_version));
+            }
+
+            // 3. Resolve the asset URL for the current target triple. An
+            //    absent asset is definitive (the manifest is wrong, not the
+            //    transport) -> Ok(Failed), do not fall back.
+            let asset_url = match manifest::resolve_asset_url(&release, &cfg) {
+                Ok(u) => u,
+                Err(e) => {
+                    return Ok(UpdateStatus::Failed(format!(
+                        "no asset for current target: {e}"
+                    )));
+                }
+            };
+            info!("Downloading {} from R2", asset_url);
+
+            // 4. Download to a temp file named after the original asset so
+            //    zipsign's filename-based context matches what was used at
+            //    sign time (a random NamedTempFile name would never match).
+            let filename = asset_url
+                .rsplit_once('/')
+                .map(|(_, name)| name)
+                .filter(|n| !n.is_empty())
+                .unwrap_or("archive.tar.gz");
+            let staging_dir = tempfile::tempdir()?;
+            let archive_path = staging_dir.path().join(filename);
+            let dl_cfg = downloader::DownloadConfig {
+                show_progress,
+                ..Default::default()
+            };
+            if let Err(e) = downloader::download_with_retry(&asset_url, &archive_path, Some(dl_cfg))
+            {
+                // Transport failure -> Err so the caller can fall back.
+                return Err(anyhow!("download failed: {e}"));
+            }
+
+            // 5. Verify the zipsign Ed25519 signature using the named path
+            //    (context = archive filename, matching sign time).
+            let vr = signature::verify_archive_signature(&archive_path, None)?;
+            match vr {
+                signature::VerificationResult::Valid => {
+                    info!("Signature verification passed for R2 archive");
+                }
+                signature::VerificationResult::MissingSignature => {
+                    return Ok(UpdateStatus::Failed(
+                        "unsigned archive rejected — all releases are signed".to_string(),
+                    ));
+                }
+                signature::VerificationResult::Invalid { reason } => {
+                    return Ok(UpdateStatus::Failed(format!(
+                        "signature rejected: {reason}"
+                    )));
+                }
+                signature::VerificationResult::Error(msg) => {
+                    return Ok(UpdateStatus::Failed(format!(
+                        "signature verify error: {msg}"
+                    )));
+                }
+            }
+
+            // 6. Install (extract + chmod + atomic rename) to current_exe().parent().
+            if let Err(e) = Self::install_verified_archive(&archive_path, &bin_name) {
+                return Err(anyhow!("install failed: {e}"));
+            }
+            Ok(UpdateStatus::Updated {
+                from_version: current_version,
+                to_version: release.version,
+            })
+        })
+        .await;
+
+        match result {
+            Ok(update_result) => update_result,
+            Err(e) => Err(anyhow!("R2 update task failed: {e}")),
+        }
+    }
+
+    /// Check for an update via the GitHub Releases backend (fallback).
+    async fn check_update_github(&self) -> Result<UpdateStatus> {
+        info!(
+            "Checking for updates via GitHub: {}/{}",
+            self.config.repo_owner, self.config.repo_name
         );
 
         // Clone data for the blocking task
@@ -167,6 +408,7 @@ impl TerraphimUpdater {
         let bin_name = self.config.bin_name.clone();
         let current_version = self.config.current_version.clone();
         let show_progress = self.config.show_progress;
+        let auth_token = self.config.auth_token.clone();
 
         // Move self_update operations to a blocking task to avoid runtime conflicts
         let result = tokio::task::spawn_blocking(move || {
@@ -180,9 +422,12 @@ impl TerraphimUpdater {
             builder.bin_name(&bin_name_for_asset); // Use hyphenated name for asset lookup
             builder.current_version(&current_version);
             builder.show_download_progress(show_progress);
+            if let Some(token) = &auth_token {
+                builder.auth_token(token);
+            }
 
             // Set custom install path to preserve underscore naming
-            builder.bin_install_path(format!("/usr/local/bin/{}", bin_name));
+            builder.bin_install_path(platform::get_binary_path(&bin_name)?);
 
             match builder.build() {
                 Ok(updater) => {
@@ -269,10 +514,28 @@ impl TerraphimUpdater {
         }
     }
 
-    /// Update the binary to the latest version
+    /// Update the binary to the latest version.
+    ///
+    /// Dispatches by backend. On the R2 backend, a transport/manifest failure
+    /// (`Err`) transparently falls back to the GitHub backend; a definitive
+    /// failure (`Ok(Failed)`, e.g. signature rejection) does **not** fall back.
     pub async fn update(&self) -> Result<UpdateStatus> {
+        match self.config.backend {
+            UpdateBackend::R2 => match self.update_r2().await {
+                Ok(status) => Ok(status),
+                Err(e) => {
+                    warn!("R2 update failed ({e}); falling back to GitHub backend");
+                    self.update_github().await
+                }
+            },
+            UpdateBackend::GitHub => self.update_github().await,
+        }
+    }
+
+    /// Update the binary via the GitHub Releases backend.
+    async fn update_github(&self) -> Result<UpdateStatus> {
         info!(
-            "Updating {} from version {}",
+            "Updating {} from version {} via GitHub",
             self.config.bin_name, self.config.current_version
         );
 
@@ -282,21 +545,30 @@ impl TerraphimUpdater {
         let bin_name = self.config.bin_name.clone();
         let current_version = self.config.current_version.clone();
         let show_progress = self.config.show_progress;
+        let auth_token = self.config.auth_token.clone();
 
-        // Decode the embedded public key for signature verification
-        let key_bytes = base64::engine::general_purpose::STANDARD
-            .decode(signature::get_embedded_public_key())
-            .context("Failed to decode public key")?;
-
-        // Convert to array (must be exactly 32 bytes for Ed25519)
-        if key_bytes.len() != 32 {
+        // Decode every trusted embedded public key for signature verification
+        // (key-rotation aware: an archive signed with any trusted key passes).
+        let mut verifying_keys: Vec<[u8; 32]> = Vec::new();
+        for key_str in signature::get_embedded_public_keys() {
+            let key_bytes = base64::engine::general_purpose::STANDARD
+                .decode(key_str)
+                .context("Failed to decode public key base64")?;
+            if key_bytes.len() != 32 {
+                return Err(anyhow!(
+                    "Invalid public key length: {} bytes (expected 32)",
+                    key_bytes.len()
+                ));
+            }
+            let mut key_array = [0u8; 32];
+            key_array.copy_from_slice(&key_bytes);
+            verifying_keys.push(key_array);
+        }
+        if verifying_keys.is_empty() {
             return Err(anyhow!(
-                "Invalid public key length: {} bytes (expected 32)",
-                key_bytes.len()
+                "No trusted public keys configured for verification"
             ));
         }
-        let mut key_array = [0u8; 32];
-        key_array.copy_from_slice(&key_bytes);
 
         // Move self_update operations to a blocking task to avoid runtime conflicts
         let result = tokio::task::spawn_blocking(move || {
@@ -310,10 +582,13 @@ impl TerraphimUpdater {
             builder.bin_name(&bin_name_for_asset); // Use hyphenated name for asset lookup
             builder.current_version(&current_version);
             builder.show_download_progress(show_progress);
-            builder.verifying_keys(vec![key_array]); // Enable signature verification
+            builder.verifying_keys(verifying_keys.clone()); // Enable signature verification
+            if let Some(token) = &auth_token {
+                builder.auth_token(token);
+            }
 
             // Set custom install path to preserve underscore naming
-            builder.bin_install_path(format!("/usr/local/bin/{}", bin_name));
+            builder.bin_install_path(platform::get_binary_path(&bin_name)?);
 
             match builder.build() {
                 Ok(updater) => match updater.update() {
@@ -522,10 +797,9 @@ impl TerraphimUpdater {
                 return Ok(UpdateStatus::Failed(error_msg));
             }
             crate::signature::VerificationResult::MissingSignature => {
-                warn!(
-                    "No signature found in archive - proceeding without verification. \
-                       Archives will be signed in a future release."
-                );
+                return Ok(UpdateStatus::Failed(
+                    "unsigned archive rejected — all releases are signed".to_string(),
+                ));
             }
             crate::signature::VerificationResult::Error(msg) => {
                 let error_msg = format!("Verification error: {}", msg);
@@ -569,7 +843,7 @@ impl TerraphimUpdater {
         builder.current_version(current_version);
 
         // Set custom install path to preserve underscore naming
-        builder.bin_install_path(format!("/usr/local/bin/{}", bin_name));
+        builder.bin_install_path(platform::get_binary_path(bin_name)?);
 
         let updater = builder.build()?;
 
@@ -749,55 +1023,78 @@ impl TerraphimUpdater {
 
         info!("Installing to directory: {:?}", install_dir);
 
-        // Check if the downloaded file is an archive or a raw binary
+        // Stage the extraction into a temp dir *inside* install_dir so the
+        // final move is a same-filesystem `rename(2)`: atomic, and able to
+        // replace a binary that is currently executing. (Directly overwriting
+        // the running exe fails with ETXTBSY on Linux.)
+        let staging = tempfile::tempdir_in(install_dir).or_else(|_| tempfile::tempdir())?;
+        let staging_path = staging.path();
+
+        // Detect whether the downloaded file is an archive or a raw binary.
         let file_magic = std::fs::File::open(archive_path)?;
         let first_bytes = Self::read_file_magic(&file_magic)?;
 
-        // Check file magic to determine if it's an archive or raw binary
         if Self::is_archive(&first_bytes) {
             info!("Detected archive format, extracting...");
-            // Extract and install using self_update's extract functionality
             if cfg!(windows) {
-                // Windows: extract ZIP
-                Self::extract_zip(archive_path, install_dir)?;
+                Self::extract_zip(archive_path, staging_path)?;
             } else {
-                // Unix: extract tar.gz
-                Self::extract_tarball(archive_path, install_dir, bin_name)?;
+                Self::extract_tarball(archive_path, staging_path, bin_name)?;
             }
         } else {
             info!("Detected raw binary, copying directly...");
-            // It's a raw binary, just copy it to the install location
             let normalized_bin_name = bin_name.replace('_', "-");
-            let target_path = install_dir.join(&normalized_bin_name);
-
-            info!("Copying binary to {:?}", target_path);
-            std::fs::copy(archive_path, &target_path)?;
-
-            // Also try the original bin_name in case the release uses underscores
+            std::fs::copy(archive_path, staging_path.join(&normalized_bin_name))?;
             if normalized_bin_name != bin_name {
-                let alt_path = install_dir.join(bin_name);
-                if !alt_path.exists() {
-                    std::fs::copy(archive_path, &alt_path)?;
-                    info!("Also copied to {:?}", alt_path);
-                }
+                std::fs::copy(archive_path, staging_path.join(bin_name))?;
             }
         }
 
-        // Make executable on Unix
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            for name in &[bin_name, &bin_name.replace('_', "-")] {
-                let bin_path = install_dir.join(name);
-                if bin_path.exists() {
-                    let mut perms = fs::metadata(&bin_path)?.permissions();
-                    perms.set_mode(0o755);
-                    fs::set_permissions(&bin_path, perms)?;
-                    info!("Made executable: {:?}", bin_path);
-                }
-            }
-        }
+        // Atomically rename each staged binary over its destination.
+        Self::promote_staged_binaries(staging_path, install_dir, bin_name)?;
 
+        Ok(())
+    }
+
+    /// Move staged binaries from `staging` into `install_dir` via atomic
+    /// `rename`, handling the "replace currently-running executable" case.
+    #[cfg(unix)]
+    fn promote_staged_binaries(staging: &Path, install_dir: &Path, bin_name: &str) -> Result<()> {
+        use std::os::unix::fs::PermissionsExt;
+        for name in [bin_name.to_string(), bin_name.replace('_', "-")] {
+            let staged = staging.join(&name);
+            if !staged.exists() {
+                continue;
+            }
+            // chmod 0755 before promoting.
+            let mut perms = fs::metadata(&staged)?.permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&staged, perms)?;
+            let dst = install_dir.join(&name);
+            std::fs::rename(&staged, &dst)
+                .map_err(|e| anyhow!("rename {staged:?} -> {dst:?} failed: {e}"))?;
+            info!("Installed (atomic rename): {:?}", dst);
+        }
+        Ok(())
+    }
+
+    /// Windows variant: rename fails if the destination exists, so remove-then
+    /// -rename, falling back to copy+delete.
+    #[cfg(not(unix))]
+    fn promote_staged_binaries(staging: &Path, install_dir: &Path, bin_name: &str) -> Result<()> {
+        for name in [bin_name.to_string(), bin_name.replace('_', "-")] {
+            let staged = staging.join(&name);
+            if !staged.exists() {
+                continue;
+            }
+            let dst = install_dir.join(&name);
+            let _ = std::fs::remove_file(&dst);
+            std::fs::rename(&staged, &dst).or_else(|_| {
+                std::fs::copy(&staged, &dst)?;
+                std::fs::remove_file(&staged)
+            })?;
+            info!("Installed: {:?}", dst);
+        }
         Ok(())
     }
 
@@ -881,15 +1178,50 @@ impl TerraphimUpdater {
         Ok(())
     }
 
-    /// Check for update and install if available with signature verification
+    /// Check for update and install if available with signature verification.
+    ///
+    /// Dispatches by backend. The R2 path checks the manifest, then installs
+    /// via `update_r2()` with automatic GitHub fallback on transport failure.
     pub async fn check_and_update(&self) -> Result<UpdateStatus> {
-        match self.check_update().await? {
+        match self.config.backend {
+            UpdateBackend::R2 => self.check_and_update_r2().await,
+            UpdateBackend::GitHub => self.check_and_update_github().await,
+        }
+    }
+
+    /// `check_and_update` for the R2 backend: manifest check then R2 install
+    /// with GitHub fallback on transport failure.
+    async fn check_and_update_r2(&self) -> Result<UpdateStatus> {
+        match self.check_update_r2().await? {
             UpdateStatus::Available {
                 current_version,
                 latest_version,
             } => {
                 info!(
-                    "Update available: {} → {}, installing...",
+                    "Update available: {} -> {}, installing...",
+                    current_version, latest_version
+                );
+                match self.update_r2().await {
+                    Ok(status) => Ok(status),
+                    Err(e) => {
+                        warn!("R2 install failed ({e}); falling back to GitHub backend");
+                        self.update_github().await
+                    }
+                }
+            }
+            status => Ok(status),
+        }
+    }
+
+    /// `check_and_update` for the GitHub backend (pre-existing behaviour).
+    async fn check_and_update_github(&self) -> Result<UpdateStatus> {
+        match self.check_update_github().await? {
+            UpdateStatus::Available {
+                current_version,
+                latest_version,
+            } => {
+                info!(
+                    "Update available: {} -> {}, installing...",
                     current_version, latest_version
                 );
                 self.update_with_verification().await
@@ -997,7 +1329,7 @@ pub async fn check_for_updates_auto(bin_name: &str, current_version: &str) -> Re
             builder.auth_token(&token);
         }
 
-        builder.bin_install_path(format!("/usr/local/bin/{}", bin_name));
+        builder.bin_install_path(platform::get_binary_path(&bin_name)?);
 
         match builder.build() {
             Ok(updater) => match updater.get_latest_release() {
@@ -1281,7 +1613,43 @@ mod tests {
         assert_eq!(config.current_version, "1.0.0");
         assert!(!config.show_progress);
         assert_eq!(config.repo_owner, "terraphim");
-        assert_eq!(config.repo_name, "terraphim-ai");
+        // Regression guard: releases live on terraphim-clients, not terraphim-ai.
+        assert_eq!(config.repo_name, "terraphim-clients");
+        assert_eq!(config.backend, UpdateBackend::R2);
+        assert_eq!(config.manifest.base_url, "https://downloads.terraphim.ai");
+        assert!(config.auth_token.is_none(), "no GITHUB_TOKEN in test env");
+    }
+
+    #[test]
+    fn test_default_backend_is_r2() {
+        let config = UpdaterConfig::new("test-binary");
+        assert_eq!(config.backend, UpdateBackend::R2);
+    }
+
+    #[test]
+    fn test_with_backend_builder() {
+        let config = UpdaterConfig::new("test-binary").with_backend(UpdateBackend::GitHub);
+        assert_eq!(config.backend, UpdateBackend::GitHub);
+    }
+
+    #[test]
+    fn test_with_manifest_base_url_builder() {
+        let config =
+            UpdaterConfig::new("test-binary").with_manifest_base_url("https://staging.example.com");
+        assert_eq!(config.manifest.base_url, "https://staging.example.com");
+        assert_eq!(
+            config.manifest.manifest_url(),
+            "https://staging.example.com/test-binary/stable.json"
+        );
+    }
+
+    #[test]
+    fn test_with_auth_token_builder() {
+        let config = UpdaterConfig::new("test-binary").with_auth_token("ghp_123");
+        assert_eq!(config.auth_token.as_deref(), Some("ghp_123"));
+
+        let empty = UpdaterConfig::new("test-binary").with_auth_token("");
+        assert!(empty.auth_token.is_none());
     }
 
     #[test]

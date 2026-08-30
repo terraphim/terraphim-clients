@@ -219,15 +219,15 @@ impl SessionService {
             sessions
                 .into_iter()
                 .filter(|session| {
-                    if let Some(title) = &session.title {
-                        if title.to_lowercase().contains(&query_lower) {
-                            return true;
-                        }
+                    if let Some(title) = &session.title
+                        && title.to_lowercase().contains(&query_lower)
+                    {
+                        return true;
                     }
-                    if let Some(path) = &session.metadata.project_path {
-                        if path.to_lowercase().contains(&query_lower) {
-                            return true;
-                        }
+                    if let Some(path) = &session.metadata.project_path
+                        && path.to_lowercase().contains(&query_lower)
+                    {
+                        return true;
                     }
                     for msg in &session.messages {
                         if msg.content.to_lowercase().contains(&query_lower) {
@@ -267,15 +267,15 @@ impl SessionService {
             sessions
                 .into_iter()
                 .filter(|session| {
-                    if let Some(title) = &session.title {
-                        if title.to_lowercase().contains(&query_lower) {
-                            return true;
-                        }
+                    if let Some(title) = &session.title
+                        && title.to_lowercase().contains(&query_lower)
+                    {
+                        return true;
                     }
-                    if let Some(path) = &session.metadata.project_path {
-                        if path.to_lowercase().contains(&query_lower) {
-                            return true;
-                        }
+                    if let Some(path) = &session.metadata.project_path
+                        && path.to_lowercase().contains(&query_lower)
+                    {
+                        return true;
                     }
                     for msg in &session.messages {
                         if msg.content.to_lowercase().contains(&query_lower) {
@@ -526,13 +526,13 @@ impl SessionService {
         let mut unenriched: Vec<Session> = Vec::new();
 
         for session in sessions {
-            if let Some(ref sc) = session.metadata.enrichment {
-                if !sc.concepts.is_empty() {
-                    let concept_set: HashSet<String> = sc.concepts.keys().cloned().collect();
-                    enriched_sessions.push(session);
-                    enriched_concepts.push(concept_set);
-                    continue;
-                }
+            if let Some(ref sc) = session.metadata.enrichment
+                && !sc.concepts.is_empty()
+            {
+                let concept_set: HashSet<String> = sc.concepts.keys().cloned().collect();
+                enriched_sessions.push(session);
+                enriched_concepts.push(concept_set);
+                continue;
             }
             unenriched.push(session);
         }

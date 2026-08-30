@@ -160,7 +160,7 @@ impl ProcedureStore {
         }
 
         // Check for matching titles using Aho-Corasick
-        let matches = find_matches(&procedure.title.to_lowercase(), thesaurus, false)
+        let matches = find_matches(&procedure.title.to_lowercase(), &thesaurus, false)
             .map_err(io::Error::other)?;
 
         let mut merged = false;
