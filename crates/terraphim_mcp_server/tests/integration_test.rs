@@ -27,25 +27,9 @@ async fn setup_server_command() -> Result<Command> {
         }
     }
 
-    // Build the server first to ensure the binary is up-to-date
-    let mut build = Command::new("cargo");
-    build
-        .arg("build")
-        .arg("--package")
-        .arg("terraphim_mcp_server");
+    // Cargo builds terraphim_mcp_server before this test runs; a nested
+    // `cargo build` would deadlock on the outer build lock. Refs #113.
 
-    // CI sets CI=true, and terraphim_mcp_server depends on fff-search whose
-    // build script requires the zlob feature under CI. The top-level main
-    // workflow already runs the workspace tests with zlob enabled, so mirror
-    // that feature contract for this nested build as well.
-    if std::env::var_os("CI").is_some() {
-        build.arg("--features").arg("zlob");
-    }
-
-    let build_status = build.status().await?;
-    if !build_status.success() {
-        return Err(anyhow::anyhow!("Failed to build terraphim_mcp_server"));
-    }
     // Determine the path to the compiled binary.
     // When building inside a workspace Cargo will place the binary in the *workspace* target dir,
     // whereas `std::env::current_dir()` inside the test is the **crate** directory

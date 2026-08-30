@@ -23,6 +23,8 @@
 pub mod error;
 pub mod hybrid_searcher;
 pub mod kg_curation;
+#[cfg(feature = "llm")]
+pub mod openrouter_client;
 pub mod rlm_context;
 pub mod signatures;
 pub mod sufficiency_judge;
@@ -112,6 +114,39 @@ impl TerraphimGrep {
         self
     }
 
+    /// Whether the caller explicitly asked for LLM synthesis.
+    ///
+    /// RLM synthesis is opt-in: merely having an API key in the environment must not
+    /// turn a millisecond-scale grep into a multi-second LLM round trip. Only
+    /// `--force-rlm` (`force_rlm`) or `--answer` (`include_answer`) enable it.
+    ///
+    /// See terraphim/terraphim-clients#81.
+    fn rlm_requested(options: &GrepOptions) -> bool {
+        options.force_rlm || options.include_answer
+    }
+
+    /// Build a `SearchOnly` result from chunks that were retrieved but not synthesised.
+    fn search_only_result(
+        chunks: Vec<RetrievedChunk>,
+        hybrid_results: HybridResults,
+        search_latency_ms: u64,
+    ) -> GrepResult {
+        let stats = GrepStats {
+            search_latency_ms,
+            rlm_latency_ms: None,
+            chunks_returned: chunks.len(),
+            kg_hits: hybrid_results.kg_concepts.len(),
+        };
+
+        GrepResult {
+            chunks,
+            answer: None,
+            concepts: hybrid_results.kg_concepts,
+            sufficiency: SufficiencyState::SearchOnly,
+            stats,
+        }
+    }
+
     pub async fn search(&self, query: &str, options: GrepOptions) -> Result<GrepResult> {
         let start = std::time::Instant::now();
 
@@ -130,27 +165,40 @@ impl TerraphimGrep {
         let sufficiency = self.sufficiency_judge.judge(&hybrid_results, query);
 
         match sufficiency {
-            sufficiency_judge::Sufficiency::Sufficient(chunks) => {
-                let stats = GrepStats {
-                    search_latency_ms,
-                    rlm_latency_ms: None,
-                    chunks_returned: chunks.len(),
-                    kg_hits: hybrid_results.kg_concepts.len(),
-                };
-
-                Ok(GrepResult {
-                    chunks,
-                    answer: None,
-                    concepts: hybrid_results.kg_concepts,
-                    sufficiency: SufficiencyState::SearchOnly,
-                    stats,
-                })
-            }
+            sufficiency_judge::Sufficiency::Sufficient(chunks) => Ok(Self::search_only_result(
+                chunks,
+                hybrid_results,
+                search_latency_ms,
+            )),
             sufficiency_judge::Sufficiency::NeedsSynthesis(chunks) => {
+                if !Self::rlm_requested(&options) {
+                    tracing::debug!(
+                        "sufficiency judge requested synthesis; returning {} chunks search-only \
+                         (pass --answer or --force-rlm to synthesise)",
+                        chunks.len()
+                    );
+                    return Ok(Self::search_only_result(
+                        chunks,
+                        hybrid_results,
+                        search_latency_ms,
+                    ));
+                }
                 self.search_with_rlm_fallback(query, options, chunks, hybrid_results, start)
                     .await
             }
             sufficiency_judge::Sufficiency::NeedsExpansion(mut chunks) => {
+                if !Self::rlm_requested(&options) {
+                    tracing::debug!(
+                        "sufficiency judge requested expansion; returning {} chunks search-only \
+                         (pass --answer or --force-rlm to synthesise)",
+                        chunks.len()
+                    );
+                    return Ok(Self::search_only_result(
+                        chunks,
+                        hybrid_results,
+                        search_latency_ms,
+                    ));
+                }
                 chunks.extend(hybrid_results.to_chunks());
                 self.search_with_rlm_fallback(query, options, chunks, hybrid_results, start)
                     .await
@@ -191,17 +239,19 @@ impl TerraphimGrep {
 
         let prompt = ctx.build_prompt();
 
+        let task_instruction = if options.include_answer {
+            format!(
+                "{}\n\nSynthesise an answer based on the context above.",
+                signatures::AnswerSignature {}.instructions()
+            )
+        } else {
+            "List the relevant findings.\n\nProvide a brief answer based on the context above."
+                .to_string()
+        };
+
         let messages = vec![serde_json::json!({
             "role": "user",
-            "content": format!(
-                "{}\n\n{}\n\nProvide a brief answer based on the context above.",
-                prompt,
-                if options.include_answer {
-                    "Synthesise an answer."
-                } else {
-                    "List the relevant findings."
-                }
-            )
+            "content": format!("{}\n\n{}", prompt, task_instruction)
         })];
 
         let llm_response = if let Some(ref client) = self.llm_client {
@@ -331,6 +381,220 @@ mod tests {
     #[cfg(feature = "code-search")]
     use terraphim_types::Thesaurus;
 
+    /// A local, in-process `LlmClient` that answers from a fixed string and counts calls.
+    ///
+    /// This is a real trait implementation, not a mocking framework: it performs the same
+    /// contract as a network provider (returns the JSON envelope `AnswerSignature` expects)
+    /// without leaving the process. The call counter is what lets a test assert that the
+    /// RLM path was *not* entered -- the observable difference the #81 fix is about.
+    #[cfg(all(feature = "llm", feature = "code-search"))]
+    struct CountingLocalLlm {
+        calls: std::sync::atomic::AtomicUsize,
+    }
+
+    #[cfg(all(feature = "llm", feature = "code-search"))]
+    impl CountingLocalLlm {
+        fn new() -> Self {
+            Self {
+                calls: std::sync::atomic::AtomicUsize::new(0),
+            }
+        }
+
+        fn calls(&self) -> usize {
+            self.calls.load(std::sync::atomic::Ordering::SeqCst)
+        }
+    }
+
+    #[cfg(all(feature = "llm", feature = "code-search"))]
+    #[async_trait::async_trait]
+    impl terraphim_service::llm::LlmClient for CountingLocalLlm {
+        fn name(&self) -> &'static str {
+            "counting-local"
+        }
+
+        async fn summarize(
+            &self,
+            _content: &str,
+            _opts: terraphim_service::llm::SummarizeOptions,
+        ) -> terraphim_service::Result<String> {
+            Err(terraphim_service::ServiceError::Config(
+                "summarize not supported by the local test client".to_string(),
+            ))
+        }
+
+        async fn chat_completion(
+            &self,
+            _messages: Vec<serde_json::Value>,
+            _opts: terraphim_service::llm::ChatOptions,
+        ) -> terraphim_service::Result<String> {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(r#"{"answer":"local synthesis","citations":[],"confidence":0.9}"#.to_string())
+        }
+    }
+
+    /// Build a corpus that the sufficiency judge classifies as `NeedsSynthesis`.
+    ///
+    /// With an empty thesaurus the KG confidence is always 0.0, so `Sufficient` is
+    /// unreachable; five matching files clear `min_results = 3` and give coverage 1.0,
+    /// which lands in the `NeedsSynthesis` branch. The precondition is asserted rather
+    /// than assumed so a judge change surfaces as a clear failure here.
+    #[cfg(all(feature = "llm", feature = "code-search"))]
+    async fn needs_synthesis_fixture() -> (tempfile::TempDir, Arc<HybridSearcher>) {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        for i in 0..5 {
+            let path = tmp.path().join(format!("file_{i}.rs"));
+            std::fs::write(&path, format!("fn target_{i}() {{ /* target */ }}\n")).unwrap();
+        }
+
+        let hybrid = Arc::new(
+            HybridSearcher::new("test-role".to_string(), Thesaurus::new("t".to_string()))
+                .expect("build hybrid searcher")
+                .with_search_path(tmp.path().to_path_buf()),
+        );
+
+        let options = GrepOptions {
+            haystack: Haystack::Code,
+            max_results: 50,
+            ..GrepOptions::default()
+        };
+        let results = hybrid
+            .search("target", &options)
+            .await
+            .expect("hybrid search");
+        let verdict = SufficiencyJudge::default().judge(&results, "target");
+        assert!(
+            matches!(verdict, Sufficiency::NeedsSynthesis(_)),
+            "fixture precondition: judge must return NeedsSynthesis, got {verdict:?}"
+        );
+
+        (tmp, hybrid)
+    }
+
+    /// Regression: terraphim/terraphim-clients#81.
+    ///
+    /// A `NeedsSynthesis` verdict must NOT trigger a chat completion when the user asked
+    /// for neither `--answer` nor `--force-rlm`. Before the fix, exporting
+    /// `OPENROUTER_API_KEY` turned every such query into a ~20s LLM round trip.
+    #[cfg(all(feature = "llm", feature = "code-search"))]
+    #[tokio::test]
+    async fn needs_synthesis_without_answer_skips_llm() {
+        let (_tmp, hybrid) = needs_synthesis_fixture().await;
+        let llm = Arc::new(CountingLocalLlm::new());
+
+        let grep = TerraphimGrep::new(hybrid, Arc::new(SufficiencyJudge::default()))
+            .with_llm_client(llm.clone());
+
+        let result = grep
+            .search(
+                "target",
+                GrepOptions {
+                    haystack: Haystack::Code,
+                    max_results: 50,
+                    ..GrepOptions::default()
+                },
+            )
+            .await
+            .expect("search should succeed");
+
+        assert_eq!(llm.calls(), 0, "no LLM call without --answer/--force-rlm");
+        assert!(
+            matches!(result.sufficiency, SufficiencyState::SearchOnly),
+            "expected SearchOnly, got {:?}",
+            result.sufficiency
+        );
+        assert!(result.answer.is_none(), "no synthesis => no answer");
+        assert!(!result.chunks.is_empty(), "chunks must still be returned");
+        assert_eq!(result.stats.rlm_latency_ms, None, "no RLM latency recorded");
+    }
+
+    /// The opt-in path must still work: `--answer` on the same corpus synthesises.
+    #[cfg(all(feature = "llm", feature = "code-search"))]
+    #[tokio::test]
+    async fn needs_synthesis_with_answer_invokes_llm() {
+        let (_tmp, hybrid) = needs_synthesis_fixture().await;
+        let llm = Arc::new(CountingLocalLlm::new());
+
+        let grep = TerraphimGrep::new(hybrid, Arc::new(SufficiencyJudge::default()))
+            .with_llm_client(llm.clone());
+
+        let result = grep
+            .search(
+                "target",
+                GrepOptions {
+                    haystack: Haystack::Code,
+                    max_results: 50,
+                    include_answer: true,
+                    ..GrepOptions::default()
+                },
+            )
+            .await
+            .expect("search should succeed");
+
+        assert_eq!(llm.calls(), 1, "--answer must invoke the LLM exactly once");
+        assert!(
+            matches!(result.sufficiency, SufficiencyState::RlmSynthesis),
+            "expected RlmSynthesis, got {:?}",
+            result.sufficiency
+        );
+        let answer = result.answer.expect("--answer must produce an answer");
+        assert_eq!(answer.answer, "local synthesis");
+    }
+
+    /// `--force-rlm` alone (without `--answer`) must still reach the LLM.
+    #[cfg(all(feature = "llm", feature = "code-search"))]
+    #[tokio::test]
+    async fn force_rlm_without_answer_invokes_llm() {
+        let (_tmp, hybrid) = needs_synthesis_fixture().await;
+        let llm = Arc::new(CountingLocalLlm::new());
+
+        let grep = TerraphimGrep::new(hybrid, Arc::new(SufficiencyJudge::default()))
+            .with_llm_client(llm.clone());
+
+        let result = grep
+            .search(
+                "target",
+                GrepOptions {
+                    haystack: Haystack::Code,
+                    max_results: 50,
+                    force_rlm: true,
+                    ..GrepOptions::default()
+                },
+            )
+            .await
+            .expect("search should succeed");
+
+        assert_eq!(llm.calls(), 1, "--force-rlm must invoke the LLM");
+        assert!(
+            matches!(result.sufficiency, SufficiencyState::RlmSynthesis),
+            "expected RlmSynthesis, got {:?}",
+            result.sufficiency
+        );
+    }
+
+    /// The opt-in predicate: only the two explicit flags enable synthesis.
+    #[test]
+    fn rlm_requested_only_for_explicit_flags() {
+        let base = GrepOptions::default();
+        assert!(
+            !TerraphimGrep::rlm_requested(&base),
+            "default is search-only"
+        );
+
+        assert!(TerraphimGrep::rlm_requested(&GrepOptions {
+            include_answer: true,
+            ..GrepOptions::default()
+        }));
+        assert!(TerraphimGrep::rlm_requested(&GrepOptions {
+            force_rlm: true,
+            ..GrepOptions::default()
+        }));
+        assert!(TerraphimGrep::rlm_requested(&GrepOptions {
+            force_rlm: true,
+            include_answer: true,
+            ..GrepOptions::default()
+        }));
+    }
+
     #[test]
     fn test_grep_options_default() {
         let options = GrepOptions::default();
@@ -438,5 +702,117 @@ mod tests {
             result.sufficiency
         );
         assert!(result.answer.is_none(), "no LLM -> no synthesised answer");
+    }
+
+    /// When no thesaurus is available, the searcher must still run the `fff-search` code path
+    /// and return results with empty concepts. This is the "enhanced grep" failover mode.
+    #[cfg(feature = "code-search")]
+    #[tokio::test]
+    async fn search_without_thesaurus_uses_fff_mode() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        for i in 0..3 {
+            let path = tmp.path().join(format!("file_{i}.rs"));
+            std::fs::write(&path, format!("fn target_{i}() {{ /* target */ }}\n")).unwrap();
+        }
+
+        // Empty thesaurus => no KG configuration.
+        let thesaurus = Thesaurus::new("test-role".to_string());
+        assert!(thesaurus.is_empty());
+
+        let hybrid = HybridSearcher::new("test-role".to_string(), thesaurus)
+            .expect("build hybrid searcher")
+            .with_search_path(tmp.path().to_path_buf());
+        let grep = TerraphimGrep::new(Arc::new(hybrid), Arc::new(SufficiencyJudge::default()));
+
+        let result = grep
+            .search(
+                "target",
+                GrepOptions {
+                    haystack: Haystack::Code,
+                    max_results: 50,
+                    ..GrepOptions::default()
+                },
+            )
+            .await
+            .expect("search should succeed without thesaurus");
+
+        assert!(
+            !result.chunks.is_empty(),
+            "expected fff-search to return chunks without KG"
+        );
+        assert!(
+            result.concepts.is_empty(),
+            "expected no KG concepts without thesaurus"
+        );
+        assert_eq!(result.stats.kg_hits, 0);
+    }
+
+    /// The RLM prompt for `include_answer` must embed the `AnswerSignature`
+    /// JSON instructions so the model knows it must return structured output.
+    #[test]
+    fn test_answer_prompt_includes_json_instructions() {
+        let prompt = "Query: test\n## Retrieved Context\nchunk".to_string();
+        let include_answer = true;
+
+        let task_instruction = if include_answer {
+            format!(
+                "{}\n\nSynthesise an answer based on the context above.",
+                signatures::AnswerSignature {}.instructions()
+            )
+        } else {
+            "List the relevant findings.\n\nProvide a brief answer based on the context above."
+                .to_string()
+        };
+
+        let message = serde_json::json!({
+            "role": "user",
+            "content": format!("{}\n\n{}", prompt, task_instruction)
+        });
+
+        let content = message["content"].as_str().expect("content string");
+        assert!(
+            content.contains("\"answer\": the synthesised answer"),
+            "prompt must embed AnswerSignature instructions"
+        );
+        assert!(
+            content.contains("\"citations\": array of {source, line (optional), excerpt}"),
+            "prompt must embed citation format"
+        );
+        assert!(
+            content.contains("\"confidence\": a number between 0 and 1"),
+            "prompt must embed confidence format"
+        );
+    }
+
+    /// The non-answer path must NOT embed AnswerSignature instructions.
+    #[test]
+    fn test_list_prompt_excludes_json_instructions() {
+        let prompt = "Query: test\n## Retrieved Context\nchunk".to_string();
+        let include_answer = false;
+
+        let task_instruction = if include_answer {
+            format!(
+                "{}\n\nSynthesise an answer based on the context above.",
+                signatures::AnswerSignature {}.instructions()
+            )
+        } else {
+            "List the relevant findings.\n\nProvide a brief answer based on the context above."
+                .to_string()
+        };
+
+        let message = serde_json::json!({
+            "role": "user",
+            "content": format!("{}\n\n{}", prompt, task_instruction)
+        });
+
+        let content = message["content"].as_str().expect("content string");
+        assert!(
+            !content.contains("\"answer\": the synthesised answer"),
+            "list prompt must not embed AnswerSignature instructions"
+        );
+        assert!(
+            content.contains("List the relevant findings"),
+            "list prompt must contain the list instruction"
+        );
     }
 }

@@ -100,6 +100,30 @@ fn strip_env_vars(text: &str) -> String {
     result
 }
 
+/// Check if text contains potential secrets.
+///
+/// This is a quick check that can be used before capture to warn users.
+pub fn contains_secrets(text: &str) -> bool {
+    // Check for common secret patterns
+    let patterns = [
+        r"AKIA[A-Z0-9]{16}",
+        r"sk-[A-Za-z0-9]{20,}",
+        r"password\s*=",
+        r"secret\s*=",
+        r"api_key\s*=",
+    ];
+
+    for pattern in patterns {
+        if let Ok(re) = regex::Regex::new(pattern)
+            && re.is_match(text)
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -134,6 +158,15 @@ mod tests {
         let input = "cargo build --release";
         let redacted = redact_secrets(input);
         assert_eq!(redacted, input);
+    }
+
+    #[test]
+    fn test_contains_secrets() {
+        assert!(contains_secrets("AKIAIOSFODNN7EXAMPLE"));
+        assert!(contains_secrets("password=secret"));
+        assert!(contains_secrets("api_key=abc123"));
+        assert!(!contains_secrets("cargo build"));
+        assert!(!contains_secrets("npm install"));
     }
 
     #[test]

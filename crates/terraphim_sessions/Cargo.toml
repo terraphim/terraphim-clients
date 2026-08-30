@@ -1,6 +1,8 @@
 [package]
 name = "terraphim_sessions"
-version.workspace = true
+# Pinned ahead of the workspace (1.21.1): #95 requires the 1.21.2 release
+# on the terraphim registry, which is what terraphim_agent depends on.
+version = "1.21.2"
 edition.workspace = true
 description = "Session management for AI coding assistant history - search across Claude Code, Cursor, Aider sessions"
 license = "Apache-2.0"
@@ -12,7 +14,7 @@ keywords = ["sessions", "ai", "search", "claude", "cursor"]
 readme = "../../README.md"
 
 [features]
-default = []
+default = ["terraphim-session-analyzer", "aider-connector", "search-index"]
 
 # Enable terraphim-session-analyzer integration for enhanced parsing
 terraphim-session-analyzer = ["dep:terraphim-session-analyzer"]
@@ -32,8 +34,11 @@ opencode-connector = []
 # Enable Codex (OpenAI) session connector
 codex-connector = []
 
+# Enable Cursor IDE session connector (reads SQLite state.vscdb)
+cursor-connector = ["dep:rusqlite"]
+
 # Enable all extra connectors
-extra-connectors = ["aider-connector", "cline-connector", "opencode-connector", "codex-connector"]
+extra-connectors = ["aider-connector", "cline-connector", "opencode-connector", "codex-connector", "cursor-connector"]
 
 # Enable terraphim knowledge graph enrichment
 enrichment = ["terraphim_automata", "terraphim_rolegraph", "terraphim_types"]
@@ -70,19 +75,19 @@ notify = "8.2"
 # Feature-gated: regex for Aider/Cline connectors
 regex = { version = "1.10", optional = true }
 
+# Feature-gated: SQLite access for Cursor connector
+rusqlite = { version = "0.32", features = ["bundled"], optional = true }
+
 # Feature-gated: Terraphim Session Analyzer
-terraphim-session-analyzer = { version = "1.19.2", optional = true }
+terraphim-session-analyzer = { path = "../../crates/terraphim-session-analyzer", version = "1.21.0", optional = true, registry = "terraphim" }
 
 # Feature-gated: Markdown parsing for Aider/Cline connectors
 terraphim-markdown-parser = { version = "1.20.2", optional = true }
 
 # Feature-gated: Terraphim enrichment (uses published crates.io versions)
-terraphim_automata = { version = ">=1.4.10", optional = true }
+terraphim_automata = { version = "1.21.0", registry = "terraphim", optional = true }
 terraphim_rolegraph = { version = ">=1.4.10", optional = true }
-terraphim_types = { version = ">=1.4.10", optional = true }
-
-
-
+terraphim_types = { version = "1.21.0", registry = "terraphim", optional = true }
 [dev-dependencies]
 tempfile = { workspace = true }
 
