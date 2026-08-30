@@ -157,7 +157,7 @@ pub struct HybridSearcher {
     /// return meaningful query results; the raw thesaurus is enough to identify which
     /// of the user's known concepts touch the query.
     thesaurus: terraphim_types::Thesaurus,
-    search_path: PathBuf,
+    search_paths: Vec<PathBuf>,
 }
 
 impl HybridSearcher {
@@ -173,12 +173,17 @@ impl HybridSearcher {
         Ok(Self {
             role_graph: Arc::new(tokio::sync::RwLock::new(rolegraph)),
             thesaurus,
-            search_path: PathBuf::from("."),
+            search_paths: vec![PathBuf::from(".")],
         })
     }
 
     pub fn with_search_path(mut self, path: PathBuf) -> Self {
-        self.search_path = path;
+        self.search_paths = vec![path];
+        self
+    }
+
+    pub fn with_search_paths(mut self, paths: Vec<PathBuf>) -> Self {
+        self.search_paths = paths;
         self
     }
 
@@ -188,7 +193,7 @@ impl HybridSearcher {
         options: &GrepOptions,
     ) -> Result<HybridResults, String> {
         let max_results = options.max_results;
-        let search_path = self.search_path.clone();
+        let search_paths = self.search_paths.clone();
         let role_graph = self.role_graph.clone();
         let query_owned = query.to_string();
 
@@ -205,8 +210,15 @@ impl HybridSearcher {
 
                 let code_handle = tokio::spawn({
                     let query = query_owned.clone();
-                    let path = search_path.clone();
-                    async move { Self::search_code(&query, max_results, path).await }
+                    let paths = search_paths.clone();
+                    async move {
+                        let mut all_results = Vec::new();
+                        for path in paths {
+                            let mut results = Self::search_code(&query, max_results, path).await?;
+                            all_results.append(&mut results);
+                        }
+                        Ok::<Vec<RetrievedChunk>, String>(all_results)
+                    }
                 });
 
                 let kg_concepts = kg_handle
@@ -231,6 +243,8 @@ impl HybridSearcher {
         // does not influence ordering at all. Boost in place; the boosted score is what
         // the JSON output reports so downstream tools see why a chunk ranked where it did.
         let code_results = boost_chunks_with_kg(code_results, &kg_concepts);
+        let code_results: Vec<RetrievedChunk> =
+            code_results.into_iter().take(max_results).collect();
 
         Ok(HybridResults {
             code_results,
@@ -471,6 +485,46 @@ mod tests {
             !results.code_results.is_empty(),
             "default build must return file-content matches over {:?}, got none",
             tmp.path()
+        );
+    }
+
+    /// Multiple search paths must be scanned and their results merged.
+    #[cfg(feature = "code-search")]
+    #[tokio::test]
+    async fn multiple_search_paths_merge_results() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let dir_a = tmp.path().join("a");
+        let dir_b = tmp.path().join("b");
+        std::fs::create_dir(&dir_a).unwrap();
+        std::fs::create_dir(&dir_b).unwrap();
+        std::fs::write(dir_a.join("alpha.rs"), "fn shared_term() {}\n").unwrap();
+        std::fs::write(dir_b.join("beta.rs"), "fn shared_term() {}\n").unwrap();
+
+        let searcher = HybridSearcher::new(
+            "test-role".to_string(),
+            terraphim_types::Thesaurus::new("t".to_string()),
+        )
+        .expect("build hybrid searcher")
+        .with_search_paths(vec![dir_a.clone(), dir_b.clone()]);
+
+        let results = searcher
+            .search(
+                "shared_term",
+                &GrepOptions {
+                    haystack: Haystack::Code,
+                    max_results: 50,
+                    ..GrepOptions::default()
+                },
+            )
+            .await
+            .expect("search should succeed");
+
+        assert_eq!(
+            results.code_results.len(),
+            2,
+            "expected one match from each of {:?} and {:?}",
+            dir_a,
+            dir_b
         );
     }
 

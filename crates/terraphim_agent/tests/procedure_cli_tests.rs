@@ -6,23 +6,10 @@
 use std::process::Command;
 
 fn agent_binary() -> Option<String> {
-    let output = match Command::new("cargo")
-        .args(["build", "-p", "terraphim_agent"])
-        .output()
-    {
-        Ok(o) => o,
-        Err(_) => return None,
-    };
-    if !output.status.success() {
-        return None;
-    }
-
-    let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap();
-    let path = workspace_root.join("target/debug/terraphim-agent");
+    // Cargo builds the binary before running integration tests and hands over
+    // its path; a nested `cargo build` here would deadlock on the outer build
+    // lock. Refs #113.
+    let path = std::path::PathBuf::from(env!("CARGO_BIN_EXE_terraphim-agent"));
     if path.exists() {
         Some(path.to_string_lossy().to_string())
     } else {

@@ -100,6 +100,7 @@ layer = "Growth"
 cli_tool = ".terraphim/bin/structured-pr-review.sh"
 task = "Run structural PR review with 9-dimension checklist on the active PR. Posts review comment with Mermaid diagram, confidence score, and severity-tiered findings."
 project = "terraphim-clients"
+# on-demand agent: schedule omitted (invalid cron "on_demand" removed 2026-08-19)
 
 [[agents]]
 name = "disciplined-research"
@@ -107,6 +108,7 @@ layer = "Growth"
 cli_tool = "echo"
 task = "Research phase: analyze issue, understand context, identify affected code paths"
 project = "terraphim-clients"
+# on-demand agent: schedule omitted (invalid cron "on_demand" removed 2026-08-19)
 
 [[agents]]
 name = "disciplined-specification"
@@ -114,6 +116,7 @@ layer = "Growth"
 cli_tool = "echo"
 task = "Specification phase: define acceptance criteria, test cases, and implementation plan"
 project = "terraphim-clients"
+# on-demand agent: schedule omitted (invalid cron "on_demand" removed 2026-08-19)
 
 [[agents]]
 name = "disciplined-implementation"
@@ -121,6 +124,7 @@ layer = "Growth"
 cli_tool = "echo"
 task = "Implementation phase: write code and tests, run quality gates"
 project = "terraphim-clients"
+# on-demand agent: schedule omitted (invalid cron "on_demand" removed 2026-08-19)
 
 [[agents]]
 name = "disciplined-quality-evaluation"
@@ -128,3 +132,4 @@ layer = "Growth"
 cli_tool = "echo"
 task = "Quality phase: run test suite, clippy, fmt, verify acceptance criteria"
 project = "terraphim-clients"
+# on-demand agent: schedule omitted (invalid cron "on_demand" removed 2026-08-19)

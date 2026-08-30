@@ -23,8 +23,10 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo build --workspace
       - run: cargo test --workspace --lib --no-fail-fast
-      # Smoke test - terraphim-grep default features return non-zero chunks
+# Smoke test - terraphim-grep default features return non-zero chunks
       # Guards terraphim/terraphim-ai#4325: a plain `cargo build`/`cargo install`
       # of terraphim_grep must return chunks for a matching query. Fails loudly
       # if `code-search` is ever removed from the `default` feature set.
       - run: cargo test -p terraphim_grep --test default_feature_smoke
+      # #95: isolated packaged install-graph regression.
+      - run: cargo test -p terraphim_agent --test packaged_install_graph_regression -- --nocapture

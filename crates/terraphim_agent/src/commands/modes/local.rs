@@ -145,17 +145,24 @@ impl LocalExecutor {
         let start_time = Instant::now();
 
         let mut cmd = TokioCommand::new(command);
-        cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
+        cmd.args(args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            // Ensure the child is killed if the wait future is dropped on timeout.
+            .kill_on_drop(true);
 
         // Set resource limits if available
         // Note: This is a simplified implementation. In a real scenario,
         // you might want to use platform-specific resource limiting.
 
-        let mut child = cmd.spawn().map_err(|e| {
+        let child = cmd.spawn().map_err(|e| {
             CommandExecutionError::LocalExecutionError(format!("Failed to spawn command: {}", e))
         })?;
 
-        let timeout_future = tokio::time::timeout(timeout, child.wait());
+        // `wait_with_output` reads stdout/stderr to completion before returning,
+        // so the captured output is no longer silently dropped. On timeout the
+        // future is dropped and `kill_on_drop` terminates the child.
+        let timeout_future = tokio::time::timeout(timeout, child.wait_with_output());
 
         let output = match timeout_future.await {
             Ok(result) => result.map_err(|e| {
@@ -165,22 +172,19 @@ impl LocalExecutor {
                 ))
             }),
             Err(_) => {
-                // Timeout occurred, kill the process
-                let _ = child.kill().await;
                 return Err(CommandExecutionError::Timeout(timeout.as_secs()));
             }
         }?;
 
         let duration_ms = start_time.elapsed().as_millis() as u64;
 
-        // For simplicity, capture basic output without streaming
-        let stdout = String::new();
-        let stderr = String::new();
+        let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
 
         Ok(CommandExecutionResult {
             command: format!("{} {}", command, args.join(" ")),
             execution_mode: super::ExecutionMode::Local,
-            exit_code: output.code().unwrap_or(1),
+            exit_code: output.status.code().unwrap_or(1),
             stdout,
             stderr,
             duration_ms,
@@ -291,5 +295,41 @@ mod tests {
                 dangerous_cmd
             );
         }
+    }
+
+    #[tokio::test]
+    async fn test_execute_async_captures_stdout() {
+        let executor = LocalExecutor::new();
+        let result = executor
+            .execute_async_command("echo", &["hello".to_string()], Duration::from_secs(5))
+            .await
+            .expect("echo should execute");
+
+        assert_eq!(result.exit_code, 0);
+        // Previously stdout was hardcoded to an empty string; it must now contain
+        // the actual command output.
+        assert_eq!(result.stdout.trim_end(), "hello");
+    }
+
+    #[tokio::test]
+    async fn test_execute_async_times_out() {
+        let executor = LocalExecutor::new();
+        let start = Instant::now();
+        let result = executor
+            .execute_async_command("sleep", &["5".to_string()], Duration::from_millis(200))
+            .await;
+
+        assert!(
+            matches!(result, Err(CommandExecutionError::Timeout(_))),
+            "expected timeout error, got: {:?}",
+            result
+        );
+        // The wait future is dropped on timeout and `kill_on_drop` terminates the
+        // child, so we return promptly rather than blocking for the full sleep.
+        assert!(
+            start.elapsed() < Duration::from_secs(3),
+            "timeout should return promptly, took {:?}",
+            start.elapsed()
+        );
     }
 }

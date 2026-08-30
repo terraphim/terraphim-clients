@@ -814,7 +814,7 @@ pub(crate) fn build_kg_thesaurus_from_dir(
 ///
 /// This function combines thesaurus building with hash computation to avoid
 /// reading the KG directory twice.
-pub(crate) fn build_kg_thesaurus_with_hash(
+pub fn build_kg_thesaurus_with_hash(
     kg_dir: &std::path::Path,
 ) -> Option<(terraphim_types::Thesaurus, String)> {
     use terraphim_automata::builder::compute_kg_source_hash;
@@ -832,7 +832,7 @@ pub(crate) fn build_kg_thesaurus_with_hash(
 ///
 /// Tries the current working directory first, then walks up parent directories
 /// looking for `docs/src/kg/`.
-pub(crate) fn find_kg_dir() -> Option<PathBuf> {
+pub fn find_kg_dir() -> Option<PathBuf> {
     let cwd = std::env::current_dir().ok()?;
 
     // Walk up from cwd looking for docs/src/kg
@@ -861,7 +861,7 @@ pub fn annotate_with_entities(text: &str) -> Vec<String> {
         None => return Vec::new(),
     };
 
-    match terraphim_automata::matcher::find_matches(text, thesaurus, false) {
+    match terraphim_automata::matcher::find_matches(text, &thesaurus, false) {
         Ok(matches) => {
             let mut seen = std::collections::HashSet::new();
             let mut entities = Vec::new();
@@ -884,7 +884,7 @@ pub fn annotate_with_entities(text: &str) -> Vec<String> {
 ///
 /// This is useful for testing or when a pre-built thesaurus is available.
 #[allow(dead_code)]
-pub fn annotate_with_thesaurus(text: &str, thesaurus: terraphim_types::Thesaurus) -> Vec<String> {
+pub fn annotate_with_thesaurus(text: &str, thesaurus: &terraphim_types::Thesaurus) -> Vec<String> {
     match terraphim_automata::matcher::find_matches(text, thesaurus, false) {
         Ok(matches) => {
             let mut seen = std::collections::HashSet::new();
@@ -2426,7 +2426,7 @@ mod tests {
         thesaurus.insert(NormalizedTermValue::from("cargo"), cargo_term);
 
         let entities =
-            annotate_with_thesaurus("npm install failed, try cargo build instead", thesaurus);
+            annotate_with_thesaurus("npm install failed, try cargo build instead", &thesaurus);
 
         assert!(!entities.is_empty(), "Should find at least one entity");
         assert!(
@@ -2451,7 +2451,7 @@ mod tests {
         thesaurus.insert(NormalizedTermValue::from("rust"), term);
 
         // Text mentions "rust" twice
-        let entities = annotate_with_thesaurus("rust is great, rust is fast", thesaurus);
+        let entities = annotate_with_thesaurus("rust is great, rust is fast", &thesaurus);
 
         // Should only appear once
         assert_eq!(
@@ -2466,7 +2466,7 @@ mod tests {
     #[test]
     fn test_annotate_with_empty_thesaurus() {
         let thesaurus = terraphim_types::Thesaurus::new("empty".to_string());
-        let entities = annotate_with_thesaurus("some text", thesaurus);
+        let entities = annotate_with_thesaurus("some text", &thesaurus);
         assert!(entities.is_empty());
     }
 

@@ -1,7 +1,8 @@
-use std::process::Command;
+use std::process::Stdio;
 use std::time::Duration;
 
 use thiserror::Error;
+use tokio::process::Command as TokioCommand;
 use tracing::info;
 
 use crate::shared_learning::types::SharedLearning;
@@ -17,6 +18,8 @@ pub enum WikiSyncError {
     NotFound(String),
     #[error("network error: {0}")]
     Network(String),
+    #[error("gitea-robot timed out after {0}s")]
+    Timeout(u64),
     #[error("invalid response: {0}")]
     InvalidResponse(String),
     #[error("configuration error: {0}")]
@@ -53,15 +56,31 @@ impl std::fmt::Debug for GiteaWikiConfig {
     }
 }
 
+fn default_robot_path() -> String {
+    std::env::var("GITEA_ROBOT").unwrap_or_else(|_| {
+        std::env::var("PATH")
+            .ok()
+            .and_then(|path| {
+                path.split(':').find_map(|dir| {
+                    let candidate = std::path::Path::new(dir).join("gitea-robot");
+                    candidate
+                        .is_file()
+                        .then(|| candidate.to_string_lossy().into_owned())
+                })
+            })
+            .unwrap_or_else(|| "gitea-robot".to_string())
+    })
+}
+
 impl Default for GiteaWikiConfig {
     fn default() -> Self {
         Self {
             gitea_url: std::env::var("GITEA_URL")
                 .unwrap_or_else(|_| "https://git.terraphim.cloud".to_string()),
             token: std::env::var("GITEA_TOKEN").unwrap_or_default(),
-            owner: "terraphim".to_string(),
-            repo: "terraphim-ai".to_string(),
-            robot_path: "/home/alex/go/bin/gitea-robot".to_string(),
+            owner: std::env::var("GITEA_OWNER").unwrap_or_else(|_| "terraphim".to_string()),
+            repo: std::env::var("GITEA_REPO").unwrap_or_else(|_| "terraphim-agents".to_string()),
+            robot_path: default_robot_path(),
             timeout: Duration::from_secs(30),
         }
     }
@@ -117,6 +136,34 @@ impl GiteaWikiClient {
         Self { config }
     }
 
+    /// Run the `gitea-robot` binary with the given arguments, enforcing the
+    /// configured timeout.
+    ///
+    /// If the timeout elapses, the spawned child is killed (via `kill_on_drop`)
+    /// and a [`WikiSyncError::Timeout`] is returned, so a hung network call can
+    /// no longer block the caller indefinitely.
+    async fn run_robot(&self, args: &[&str]) -> Result<std::process::Output, WikiSyncError> {
+        let child = TokioCommand::new(&self.config.robot_path)
+            .env("GITEA_URL", &self.config.gitea_url)
+            .env("GITEA_TOKEN", &self.config.token)
+            .args(args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+            .map_err(|e| {
+                WikiSyncError::GiteaRobot(format!("Failed to execute gitea-robot: {}", e))
+            })?;
+
+        match tokio::time::timeout(self.config.timeout, child.wait_with_output()).await {
+            Ok(result) => result.map_err(|e| {
+                WikiSyncError::GiteaRobot(format!("Failed to execute gitea-robot: {}", e))
+            }),
+            Err(_) => Err(WikiSyncError::Timeout(self.config.timeout.as_secs())),
+        }
+    }
+
     /// Create or update a wiki page for a learning
     pub async fn sync_learning(
         &self,
@@ -161,10 +208,8 @@ impl GiteaWikiClient {
 
     /// Check if a wiki page exists
     async fn page_exists(&self, page_name: &str) -> Result<bool, WikiSyncError> {
-        let output = Command::new(&self.config.robot_path)
-            .env("GITEA_URL", &self.config.gitea_url)
-            .env("GITEA_TOKEN", &self.config.token)
-            .args([
+        let output = self
+            .run_robot(&[
                 "wiki-get",
                 "--owner",
                 &self.config.owner,
@@ -173,10 +218,7 @@ impl GiteaWikiClient {
                 "--name",
                 page_name,
             ])
-            .output()
-            .map_err(|e| {
-                WikiSyncError::GiteaRobot(format!("Failed to execute gitea-robot: {}", e))
-            })?;
+            .await?;
 
         if output.status.success() {
             Ok(true)
@@ -192,10 +234,8 @@ impl GiteaWikiClient {
 
     /// Create a new wiki page
     async fn create_wiki_page(&self, page_name: &str, content: &str) -> Result<(), WikiSyncError> {
-        let output = Command::new(&self.config.robot_path)
-            .env("GITEA_URL", &self.config.gitea_url)
-            .env("GITEA_TOKEN", &self.config.token)
-            .args([
+        let output = self
+            .run_robot(&[
                 "wiki-create",
                 "--owner",
                 &self.config.owner,
@@ -208,10 +248,7 @@ impl GiteaWikiClient {
                 "--message",
                 &format!("Add shared learning: {}", page_name),
             ])
-            .output()
-            .map_err(|e| {
-                WikiSyncError::GiteaRobot(format!("Failed to execute gitea-robot: {}", e))
-            })?;
+            .await?;
 
         if output.status.success() {
             Ok(())
@@ -227,10 +264,8 @@ impl GiteaWikiClient {
 
     /// Update an existing wiki page
     async fn update_wiki_page(&self, page_name: &str, content: &str) -> Result<(), WikiSyncError> {
-        let output = Command::new(&self.config.robot_path)
-            .env("GITEA_URL", &self.config.gitea_url)
-            .env("GITEA_TOKEN", &self.config.token)
-            .args([
+        let output = self
+            .run_robot(&[
                 "wiki-update",
                 "--owner",
                 &self.config.owner,
@@ -243,10 +278,7 @@ impl GiteaWikiClient {
                 "--message",
                 &format!("Update shared learning: {}", page_name),
             ])
-            .output()
-            .map_err(|e| {
-                WikiSyncError::GiteaRobot(format!("Failed to execute gitea-robot: {}", e))
-            })?;
+            .await?;
 
         if output.status.success() {
             Ok(())
@@ -262,10 +294,8 @@ impl GiteaWikiClient {
 
     /// Delete a wiki page
     pub async fn delete_wiki_page(&self, page_name: &str) -> Result<(), WikiSyncError> {
-        let output = Command::new(&self.config.robot_path)
-            .env("GITEA_URL", &self.config.gitea_url)
-            .env("GITEA_TOKEN", &self.config.token)
-            .args([
+        let output = self
+            .run_robot(&[
                 "wiki-delete",
                 "--owner",
                 &self.config.owner,
@@ -274,10 +304,7 @@ impl GiteaWikiClient {
                 "--name",
                 page_name,
             ])
-            .output()
-            .map_err(|e| {
-                WikiSyncError::GiteaRobot(format!("Failed to execute gitea-robot: {}", e))
-            })?;
+            .await?;
 
         if output.status.success() {
             info!("Deleted wiki page: {}", page_name);
@@ -296,10 +323,8 @@ impl GiteaWikiClient {
         let mut results = Vec::new();
 
         for learning in learnings {
-            if learning.should_sync_to_wiki() {
-                let result = self.sync_learning(learning).await;
-                results.push((learning.id.clone(), result));
-            }
+            let result = self.sync_learning(learning).await;
+            results.push((learning.id.clone(), result));
         }
 
         results
@@ -307,20 +332,15 @@ impl GiteaWikiClient {
 
     /// List all wiki pages
     pub async fn list_wiki_pages(&self) -> Result<Vec<String>, WikiSyncError> {
-        let output = Command::new(&self.config.robot_path)
-            .env("GITEA_URL", &self.config.gitea_url)
-            .env("GITEA_TOKEN", &self.config.token)
-            .args([
+        let output = self
+            .run_robot(&[
                 "wiki-list",
                 "--owner",
                 &self.config.owner,
                 "--repo",
                 &self.config.repo,
             ])
-            .output()
-            .map_err(|e| {
-                WikiSyncError::GiteaRobot(format!("Failed to execute gitea-robot: {}", e))
-            })?;
+            .await?;
 
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -338,12 +358,10 @@ impl GiteaWikiClient {
 }
 
 /// Sync service that periodically syncs learnings to Gitea wiki
-#[allow(dead_code)]
 pub struct WikiSyncService {
     client: GiteaWikiClient,
 }
 
-#[allow(dead_code)]
 impl WikiSyncService {
     /// Create new sync service
     pub fn new(client: GiteaWikiClient) -> Self {
@@ -380,7 +398,6 @@ impl WikiSyncService {
 }
 
 /// Report of a wiki sync operation
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct WikiSyncReport {
     pub created: usize,
@@ -391,7 +408,6 @@ pub struct WikiSyncReport {
     pub results: Vec<(String, Result<SyncResult, WikiSyncError>)>,
 }
 
-#[allow(dead_code)]
 impl WikiSyncReport {
     /// Check if all operations were successful
     pub fn all_success(&self) -> bool {
@@ -416,8 +432,12 @@ mod tests {
     fn test_gitea_wiki_config_default() {
         let config = GiteaWikiConfig::default();
         assert_eq!(config.owner, "terraphim");
-        assert_eq!(config.repo, "terraphim-ai");
-        assert_eq!(config.robot_path, "/home/alex/go/bin/gitea-robot");
+        // Default falls back to "terraphim-agents" when GITEA_REPO is unset,
+        // but respects the env var when it is set.
+        let expected_repo =
+            std::env::var("GITEA_REPO").unwrap_or_else(|_| "terraphim-agents".to_string());
+        assert_eq!(config.repo, expected_repo);
+        assert!(!config.robot_path.is_empty());
     }
 
     #[test]
@@ -531,10 +551,56 @@ mod tests {
         assert!(result.is_err() || matches!(result, Ok(SyncResult::Skipped(_))));
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_run_robot_enforces_timeout() {
+        use std::io::Write;
+        use std::os::unix::fs::PermissionsExt;
+        use std::time::Instant;
+
+        // A real robot binary that hangs longer than the configured timeout.
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("slow-robot.sh");
+        {
+            let mut f = std::fs::File::create(&script).unwrap();
+            writeln!(f, "#!/bin/sh\nsleep 5").unwrap();
+            let mut perms = f.metadata().unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&script, perms).unwrap();
+        }
+
+        let config = GiteaWikiConfig {
+            gitea_url: "http://localhost".to_string(),
+            token: "test".to_string(),
+            owner: "test".to_string(),
+            repo: "test".to_string(),
+            robot_path: script.to_string_lossy().into_owned(),
+            timeout: Duration::from_millis(200),
+        };
+        let client = GiteaWikiClient::new(config);
+
+        let start = Instant::now();
+        let result = client.list_wiki_pages().await;
+
+        assert!(
+            matches!(result, Err(WikiSyncError::Timeout(_))),
+            "expected timeout error, got: {:?}",
+            result
+        );
+        // Without the timeout the call would block for the full 5s sleep.
+        assert!(
+            start.elapsed() < Duration::from_secs(3),
+            "timeout should return promptly, took {:?}",
+            start.elapsed()
+        );
+    }
+
     #[test]
     fn gitea_wiki_config_token_redacted_in_debug() {
-        let mut cfg = GiteaWikiConfig::default();
-        cfg.token = "secret-gitea-token".to_string();
+        let cfg = GiteaWikiConfig {
+            token: "secret-gitea-token".to_string(),
+            ..Default::default()
+        };
         let dbg = format!("{:?}", cfg);
         assert!(
             !dbg.contains("secret-gitea-token"),
