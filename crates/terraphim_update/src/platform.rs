@@ -9,7 +9,17 @@ use std::env;
 use std::fs;
 use std::path::Path;
 
-/// Get the appropriate binary installation path for the current platform
+/// Get the appropriate binary installation path for the current platform.
+///
+/// Resolution order (first writable, matching dir wins):
+/// 1. The **parent of the currently-running executable** — when its filename
+///    matches `binary_name` (modulo `.exe`). This fixes the install-path
+///    shadowing bug where an update to `/usr/local/bin/<bin>` was masked by a
+///    stale `~/.cargo/bin/<bin>` earlier on `$PATH` (e.g. a `cargo install`
+///    copy). Installing where the running exe lives means the *next* launch
+///    picks up the new version regardless of `$PATH` ordering.
+/// 2. `/usr/local/bin/{binary_name}` (system-wide).
+/// 3. `~/.local/bin/{binary_name}` (user-local fallback).
 ///
 /// # Arguments
 /// * `binary_name` - Name of the binary (e.g., "terraphim", "terraphim_server")
@@ -17,14 +27,6 @@ use std::path::Path;
 /// # Returns
 /// * `Ok(PathBuf)` - Path where the binary should be installed
 /// * `Err(anyhow::Error)` - Error if platform is not supported
-///
-/// # Platform-specific behavior
-///
-/// **Linux/macOS:**
-/// - First attempts `/usr/local/bin/{binary_name}` (system-wide installation)
-/// - Falls back to `~/.local/bin/{binary_name}` (user-local installation) if:
-///   - System directory doesn't have write permissions
-///   - User directory is in PATH
 ///
 /// # Example
 /// ```no_run
@@ -39,24 +41,46 @@ pub fn get_binary_path(binary_name: &str) -> Result<String> {
         anyhow::bail!("Windows support is not yet implemented. Please use Linux or macOS.");
     }
 
+    let normalized = binary_name.trim_end_matches(std::env::consts::EXE_SUFFIX);
+
+    // 1. Prefer the running executable's directory when it is the same binary.
+    //    This is the common case for self-update and avoids PATH shadowing.
+    if let Ok(current_exe) = env::current_exe()
+        && let Some(dir) = current_exe.parent()
+    {
+        let same_bin = current_exe
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n.trim_end_matches(std::env::consts::EXE_SUFFIX) == normalized)
+            .unwrap_or(false);
+        if same_bin && check_write_permissions(dir) {
+            return Ok(dir.join(normalized).to_string_lossy().into_owned());
+        }
+        if same_bin {
+            tracing::debug!(
+                "current_exe dir {:?} not writable; falling through to system path",
+                dir
+            );
+        }
+    }
+
+    // 2. System-wide path.
     let system_path = format!("/usr/local/bin/{}", binary_name);
+    if check_write_permissions(Path::new("/usr/local/bin")) {
+        return Ok(system_path);
+    }
+
+    // 3. User-local fallback.
     let user_bin_dir = env::var("HOME")
         .map(|home| format!("{}/.local/bin", home))
         .unwrap_or_else(|_| "/home/user/.local/bin".to_string());
     let user_path = format!("{}/{}", user_bin_dir, binary_name);
 
-    // Check if we can write to system directory
-    if check_write_permissions(Path::new("/usr/local/bin")) {
-        return Ok(system_path);
-    }
-
-    // Fall back to user directory
     tracing::debug!(
         "Cannot write to /usr/local/bin, falling back to user directory: {}",
         user_path
     );
 
-    // Ensure user bin directory exists
     if let Err(e) = fs::create_dir_all(&user_bin_dir) {
         tracing::warn!("Could not create user bin directory: {}", e);
     }
@@ -232,6 +256,25 @@ mod tests {
         // On test systems, it should return user-local path
         // (since we likely don't have /usr/local/bin write access)
         println!("Binary path: {}", path);
+    }
+
+    #[test]
+    fn test_get_binary_path_prefers_running_exe_dir() {
+        // When asked for the path of the *currently running test binary* and
+        // its directory is writable, get_binary_path must return that dir --
+        // this is the fix for the install-path shadowing bug (#66).
+        let current_exe = env::current_exe().expect("current_exe");
+        let bin_name = current_exe
+            .file_name()
+            .and_then(|n| n.to_str())
+            .expect("file name")
+            .trim_end_matches(std::env::consts::EXE_SUFFIX);
+        let resolved = get_binary_path(bin_name).expect("resolve");
+        let parent = current_exe.parent().expect("parent").to_string_lossy();
+        assert!(
+            resolved.starts_with(&*parent),
+            "expected {resolved} to live under the running exe dir {parent}"
+        );
     }
 
     #[test]

@@ -1,12 +1,16 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use clap::{Parser, ValueEnum};
+use clap::{Parser, Subcommand, ValueEnum};
 use terraphim_automata::AutomataPath;
+#[cfg(feature = "llm")]
+use terraphim_grep::openrouter_client;
 use terraphim_grep::{
     GrepOptions, GrepResult, Haystack, HybridSearcher, SufficiencyJudge, TerraphimGrep,
 };
+use terraphim_types::Thesaurus;
+use terraphim_update::{TerraphimUpdater, UpdaterConfig};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 #[derive(Parser, Debug)]
@@ -17,7 +21,11 @@ use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 )]
 struct Args {
     #[arg(help = "Search query")]
-    query: String,
+    query: Option<String>,
+
+    /// Self-update commands (R2 manifest backend; GitHub fallback).
+    #[command(subcommand)]
+    command: Option<Command>,
 
     #[arg(
         short = 'C',
@@ -50,10 +58,26 @@ struct Args {
     #[arg(long, help = "Include LLM-generated answer")]
     answer: bool,
 
+    /// Hard-disable LLM synthesis for this run (see terraphim/terraphim-clients#81).
+    ///
+    /// Synthesis is already opt-in, but this also skips building the LLM client, so a
+    /// stray `OPENROUTER_API_KEY` in the environment cannot cost a single network call.
+    #[arg(
+        long,
+        visible_alias = "no-rlm",
+        conflicts_with_all = ["answer", "force_rlm"],
+        help = "Never use the LLM: return retrieved chunks only"
+    )]
+    search_only: bool,
+
     #[arg(long, help = "Output JSON format")]
     json: bool,
 
-    #[arg(long, help = "Search paths (default: current directory)")]
+    #[arg(
+        long,
+        num_args = 1..,
+        help = "Search paths (default: current directory)"
+    )]
     paths: Vec<PathBuf>,
 
     #[arg(long, help = "Role to use for search")]
@@ -70,6 +94,16 @@ struct Args {
 
     #[arg(long, help = "KG directory for persisting learned concepts")]
     kg_path: Option<PathBuf>,
+}
+
+/// Self-update subcommands. Backed by the shared `terraphim_update` crate
+/// (same R2 manifest backend + GitHub fallback as `terraphim-agent`).
+#[derive(Subcommand, Debug)]
+enum Command {
+    /// Check for updates without installing
+    CheckUpdate,
+    /// Update to latest version if available
+    Update,
 }
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -116,6 +150,30 @@ fn init_tracing() {
         .init();
 }
 
+/// Build the updater for `terraphim-grep`. Defaults to the R2 manifest backend
+/// (`downloads.terraphim.ai`) with the GitHub Releases fallback — same as the
+/// agent, via the shared `terraphim_update` crate.
+fn grep_updater() -> TerraphimUpdater {
+    let config = UpdaterConfig::new("terraphim-grep").with_version(env!("CARGO_PKG_VERSION"));
+    TerraphimUpdater::new(config)
+}
+
+async fn handle_update_command(command: Command) -> Result<()> {
+    let updater = grep_updater();
+    let status = match command {
+        Command::CheckUpdate => {
+            println!("Checking for terraphim-grep updates...");
+            updater.check_update().await?
+        }
+        Command::Update => {
+            println!("Updating terraphim-grep...");
+            updater.check_and_update().await?
+        }
+    };
+    println!("{status}");
+    Ok(())
+}
+
 /// Discover project-level config from `.terraphim/` directory.
 ///
 /// Returns the `.terraphim/` path if found, enabling auto-discovery of
@@ -143,17 +201,68 @@ fn resolve_role_name(
     Ok(explicit_role.unwrap_or("default").to_string())
 }
 
+/// Alternate thesaurus filename stems for a role, in priority order.
+///
+/// `discover_thesaurus` builds the filename literally from the role *name*
+/// (`thesaurus-<role_name>.json`), but projects commonly name the file after
+/// the role's configured `shortname` (e.g. `thesaurus-odidev.json` for role
+/// "Odilo Developer") or a lowercased hyphen slug (`thesaurus-odilo-developer.json`).
+/// The full role name is tried by the caller first; this returns only the
+/// alternates, deduplicated.
+///
+/// See terraphim/terraphim-clients#79.
+fn thesaurus_name_candidates(
+    role_name: &str,
+    config: &terraphim_config::project::ProjectConfig,
+) -> Vec<String> {
+    let mut candidates = Vec::new();
+
+    if let Some(role) = config.roles.get(role_name)
+        && let Some(shortname) = role.shortname.as_deref()
+        && !shortname.is_empty()
+        && shortname != role_name
+    {
+        candidates.push(shortname.to_string());
+    }
+
+    let slug = role_name
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join("-")
+        .to_lowercase();
+    if slug != role_name && !candidates.contains(&slug) {
+        candidates.push(slug);
+    }
+
+    candidates
+}
+
 /// Find thesaurus path with project config priority.
 ///
 /// Resolution order:
-///   1. `.terraphim/thesaurus-<role>.json` (project config)
-///   2. `*_thesaurus.json` in CWD or nearby directories (filesystem heuristic)
+///   1. `.terraphim/thesaurus-<role>.json` (project config, exact role name)
+///   2. `.terraphim/thesaurus-<shortname>.json` / `thesaurus-<slug>.json`
+///      (project config alternates, see [`thesaurus_name_candidates`])
+///   3. `*_thesaurus.json` in CWD or nearby directories (filesystem heuristic)
 fn find_default_thesaurus(role_name: &str) -> Option<PathBuf> {
-    if let Some(dir) = discover_project_dir()
-        && let Some(path) = terraphim_config::project::discover_thesaurus(&dir, role_name)
-    {
-        tracing::info!("Using project thesaurus: {:?}", path);
-        return Some(path);
+    if let Some(dir) = discover_project_dir() {
+        if let Some(path) = terraphim_config::project::discover_thesaurus(&dir, role_name) {
+            tracing::info!("Using project thesaurus: {:?}", path);
+            return Some(path);
+        }
+
+        // The thesaurus filename stem often differs from the role *name*; try
+        // the role's shortname and a slugified name. Config is loaded lazily,
+        // only on a miss, so the happy path stays allocation-free.
+        if let Ok(config) = terraphim_config::project::ProjectConfig::load_from_dir(&dir) {
+            for candidate in thesaurus_name_candidates(role_name, &config) {
+                if let Some(path) = terraphim_config::project::discover_thesaurus(&dir, &candidate)
+                {
+                    tracing::info!("Using project thesaurus: {:?}", path);
+                    return Some(path);
+                }
+            }
+        }
     }
 
     let possible_paths = vec![
@@ -208,6 +317,29 @@ where
     )
 }
 
+/// Build a thesaurus for the requested role.
+///
+/// Resolution order:
+///   1. If `--thesaurus <path>` is provided, load it.
+///   2. Otherwise try `find_default_thesaurus` (project config or filesystem heuristic).
+///   3. If none of the above succeeds, return an empty thesaurus so the CLI can fall back to
+///      `fff-search` enhanced grep without a knowledge graph.
+async fn resolve_thesaurus(role_name: &str, explicit: Option<&Path>) -> Result<Thesaurus> {
+    if let Some(path) = explicit {
+        let automata_path = AutomataPath::from_local(path);
+        return terraphim_automata::load_thesaurus(&automata_path)
+            .await
+            .with_context(|| format!("Failed to load thesaurus from {:?}", path));
+    }
+    if let Some(path) = find_default_thesaurus(role_name) {
+        let automata_path = AutomataPath::from_local(&path);
+        return terraphim_automata::load_thesaurus(&automata_path)
+            .await
+            .with_context(|| format!("Failed to load thesaurus from {:?}", path));
+    }
+    Ok(Thesaurus::new(role_name.to_string()))
+}
+
 /// Build an `LlmClient` for the requested role.
 ///
 /// Resolution order:
@@ -255,6 +387,37 @@ fn build_llm_for_role(
                     }
                 }
             }
+
+            // Prefer a long-timeout OpenRouter client built directly in grep so
+            // slow LLM providers do not hit the shared 10-second API timeout.
+            // This takes precedence over `role_from_env` because `OPENROUTER_API_KEY`
+            // is the most common way to configure grep. If the direct client cannot
+            // be built, fall back to `role_from_env` rather than disabling the LLM.
+            if let Some(key) = std::env::var("OPENROUTER_API_KEY")
+                .ok()
+                .filter(|s| !s.is_empty())
+            {
+                let model = std::env::var("OPENROUTER_MODEL")
+                    .unwrap_or_else(|_| "qwen/qwen3-coder:free".to_string());
+                if model.ends_with(":free") {
+                    tracing::warn!(
+                        "Using free-tier default model `{}`. RLM prompts may contain \
+                         repository content excerpts; verify the provider's data-handling \
+                         terms are acceptable for your codebase.",
+                        model
+                    );
+                }
+                match openrouter_client::OpenRouterClient::new(&key, &model) {
+                    Ok(client) => return Some(openrouter_client::into_llm_client(client)),
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to build direct OpenRouter client ({}); falling back to role_from_env",
+                            e
+                        );
+                    }
+                }
+            }
+
             role_from_env(role_name)?
         }
     };
@@ -322,7 +485,12 @@ fn role_from_env(role_name: &str) -> Option<terraphim_config::Role> {
 async fn main() -> Result<()> {
     init_tracing();
 
-    let args = Args::parse();
+    let mut args = Args::parse();
+
+    // Self-update subcommands short-circuit before any search setup.
+    if let Some(command) = args.command.take() {
+        return handle_update_command(command).await;
+    }
 
     let options = GrepOptions {
         haystack: args.haystack.into(),
@@ -343,32 +511,29 @@ async fn main() -> Result<()> {
         &load_project_config,
     )?;
 
-    let thesaurus_path = args
-        .thesaurus
-        .or_else(|| find_default_thesaurus(&role_name))
-        .context(
-            "No thesaurus specified and could not find default. Use --thesaurus to specify path.",
-        )?;
+    // Load thesaurus, falling back to an empty one when no project thesaurus exists.
+    // This lets terraphim-grep behave like an enhanced fff-search grep without a KG.
+    let thesaurus = resolve_thesaurus(&role_name, args.thesaurus.as_deref()).await?;
+    if thesaurus.is_empty() {
+        tracing::info!(
+            "No thesaurus found for role '{}'; running in fff-search enhanced grep mode",
+            role_name
+        );
+    } else {
+        tracing::debug!("Loaded thesaurus with {} entries", thesaurus.len());
+    }
 
-    // Load thesaurus
-    let automata_path = AutomataPath::from_local(&thesaurus_path);
-    let thesaurus = terraphim_automata::load_thesaurus(&automata_path)
-        .await
-        .with_context(|| format!("Failed to load thesaurus from {:?}", thesaurus_path))?;
-
-    tracing::debug!("Loaded thesaurus with {} entries", thesaurus.len());
-
-    // Determine search path
-    let search_path = args
-        .paths
-        .first()
-        .cloned()
-        .unwrap_or_else(|| PathBuf::from("."));
+    // Determine search paths
+    let search_paths = if args.paths.is_empty() {
+        vec![PathBuf::from(".")]
+    } else {
+        args.paths.clone()
+    };
 
     // Create hybrid searcher
     let mut hybrid_searcher = HybridSearcher::new(role_name.clone(), thesaurus)
         .map_err(|e| anyhow::anyhow!("Failed to create hybrid searcher: {}", e))?;
-    hybrid_searcher = hybrid_searcher.with_search_path(search_path);
+    hybrid_searcher = hybrid_searcher.with_search_paths(search_paths);
     let hybrid_searcher = Arc::new(hybrid_searcher);
 
     // Create sufficiency judge
@@ -378,7 +543,14 @@ async fn main() -> Result<()> {
     // Create TerraphimGrep and optionally attach an LLM client
     let terraphim_grep = TerraphimGrep::new(hybrid_searcher, sufficiency_judge);
     #[cfg(feature = "llm")]
-    let terraphim_grep = match build_llm_for_role(&role_name, args.role_config.as_deref()) {
+    let llm_client = if args.search_only {
+        tracing::debug!("--search-only: skipping LLM client setup");
+        None
+    } else {
+        build_llm_for_role(&role_name, args.role_config.as_deref())
+    };
+    #[cfg(feature = "llm")]
+    let terraphim_grep = match llm_client {
         Some(client) => {
             tracing::info!("LLM client wired: {}", client.name());
             let mut grep = terraphim_grep.with_llm_client(client.clone());
@@ -401,7 +573,7 @@ async fn main() -> Result<()> {
 
     // Perform search
     let result = terraphim_grep
-        .search(&args.query, options)
+        .search(args.query.as_deref().unwrap_or(""), options)
         .await
         .context("Search failed")?;
 
@@ -585,6 +757,123 @@ mod tests {
                 .unwrap_err()
                 .to_string()
                 .contains("multiple project roles found")
+        );
+    }
+
+    // Regression tests: terraphim/terraphim-clients#79
+    // The thesaurus filename stem often differs from the role *name*
+    // (e.g. `thesaurus-odidev.json` for role "Odilo Developer").
+
+    fn role_with_shortname(name: &str, shortname: &str) -> String {
+        format!(
+            r#"{{"shortname":"{}","name":"{}","relevance_function":"title-scorer","terraphim_it":false,"theme":"default","haystacks":[]}}"#,
+            shortname, name
+        )
+    }
+
+    #[test]
+    fn candidates_prefer_shortname_then_slug() {
+        // Mirrors zestic-ai/odilo .terraphim/config.json.
+        let mut config = ProjectConfig {
+            selected_role: Some("Odilo Developer".to_string()),
+            ..Default::default()
+        };
+        config.roles.insert(
+            "Odilo Developer".to_string(),
+            serde_json::from_str(&role_with_shortname("Odilo Developer", "odidev")).unwrap(),
+        );
+
+        let candidates = thesaurus_name_candidates("Odilo Developer", &config);
+        assert_eq!(
+            candidates,
+            vec!["odidev".to_string(), "odilo-developer".to_string()]
+        );
+    }
+
+    #[test]
+    fn candidates_fall_back_to_slug_when_role_not_in_config() {
+        let config = ProjectConfig::default();
+        let candidates = thesaurus_name_candidates("Rust Engineer", &config);
+        assert_eq!(candidates, vec!["rust-engineer".to_string()]);
+    }
+
+    #[test]
+    fn candidates_empty_when_nothing_to_add() {
+        // Lowercase single-word role name: slug is identical, no shortname.
+        let config = ProjectConfig::default();
+        assert!(thesaurus_name_candidates("devops", &config).is_empty());
+    }
+
+    #[test]
+    fn candidates_skip_shortname_equal_to_role_name() {
+        let mut config = ProjectConfig::default();
+        config.roles.insert(
+            "devops".to_string(),
+            serde_json::from_str(&role_with_shortname("devops", "devops")).unwrap(),
+        );
+        assert!(thesaurus_name_candidates("devops", &config).is_empty());
+    }
+
+    #[test]
+    fn candidates_dedupe_shortname_matching_slug() {
+        let mut config = ProjectConfig::default();
+        config.roles.insert(
+            "Rust Engineer".to_string(),
+            serde_json::from_str(&role_with_shortname("Rust Engineer", "rust-engineer")).unwrap(),
+        );
+        let candidates = thesaurus_name_candidates("Rust Engineer", &config);
+        assert_eq!(candidates, vec!["rust-engineer".to_string()]);
+    }
+
+    #[test]
+    fn candidates_slug_collapses_repeated_whitespace() {
+        let config = ProjectConfig::default();
+        let candidates = thesaurus_name_candidates("Odilo   Developer", &config);
+        assert_eq!(candidates, vec!["odilo-developer".to_string()]);
+    }
+
+    // Regression tests: terraphim/terraphim-clients#81
+    // RLM synthesis is opt-in; `--search-only` makes that explicit and mutually
+    // exclusive with the two flags that request synthesis.
+
+    #[test]
+    fn plain_query_requests_no_synthesis() {
+        let args = Args::try_parse_from(["terraphim-grep", "needle"]).expect("parse");
+        assert!(!args.answer, "--answer must default off");
+        assert!(!args.force_rlm, "--force-rlm must default off");
+        assert!(!args.search_only, "--search-only must default off");
+    }
+
+    #[test]
+    fn search_only_parses_and_sets_flag() {
+        let args =
+            Args::try_parse_from(["terraphim-grep", "needle", "--search-only"]).expect("parse");
+        assert!(args.search_only);
+    }
+
+    #[test]
+    fn no_rlm_alias_sets_search_only() {
+        let args = Args::try_parse_from(["terraphim-grep", "needle", "--no-rlm"]).expect("parse");
+        assert!(args.search_only, "--no-rlm is an alias for --search-only");
+    }
+
+    #[test]
+    fn search_only_conflicts_with_answer() {
+        let result =
+            Args::try_parse_from(["terraphim-grep", "needle", "--search-only", "--answer"]);
+        assert!(
+            result.is_err(),
+            "--search-only and --answer are contradictory and must be rejected"
+        );
+    }
+
+    #[test]
+    fn search_only_conflicts_with_force_rlm() {
+        let result =
+            Args::try_parse_from(["terraphim-grep", "needle", "--search-only", "--force-rlm"]);
+        assert!(
+            result.is_err(),
+            "--search-only and --force-rlm are contradictory and must be rejected"
         );
     }
 }

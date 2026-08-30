@@ -29,11 +29,27 @@ impl TuiService {
     /// If `no_project_config` is false, project-level `.terraphim/config.json` is discovered
     /// and merged on top of the loaded configuration.
     pub async fn new(config_path: Option<String>, no_project_config: bool) -> Result<Self> {
+        let config = Self::load_config(config_path, no_project_config).await?;
+        Self::from_config(config).await
+    }
+
+    /// Load the effective configuration without building a `ConfigState`.
+    ///
+    /// `ConfigState::new` builds the thesaurus and rolegraph, which profiling showed to be
+    /// ~63% of CLI startup (it parses a full markdown AST per knowledge-graph file, twice).
+    /// Commands that only read configuration -- `config show`, `roles list` -- do not need
+    /// any of that, so they load the config through here and skip it. Refs #120.
+    ///
+    /// Resolution order is identical to `new`; only the `ConfigState` build is omitted.
+    pub async fn load_config(
+        config_path: Option<String>,
+        no_project_config: bool,
+    ) -> Result<Config> {
         // Initialize logging. We install the agent's own filtered logger
-        // (rather than terraphim_service's) so that the benign
-        // thesaurus-not-found ERROR logged by `ensure_thesaurus_loaded` is
-        // suppressed while every other line is preserved. See
-        // terraphim/terraphim-clients#48 and `crate::logging`.
+        // (rather than `terraphim_service::logging`) so that the benign
+        // thesaurus-not-found `ERROR` logged by `ensure_thesaurus_loaded`
+        // is suppressed while every other line is preserved. See
+        // `crate::logging` and terraphim/terraphim-clients#48.
         crate::logging::init_logging();
 
         log::info!("Initializing TUI service");
@@ -46,7 +62,7 @@ impl TuiService {
                     if !no_project_config {
                         Self::merge_project_config(&mut config);
                     }
-                    return Self::from_config(config).await;
+                    return Ok(config);
                 }
                 Err(e) => {
                     return Err(anyhow::anyhow!(
@@ -80,7 +96,7 @@ impl TuiService {
         // Priority 2: role_config in settings.toml (bootstrap-then-persistence)
         if let Some(ref role_config_path) = device_settings.role_config {
             log::info!("Found role_config in settings.toml: '{}'", role_config_path);
-            return Self::load_with_role_config(
+            return Self::load_config_with_role_config(
                 role_config_path,
                 &device_settings,
                 no_project_config,
@@ -98,12 +114,12 @@ impl TuiService {
                 }
                 Err(_) => {
                     log::debug!("No saved config found, using default embedded");
-                    return Self::new_with_embedded_defaults(no_project_config).await;
+                    return Self::load_config_embedded_defaults(no_project_config);
                 }
             },
             Err(e) => {
                 log::warn!("Failed to build config: {:?}, using default", e);
-                return Self::new_with_embedded_defaults(no_project_config).await;
+                return Self::load_config_embedded_defaults(no_project_config);
             }
         };
 
@@ -111,7 +127,7 @@ impl TuiService {
         if !no_project_config {
             Self::merge_project_config(&mut config);
         }
-        Self::from_config(config).await
+        Ok(config)
     }
 
     /// Load config using bootstrap-then-persistence strategy.
@@ -119,11 +135,11 @@ impl TuiService {
     /// Tries persistence first (preserves runtime changes). If no persisted config,
     /// loads from the JSON file (bootstrap) and the config will be saved to persistence
     /// on next `save_config()` call.
-    async fn load_with_role_config(
+    async fn load_config_with_role_config(
         role_config_path: &str,
         device_settings: &DeviceSettings,
         no_project_config: bool,
-    ) -> Result<Self> {
+    ) -> Result<Config> {
         // Try persistence first (preserves runtime changes like `config set`)
         if let Ok(mut empty_config) = ConfigBuilder::new_with_id(ConfigId::Embedded).build()
             && let Ok(persisted) = empty_config.load().await
@@ -137,7 +153,7 @@ impl TuiService {
             if !no_project_config {
                 Self::merge_project_config(&mut config);
             }
-            return Self::from_config(config).await;
+            return Ok(config);
         }
 
         // No persisted config -- bootstrap from JSON file
@@ -178,7 +194,7 @@ impl TuiService {
                 if !no_project_config {
                     Self::merge_project_config(&mut config);
                 }
-                Self::from_config(config).await
+                Ok(config)
             }
             Err(e) => {
                 log::error!(
@@ -186,7 +202,7 @@ impl TuiService {
                     role_config_path,
                     e
                 );
-                Self::new_with_embedded_defaults(no_project_config).await
+                Self::load_config_embedded_defaults(no_project_config)
             }
         }
     }
@@ -194,14 +210,44 @@ impl TuiService {
     /// Initialize service strictly from the embedded default configuration.
     ///
     /// This constructor avoids touching host-specific config/state and is used by tests.
+    // Reachable only from the lib target: `tests/tui_service_tests.rs` uses it, the binary
+    // no longer does since the embedded-defaults fallback now goes through
+    // `load_config_embedded_defaults`. Refs #120.
+    #[allow(dead_code)]
     pub async fn new_with_embedded_defaults(no_project_config: bool) -> Result<Self> {
+        let config = Self::load_config_embedded_defaults(no_project_config)?;
+        Self::from_config(config).await
+    }
+
+    /// Embedded defaults as a plain `Config`, without building a `ConfigState`. Refs #120.
+    fn load_config_embedded_defaults(no_project_config: bool) -> Result<Config> {
         let mut config = ConfigBuilder::new_with_id(ConfigId::Embedded)
             .build_default_embedded()
             .build()?;
         if !no_project_config {
             Self::merge_project_config(&mut config);
         }
-        Self::from_config(config).await
+        Ok(config)
+    }
+
+    /// Selected role, read straight from a `Config`.
+    ///
+    /// These three mirror the `ConfigState` helpers in `terraphim_command_runtime`, which lock
+    /// and read the same fields. They live here rather than in that crate because
+    /// `packaged_install_graph_regression` builds terraphim_agent from a packaged tarball, where
+    /// `terraphim_command_runtime` resolves from the registry -- adding functions there would
+    /// make this crate depend on unpublished API. Refs #120.
+    pub fn selected_role_of(config: &Config) -> RoleName {
+        config.selected_role.clone()
+    }
+
+    /// See [`TuiService::selected_role_of`].
+    pub fn roles_with_info_of(config: &Config) -> Vec<(String, Option<String>)> {
+        config
+            .roles
+            .iter()
+            .map(|(name, role)| (name.to_string(), role.shortname.clone()))
+            .collect()
     }
 
     async fn from_config(mut config: Config) -> Result<Self> {
@@ -521,7 +567,7 @@ impl TuiService {
         // Use automata to extract paragraphs
         let results = terraphim_automata::matcher::extract_paragraphs_from_automata(
             text,
-            thesaurus,
+            &thesaurus,
             !exclude_term, // include_term is opposite of exclude_term
         )?;
 
@@ -570,7 +616,7 @@ impl TuiService {
         let thesaurus = self.get_thesaurus(role_name).await?;
 
         // Find matches
-        Ok(terraphim_automata::find_matches(text, thesaurus, true)?)
+        Ok(terraphim_automata::find_matches(text, &thesaurus, true)?)
     }
 
     /// Replace matches in text with links using thesaurus
@@ -585,7 +631,7 @@ impl TuiService {
         let thesaurus = self.get_thesaurus(role_name).await?;
 
         // Replace matches
-        let result = terraphim_automata::replace_matches(text, thesaurus, link_type)?;
+        let result = terraphim_automata::replace_matches(text, &thesaurus, link_type)?;
         Ok(String::from_utf8(result).unwrap_or_else(|_| text.to_string()))
     }
 

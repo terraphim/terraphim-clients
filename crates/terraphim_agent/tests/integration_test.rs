@@ -305,27 +305,8 @@ async fn test_search_pagination() {
 #[test]
 #[serial]
 fn test_tui_cli_search_command() {
-    if !std::process::Command::new("cargo")
-        .args(["build", "--bin", "terraphim-agent"])
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-    {
-        println!("Could not build TUI binary, skipping CLI test");
-        return;
-    }
-
-    let output = Command::new("cargo")
-        .args([
-            "run",
-            "--bin",
-            "terraphim-agent",
-            "--",
-            "search",
-            "test",
-            "--limit",
-            "3",
-        ])
+    let output = Command::new(env!("CARGO_BIN_EXE_terraphim-agent"))
+        .args(["search", "test", "--limit", "3"])
         .env("TERRAPHIM_SERVER", TEST_SERVER_URL)
         .output();
 
@@ -346,18 +327,8 @@ fn test_tui_cli_search_command() {
 #[test]
 #[serial]
 fn test_tui_cli_roles_list_command() {
-    if !std::process::Command::new("cargo")
-        .args(["build", "--bin", "terraphim-agent"])
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-    {
-        println!("Could not build TUI binary, skipping CLI test");
-        return;
-    }
-
-    let output = Command::new("cargo")
-        .args(["run", "--bin", "terraphim-agent", "--", "roles", "list"])
+    let output = Command::new(env!("CARGO_BIN_EXE_terraphim-agent"))
+        .args(["roles", "list"])
         .env("TERRAPHIM_SERVER", TEST_SERVER_URL)
         .output();
 
@@ -376,18 +347,8 @@ fn test_tui_cli_roles_list_command() {
 #[test]
 #[serial]
 fn test_tui_cli_config_show_command() {
-    if !std::process::Command::new("cargo")
-        .args(["build", "--bin", "terraphim-agent"])
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-    {
-        println!("Could not build TUI binary, skipping CLI test");
-        return;
-    }
-
-    let output = Command::new("cargo")
-        .args(["run", "--bin", "terraphim-agent", "--", "config", "show"])
+    let output = Command::new(env!("CARGO_BIN_EXE_terraphim-agent"))
+        .args(["config", "show"])
         .env("TERRAPHIM_SERVER", TEST_SERVER_URL)
         .output();
 
@@ -415,26 +376,8 @@ fn test_tui_cli_config_show_command() {
 #[test]
 #[serial]
 fn test_tui_cli_graph_command() {
-    if !std::process::Command::new("cargo")
-        .args(["build", "--bin", "terraphim-agent"])
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-    {
-        println!("Could not build TUI binary, skipping CLI test");
-        return;
-    }
-
-    let output = Command::new("cargo")
-        .args([
-            "run",
-            "--bin",
-            "terraphim-agent",
-            "--",
-            "graph",
-            "--top-k",
-            "5",
-        ])
+    let output = Command::new(env!("CARGO_BIN_EXE_terraphim-agent"))
+        .args(["graph", "--top-k", "5"])
         .env("TERRAPHIM_SERVER", TEST_SERVER_URL)
         .output();
 

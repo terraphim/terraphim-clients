@@ -828,7 +828,7 @@ impl McpService {
 
                 let return_pos = return_positions.unwrap_or(false);
 
-                match find_matches(&text, thesaurus_data, return_pos) {
+                match find_matches(&text, &thesaurus_data, return_pos) {
                     Ok(matches) => {
                         let mut contents = Vec::new();
                         let summary = format!(
@@ -976,7 +976,7 @@ impl McpService {
 
                 let include_term_bool = include_term.unwrap_or(true);
 
-                match extract_paragraphs_from_automata(&text, thesaurus_data, include_term_bool) {
+                match extract_paragraphs_from_automata(&text, &thesaurus_data, include_term_bool) {
                     Ok(paragraphs) => {
                         let mut contents = Vec::new();
                         let summary = format!(
