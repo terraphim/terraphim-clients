@@ -61,15 +61,22 @@ back to `json` automatically.
 ## Self-describing schemas
 
 `robot schemas` returns one `CommandDoc` per subcommand, including
-the `repl_only` flag introduced in #131:
+the `repl_only` flag introduced in #131. A `chat` entry exists in
+two flavours: the **CLI** `chat` (gated by `--features llm`, default-on;
+one-shot prompt → response, `repl_only: false`) and the **REPL** `chat`
+(gated by `--features repl-chat`; interactive `/chat` command,
+`repl_only: true`). Both can be present in a `repl-chat` build — the
+`repl_only` flag distinguishes them. Refs terraphim-clients#134 P1.
 
 ```bash
 terraphim-agent --robot --format json robot schemas | \
     jq -r '.[] | "\(.name)\t\(.repl_only)"'
-# search  false
-# config  false
-# vm      true     # REPL-only — no top-level CLI parity
-# chat    true     # REPL-only, behind --features repl-chat
+# search    false
+# config    false
+# vm        true       # REPL-only (firecracker-gated)
+# chat      false      # CLI one-shot chat, behind --features llm (default-on)
+# chat      true       # REPL interactive /chat, behind --features repl-chat
+# summarize true       # REPL-only, behind --features repl-chat
 ```
 
 Filter REPL-only entries out when checking top-level CLI parity:
@@ -77,7 +84,13 @@ Filter REPL-only entries out when checking top-level CLI parity:
 ```bash
 terraphim-agent --robot --format json robot schemas | \
     jq -r '.[] | select(.repl_only == false) | .name'
+# search config role graph chat
 ```
+
+Note: `chat` appears twice in `repl-chat` builds; one with
+`repl_only: false` (CLI) and one with `repl_only: true` (REPL). The
+filter above returns each entry that has `repl_only: false`, so
+`chat` shows up once (the CLI one) in builds that include it.
 
 ## Examples
 
