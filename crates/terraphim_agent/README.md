@@ -137,6 +137,16 @@ prepare-commit-msg (those hooks fire after execution or on text inputs). See
 and `adr/ADR-002-guard-priority-order.md` for the architectural decision
 record.
 
+## Further reading
+
+* Full reference: [`docs/agent-reference.md`](../../docs/agent-reference.md)
+* Blog posts in [`docs/blog/`](../../docs/blog/):
+  * `terraphim-agent-sessions.md` — Claude Code / Cursor / Aider import
+  * `terraphim-agent-setup.md` — onboarding wizard and templates
+  * `terraphim-agent-robot-mode.md` — JSON output and exit codes
+  * `terraphim-agent-shared-learning.md` — markdown-backed learnings
+  * `terraphim-update-r2-backend.md` — R2 update backend
+
 ## Configuration
 
 On first run, the agent reads `settings.toml` from the platform config directory
