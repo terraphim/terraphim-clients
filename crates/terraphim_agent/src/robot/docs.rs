@@ -150,6 +150,7 @@ impl SelfDocumentation {
                         "concepts_matched": {"type": "array", "items": {"type": "string"}}
                     }
                 }),
+                repl_only: false,
             },
             // Config command
             CommandDoc {
@@ -182,6 +183,7 @@ impl SelfDocumentation {
                         "config": {"type": "object"}
                     }
                 }),
+                repl_only: false,
             },
             // Role command
             CommandDoc {
@@ -215,6 +217,7 @@ impl SelfDocumentation {
                         "current_role": {"type": "string"}
                     }
                 }),
+                repl_only: false,
             },
             // Graph command
             CommandDoc {
@@ -256,8 +259,9 @@ impl SelfDocumentation {
                         }
                     }
                 }),
+                repl_only: false,
             },
-            // VM command
+            // VM command (REPL-only, feature-gated to firecracker)
             CommandDoc {
                 name: "vm".to_string(),
                 aliases: vec![],
@@ -297,6 +301,7 @@ impl SelfDocumentation {
                         "status": {"type": "string"}
                     }
                 }),
+                repl_only: true,
             },
             // Help command
             CommandDoc {
@@ -330,6 +335,7 @@ impl SelfDocumentation {
                         "help_text": {"type": "string"}
                     }
                 }),
+                repl_only: false,
             },
             // Robot command (self-documentation)
             CommandDoc {
@@ -367,12 +373,14 @@ impl SelfDocumentation {
                 response_schema: serde_json::json!({
                     "type": "object"
                 }),
+                repl_only: false,
             },
         ];
 
         // Add feature-gated commands
         #[cfg(feature = "repl-chat")]
         {
+            // Chat command is REPL-only, not a top-level CLI subcommand.
             docs.push(CommandDoc {
                 name: "chat".to_string(),
                 aliases: vec![],
@@ -396,6 +404,7 @@ impl SelfDocumentation {
                         "response": {"type": "string"}
                     }
                 }),
+                repl_only: true,
             });
 
             docs.push(CommandDoc {
@@ -421,6 +430,7 @@ impl SelfDocumentation {
                         "summary": {"type": "string"}
                     }
                 }),
+                repl_only: false,
             });
         }
 
@@ -455,6 +465,7 @@ impl SelfDocumentation {
                         "suggestions": {"type": "array", "items": {"type": "string"}}
                     }
                 }),
+                repl_only: false,
             });
 
             docs.push(CommandDoc {
@@ -488,6 +499,7 @@ impl SelfDocumentation {
                         "paragraphs": {"type": "array", "items": {"type": "string"}}
                     }
                 }),
+                repl_only: false,
             });
 
             docs.push(CommandDoc {
@@ -513,6 +525,7 @@ impl SelfDocumentation {
                         "matches": {"type": "array", "items": {"type": "object"}}
                     }
                 }),
+                repl_only: false,
             });
 
             docs.push(CommandDoc {
@@ -545,6 +558,7 @@ impl SelfDocumentation {
                         "result": {"type": "string"}
                     }
                 }),
+                repl_only: false,
             });
 
             docs.push(CommandDoc {
@@ -570,6 +584,7 @@ impl SelfDocumentation {
                         "entries": {"type": "array"}
                     }
                 }),
+                repl_only: false,
             });
         }
 
@@ -604,6 +619,15 @@ pub struct CommandDoc {
     pub flags: Vec<FlagDoc>,
     pub examples: Vec<ExampleDoc>,
     pub response_schema: serde_json::Value,
+    /// True when this command is only available inside the REPL and is not a
+    /// top-level `terraphim-agent` subcommand. Consumers parsing
+    /// `terraphim-agent robot schemas` should filter these out when checking
+    /// for top-level CLI parity.
+    ///
+    /// See `docs/plans/research-terraphim-grep-agent-2026-08-30.md` and
+    /// `terraphim-clients#131`.
+    #[serde(default)]
+    pub repl_only: bool,
 }
 
 /// Documentation for a command argument
