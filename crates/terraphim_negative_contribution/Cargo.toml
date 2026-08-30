@@ -1,6 +1,6 @@
 [package]
 name = "terraphim_negative_contribution"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 authors = ["Terraphim AI <team@terraphim.ai>"]
 description = "Static detection of Explicit Deferral Markers (todo!(), unimplemented!()) in Rust source files"
@@ -12,8 +12,8 @@ keywords = ["static-analysis", "code-quality", "edm", "deferral-marker"]
 readme = "../../README.md"
 
 [dependencies]
-terraphim_automata = { version = "1.19.2" }
-terraphim_types = { version = "1.0.0" }
+terraphim_automata = { version = "1.21.0", registry = "terraphim" }
+terraphim_types = { version = "1.21.0", registry = "terraphim" }
 log = { workspace = true }
 
 [dev-dependencies]

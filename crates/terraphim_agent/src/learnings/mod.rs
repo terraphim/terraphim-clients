@@ -29,7 +29,7 @@ pub mod export_kg;
 pub mod guard;
 mod hook;
 mod install;
-pub(crate) mod procedure;
+pub mod procedure;
 pub(crate) mod redaction;
 mod replay;
 #[cfg(feature = "shared-learning")]
@@ -52,7 +52,7 @@ pub use capture::{
     LearningError, annotate_with_entities, annotate_with_thesaurus, query_all_entries,
 };
 // Re-export KG thesaurus building utilities for use by hook validation pipeline
-pub(crate) use capture::{build_kg_thesaurus_with_hash, find_kg_dir};
+pub use capture::{build_kg_thesaurus_with_hash, find_kg_dir};
 
 // Re-export compile functions for building thesauruses from corrections
 #[allow(unused_imports)]

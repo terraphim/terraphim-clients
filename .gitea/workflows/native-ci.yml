@@ -10,5 +10,13 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo build --workspace
       - run: cargo test --workspace --lib --no-fail-fast
+      # #2171: enrichment feature clippy + test invocations.
       - run: cargo clippy -p terraphim_sessions --features enrichment -- -D warnings
       - run: cargo test -p terraphim_sessions --features enrichment --lib --no-fail-fast
+      # #95: isolated packaged install-graph regression.
+      - run: cargo test -p terraphim_agent --test packaged_install_graph_regression -- --nocapture
+      # #118: repo guards -- duplicate-crate detection and the publish gate's own
+      # tests. Rust tests, not shell steps: the runner allowlist rejects any
+      # program that is not cargo ("policy rejected command: ... not on the
+      # allowlist"), which is what took CI down from #112 until now.
+      - run: cargo test -p terraphim_agent --test ci_guards -- --nocapture

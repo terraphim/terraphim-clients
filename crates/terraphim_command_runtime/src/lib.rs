@@ -44,7 +44,7 @@ pub async fn find_role_by_name_or_shortname(
     let query_lower = query.to_lowercase();
 
     // First try exact match on name
-    for (name, _role) in config.roles.iter() {
+    for name in config.roles.keys() {
         if name.to_string().to_lowercase() == query_lower {
             return Some(name.clone());
         }

@@ -12,26 +12,9 @@ fn agent_binary() -> String {
         return bin;
     }
 
-    let output = Command::new("cargo")
-        .args(["build", "-p", "terraphim_agent"])
-        .output()
-        .expect("cargo build should succeed");
-    if !output.status.success() {
-        panic!(
-            "cargo build failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-
-    let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap();
-    workspace_root
-        .join("target/debug/terraphim-agent")
-        .to_string_lossy()
-        .to_string()
+    // Cargo already built the binary for this test; nesting `cargo build`
+    // deadlocks on the outer build lock. Refs #113.
+    env!("CARGO_BIN_EXE_terraphim-agent").to_string()
 }
 
 /// Run the user-prompt-submit hook with a JSON payload, returning whether it succeeded.

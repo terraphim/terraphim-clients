@@ -1,0 +1,52 @@
+name: R2 manifest health
+
+# Verifies the live R2 distribution channel end-to-end: fetches each binary's
+# stable.json from downloads.terraphim.ai, confirms the advertised version and
+# that every asset URL in the manifest returns 200. Catches a broken manifest
+# or a missing asset before users hit it via `terraphim-agent update`.
+
+on:
+  schedule:
+    # Every hour at minute 7.
+    - cron: "7 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  BASE_URL: https://downloads.terraphim.ai
+
+jobs:
+  manifest-health:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install jq
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq jq
+      - name: Verify each binary manifest + its asset URLs
+        run: |
+          set -euo pipefail
+          bins="terraphim-agent terraphim-grep terraphim-cli"
+          fail=0
+          for bin in $bins; do
+            url="${BASE_URL}/${bin}/stable.json"
+            echo "== ${bin} =="
+            manifest="$(curl -fsS "${url}")" || { echo "FAIL: ${url} not reachable"; fail=1; continue; }
+            version="$(printf '%s' "${manifest}" | jq -r .version)"
+            [ -n "${version}" ] && [ "${version}" != "null" ] || { echo "FAIL: ${bin} manifest has no version"; fail=1; continue; }
+            echo "  advertised version: ${version}"
+            # Every asset URL in the manifest must resolve.
+            asset_count="$(printf '%s' "${manifest}" | jq -r '.assets | length')"
+            printf '%s' "${manifest}" | jq -r '.assets[]' | while read -r key; do
+              asset_url="${BASE_URL}/${key}"
+              code="$(curl -s -o /dev/null -w "%{http_code}" "${asset_url}")"
+              if [ "${code}" != "200" ]; then
+                echo "FAIL: asset ${asset_url} returned ${code}"
+                exit 2
+              fi
+              echo "  ok: ${key}"
+            done || fail=1
+            echo "  (${asset_count} asset(s) verified)"
+          done
+          exit ${fail}

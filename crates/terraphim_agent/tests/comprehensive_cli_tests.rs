@@ -9,8 +9,8 @@ use std::str;
 
 /// Helper function to run TUI command with arguments
 fn run_tui_command(args: &[&str]) -> Result<(String, String, i32)> {
-    let mut cmd = Command::new("cargo");
-    cmd.args(["run", "-p", "terraphim_agent", "--"]).args(args);
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_terraphim-agent"));
+    cmd.args(args);
 
     let output = cmd.output()?;
 
