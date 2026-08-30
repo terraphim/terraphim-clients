@@ -95,7 +95,7 @@ impl ReplacementService {
     /// Perform replacement on text.
     pub fn replace(&self, text: &str) -> Result<HookResult, ReplacementError> {
         let result_bytes =
-            terraphim_automata::replace_matches(text, self.thesaurus.clone(), self.link_type)?;
+            terraphim_automata::replace_matches(text, &self.thesaurus, self.link_type)?;
         let result = String::from_utf8(result_bytes)?;
         Ok(HookResult::success(text.to_string(), result))
     }
@@ -117,7 +117,7 @@ impl ReplacementService {
     ) -> Result<Vec<terraphim_automata::Matched>, ReplacementError> {
         Ok(terraphim_automata::find_matches(
             text,
-            self.thesaurus.clone(),
+            &self.thesaurus,
             true,
         )?)
     }

@@ -349,23 +349,35 @@ async fn find_aider_history_files(
     Ok(files)
 }
 
-/// Count Aider history files (for detection estimate)
+/// How deep to descend when estimating. Aider history lives in project roots,
+/// so anything deeper is almost certainly not worth the syscalls.
+const MAX_DETECT_DEPTH: usize = 6;
+
+/// Stop once we have this many hits. `detect` reports an estimate, so an exact
+/// count over a large tree is not worth the walk.
+const MAX_DETECT_HITS: usize = 64;
+
+/// Count Aider history files, for a detection estimate.
+///
+/// Bounded deliberately. The previous implementation recursed with no depth cap
+/// and used `Path::is_dir()`, which follows symlinks, so a link pointing at an
+/// ancestor recursed forever -- one agent process was found spinning at 96% CPU
+/// for nine days inside this function. The walk root is the current working
+/// directory, so the tree shape is entirely outside our control. Refs #123.
+///
+/// `follow_links(false)` stops symlink cycles, `max_depth` bounds an
+/// unexpectedly deep tree, and the hit cap bounds an unexpectedly wide one.
 fn count_aider_history_files(base_path: &std::path::Path) -> usize {
-    let mut count = 0;
-    if let Ok(entries) = std::fs::read_dir(base_path) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                count += count_aider_history_files(&path);
-            } else if path
-                .file_name()
-                .is_some_and(|name| name == ".aider.chat.history.md")
-            {
-                count += 1;
-            }
-        }
-    }
-    count
+    walkdir::WalkDir::new(base_path)
+        .max_depth(MAX_DETECT_DEPTH)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            entry.file_type().is_file() && entry.file_name() == ".aider.chat.history.md"
+        })
+        .take(MAX_DETECT_HITS)
+        .count()
 }
 
 #[cfg(test)]
@@ -438,5 +450,54 @@ mod tests {
         // The metadata lines at the start should be treated as assistant output
         assert!(messages.len() >= 2);
         assert_eq!(messages.last().unwrap().role, MessageRole::Assistant);
+    }
+
+    /// A symlink pointing at an ancestor used to make `count_aider_history_files`
+    /// recurse forever -- an agent process was found spinning at 96% CPU for nine
+    /// days inside it. The walk root is the current working directory, so the tree
+    /// shape is not ours to control. Refs #123.
+    #[test]
+    #[cfg(unix)]
+    fn count_aider_history_files_terminates_on_symlink_cycle() {
+        use std::time::{Duration, Instant};
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+
+        std::fs::create_dir_all(root.join("project/nested")).expect("create dirs");
+        std::fs::write(root.join("project/.aider.chat.history.md"), "# aider chat")
+            .expect("write history");
+
+        // project/nested/loop -> project, i.e. a cycle back to an ancestor.
+        std::os::unix::fs::symlink(root.join("project"), root.join("project/nested/loop"))
+            .expect("symlink");
+
+        let started = Instant::now();
+        let count = count_aider_history_files(root);
+        let elapsed = started.elapsed();
+
+        assert_eq!(count, 1, "should find the one real history file");
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "walk must terminate promptly, took {elapsed:?}"
+        );
+    }
+
+    /// The depth cap must hold even without a cycle.
+    #[test]
+    fn count_aider_history_files_respects_depth_cap() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut deep = dir.path().to_path_buf();
+        for i in 0..(MAX_DETECT_DEPTH + 4) {
+            deep = deep.join(format!("d{i}"));
+        }
+        std::fs::create_dir_all(&deep).expect("create deep tree");
+        std::fs::write(deep.join(".aider.chat.history.md"), "# aider chat").expect("write");
+
+        assert_eq!(
+            count_aider_history_files(dir.path()),
+            0,
+            "a file below the depth cap must not be counted"
+        );
     }
 }

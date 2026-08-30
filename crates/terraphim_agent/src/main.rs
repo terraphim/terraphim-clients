@@ -1014,12 +1014,12 @@ enum LearnSub {
     },
     /// Process hook input from AI agents (reads JSON from stdin)
     Hook {
+        /// AI agent format
+        #[arg(long, value_enum, default_value = "claude")]
+        format: learnings::AgentFormat,
         /// Hook type for multi-hook pipeline
         #[arg(long, value_enum, default_value = "post-tool-use")]
         learn_hook_type: learnings::LearnHookType,
-        /// Source agent format (auto-detected by default)
-        #[arg(long, value_enum, default_value = "auto")]
-        format: learnings::AgentFormat,
     },
     /// Install hook for AI agent
     InstallHook {
@@ -1088,6 +1088,8 @@ enum SharedLearningSub {
     Import,
     /// Show shared learning statistics by trust level
     Stats,
+    /// Sync L2/L3 learnings to Gitea wiki
+    Sync,
     /// Inject learnings from shared directory into local store
     #[cfg(feature = "cross-agent-injection")]
     Inject {
@@ -2042,6 +2044,41 @@ async fn run_offline_command(
     } = &command
     {
         return run_config_validate().await;
+    }
+
+    // `config show` and the read-only `roles` subcommands need the configuration but not
+    // the thesaurus or rolegraph that `ConfigState::new` builds. Profiling put that build at
+    // ~63% of startup -- a full markdown AST parse per knowledge-graph file, done twice --
+    // so they load the config directly and skip it. The integration suite drives exactly
+    // these commands 20-30 times per test. Refs #120.
+    if let Command::Config {
+        sub: ConfigSub::Show,
+    } = &command
+    {
+        let config = TuiService::load_config(config_path, false).await?;
+        println!("{}", serde_json::to_string_pretty(&config)?);
+        return Ok(());
+    }
+
+    if let Command::Roles {
+        sub: RolesSub::List,
+    } = &command
+    {
+        let config = TuiService::load_config(config_path, false).await?;
+        let selected = TuiService::selected_role_of(&config);
+        for (name, shortname) in TuiService::roles_with_info_of(&config) {
+            let marker = if name == selected.to_string() {
+                "*"
+            } else {
+                " "
+            };
+            if let Some(short) = shortname {
+                println!("{} {} ({})", marker, name, short);
+            } else {
+                println!("{} {}", marker, name);
+            }
+        }
+        return Ok(());
     }
 
     // Cache is stateless - handle before TuiService initialization
@@ -3339,9 +3376,9 @@ async fn run_learn_command(sub: LearnSub) -> Result<()> {
             }
         }
         LearnSub::Hook {
-            learn_hook_type,
             format,
-        } => learnings::process_hook_input_with_type(learn_hook_type, format)
+            learn_hook_type,
+        } => learnings::process_hook_input_with_type(format, learn_hook_type)
             .await
             .map_err(|e| e.into()),
         LearnSub::InstallHook { agent } => {
@@ -3994,6 +4031,14 @@ async fn run_shared_learning_command(
                         .promote_to_l2(&id)
                         .await
                         .map_err(|e| anyhow::anyhow!("{}", e))?;
+                    let fetched = store.get(&id).await.map_err(|e| anyhow::anyhow!("{}", e))?;
+                    if fetched.trust_level != TrustLevel::L2 {
+                        return Err(anyhow::anyhow!(
+                            "Promote to L2 had no effect (current trust level: {}). \
+                             Learning must be promotable to L2.",
+                            fetched.trust_level
+                        ));
+                    }
                     println!("Promoted learning {} to L2 (Peer-Validated).", id);
                 }
                 TrustLevel::L3 => {
@@ -4001,6 +4046,13 @@ async fn run_shared_learning_command(
                         .promote_to_l3(&id)
                         .await
                         .map_err(|e| anyhow::anyhow!("{}", e))?;
+                    let fetched = store.get(&id).await.map_err(|e| anyhow::anyhow!("{}", e))?;
+                    if fetched.trust_level != TrustLevel::L3 {
+                        return Err(anyhow::anyhow!(
+                            "Promote to L3 had no effect (current trust level: {}).",
+                            fetched.trust_level
+                        ));
+                    }
                     println!("Promoted learning {} to L3 (Human-Approved).", id);
                 }
                 TrustLevel::L1 => {
@@ -4045,18 +4097,20 @@ async fn run_shared_learning_command(
                 .with_error_context(local.error_output.clone())
                 .with_keywords(local.tags.clone());
 
-                if let Some(ref correction) = local.correction {
-                    let shared = shared.with_correction(correction.clone());
-                    store
-                        .insert(shared)
-                        .await
-                        .map_err(|e| anyhow::anyhow!("{}", e))?;
+                let shared = if let Some(ref correction) = local.correction {
+                    shared.with_correction(correction.clone())
                 } else {
-                    store
-                        .insert(shared)
-                        .await
-                        .map_err(|e| anyhow::anyhow!("{}", e))?;
-                }
+                    shared
+                };
+                let id = shared.id.clone();
+                store
+                    .insert(shared)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("{}", e))?;
+                store
+                    .promote_to_l1(&id)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("{}", e))?;
                 imported += 1;
             }
 
@@ -4064,6 +4118,40 @@ async fn run_shared_learning_command(
                 "Imported {} local learning(s) into shared store at L1.",
                 imported
             );
+            Ok(())
+        }
+        SharedLearningSub::Sync => {
+            use terraphim_agent::shared_learning::{
+                GiteaWikiClient, GiteaWikiConfig, WikiSyncService,
+            };
+
+            let wiki_config = GiteaWikiConfig::from_env().map_err(|e| anyhow::anyhow!("{}", e))?;
+            let client = GiteaWikiClient::new(wiki_config);
+            let service = WikiSyncService::new(client);
+            let learnings = store
+                .list_all()
+                .await
+                .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+            if learnings.is_empty() {
+                println!("No shared learnings to sync.");
+                return Ok(());
+            }
+
+            let report = service.sync_batch(&learnings).await;
+            println!("Wiki sync complete:");
+            println!("  Total:   {}", report.total);
+            println!("  Created: {}", report.created);
+            println!("  Updated: {}", report.updated);
+            println!("  Skipped: {}", report.skipped);
+            println!("  Failed:  {}", report.failed);
+
+            if report.failed > 0 {
+                return Err(anyhow::anyhow!(
+                    "Wiki sync finished with {} failure(s)",
+                    report.failed
+                ));
+            }
             Ok(())
         }
         SharedLearningSub::Stats => {
@@ -4572,7 +4660,7 @@ async fn run_server_command(
             // Extract paragraphs using automata
             let results = terraphim_automata::matcher::extract_paragraphs_from_automata(
                 &text,
-                thesaurus,
+                &thesaurus,
                 !exclude_term, // include_term is opposite of exclude_term
             )?;
 

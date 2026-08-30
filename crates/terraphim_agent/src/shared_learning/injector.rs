@@ -176,12 +176,12 @@ impl LearningInjector {
                 continue;
             }
 
-            if let Some(ref working_dir) = self.config.working_dir {
-                if !self.should_inject(&learning, working_dir) {
-                    result.skipped_context += 1;
-                    debug!("Skipping {} (context mismatch)", learning.id);
-                    continue;
-                }
+            if let Some(ref working_dir) = self.config.working_dir
+                && !self.should_inject(&learning, working_dir)
+            {
+                result.skipped_context += 1;
+                debug!("Skipping {} (context mismatch)", learning.id);
+                continue;
             }
 
             result.injected += 1;

@@ -723,7 +723,7 @@ impl CommandRegistry {
 
         let command_thesaurus = self.command_thesaurus.read().await;
         if let Some(thesaurus) = command_thesaurus.as_ref() {
-            find_matches(&command.content, thesaurus.clone(), true)
+            find_matches(&command.content, thesaurus, true)
                 .map_err(|e| CommandRegistryError::AutomataError(e.to_string()))
         } else {
             Ok(Vec::new())
@@ -765,7 +765,7 @@ impl CommandRegistry {
             thesaurus.insert(key, value);
         }
 
-        extract_paragraphs_from_automata(&command.content, thesaurus, true)
+        extract_paragraphs_from_automata(&command.content, &thesaurus, true)
             .map_err(|e| CommandRegistryError::AutomataError(e.to_string()))
     }
 

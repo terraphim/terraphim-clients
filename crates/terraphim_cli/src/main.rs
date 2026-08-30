@@ -795,7 +795,7 @@ async fn handle_evaluate(
         .await
         .map_err(|e| anyhow::anyhow!("Failed to load thesaurus '{}': {}", thesaurus_path, e))?;
 
-    let result = evaluate(&ground_truth, thesaurus);
+    let result = evaluate(&ground_truth, &thesaurus);
     Ok(serde_json::to_value(&result)?)
 }
 

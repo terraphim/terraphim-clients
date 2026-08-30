@@ -252,6 +252,8 @@ async fn main() -> Result<()> {
     if args.sse {
         info!("Starting SSE server on {}", args.bind);
 
+        let server_start = std::time::Instant::now();
+
         // Start SSE server
         let config = SseServerConfig {
             bind: args.bind.parse().expect("Invalid bind address"),
@@ -262,6 +264,20 @@ async fn main() -> Result<()> {
         };
 
         let (sse_server, router) = SseServer::new(config);
+
+        // Readiness probe: GET /health returns {"status":"ok","transport":"sse","uptime_secs":N}
+        let router = router.route(
+            "/health",
+            axum::routing::get(move || async move {
+                let uptime_secs = server_start.elapsed().as_secs();
+                axum::Json(serde_json::json!({
+                    "status": "ok",
+                    "transport": "sse",
+                    "uptime_secs": uptime_secs
+                }))
+            }),
+        );
+
         let listener = tokio::net::TcpListener::bind(sse_server.config.bind).await?;
         let ct = sse_server.config.ct.child_token();
 
@@ -330,5 +346,19 @@ mod tests {
         assert!(config.roles.contains_key(&RoleName::new("devops")));
         assert_eq!(config.selected_role, RoleName::new("devops"));
         assert_eq!(config.default_role, RoleName::new("devops"));
+    }
+
+    #[test]
+    fn health_response_body_has_required_fields() {
+        let start = std::time::Instant::now();
+        let uptime_secs = start.elapsed().as_secs();
+        let body = serde_json::json!({
+            "status": "ok",
+            "transport": "sse",
+            "uptime_secs": uptime_secs
+        });
+        assert_eq!(body["status"], "ok");
+        assert_eq!(body["transport"], "sse");
+        assert!(body["uptime_secs"].is_number());
     }
 }

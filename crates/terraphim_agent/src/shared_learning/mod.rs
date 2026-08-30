@@ -27,7 +27,9 @@ pub use markdown_store::{MarkdownLearningStore, MarkdownStoreConfig, MarkdownSto
 pub use store::{SharedLearningStore, StoreConfig};
 pub use terraphim_types::shared_learning::SuggestionStatus;
 pub use types::{LearningSource as SharedLearningSource, SharedLearning, TrustLevel};
-pub use wiki_sync::{GiteaWikiClient, WikiSyncError};
+pub use wiki_sync::{
+    GiteaWikiClient, GiteaWikiConfig, WikiSyncError, WikiSyncReport, WikiSyncService,
+};
 
 #[cfg(feature = "shared-learning")]
 pub use terraphim_types::shared_learning::LearningStore;

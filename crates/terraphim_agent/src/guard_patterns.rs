@@ -149,7 +149,7 @@ impl CommandGuard {
     /// Priority: allowlist first, then destructive check, then suspicious check, then default allow.
     pub fn check(&self, command: &str) -> GuardResult {
         // Check allowlist first -- if any safe pattern matches, allow immediately
-        match find_matches(command, self.allowlist_thesaurus.clone(), false) {
+        match find_matches(command, &self.allowlist_thesaurus, false) {
             Ok(matches) if !matches.is_empty() => {
                 return GuardResult::allow(command.to_string());
             }
@@ -158,7 +158,7 @@ impl CommandGuard {
         }
 
         // Check destructive patterns
-        match find_matches(command, self.destructive_thesaurus.clone(), false) {
+        match find_matches(command, &self.destructive_thesaurus, false) {
             Ok(matches) if !matches.is_empty() => {
                 // Use the first match (LeftmostLongest gives the best match)
                 let first_match = &matches[0];
@@ -176,7 +176,7 @@ impl CommandGuard {
         }
 
         // Check suspicious patterns
-        match find_matches(command, self.suspicious_thesaurus.clone(), false) {
+        match find_matches(command, &self.suspicious_thesaurus, false) {
             Ok(matches) if !matches.is_empty() => {
                 // Use the first match (LeftmostLongest gives the best match)
                 let first_match = &matches[0];
