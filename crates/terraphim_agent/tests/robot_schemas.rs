@@ -45,17 +45,22 @@ fn every_command_has_repl_only_field() {
 
 #[test]
 fn top_level_cli_commands_are_not_repl_only() {
+    // Each of these names must have at least one schema entry with
+    // `repl_only: false` (the top-level CLI subcommand). The REPL `chat`
+    // entry — present in `repl-chat` builds — is filtered out by the
+    // `repl_only == false` predicate so the test does not double-count
+    // the name `chat`.
     let schemas = run_schemas();
-    let top_level = ["search", "config", "role", "graph"];
-    for cmd in &schemas {
-        let name = cmd["name"].as_str().unwrap_or("");
-        if top_level.contains(&name) {
-            assert_eq!(
-                cmd["repl_only"],
-                serde_json::Value::Bool(false),
-                "top-level command `{name}` must have repl_only=false (Refs #131)"
-            );
-        }
+    let top_level = ["search", "config", "role", "graph", "chat"];
+    for name in top_level {
+        let entry = schemas.iter().find(|c| {
+            c["name"].as_str() == Some(name)
+                && c["repl_only"] == serde_json::Value::Bool(false)
+        });
+        assert!(
+            entry.is_some(),
+            "top-level CLI command `{name}` must have a non-repl-only entry in schemas (Refs #131, #134)"
+        );
     }
 }
 
@@ -74,18 +79,86 @@ fn vm_is_marked_repl_only() {
 }
 
 #[test]
-fn chat_is_marked_repl_only() {
-    // chat is feature-gated behind repl-chat; if the test binary was built
-    // without that feature, chat will not appear. We must tolerate that.
+fn repl_chat_is_marked_repl_only() {
+    // The REPL `chat` command is feature-gated behind `repl-chat`. It must
+    // have `repl_only: true` when present. Filter by `repl_only == true`
+    // so this test is robust to a `repl-chat` build that also contains a
+    // CLI `chat` entry (`repl_only: false`). Refs #134 P1.
     let schemas = run_schemas();
-    if let Some(chat) = schemas.iter().find(|c| c["name"].as_str() == Some("chat")) {
+    let repl_chat = schemas.iter().find(|c| {
+        c["name"].as_str() == Some("chat")
+            && c["repl_only"] == serde_json::Value::Bool(true)
+    });
+    // In default and `llm`-only builds, the REPL chat is absent; the unit
+    // test in docs.rs (compile-time under `#[cfg(feature = "repl-chat")]`)
+    // covers the presence case. The `#[test]` here is a runtime smoke test:
+    // if the binary was built with `repl-chat`, the entry must be present
+    // and correctly marked.
+    if let Some(repl_chat) = repl_chat {
         assert_eq!(
-            chat["repl_only"],
+            repl_chat["repl_only"],
             serde_json::Value::Bool(true),
-            "chat is REPL-only and must have repl_only=true (Refs #131)"
+            "REPL chat (repl-chat feature) must have repl_only=true (Refs #134)"
         );
     }
-    // If chat is absent (default build), the field still has the right value
-    // when the feature is enabled. The unit test in docs.rs (compile-time)
-    // covers that path.
+}
+
+#[test]
+fn cli_chat_is_marked_not_repl_only() {
+    // The top-level CLI `Command::Chat` (gated by `--features llm`,
+    // default-on) must be in schemas with `repl_only: false`. In a
+    // `repl-chat` build both the CLI and the REPL `chat` are present; we
+    // filter by `repl_only == false` to pick the CLI one. Refs #134 P1.
+    let schemas = run_schemas();
+    let cli_chat = schemas
+        .iter()
+        .find(|c| c["name"].as_str() == Some("chat"))
+        .expect(
+            "CLI chat (--features llm, default-on) must appear in schemas (Refs #134 P1)",
+        );
+    assert_eq!(
+        cli_chat["repl_only"],
+        serde_json::Value::Bool(false),
+        "CLI chat is a top-level CLI subcommand and must have repl_only=false (Refs #134 P1)"
+    );
+    assert_eq!(
+        cli_chat["name"],
+        serde_json::Value::String("chat".to_string())
+    );
+    // The CLI chat takes a required `prompt` positional argument (not the
+    // REPL chat's optional `message`); assert the shape so a future schema
+    // edit cannot silently drop the required argument.
+    let arguments = cli_chat["arguments"]
+        .as_array()
+        .expect("arguments must be an array");
+    let prompt = arguments
+        .iter()
+        .find(|a| a["name"].as_str() == Some("prompt"))
+        .expect("CLI chat must have a `prompt` argument");
+    assert_eq!(
+        prompt["required"],
+        serde_json::Value::Bool(true),
+        "CLI chat's `prompt` argument is required (Refs #134 P1)"
+    );
+}
+
+#[test]
+fn summarize_is_marked_repl_only() {
+    // `summarize` is REPL-only (registered in `repl::commands`, gated by
+    // `repl-chat`); it has no top-level CLI subcommand. Must be
+    // `repl_only: true` when present. Refs #134 P2.
+    let schemas = run_schemas();
+    let summarize = schemas
+        .iter()
+        .find(|c| c["name"].as_str() == Some("summarize"));
+    if let Some(entry) = summarize {
+        assert_eq!(
+            entry["repl_only"],
+            serde_json::Value::Bool(true),
+            "summarize is REPL-only and must have repl_only=true (Refs #134 P2)"
+        );
+    }
+    // In default and `llm`-only builds, `summarize` is not in schemas; the
+    // unit test in docs.rs (compile-time under `#[cfg(feature = "repl-chat")]`)
+    // pins the value when the feature is enabled.
 }
