@@ -8,7 +8,7 @@ documentation = "https://terraphim.ai"
 homepage = "https://terraphim.ai"
 readme = "README.md"
 license = "MIT"
-repository = "https://github.com/terraphim/terraphim-ai"
+repository = "https://git.terraphim.cloud/terraphim/terraphim-clients"
 keywords = ["grep", "search", "knowledge-graph", "rlm"]
 categories = ["development-tools"]
 
