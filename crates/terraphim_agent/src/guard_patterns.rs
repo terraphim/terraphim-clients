@@ -69,6 +69,42 @@ pub struct GuardTrace {
     pub stages: Vec<GuardStageTrace>,
 }
 
+impl GuardTrace {
+    /// Print the trace to stdout (when `json` is true) or to stderr in a
+    /// human-readable form (otherwise). The structured output goes to stdout
+    /// so it can be piped; the human-readable form goes to stderr so it does
+    /// not pollute the JSON stream.
+    ///
+    /// Refs structural-pr-review P2.2 (terraphim-clients#134): the previous
+    /// `run_offline_command` and `run_server_command` `--explain` blocks
+    /// were 30-line near-verbatim duplicates. Centralising the formatting
+    /// here keeps the two call sites in lockstep.
+    pub fn print(&self, json: bool) -> std::fmt::Result {
+        if json {
+            // Re-use serde_json by writing to a String; keep stdout/stderr
+            // separation consistent with the rest of the agent.
+            let s = serde_json::to_string(self).map_err(|_| std::fmt::Error)?;
+            println!("{}", s);
+        } else {
+            eprintln!("# guard evaluation trace");
+            eprintln!("# command: {}", self.result.command);
+            for stage in &self.stages {
+                let term = stage
+                    .matched_term
+                    .as_deref()
+                    .map(|t| format!(" term=`{}`", t))
+                    .unwrap_or_default();
+                eprintln!(
+                    "# stage={:<12} matched={:<5} outcome={}{}",
+                    stage.stage, stage.matched, stage.outcome, term
+                );
+            }
+            eprintln!("# decision={:?}", self.result.decision);
+        }
+        Ok(())
+    }
+}
+
 impl GuardResult {
     /// Create an "allow" result
     pub fn allow(command: String) -> Self {
@@ -174,54 +210,14 @@ impl CommandGuard {
     ///
     /// Returns a GuardResult indicating whether the command should be allowed, sandboxed, or blocked.
     /// Priority: allowlist first, then destructive check, then suspicious check, then default allow.
+    ///
+    /// This is a thin wrapper around [`Self::check_with_trace`] that drops the
+    /// per-stage trace. The trace is cheap to build (a `Vec<4>` of small
+    /// structs populated alongside the matches), and centralising the
+    /// pipeline eliminates ~70 lines of duplicated matchers. Refs
+    /// structural-pr-review P2.3 (terraphim-clients#134).
     pub fn check(&self, command: &str) -> GuardResult {
-        // Check allowlist first -- if any safe pattern matches, allow immediately
-        match find_matches(command, &self.allowlist_thesaurus, false) {
-            Ok(matches) if !matches.is_empty() => {
-                return GuardResult::allow(command.to_string());
-            }
-            Ok(_) => {}  // no allowlist match, continue
-            Err(_) => {} // fail open on error
-        }
-
-        // Check destructive patterns
-        match find_matches(command, &self.destructive_thesaurus, false) {
-            Ok(matches) if !matches.is_empty() => {
-                // Use the first match (LeftmostLongest gives the best match)
-                let first_match = &matches[0];
-                let reason = first_match.normalized_term.url.clone().unwrap_or_else(|| {
-                    format!(
-                        "Blocked: matched destructive pattern '{}'",
-                        first_match.term
-                    )
-                });
-                let pattern = first_match.term.clone();
-                return GuardResult::block(command.to_string(), reason, pattern);
-            }
-            Ok(_) => {}  // no destructive match
-            Err(_) => {} // fail open on error
-        }
-
-        // Check suspicious patterns
-        match find_matches(command, &self.suspicious_thesaurus, false) {
-            Ok(matches) if !matches.is_empty() => {
-                // Use the first match (LeftmostLongest gives the best match)
-                let first_match = &matches[0];
-                let reason = first_match.normalized_term.url.clone().unwrap_or_else(|| {
-                    format!(
-                        "Sandboxed: matched suspicious pattern '{}'",
-                        first_match.term
-                    )
-                });
-                let pattern = first_match.term.clone();
-                return GuardResult::sandbox(command.to_string(), reason, pattern);
-            }
-            Ok(_) => {}  // no suspicious match
-            Err(_) => {} // fail open on error
-        }
-
-        // No match -- allow
-        GuardResult::allow(command.to_string())
+        self.check_with_trace(command).result
     }
 
     /// Same as `check` but additionally returns per-stage traces showing

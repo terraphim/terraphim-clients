@@ -2016,26 +2016,12 @@ async fn run_offline_command(
 
         if *explain {
             // Recompute the trace so we can show the per-stage path even
-            // when the final decision came from a short-circuit.
+            // when the final decision came from a short-circuit. The trace
+            // shares the same matchers as `check`, so this is a second
+            // walk over the same inputs (cheap: a `Vec<4>` plus three
+            // Aho-Corasick matches).
             let trace = guard.check_with_trace(&input_command);
-            if *json {
-                println!("{}", serde_json::to_string(&trace)?);
-            } else {
-                eprintln!("# guard evaluation trace");
-                eprintln!("# command: {}", input_command);
-                for stage in &trace.stages {
-                    let term = stage
-                        .matched_term
-                        .as_deref()
-                        .map(|t| format!(" term=`{}`", t))
-                        .unwrap_or_default();
-                    eprintln!(
-                        "# stage={:<12} matched={:<5} outcome={}{}",
-                        stage.stage, stage.matched, stage.outcome, term
-                    );
-                }
-                eprintln!("# decision={:?}", trace.result.decision);
-            }
+            trace.print(*json)?;
             // Still respect the normal exit-code semantics when --explain is on
             // so scripts can use `--explain --fail-on-empty` style gating.
             if trace.result.decision == guard_patterns::GuardDecision::Block
@@ -4929,24 +4915,7 @@ async fn run_server_command(
 
             if explain {
                 let trace = guard.check_with_trace(&input_command);
-                if json {
-                    println!("{}", serde_json::to_string(&trace)?);
-                } else {
-                    eprintln!("# guard evaluation trace");
-                    eprintln!("# command: {}", input_command);
-                    for stage in &trace.stages {
-                        let term = stage
-                            .matched_term
-                            .as_deref()
-                            .map(|t| format!(" term=`{}`", t))
-                            .unwrap_or_default();
-                        eprintln!(
-                            "# stage={:<12} matched={:<5} outcome={}{}",
-                            stage.stage, stage.matched, stage.outcome, term
-                        );
-                    }
-                    eprintln!("# decision={:?}", trace.result.decision);
-                }
+                trace.print(json)?;
                 if trace.result.decision == guard_patterns::GuardDecision::Block && !fail_open {
                     std::process::exit(1);
                 }
