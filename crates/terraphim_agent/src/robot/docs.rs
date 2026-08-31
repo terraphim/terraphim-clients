@@ -150,6 +150,7 @@ impl SelfDocumentation {
                         "concepts_matched": {"type": "array", "items": {"type": "string"}}
                     }
                 }),
+                repl_only: false,
             },
             // Config command
             CommandDoc {
@@ -182,6 +183,7 @@ impl SelfDocumentation {
                         "config": {"type": "object"}
                     }
                 }),
+                repl_only: false,
             },
             // Role command
             CommandDoc {
@@ -215,6 +217,7 @@ impl SelfDocumentation {
                         "current_role": {"type": "string"}
                     }
                 }),
+                repl_only: false,
             },
             // Graph command
             CommandDoc {
@@ -256,8 +259,9 @@ impl SelfDocumentation {
                         }
                     }
                 }),
+                repl_only: false,
             },
-            // VM command
+            // VM command (REPL-only, feature-gated to firecracker)
             CommandDoc {
                 name: "vm".to_string(),
                 aliases: vec![],
@@ -297,6 +301,7 @@ impl SelfDocumentation {
                         "status": {"type": "string"}
                     }
                 }),
+                repl_only: true,
             },
             // Help command
             CommandDoc {
@@ -330,6 +335,7 @@ impl SelfDocumentation {
                         "help_text": {"type": "string"}
                     }
                 }),
+                repl_only: false,
             },
             // Robot command (self-documentation)
             CommandDoc {
@@ -367,16 +373,79 @@ impl SelfDocumentation {
                 response_schema: serde_json::json!({
                     "type": "object"
                 }),
+                repl_only: false,
             },
         ];
 
-        // Add feature-gated commands
+        // Add the top-level CLI `chat` subcommand. This is `Command::Chat`
+        // in `main.rs` (gated by `--features llm`, default-on). It is
+        // separate from the REPL `chat` command below, which is registered
+        // by `repl::commands` and gated by `--features repl-chat`. Both can
+        // appear in schemas in a `repl-chat` build (which transitively
+        // enables `llm`); the REPL one is `repl_only: true`, the CLI one is
+        // `repl_only: false`. Refs structural-pr-review P1 (terraphim-clients#134).
+        #[cfg(feature = "llm")]
+        {
+            docs.push(CommandDoc {
+                name: "chat".to_string(),
+                aliases: vec![],
+                description: "One-shot chat with the AI for a specific role (top-level CLI subcommand).".to_string(),
+                arguments: vec![ArgumentDoc {
+                    name: "prompt".to_string(),
+                    arg_type: "string".to_string(),
+                    required: true,
+                    description: "Prompt to send to the model.".to_string(),
+                    default: None,
+                }],
+                flags: vec![
+                    FlagDoc {
+                        name: "--role".to_string(),
+                        short: Some("-r".to_string()),
+                        flag_type: "string".to_string(),
+                        default: None,
+                        description: "Role to scope the chat to.".to_string(),
+                    },
+                    FlagDoc {
+                        name: "--model".to_string(),
+                        short: Some("-m".to_string()),
+                        flag_type: "string".to_string(),
+                        default: None,
+                        description: "Model override (defaults to the role's configured model).".to_string(),
+                    },
+                ],
+                examples: vec![
+                    ExampleDoc {
+                        description: "One-shot chat with the active role".to_string(),
+                        command: "terraphim-agent chat \"What is the guard priority order?\"".to_string(),
+                        output: None,
+                    },
+                    ExampleDoc {
+                        description: "Chat scoped to a specific role and model".to_string(),
+                        command: "terraphim-agent --role \"Terraphim Engineer\" chat \"Summarise the ADR-002 rationale\" --model gpt-4o-mini".to_string(),
+                        output: None,
+                    },
+                ],
+                response_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "response": {"type": "string"}
+                    }
+                }),
+                repl_only: false,
+            });
+        }
+
+        // Add the REPL `chat` and `summarize` commands. These are registered
+        // by `repl::commands` (gated by `--features repl-chat`) and have no
+        // top-level CLI parity. The CLI `chat` subcommand above is a separate
+        // entry. Refs structural-pr-review P1 (terraphim-clients#134) and
+        // P2 (summarize `repl_only` correctness).
         #[cfg(feature = "repl-chat")]
         {
             docs.push(CommandDoc {
                 name: "chat".to_string(),
                 aliases: vec![],
-                description: "Interactive chat with AI".to_string(),
+                description: "Interactive chat with AI (REPL command).".to_string(),
                 arguments: vec![ArgumentDoc {
                     name: "message".to_string(),
                     arg_type: "string".to_string(),
@@ -396,12 +465,13 @@ impl SelfDocumentation {
                         "response": {"type": "string"}
                     }
                 }),
+                repl_only: true,
             });
 
             docs.push(CommandDoc {
                 name: "summarize".to_string(),
                 aliases: vec![],
-                description: "Summarize content".to_string(),
+                description: "Summarize content (REPL command).".to_string(),
                 arguments: vec![ArgumentDoc {
                     name: "target".to_string(),
                     arg_type: "string".to_string(),
@@ -421,6 +491,7 @@ impl SelfDocumentation {
                         "summary": {"type": "string"}
                     }
                 }),
+                repl_only: true,
             });
         }
 
@@ -455,6 +526,7 @@ impl SelfDocumentation {
                         "suggestions": {"type": "array", "items": {"type": "string"}}
                     }
                 }),
+                repl_only: false,
             });
 
             docs.push(CommandDoc {
@@ -488,6 +560,7 @@ impl SelfDocumentation {
                         "paragraphs": {"type": "array", "items": {"type": "string"}}
                     }
                 }),
+                repl_only: false,
             });
 
             docs.push(CommandDoc {
@@ -513,6 +586,7 @@ impl SelfDocumentation {
                         "matches": {"type": "array", "items": {"type": "object"}}
                     }
                 }),
+                repl_only: false,
             });
 
             docs.push(CommandDoc {
@@ -545,6 +619,7 @@ impl SelfDocumentation {
                         "result": {"type": "string"}
                     }
                 }),
+                repl_only: false,
             });
 
             docs.push(CommandDoc {
@@ -570,6 +645,7 @@ impl SelfDocumentation {
                         "entries": {"type": "array"}
                     }
                 }),
+                repl_only: false,
             });
         }
 
@@ -604,6 +680,15 @@ pub struct CommandDoc {
     pub flags: Vec<FlagDoc>,
     pub examples: Vec<ExampleDoc>,
     pub response_schema: serde_json::Value,
+    /// True when this command is only available inside the REPL and is not a
+    /// top-level `terraphim-agent` subcommand. Consumers parsing
+    /// `terraphim-agent robot schemas` should filter these out when checking
+    /// for top-level CLI parity.
+    ///
+    /// See `docs/plans/research-terraphim-grep-agent-2026-08-30.md` and
+    /// `terraphim-clients#131`.
+    #[serde(default)]
+    pub repl_only: bool,
 }
 
 /// Documentation for a command argument
