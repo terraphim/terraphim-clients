@@ -78,9 +78,11 @@ async fn find_files_no_scorer_returns_results() {
 async fn find_files_with_kg_scorer_boosts_matching_paths() {
     let config_state = minimal_config_state().await;
 
-    // Build a thesaurus that recognises "automata" - files under
-    // crates/terraphim_automata/ should be boosted.
-    let thesaurus = thesaurus_with_terms("test", &[(1, "automata")]);
+    // Build a thesaurus that recognises "mcp_server" - files under
+    // crates/terraphim_mcp_server/ should be boosted. (The original test
+    // used "automata", pointing at a crates/terraphim_automata/ directory
+    // that does not exist in this workspace; Refs #142.)
+    let thesaurus = thesaurus_with_terms("test", &[(1, "mcp_server")]);
     let scorer = Arc::new(KgPathScorer::new(thesaurus));
     let service = McpService::new(config_state).with_kg_scorer(scorer);
 
@@ -102,15 +104,15 @@ async fn find_files_with_kg_scorer_boosts_matching_paths() {
     // Verify we got results back
     assert!(result.content.len() > 1, "expected results beyond summary");
 
-    // At least one result should reference automata (boosted to top)
-    let has_automata = result.content.iter().any(|c| {
+    // At least one result should reference mcp_server (boosted to top)
+    let has_mcp_server = result.content.iter().any(|c| {
         c.as_text()
-            .map(|t| t.text.contains("automata"))
+            .map(|t| t.text.contains("mcp_server"))
             .unwrap_or(false)
     });
     assert!(
-        has_automata,
-        "expected automata-path file in top results; got: {:?}",
+        has_mcp_server,
+        "expected mcp_server-path file in top results; got: {:?}",
         result.content
     );
 }
