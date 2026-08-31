@@ -92,10 +92,19 @@ impl Default for LearningCaptureConfig {
             .join(".terraphim")
             .join("learnings");
 
-        let global_dir = dirs::data_dir()
-            .unwrap_or_else(|| PathBuf::from("~/.local/share"))
-            .join("terraphim")
-            .join("learnings");
+        // Honour TERRAPHIM_DEFAULT_DATA_PATH so tests can steer the storage
+        // location without depending on the platform-specific dirs::data_dir()
+        // behaviour (which ignores XDG_DATA_HOME on macOS/Windows). This brings
+        // the hook path into line with terraphim_settings::DeviceSettings, which
+        // already reads the same env var. Refs #144.
+        let global_dir = if let Ok(p) = std::env::var("TERRAPHIM_DEFAULT_DATA_PATH") {
+            PathBuf::from(p).join("terraphim").join("learnings")
+        } else {
+            dirs::data_dir()
+                .unwrap_or_else(|| PathBuf::from("~/.local/share"))
+                .join("terraphim")
+                .join("learnings")
+        };
 
         Self {
             project_dir,
@@ -122,8 +131,17 @@ impl LearningCaptureConfig {
         }
     }
 
-    /// Determine storage location based on availability
+    /// Determine storage location based on availability.
+    ///
+    /// When `TERRAPHIM_DEFAULT_DATA_PATH` is set (e.g. by hermetic tests via
+    /// `support::cli_test_env::create_hermetic_root`), it always wins — the
+    /// env var explicitly steers storage to a known location. Otherwise,
+    /// project directory takes precedence over the global fallback so the
+    /// in-repo `.terraphim/learnings/` is preferred. Refs #144.
     pub fn storage_location(&self) -> PathBuf {
+        if std::env::var_os("TERRAPHIM_DEFAULT_DATA_PATH").is_some() {
+            return self.global_dir.clone();
+        }
         if self.project_dir.exists()
             || self
                 .project_dir
