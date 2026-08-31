@@ -54,8 +54,7 @@ fn top_level_cli_commands_are_not_repl_only() {
     let top_level = ["search", "config", "role", "graph", "chat"];
     for name in top_level {
         let entry = schemas.iter().find(|c| {
-            c["name"].as_str() == Some(name)
-                && c["repl_only"] == serde_json::Value::Bool(false)
+            c["name"].as_str() == Some(name) && c["repl_only"] == serde_json::Value::Bool(false)
         });
         assert!(
             entry.is_some(),
@@ -86,8 +85,7 @@ fn repl_chat_is_marked_repl_only() {
     // CLI `chat` entry (`repl_only: false`). Refs #134 P1.
     let schemas = run_schemas();
     let repl_chat = schemas.iter().find(|c| {
-        c["name"].as_str() == Some("chat")
-            && c["repl_only"] == serde_json::Value::Bool(true)
+        c["name"].as_str() == Some("chat") && c["repl_only"] == serde_json::Value::Bool(true)
     });
     // In default and `llm`-only builds, the REPL chat is absent; the unit
     // test in docs.rs (compile-time under `#[cfg(feature = "repl-chat")]`)
@@ -113,9 +111,7 @@ fn cli_chat_is_marked_not_repl_only() {
     let cli_chat = schemas
         .iter()
         .find(|c| c["name"].as_str() == Some("chat"))
-        .expect(
-            "CLI chat (--features llm, default-on) must appear in schemas (Refs #134 P1)",
-        );
+        .expect("CLI chat (--features llm, default-on) must appear in schemas (Refs #134 P1)");
     assert_eq!(
         cli_chat["repl_only"],
         serde_json::Value::Bool(false),

@@ -58,8 +58,7 @@ fn make_payload(command: &str) -> String {
 fn rm_rf_tmp_foo_passes_through_with_warning() {
     // Default: substitution is suppressed, command passes through unchanged
     // and a `warnings` field documents the suppressed replacement.
-    let (code, stdout, _stderr) =
-        run_hook(&[], &make_payload("rm -rf /tmp/foo"));
+    let (code, stdout, _stderr) = run_hook(&[], &make_payload("rm -rf /tmp/foo"));
     assert_eq!(code, 0, "hook should exit 0");
     let output = parse(&stdout);
     let command = output["tool_input"]["command"]
@@ -73,7 +72,9 @@ fn rm_rf_tmp_foo_passes_through_with_warning() {
         .as_array()
         .expect("warnings must be an array");
     assert!(
-        warnings.iter().any(|w| w.as_str().unwrap_or("").contains("KG-replaceable")),
+        warnings
+            .iter()
+            .any(|w| w.as_str().unwrap_or("").contains("KG-replaceable")),
         "expected a warning explaining the suppressed substitution; got {:?}",
         warnings
     );
@@ -99,8 +100,7 @@ fn rm_rf_root_denied_by_default_guard() {
 #[test]
 fn rewrite_flag_substitutes_when_set() {
     // With `--rewrite`, the thesaurus substitution is applied as before.
-    let (code, stdout, _stderr) =
-        run_hook(&["--rewrite"], &make_payload("rm -rf /tmp/foo"));
+    let (code, stdout, _stderr) = run_hook(&["--rewrite"], &make_payload("rm -rf /tmp/foo"));
     assert_eq!(code, 0);
     let output = parse(&stdout);
     let command = output["tool_input"]["command"]
@@ -116,10 +116,7 @@ fn rewrite_flag_substitutes_when_set() {
 fn no_with_guard_overrides_default_guard() {
     // `--no-with-guard` is the explicit escape hatch; even `rm -rf /` passes
     // through because the user accepted the risk.
-    let (code, stdout, _stderr) = run_hook(
-        &["--no-with-guard"],
-        &make_payload("rm -rf /"),
-    );
+    let (code, stdout, _stderr) = run_hook(&["--no-with-guard"], &make_payload("rm -rf /"));
     assert_eq!(code, 0);
     let output = parse(&stdout);
     // No permissionDecision means no deny — the original payload survives.
@@ -138,8 +135,7 @@ fn allowlisted_rm_rf_path_passes_default_guard() {
     // `/tmp/` is in the allowlist, so `rm -rf /tmp/something` should NOT be
     // denied by the guard. This guards against accidental regressions in the
     // priority order documented in ADR-002 (allowlist > destructive).
-    let (code, stdout, _stderr) =
-        run_hook(&[], &make_payload("rm -rf /tmp/foo"));
+    let (code, stdout, _stderr) = run_hook(&[], &make_payload("rm -rf /tmp/foo"));
     assert_eq!(code, 0);
     let output = parse(&stdout);
     assert!(

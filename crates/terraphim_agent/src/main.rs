@@ -2150,9 +2150,7 @@ async fn run_offline_command(
             trace.print(*json)?;
             // Still respect the normal exit-code semantics when --explain is on
             // so scripts can use `--explain --fail-on-empty` style gating.
-            if trace.result.decision == guard_patterns::GuardDecision::Block
-                && !*fail_open
-            {
+            if trace.result.decision == guard_patterns::GuardDecision::Block && !*fail_open {
                 std::process::exit(1);
             }
             return Ok(());
@@ -2969,8 +2967,7 @@ async fn run_offline_command(
                                 terraphim_hooks::ReplacementService::new(thesaurus);
                             let hook_result = replacement_service.replace_fail_open(command);
 
-                            let kg_validation =
-                                kg_validation::validate_command_against_kg(command);
+                            let kg_validation = kg_validation::validate_command_against_kg(command);
 
                             let mut output = input_value.clone();
                             let mut emitted_warning = false;
@@ -2983,9 +2980,7 @@ async fn run_offline_command(
                                     {
                                         obj.insert(
                                             "command".to_string(),
-                                            serde_json::Value::String(
-                                                hook_result.result.clone(),
-                                            ),
+                                            serde_json::Value::String(hook_result.result.clone()),
                                         );
                                     }
                                 } else {

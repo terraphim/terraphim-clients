@@ -55,11 +55,7 @@ fn search_only_skips_llm_client_with_openrouter_key_present() {
     // must skip that step entirely. We assert by inspecting stderr for
     // the "skipping LLM client setup" debug log.
     let tmp = tempfile::tempdir().expect("tempdir");
-    std::fs::write(
-        tmp.path().join("hello.rs"),
-        "fn hello_target() {}\n",
-    )
-    .unwrap();
+    std::fs::write(tmp.path().join("hello.rs"), "fn hello_target() {}\n").unwrap();
 
     let output = Command::new(grep_binary())
         .args([

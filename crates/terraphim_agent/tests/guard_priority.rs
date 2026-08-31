@@ -38,8 +38,7 @@ fn allowlist_short_circuits_before_destructive() {
     // `rm -rf /tmp/foo` matches both the allowlist (`rm -rf /tmp/`) and the
     // destructive pattern (`rm -rf`). The allowlist must win so the trace
     // shows exactly one stage with outcome=allow.
-    let (code, stdout, _stderr) =
-        run_guard(&["--explain", "--json"], Some("rm -rf /tmp/foo"));
+    let (code, stdout, _stderr) = run_guard(&["--explain", "--json"], Some("rm -rf /tmp/foo"));
     assert_eq!(code, 0);
     let trace: serde_json::Value =
         serde_json::from_str(stdout.trim()).expect("expected JSON trace");
@@ -55,10 +54,8 @@ fn allowlist_short_circuits_before_destructive() {
 fn destructive_short_circuits_before_suspicious() {
     // `rm -rf /` is not in the allowlist; destructive must block before
     // suspicious ever runs.
-    let (code, stdout, _stderr) = run_guard(
-        &["--explain", "--json", "--fail-open"],
-        Some("rm -rf /"),
-    );
+    let (code, stdout, _stderr) =
+        run_guard(&["--explain", "--json", "--fail-open"], Some("rm -rf /"));
     assert_eq!(code, 0);
     let trace: serde_json::Value =
         serde_json::from_str(stdout.trim()).expect("expected JSON trace");
@@ -78,8 +75,7 @@ fn destructive_short_circuits_before_suspicious() {
 fn default_allow_path_emits_default_stage() {
     // `echo hello` matches nothing -- the trace must include the
     // `default` stage with outcome=allow.
-    let (code, stdout, _stderr) =
-        run_guard(&["--explain", "--json"], Some("echo hello"));
+    let (code, stdout, _stderr) = run_guard(&["--explain", "--json"], Some("echo hello"));
     assert_eq!(code, 0);
     let trace: serde_json::Value =
         serde_json::from_str(stdout.trim()).expect("expected JSON trace");
@@ -94,8 +90,7 @@ fn default_allow_path_emits_default_stage() {
 fn explain_exits_one_on_block() {
     // Without --fail-open, a blocked command must exit 1 even with --explain
     // so the trace can be used as a gate in shell pipelines.
-    let (code, _stdout, stderr) =
-        run_guard(&["--explain"], Some("rm -rf /"));
+    let (code, _stdout, stderr) = run_guard(&["--explain"], Some("rm -rf /"));
     assert_eq!(code, 1, "blocked command must exit 1");
     assert!(
         stderr.contains("stage=destructive"),
@@ -106,8 +101,7 @@ fn explain_exits_one_on_block() {
 
 #[test]
 fn explain_text_output_is_human_readable() {
-    let (code, _stdout, stderr) =
-        run_guard(&["--explain"], Some("echo hello"));
+    let (code, _stdout, stderr) = run_guard(&["--explain"], Some("echo hello"));
     assert_eq!(code, 0);
     assert!(stderr.contains("# guard evaluation trace"));
     assert!(stderr.contains("# stage=allowlist"));
