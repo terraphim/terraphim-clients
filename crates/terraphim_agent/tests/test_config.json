@@ -19,7 +19,7 @@
       },
       "haystacks": [
         {
-          "location": "docs/src",
+          "location": "terraphim_server/fixtures/haystack",
           "service": "Ripgrep",
           "read_only": true,
           "atomic_server_secret": null,
@@ -64,7 +64,7 @@
       "kg": null,
       "haystacks": [
         {
-          "location": "docs/src",
+          "location": "terraphim_server/fixtures/haystack",
           "service": "Ripgrep",
           "read_only": true,
           "atomic_server_secret": null,

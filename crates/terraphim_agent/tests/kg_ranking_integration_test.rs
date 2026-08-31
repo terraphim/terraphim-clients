@@ -652,7 +652,7 @@ async fn test_term_specific_boosting() -> Result<()> {
     println!("Waiting for server and KG initialization...");
     thread::sleep(Duration::from_secs(5));
 
-    let test_terms = vec!["rust", "python", "machine learning"];
+    let test_terms = vec!["rust", "neural networks", "machine learning"];
 
     for term in &test_terms {
         println!("\nTesting term: '{}'", term);
