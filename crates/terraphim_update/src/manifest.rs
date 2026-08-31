@@ -218,25 +218,50 @@ pub fn resolve_asset_url(
 /// self-contained.
 pub fn current_target_triples() -> Vec<String> {
     let cur = format!("{}-{}", ARCH, OS);
-    match cur.as_str() {
-        "x86_64-linux" => vec![
-            "x86_64-unknown-linux-gnu".to_string(),
-            "x86_64-unknown-linux-musl".to_string(),
-        ],
-        "aarch64-linux" => vec![
-            "aarch64-unknown-linux-gnu".to_string(),
-            "aarch64-unknown-linux-musl".to_string(),
-        ],
-        "x86_64-windows" => vec!["x86_64-pc-windows-msvc".to_string()],
-        "x86_64-macos" => vec![
-            "x86_64-apple-darwin".to_string(),
-            "universal-apple-darwin".to_string(),
-        ],
-        "aarch64-macos" => vec![
-            "aarch64-apple-darwin".to_string(),
-            "universal-apple-darwin".to_string(),
-        ],
-        other => vec![other.to_string()],
+    target_triples_for_host(&cur)
+        .into_iter()
+        .map(String::from)
+        .collect()
+}
+
+/// All target triples the updater publishes assets for, deduplicated.
+///
+/// Used by the test fixture to derive the manifest's asset count so adding
+/// a new platform here (or to `target_triples_for_host`) automatically extends
+/// the fixture without a magic-number update.
+pub fn all_target_triples() -> Vec<String> {
+    const HOSTS: &[&str] = &[
+        "x86_64-linux",
+        "aarch64-linux",
+        "x86_64-windows",
+        "x86_64-macos",
+        "aarch64-macos",
+    ];
+    let mut seen = std::collections::BTreeSet::new();
+    for host in HOSTS {
+        for triple in target_triples_for_host(host) {
+            seen.insert(triple.to_string());
+        }
+    }
+    seen.into_iter().collect()
+}
+
+/// Static map from `ARCH-OS` host string to the target triples we publish
+/// assets for. Single source of truth for both `current_target_triples()` and
+/// `all_target_triples()`; adding a new platform is a one-line change here.
+///
+/// Unknown hosts return an empty list -- callers that depend on a match (the
+/// manifest module's `resolve_asset_url`) treat an empty result as
+/// "no asset for this target", which is the correct behaviour for an
+/// unsupported platform.
+fn target_triples_for_host(host: &str) -> Vec<&'static str> {
+    match host {
+        "x86_64-linux" => vec!["x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl"],
+        "aarch64-linux" => vec!["aarch64-unknown-linux-gnu", "aarch64-unknown-linux-musl"],
+        "x86_64-windows" => vec!["x86_64-pc-windows-msvc"],
+        "x86_64-macos" => vec!["x86_64-apple-darwin", "universal-apple-darwin"],
+        "aarch64-macos" => vec!["aarch64-apple-darwin", "universal-apple-darwin"],
+        _ => Vec::new(),
     }
 }
 
