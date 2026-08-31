@@ -629,7 +629,7 @@ async fn test_role_consistency_across_modes() -> Result<()> {
             operator: None,
             skip: Some(0),
             limit: Some(1),
-            role: Some(RoleName::new(*warm_role)),
+            role: Some(RoleName::new(warm_role)),
             layer: Layer::default(),
             include_pinned: false,
             min_quality: None,
