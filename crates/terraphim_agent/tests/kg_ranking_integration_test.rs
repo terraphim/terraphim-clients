@@ -53,6 +53,17 @@ fn get_workspace_root() -> Result<PathBuf> {
 
 /// Pre-compile server binary for fast startup
 fn ensure_server_binary() -> Result<PathBuf> {
+    // CI installs terraphim_server from terraphim-ai into a temp root and
+    // points TERRAPHIM_SERVER_BIN at it (see native-ci.yml, Refs #113).
+    // Local dev runs can also export the same var to point at a prebuilt
+    // binary instead of relying on target/debug/terraphim_server.
+    if let Ok(bin) = std::env::var("TERRAPHIM_SERVER_BIN") {
+        let path = PathBuf::from(bin);
+        if path.exists() {
+            return Ok(path);
+        }
+    }
+
     let workspace_root = get_workspace_root()?;
     let binary_path = workspace_root.join("target/debug/terraphim_server");
 
