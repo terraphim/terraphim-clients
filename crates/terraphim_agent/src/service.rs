@@ -571,13 +571,8 @@ impl TuiService {
             !exclude_term, // include_term is opposite of exclude_term
         )?;
 
-        // Convert to string tuples
-        let string_results = results
-            .into_iter()
-            .map(|(matched, paragraph)| (matched.normalized_term.value.to_string(), paragraph))
-            .collect();
-
-        Ok(string_results)
+        // Drop sub-word matches and label with the surface form actually present.
+        Ok(refine_extracted_paragraphs(text, results))
     }
 
     /// Perform autocomplete search using thesaurus for a role
@@ -939,4 +934,140 @@ pub struct ChecklistResult {
     pub total_items: usize,
     pub satisfied: Vec<String>,
     pub missing: Vec<String>,
+}
+
+/// Returns `true` when a thesaurus term occupying the byte span
+/// `[start, end)` of `text` sits on word boundaries, i.e. it is not glued to
+/// surrounding alphanumeric (or `_`) characters.
+///
+/// Short thesaurus terms (e.g. the two-letter abbreviation `lp`) otherwise
+/// match *inside* larger words via Aho-Corasick (`lp` inside `aLPha`), which
+/// produces phantom concept labels and paragraph slices that begin mid-word.
+/// Filtering on word boundaries keeps only genuine standalone matches.
+fn is_word_boundary_match(text: &str, start: usize, end: usize) -> bool {
+    let is_word_char = |c: char| c.is_alphanumeric() || c == '_';
+
+    let left_ok = match text.get(..start).and_then(|s| s.chars().next_back()) {
+        Some(c) => !is_word_char(c),
+        None => true, // start of text
+    };
+    let right_ok = match text.get(end..).and_then(|s| s.chars().next()) {
+        Some(c) => !is_word_char(c),
+        None => true, // end of text
+    };
+
+    left_ok && right_ok
+}
+
+/// Post-process raw automata extraction results so the `extract` command only
+/// reports genuine matches.
+///
+/// Two defects are corrected here (see issue #46):
+/// 1. Phantom term labels — the surface form that actually appears in `text`
+///    (`Matched.term`) is reported instead of the concept expansion
+///    (`normalized_term.value`), which may be a phrase absent from the input.
+/// 2. Mid-word start offsets — sub-word matches are dropped via
+///    [`is_word_boundary_match`], so surviving paragraphs begin at a clean
+///    word boundary.
+fn refine_extracted_paragraphs(
+    text: &str,
+    raw: Vec<(terraphim_automata::Matched, String)>,
+) -> Vec<(String, String)> {
+    raw.into_iter()
+        .filter_map(|(matched, paragraph)| match matched.pos {
+            Some((start, end)) if is_word_boundary_match(text, start, end) => {
+                Some((matched.term, paragraph))
+            }
+            Some(_) => None, // sub-word match: phantom label / mid-word offset
+            None => Some((matched.term, paragraph)),
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod extract_word_boundary_tests {
+    use super::*;
+    use terraphim_automata::matcher::extract_paragraphs_from_automata;
+    use terraphim_types::{NormalizedTerm, NormalizedTermValue, Thesaurus};
+
+    #[test]
+    fn standalone_word_is_a_boundary_match() {
+        let text = "Alpha line about config and pipeline.";
+        // "config" occupies a clean span flanked by spaces.
+        let start = text.find("config").unwrap();
+        assert!(is_word_boundary_match(text, start, start + "config".len()));
+    }
+
+    #[test]
+    fn subword_match_is_rejected() {
+        let text = "Alpha line about config.";
+        // "lp" inside "aLPha" — preceded by 'A', followed by 'h'.
+        let start = text.find("lpha").unwrap();
+        assert!(!is_word_boundary_match(text, start, start + 2));
+        // "li" inside "line" — at a left boundary but followed by 'n'.
+        let li = text.find("line").unwrap();
+        assert!(!is_word_boundary_match(text, li, li + 2));
+    }
+
+    #[test]
+    fn match_at_text_edges_is_a_boundary_match() {
+        let text = "config";
+        assert!(is_word_boundary_match(text, 0, text.len()));
+    }
+
+    /// Regression test for issue #46: a thesaurus whose two-letter abbreviations
+    /// expand to multi-word concepts must not emit phantom labels or mid-word
+    /// paragraph starts. Uses the real automata extraction path (no mocks).
+    #[test]
+    fn refine_drops_phantom_and_midword_matches() {
+        let mut thesaurus = Thesaurus::new("test".to_string());
+        // Abbreviations that match inside words: "lp" in "alpha", "li" in "line".
+        thesaurus.insert(
+            NormalizedTermValue::from("lp"),
+            NormalizedTerm::new(1, NormalizedTermValue::from("learning path")),
+        );
+        thesaurus.insert(
+            NormalizedTermValue::from("li"),
+            NormalizedTerm::new(2, NormalizedTermValue::from("learning intent")),
+        );
+        // Genuine standalone terms.
+        for (i, term) in ["config", "pipeline", "bun", "orchestrator"]
+            .iter()
+            .enumerate()
+        {
+            thesaurus.insert(
+                NormalizedTermValue::from(*term),
+                NormalizedTerm::new(10 + i as u64, NormalizedTermValue::from(*term)),
+            );
+        }
+
+        let text = "Alpha line about config and pipeline. Beta line mentions bun and orchestrator. Gamma unrelated text here.";
+        let raw = extract_paragraphs_from_automata(text, &thesaurus, true).unwrap();
+        let refined = refine_extracted_paragraphs(text, raw);
+
+        let labels: Vec<&str> = refined.iter().map(|(t, _)| t.as_str()).collect();
+        // Only genuine surface forms survive — no phantom concept labels.
+        assert!(
+            !labels.contains(&"learning path"),
+            "phantom label present: {labels:?}"
+        );
+        assert!(
+            !labels.contains(&"learning intent"),
+            "phantom label present: {labels:?}"
+        );
+        for expected in ["config", "pipeline", "bun", "orchestrator"] {
+            assert!(
+                labels.contains(&expected),
+                "missing real term {expected}: {labels:?}"
+            );
+        }
+
+        // Every surviving paragraph starts at a word boundary (never mid-word).
+        for (term, paragraph) in &refined {
+            assert!(
+                !paragraph.starts_with("lpha") && !paragraph.starts_with("ine"),
+                "paragraph for {term:?} starts mid-word: {paragraph:?}"
+            );
+        }
+    }
 }
