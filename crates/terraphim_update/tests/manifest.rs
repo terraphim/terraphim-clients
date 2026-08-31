@@ -105,13 +105,22 @@ impl FlakyServer {
 }
 
 fn sample_manifest_json() -> String {
+    // Assets must cover every target in `current_target_triples()` for the host
+    // architecture, otherwise `test_resolve_asset_url_against_local_manifest`
+    // (which resolves the current host's asset URL) fails on macOS runners with
+    // `NoAssetForTarget { target: "aarch64-macos" }` / `x86_64-macos`.
     r#"{
         "version": "1.21.9",
         "released_at": "2026-07-06T17:38:00Z",
         "assets": {
             "x86_64-unknown-linux-gnu": "terraphim-agent/terraphim-agent-1.21.9-x86_64-unknown-linux-gnu.tar.gz",
             "x86_64-unknown-linux-musl": "terraphim-agent/terraphim-agent-1.21.9-x86_64-unknown-linux-musl.tar.gz",
-            "aarch64-unknown-linux-musl": "terraphim-agent/terraphim-agent-1.21.9-aarch64-unknown-linux-musl.tar.gz"
+            "aarch64-unknown-linux-gnu": "terraphim-agent/terraphim-agent-1.21.9-aarch64-unknown-linux-gnu.tar.gz",
+            "aarch64-unknown-linux-musl": "terraphim-agent/terraphim-agent-1.21.9-aarch64-unknown-linux-musl.tar.gz",
+            "x86_64-apple-darwin": "terraphim-agent/terraphim-agent-1.21.9-x86_64-apple-darwin.tar.gz",
+            "aarch64-apple-darwin": "terraphim-agent/terraphim-agent-1.21.9-aarch64-apple-darwin.tar.gz",
+            "universal-apple-darwin": "terraphim-agent/terraphim-agent-1.21.9-universal-apple-darwin.tar.gz",
+            "x86_64-pc-windows-msvc": "terraphim-agent/terraphim-agent-1.21.9-x86_64-pc-windows-msvc.tar.gz"
         },
         "notes_url": "https://github.com/terraphim/terraphim-clients/releases/tag/v1.21.9"
     }"#
@@ -129,7 +138,11 @@ fn test_fetch_manifest_from_local_server() {
         ManifestConfig::new("terraphim-agent").with_base_url(format!("http://{}", server.addr));
     let manifest = fetch_manifest(&cfg).expect("manifest fetch should succeed");
     assert_eq!(manifest.version, "1.21.9");
-    assert_eq!(manifest.assets.len(), 3);
+    assert_eq!(
+        manifest.assets.len(),
+        8,
+        "sample manifest must cover every target in current_target_triples() (linux + macos + windows)"
+    );
     assert!(manifest.notes_url.is_some());
 }
 
