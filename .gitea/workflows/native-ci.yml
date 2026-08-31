@@ -10,6 +10,26 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo build --workspace
       - run: cargo test --workspace --lib --no-fail-fast
+      # #113: build terraphim_server from terraphim-ai so the
+      # server-binary-dependent integration tests have a real binary.
+      # terraphim_server is not a workspace member here -- it lives in
+      # terraphim-ai -- so we install it from the v1.21.3 git tag. The
+      # runner's GITEA_TOKEN is already configured for the terraphim
+      # cargo registry and doubles as the git credentials.
+      # The trailing `terraphim_server` positional arg is the package
+      # selector: terraphim-ai is a multi-binary repo (firecracker, dsm,
+      # gitea_runner, merge_coordinator, server, eval_check), so cargo
+      # refuses --bin without an explicit package.
+      - run: cargo install --git https://git.terraphim.cloud/terraphim/terraphim-ai --tag v1.21.3 --root /tmp/terraphim_server_install --bin terraphim_server terraphim_server
+      # #113: run the integration tests that require a real
+      # terraphim_server binary. ensure_server_binary() (in
+      # cross_mode_consistency_test.rs / kg_ranking_integration_test.rs)
+      # and server_binary_path() (in integration_tests.rs) both resolve
+      # TERRAPHIM_SERVER_BIN first, so pointing the env var at the
+      # install root is enough.
+      - run: TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo test -p terraphim_agent --test cross_mode_consistency_test -- --nocapture
+      - run: TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo test -p terraphim_agent --test integration_tests -- --nocapture
+      - run: TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo test -p terraphim_agent --test kg_ranking_integration_test -- --nocapture
       # #2171: enrichment feature clippy + test invocations.
       - run: cargo clippy -p terraphim_sessions --features enrichment -- -D warnings
       - run: cargo test -p terraphim_sessions --features enrichment --lib --no-fail-fast
