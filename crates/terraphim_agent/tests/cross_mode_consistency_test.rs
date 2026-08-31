@@ -592,15 +592,11 @@ async fn test_mode_specific_verification() -> Result<()> {
 /// which takes several seconds on a cold cache.  Under CI load the default
 /// 30-second client timeout is frequently exceeded.
 ///
-/// Run explicitly in a dedicated environment where the server can warm its cache:
-///
-/// ```bash
-/// cargo test -p terraphim_agent --test cross_mode_consistency_test \
-///     test_role_consistency_across_modes -- --ignored
-/// ```
+/// Cross-mode consistency: verify that server-mode and CLI-mode searches
+/// return the same number of results for each role. Catches CLI falling
+/// back to offline mode or to a stale config (Refs #113b).
 #[tokio::test]
 #[serial]
-#[ignore = "TerraphimGraph cold-cache search exceeds default client timeout under CI load; run with --ignored in a dedicated environment"]
 async fn test_role_consistency_across_modes() -> Result<()> {
     println!("\n");
     println!("╔════════════════════════════════════════════════════════════════════════╗");
@@ -612,13 +608,39 @@ async fn test_role_consistency_across_modes() -> Result<()> {
     let (server, server_url) = start_test_server().await?;
     let client = ApiClient::new(&server_url);
 
-    // Wait for server to fully initialize (rolegraph building, document indexing)
+    // Wait for server's HTTP listener to be ready
     thread::sleep(Duration::from_secs(5));
 
     let query = "rust";
     let roles = vec!["Terraphim Engineer", "Default", "Quickwit Logs"];
 
-    for role in roles {
+    // Pre-warm the rolegraph cache for every role before the
+    // timing-critical loop. The first `update_selected_role` + search
+    // for each role triggers lazy rolegraph construction on the server
+    // and a document-index build; on a busy CI runner that first call
+    // can exceed the 30s default ApiClient timeout (Refs #113b). The
+    // warm-up pays that one-time cost; its results are discarded.
+    for warm_role in &roles {
+        client.update_selected_role(warm_role).await?;
+        thread::sleep(Duration::from_millis(300));
+        let warmup = SearchQuery {
+            search_term: NormalizedTermValue::new(query.to_string()),
+            search_terms: None,
+            operator: None,
+            skip: Some(0),
+            limit: Some(1),
+            role: Some(RoleName::new(warm_role)),
+            layer: Layer::default(),
+            include_pinned: false,
+            min_quality: None,
+        };
+        // `?` here is intentional: if even a warm-up search times out,
+        // the test fails loudly with the underlying transport error
+        // instead of silently relying on a longer timeout.
+        client.search(&warmup).await?;
+    }
+
+    for role in &roles {
         println!("\nTesting role: '{}'", role);
 
         // Set role via server
