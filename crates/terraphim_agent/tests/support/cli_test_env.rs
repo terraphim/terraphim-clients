@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -67,7 +67,7 @@ pub fn apply_hermetic_env(cmd: &mut Command) -> Result<()> {
 /// when the caller needs to know the root path (e.g. to read files written
 /// by the spawned subprocess). Refs #144.
 #[allow(dead_code)]
-pub fn set_hermetic_env(cmd: &mut Command, root: &PathBuf) -> Result<()> {
+pub fn set_hermetic_env(cmd: &mut Command, root: &Path) -> Result<()> {
     let home_dir = root.join("home");
     let xdg_config_home = home_dir.join(".config");
     let terraphim_config_dir = xdg_config_home.join("terraphim");

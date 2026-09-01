@@ -27,34 +27,13 @@ async fn setup_server_command() -> Result<Command> {
         }
     }
 
-    // Cargo builds terraphim_mcp_server before this test runs; a nested
-    // `cargo build` would deadlock on the outer build lock. Refs #113.
-
-    // Determine the path to the compiled binary.
-    // When building inside a workspace Cargo will place the binary in the *workspace* target dir,
-    // whereas `std::env::current_dir()` inside the test is the **crate** directory
-    // (e.g. crates/terraphim_mcp_server). Therefore the binary lives two levels up.
-    let crate_dir = std::env::current_dir()?;
-    let binary_name = if cfg!(target_os = "windows") {
-        "terraphim_mcp_server.exe"
-    } else {
-        "terraphim_mcp_server"
-    };
-    // Candidate locations (checked in order).
-    let candidate_paths = [
-        // 1. Workspace level (../../target/debug/…)
-        crate_dir
-            .parent()
-            .and_then(|p| p.parent())
-            .map(|workspace| workspace.join("target").join("debug").join(binary_name)),
-        // 2. Crate-local target dir (./target/debug/…)
-        Some(crate_dir.join("target").join("debug").join(binary_name)),
-    ];
-    let binary_path = candidate_paths
-        .into_iter()
-        .flatten()
-        .find(|p| p.exists())
-        .ok_or_else(|| anyhow::anyhow!("Built binary not found in expected locations"))?;
+    // Cargo sets CARGO_BIN_EXE_<name> for this package's integration tests and
+    // builds the binary first, so no target-dir guessing or nested `cargo build`
+    // (which would deadlock on the outer build lock, Refs #113) is needed.
+    let binary_path = std::path::PathBuf::from(env!("CARGO_BIN_EXE_terraphim_mcp_server"));
+    if !binary_path.exists() {
+        anyhow::bail!("Built binary not found at {:?}", binary_path);
+    }
     println!("🚀 Using server binary at {:?}", binary_path);
     // Command to run the server binary directly
     let mut command = Command::new(binary_path);

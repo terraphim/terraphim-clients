@@ -35,7 +35,7 @@ fn hermetic_learnings_dir(root: &Path) -> PathBuf {
 }
 
 /// Run the user-prompt-submit hook with a JSON payload, returning whether it succeeded.
-fn run_user_prompt_submit(binary: &str, prompt: &str, root: &PathBuf) -> bool {
+fn run_user_prompt_submit(binary: &str, prompt: &str, root: &Path) -> bool {
     let json = format!(r#"{{"user_prompt":"{}"}}"#, prompt);
     let mut cmd = Command::new(binary);
     cmd.args(["learn", "hook", "--learn-hook-type", "user-prompt-submit"])

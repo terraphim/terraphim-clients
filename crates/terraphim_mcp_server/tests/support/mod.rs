@@ -41,9 +41,10 @@ fn create_unique_test_root() -> Result<PathBuf> {
 /// Resolve the path to the terraphim_mcp_server binary.
 ///
 /// Priority:
-/// 1. `TERRAPHIM_MCP_SERVER_BIN` environment variable (set by CI/build-runner)
-/// 2. `../../target/debug/terraphim_mcp_server` relative to current dir
-/// 3. `../../target/release/terraphim_mcp_server` relative to current dir
+/// 1. `TERRAPHIM_MCP_SERVER_BIN` environment variable (CI/build-runner override)
+/// 2. `CARGO_BIN_EXE_terraphim_mcp_server`, which Cargo sets for this package's
+///    integration tests and guarantees is built first. Unlike a
+///    `../../target/debug` guess this holds under any `CARGO_TARGET_DIR`.
 #[allow(dead_code)]
 pub fn mcp_server_binary() -> anyhow::Result<std::path::PathBuf> {
     if let Ok(bin) = std::env::var("TERRAPHIM_MCP_SERVER_BIN") {
@@ -53,27 +54,14 @@ pub fn mcp_server_binary() -> anyhow::Result<std::path::PathBuf> {
         }
     }
 
-    let crate_dir = std::env::current_dir()?;
-    let candidates = [
-        crate_dir
-            .parent()
-            .and_then(|p| p.parent())
-            .map(|w| w.join("target").join("debug").join("terraphim_mcp_server")),
-        crate_dir.parent().and_then(|p| p.parent()).map(|w| {
-            w.join("target")
-                .join("release")
-                .join("terraphim_mcp_server")
-        }),
-    ];
-
-    for path in candidates.into_iter().flatten() {
-        if path.exists() {
-            return Ok(path);
-        }
+    let path = std::path::PathBuf::from(env!("CARGO_BIN_EXE_terraphim_mcp_server"));
+    if path.exists() {
+        return Ok(path);
     }
 
     anyhow::bail!(
-        "terraphim_mcp_server binary not found. Set TERRAPHIM_MCP_SERVER_BIN or run: cargo build -p terraphim_mcp_server"
+        "terraphim_mcp_server binary not found at {}. Set TERRAPHIM_MCP_SERVER_BIN or run: cargo build -p terraphim_mcp_server",
+        path.display()
     )
 }
 

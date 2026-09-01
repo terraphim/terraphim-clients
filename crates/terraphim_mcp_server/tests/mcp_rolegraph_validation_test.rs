@@ -146,12 +146,7 @@ async fn test_mcp_server_terraphim_engineer_search() -> Result<()> {
     let server_binary = if let Ok(bin) = std::env::var("TERRAPHIM_MCP_SERVER_BIN") {
         std::path::PathBuf::from(bin)
     } else {
-        std::env::current_dir()?
-            .parent()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .join("target/debug/terraphim_mcp_server")
+        std::path::PathBuf::from(env!("CARGO_BIN_EXE_terraphim_mcp_server"))
     };
 
     if !server_binary.exists() {
@@ -293,12 +288,7 @@ async fn test_mcp_role_switching_before_search() -> Result<()> {
     let server_binary = if let Ok(bin) = std::env::var("TERRAPHIM_MCP_SERVER_BIN") {
         std::path::PathBuf::from(bin)
     } else {
-        std::env::current_dir()?
-            .parent()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .join("target/debug/terraphim_mcp_server")
+        std::path::PathBuf::from(env!("CARGO_BIN_EXE_terraphim_mcp_server"))
     };
 
     let mut cmd = Command::new(&server_binary);
@@ -409,12 +399,7 @@ async fn test_mcp_resource_operations() -> Result<()> {
     let server_binary = if let Ok(bin) = std::env::var("TERRAPHIM_MCP_SERVER_BIN") {
         std::path::PathBuf::from(bin)
     } else {
-        std::env::current_dir()?
-            .parent()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .join("target/debug/terraphim_mcp_server")
+        std::path::PathBuf::from(env!("CARGO_BIN_EXE_terraphim_mcp_server"))
     };
 
     if !server_binary.exists() {
@@ -638,12 +623,7 @@ async fn test_mcp_search_uses_selected_role() -> Result<()> {
     let server_binary = if let Ok(bin) = std::env::var("TERRAPHIM_MCP_SERVER_BIN") {
         std::path::PathBuf::from(bin)
     } else {
-        std::env::current_dir()?
-            .parent()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .join("target/debug/terraphim_mcp_server")
+        std::path::PathBuf::from(env!("CARGO_BIN_EXE_terraphim_mcp_server"))
     };
 
     if !server_binary.exists() {
