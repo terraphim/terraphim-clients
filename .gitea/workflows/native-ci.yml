@@ -9,4 +9,54 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo build --workspace
-      - run: cargo test --workspace --lib --no-fail-fast
+      # #84: broaden the workspace gate so integration tests, binary
+      # smoke tests, and example doctests participate in the gate. The
+      # narrower `--lib` gate silently skipped crates/terraphim_mcp_server
+      # tests/test_tools_list.rs and tests/test_all_mcp_tools.rs, which
+      # exercised real stdio/JSON-RPC round-trips against the
+      # terraphim_mcp_server binary. `--tests --bins --examples` adds
+      # those targets; `--lib` is kept so the existing crate-internal
+      # coverage is still exercised. `--no-fail-fast` makes all targets
+      # run even when one fails, so a single broken test does not hide
+      # the rest of the failures behind an early abort.
+      - run: cargo test --workspace --tests --bins --examples --lib --no-fail-fast
+      # #113: build terraphim_server from terraphim-ai so the
+      # server-binary-dependent integration tests have a real binary.
+      # terraphim_server is not a workspace member here -- it lives in
+      # terraphim-ai -- so we install it from the v1.21.3 git tag. The
+      # runner's GITEA_TOKEN is already configured for the terraphim
+      # cargo registry and doubles as the git credentials.
+      # The trailing `terraphim_server` positional arg is the package
+      # selector: terraphim-ai is a multi-binary repo (firecracker, dsm,
+      # gitea_runner, merge_coordinator, server, eval_check), so cargo
+      # refuses --bin without an explicit package.
+      # The two --config flags re-declare the workspace registry config
+      # (`terraphim` index + `cargo:token` credential provider) because
+      # cargo install runs in an isolated context and does NOT inherit
+      # the workspace's .cargo/config.toml; without these flags, parsing
+      # the cloned manifest fails with "registry index was not found
+      # in any configuration: `terraphim`" (run 29280 / job 61814).
+      # --locked pins terraphim_automata and terraphim_types to 1.20.2 via
+      # the v1.21.3 Cargo.lock; without it the [patch.crates-io] range
+      # requirements (1.20.2) match both 1.20.2 and 1.21.0 in the registry
+      # and cargo aborts with "patch resolved to more than one candidate".
+      - run: cargo install --locked --git https://git.terraphim.cloud/terraphim/terraphim-ai --tag v1.21.3 --root /tmp/terraphim_server_install --config 'registries.terraphim.index="sparse+https://git.terraphim.cloud/api/packages/terraphim/cargo/"' --config 'registry.global-credential-providers=["cargo:token"]' --bin terraphim_server terraphim_server
+      # #113: run the integration tests that require a real
+      # terraphim_server binary. ensure_server_binary() (in
+      # cross_mode_consistency_test.rs / kg_ranking_integration_test.rs)
+      # and server_binary_path() (in integration_tests.rs) both resolve
+      # TERRAPHIM_SERVER_BIN first, so pointing the env var at the
+      # install root is enough.
+      - run: TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo test -p terraphim_agent --test cross_mode_consistency_test -- --nocapture
+      - run: TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo test -p terraphim_agent --test integration_tests -- --nocapture
+      - run: TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo test -p terraphim_agent --test kg_ranking_integration_test -- --nocapture
+      # #2171: enrichment feature clippy + test invocations.
+      - run: cargo clippy -p terraphim_sessions --features enrichment -- -D warnings
+      - run: cargo test -p terraphim_sessions --features enrichment --lib --no-fail-fast
+      # #95: isolated packaged install-graph regression.
+      - run: cargo test -p terraphim_agent --test packaged_install_graph_regression -- --nocapture
+      # #118: repo guards -- duplicate-crate detection and the publish gate's own
+      # tests. Rust tests, not shell steps: the runner allowlist rejects any
+      # program that is not cargo ("policy rejected command: ... not on the
+      # allowlist"), which is what took CI down from #112 until now.
+      - run: cargo test -p terraphim_agent --test ci_guards -- --nocapture
