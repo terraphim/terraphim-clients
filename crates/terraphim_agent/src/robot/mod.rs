@@ -3,6 +3,7 @@
 //! This module provides structured JSON output and self-documentation
 //! capabilities for integration with AI agents and automation tools.
 
+// Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
 pub mod budget;
 // Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.

@@ -923,8 +923,9 @@ struct ToolStatsData {
 
 /// Helper struct for tracking tool chain sequence data.
 ///
-/// Only constructed by `Analyzer::detect_tool_chains`, which is consumed only
-/// by integration tests and unit tests in this module.
+/// Cross-binary test API: only constructed by `Analyzer::detect_tool_chains`,
+/// which is consumed only by lib unit tests and `tests/integration_tests.rs`.
+/// The `tsa` binary does not construct or use `SequenceData`.
 #[allow(dead_code)]
 struct SequenceData {
     frequency: u32,

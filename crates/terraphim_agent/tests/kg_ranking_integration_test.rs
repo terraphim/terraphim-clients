@@ -10,7 +10,7 @@
 //! - Snapshot comparisons of result sets
 //! - Explicit ranking position assertions  
 //! - Score comparisons between different relevance functions
-//! - Consistency across Server, REPL, and CLI modes
+//! - Consistency between Server and REPL modes
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -330,106 +330,6 @@ async fn search_via_server(
     Ok((docs, ranks))
 }
 
-/// Search via CLI mode
-#[allow(dead_code)] // Kept for future CLI mode implementation
-fn search_via_cli(server_url: &str, query: &str, role: &str) -> Result<(Vec<Document>, Vec<f64>)> {
-    let output = Command::new("cargo")
-        .args([
-            "run",
-            "-p",
-            "terraphim_agent",
-            "--features",
-            "server",
-            "--",
-            "--server",
-            "--server-url",
-            server_url,
-            "search",
-            query,
-            "--role",
-            role,
-            "--format",
-            "json",
-        ])
-        .output()?;
-
-    if !output.status.success() {
-        return Err(anyhow::anyhow!(
-            "CLI search failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    // Find JSON in output
-    if let Some(start) = stdout.find('{') {
-        let mut depth = 1;
-        let mut end = start + 1;
-        for (i, c) in stdout[start + 1..].char_indices() {
-            match c {
-                '{' => depth += 1,
-                '}' => {
-                    depth -= 1;
-                    if depth == 0 {
-                        end = start + 1 + i;
-                        break;
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        let json_str = &stdout[start..=end];
-        let response: serde_json::Value = serde_json::from_str(json_str)?;
-
-        let docs: Vec<Document> = response
-            .get("results")
-            .and_then(|r| r.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| {
-                        Some(Document {
-                            id: v.get("id")?.as_str()?.to_string(),
-                            title: v.get("title")?.as_str()?.to_string(),
-                            url: v
-                                .get("url")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string(),
-                            body: v
-                                .get("body")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string(),
-                            description: None,
-                            summarization: None,
-                            stub: None,
-                            rank: v.get("rank")?.as_u64(),
-                            tags: None,
-                            source_haystack: None,
-                            doc_type: terraphim_types::DocumentType::Document,
-                            synonyms: None,
-                            route: None,
-                            priority: None,
-                            quality_score: None,
-                        })
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        let ranks: Vec<f64> = docs
-            .iter()
-            .map(|d| d.rank.map(|r| r as f64).unwrap_or(0.0))
-            .collect();
-
-        return Ok((docs, ranks));
-    }
-
-    Err(anyhow::anyhow!("No JSON found in CLI output"))
-}
-
 /// Compare rankings between two result sets
 fn compare_rankings(
     baseline: &[Document],
@@ -516,13 +416,8 @@ async fn test_knowledge_graph_ranking_impact() -> Result<()> {
         search_via_server(&api_client, "machine learning", "Test Engineer").await?;
     println!("  KG (terraphim-graph): {} results", kg_docs.len());
 
-    // CLI mode comparison - disabled for now (CLI has incompatible arguments)
-    // println!("\nStep 4: Comparing with CLI mode...");
-    // let (cli_docs, cli_ranks) = search_via_cli(&server_url, "machine learning", "Terraphim Engineer")?;
-    // println!("  CLI mode: {} results", cli_docs.len());
-    // CLI mode placeholder variables - disabled for server-only testing
-    // let cli_docs: Vec<SearchResultDoc> = vec![];
-    // let cli_ranks: Vec<f64> = vec![];
+    // (CLI mode comparison removed: the test runs server-only and the
+    // `search_via_cli` helper had no live caller.)
 
     // Analyze differences
     println!("\nStep 5: Analyzing ranking differences...");
@@ -549,10 +444,7 @@ async fn test_knowledge_graph_ranking_impact() -> Result<()> {
     );
     println!("  ✓ KG results have ranking scores");
 
-    // Server vs CLI consistency check (disabled)
-    // let server_cli_match = kg_docs.len() == cli_docs.len();
-    // println!("  Server-CLI consistency: {}", server_cli_match);
-    println!("  Note: CLI comparison disabled - testing server mode only");
+    println!("  Note: server-mode test only (CLI comparison removed with `search_via_cli`)");
 
     // Score comparison
     println!("\nStep 7: Score comparison...");
@@ -571,17 +463,11 @@ async fn test_knowledge_graph_ranking_impact() -> Result<()> {
     } else {
         0.0
     };
-    // CLI average calculation disabled - server mode only testing
-    // let cli_avg = if !cli_ranks.is_empty() {
-    //     cli_ranks.iter().sum::<f64>() / cli_ranks.len() as f64
-    // } else {
-    //     0.0
-    // };
+    
 
     println!("  BM25 avg:        {:.2}", bm25_avg);
     println!("  Title avg:       {:.2}", title_avg);
     println!("  KG-Graph avg:    {:.2}", kg_avg);
-    println!("  CLI KG avg:      disabled (server mode only)");
 
     // Verify behavioral expectations (not snapshots - too flaky)
     println!("\nStep 8: Verifying behavioral expectations...");
