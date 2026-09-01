@@ -1229,40 +1229,6 @@ impl TerraphimUpdater {
             status => Ok(status),
         }
     }
-
-    /// Compare two version strings to determine if the first is newer than the second
-    #[allow(dead_code)]
-    fn is_newer_version(&self, version1: &str, version2: &str) -> Result<bool> {
-        // Simple version comparison - in production you might want to use semver crate
-        let v1_parts: Vec<u32> = version1
-            .trim_start_matches('v')
-            .split('.')
-            .take(3)
-            .map(|s| s.parse().unwrap_or(0))
-            .collect();
-
-        let v2_parts: Vec<u32> = version2
-            .trim_start_matches('v')
-            .split('.')
-            .take(3)
-            .map(|s| s.parse().unwrap_or(0))
-            .collect();
-
-        // Pad with zeros if needed
-        let v1 = [
-            v1_parts.first().copied().unwrap_or(0),
-            v1_parts.get(1).copied().unwrap_or(0),
-            v1_parts.get(2).copied().unwrap_or(0),
-        ];
-
-        let v2 = [
-            v2_parts.first().copied().unwrap_or(0),
-            v2_parts.get(1).copied().unwrap_or(0),
-            v2_parts.get(2).copied().unwrap_or(0),
-        ];
-
-        Ok(v1 > v2)
-    }
 }
 
 /// Convenience function to create an updater and check for updates
@@ -1579,29 +1545,6 @@ mod tests {
     use super::*;
     use std::io::Write;
     use tempfile::NamedTempFile;
-
-    #[test]
-    fn test_version_comparison() {
-        let config = UpdaterConfig::new("test");
-        let updater = TerraphimUpdater::new(config);
-
-        // Test basic version comparisons
-        assert!(updater.is_newer_version("1.1.0", "1.0.0").unwrap());
-        assert!(updater.is_newer_version("2.0.0", "1.9.9").unwrap());
-        assert!(updater.is_newer_version("1.0.1", "1.0.0").unwrap());
-
-        // Test equal versions
-        assert!(!updater.is_newer_version("1.0.0", "1.0.0").unwrap());
-
-        // Test older versions
-        assert!(!updater.is_newer_version("1.0.0", "1.1.0").unwrap());
-        assert!(!updater.is_newer_version("1.9.9", "2.0.0").unwrap());
-
-        // Test with v prefix
-        assert!(updater.is_newer_version("v1.1.0", "v1.0.0").unwrap());
-        assert!(updater.is_newer_version("1.1.0", "v1.0.0").unwrap());
-        assert!(updater.is_newer_version("v1.1.0", "1.0.0").unwrap());
-    }
 
     #[tokio::test]
     async fn test_updater_config() {

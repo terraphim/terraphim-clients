@@ -28,6 +28,9 @@ impl ApiClient {
         }
     }
 
+    // Feature-gated public API: only reachable when --features server is enabled,
+    // which gates main.rs::ensure_tui_server_reachable. The default build does not
+    // include the caller. See `Cargo.toml` [features] for the server declaration.
     #[allow(dead_code)]
     pub async fn health(&self) -> Result<()> {
         let url = format!("{}/health", self.base);
@@ -94,6 +97,10 @@ impl ApiClient {
         Ok(body)
     }
 
+    // Feature-gated public API: reachable only via commands::validator.rs (server
+    // feature) and integration_test.rs / error_handling_test.rs cross-binary
+    // tests. Default feature set (repl-interactive, llm, repl-sessions) does
+    // not enable the validator caller. See `Cargo.toml` [features].
     #[allow(dead_code)]
     pub async fn get_rolegraph_edges(&self, role: Option<&str>) -> Result<RoleGraphResponseDto> {
         self.rolegraph(role).await
@@ -211,53 +218,19 @@ pub struct AutocompleteResponse {
     pub suggestions: Vec<AutocompleteSuggestion>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AsyncSummarizeResponse {
-    pub status: String,
-    pub task_id: String,
-    pub message: Option<String>,
-    pub error: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct TaskStatusResponse {
-    pub status: String,
-    pub task_id: String,
-    pub state: String, // "pending", "processing", "completed", "failed", "cancelled"
-    pub progress: Option<f64>,
-    pub result: Option<String>,
-    pub error: Option<String>,
-    pub created_at: Option<String>,
-    pub updated_at: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct QueueStatsResponse {
-    pub status: String,
-    pub pending_tasks: usize,
-    pub processing_tasks: usize,
-    pub completed_tasks: usize,
-    pub failed_tasks: usize,
-    pub total_tasks: usize,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct BatchSummarizeRequest {
-    pub documents: Vec<Document>,
-    pub role: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct BatchSummarizeResponse {
-    pub status: String,
-    pub task_ids: Vec<String>,
-    pub message: Option<String>,
-    pub error: Option<String>,
-}
-
 // VM Management Types
+//
+// All types and methods in this section are feature-gated public API reachable
+// only when the `firecracker` Cargo feature is enabled (REPL `vm` subcommand
+// via `repl/handler.rs::handle_vm`, plus the unconditional
+// `commands/modes/firecracker.rs::FirecrackerExecutor` calls which compile
+// regardless). The default feature set (repl-interactive, llm, repl-sessions)
+// does not enable `firecracker`, so the lint sees them as dead. See
+// `Cargo.toml` [features] for the firecracker declaration.
+
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+// Feature-gated to `firecracker`; see VM Management Types comment above.
 #[allow(dead_code)]
 pub struct VmWithIp {
     pub vm_id: String,
@@ -265,6 +238,7 @@ pub struct VmWithIp {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+// Feature-gated to `firecracker`; see VM Management Types comment above.
 #[allow(dead_code)]
 pub struct VmPoolListResponse {
     pub vms: Vec<VmWithIp>,
@@ -272,6 +246,7 @@ pub struct VmPoolListResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+// Feature-gated to `firecracker`; see VM Management Types comment above.
 #[allow(dead_code)]
 pub struct VmPoolStatsResponse {
     pub total_ips: usize,
@@ -281,6 +256,7 @@ pub struct VmPoolStatsResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+// Feature-gated to `firecracker`; see VM Management Types comment above.
 #[allow(dead_code)]
 pub struct VmStatusResponse {
     pub vm_id: String,
@@ -291,6 +267,7 @@ pub struct VmStatusResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+// Feature-gated to `firecracker`; see VM Management Types comment above.
 #[allow(dead_code)]
 pub struct VmExecuteRequest {
     pub code: String,
@@ -301,6 +278,7 @@ pub struct VmExecuteRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+// Feature-gated to `firecracker`; see VM Management Types comment above.
 #[allow(dead_code)]
 pub struct VmExecuteResponse {
     pub execution_id: String,
@@ -315,6 +293,7 @@ pub struct VmExecuteResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+// Feature-gated to `firecracker`; see VM Management Types comment above.
 #[allow(dead_code)]
 pub struct VmTask {
     pub id: String,
@@ -325,6 +304,7 @@ pub struct VmTask {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+// Feature-gated to `firecracker`; see VM Management Types comment above.
 #[allow(dead_code)]
 pub struct VmTasksResponse {
     pub tasks: Vec<VmTask>,
@@ -333,12 +313,14 @@ pub struct VmTasksResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+// Feature-gated to `firecracker`; see VM Management Types comment above.
 #[allow(dead_code)]
 pub struct VmAllocateRequest {
     pub vm_id: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+// Feature-gated to `firecracker`; see VM Management Types comment above.
 #[allow(dead_code)]
 pub struct VmAllocateResponse {
     pub vm_id: String,
@@ -346,6 +328,7 @@ pub struct VmAllocateResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+// Feature-gated to `firecracker`; see VM Management Types comment above.
 #[allow(dead_code)]
 pub struct VmMetricsResponse {
     pub vm_id: String,
@@ -360,6 +343,7 @@ pub struct VmMetricsResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+// Feature-gated to `firecracker`; see VM Management Types comment above.
 #[allow(dead_code)]
 pub struct VmAgentRequest {
     pub agent_id: String,
@@ -369,6 +353,7 @@ pub struct VmAgentRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+// Feature-gated to `firecracker`; see VM Management Types comment above.
 #[allow(dead_code)]
 pub struct VmAgentResponse {
     pub task_id: String,
@@ -445,78 +430,11 @@ impl ApiClient {
         Ok(body)
     }
 
-    #[allow(dead_code)]
-    pub async fn async_summarize_document(
-        &self,
-        document: &Document,
-        role: Option<&str>,
-    ) -> Result<AsyncSummarizeResponse> {
-        let url = format!("{}/documents/async_summarize", self.base);
-        let req = SummarizeRequest {
-            document: document.clone(),
-            role: role.map(|r| r.to_string()),
-        };
-        let res = self.http.post(url).json(&req).send().await?;
-        let body = res
-            .error_for_status()?
-            .json::<AsyncSummarizeResponse>()
-            .await?;
-        Ok(body)
-    }
-
-    #[allow(dead_code)]
-    pub async fn get_task_status(&self, task_id: &str) -> Result<TaskStatusResponse> {
-        let url = format!(
-            "{}/summarization/task/{}/status",
-            self.base,
-            urlencoding::encode(task_id)
-        );
-        let res = self.http.get(url).send().await?;
-        let body = res.error_for_status()?.json::<TaskStatusResponse>().await?;
-        Ok(body)
-    }
-
-    #[allow(dead_code)]
-    pub async fn cancel_task(&self, task_id: &str) -> Result<TaskStatusResponse> {
-        let url = format!(
-            "{}/summarization/task/{}/cancel",
-            self.base,
-            urlencoding::encode(task_id)
-        );
-        let res = self.http.post(url).send().await?;
-        let body = res.error_for_status()?.json::<TaskStatusResponse>().await?;
-        Ok(body)
-    }
-
-    #[allow(dead_code)]
-    pub async fn get_queue_stats(&self) -> Result<QueueStatsResponse> {
-        let url = format!("{}/summarization/queue/stats", self.base);
-        let res = self.http.get(url).send().await?;
-        let body = res.error_for_status()?.json::<QueueStatsResponse>().await?;
-        Ok(body)
-    }
-
-    #[allow(dead_code)]
-    pub async fn batch_summarize_documents(
-        &self,
-        documents: &[Document],
-        role: Option<&str>,
-    ) -> Result<BatchSummarizeResponse> {
-        let url = format!("{}/summarization/batch", self.base);
-        let req = BatchSummarizeRequest {
-            documents: documents.to_vec(),
-            role: role.map(|r| r.to_string()),
-        };
-        let res = self.http.post(url).json(&req).send().await?;
-        let body = res
-            .error_for_status()?
-            .json::<BatchSummarizeResponse>()
-            .await?;
-        Ok(body)
-    }
+    
 
     // VM Management APIs
 
+    // Feature-gated to `firecracker`; see VM Management Types comment above.
     #[allow(dead_code)]
     pub async fn list_vms(&self) -> Result<VmPoolListResponse> {
         let url = format!("{}/api/vm-pool", self.base);
@@ -525,6 +443,7 @@ impl ApiClient {
         Ok(body)
     }
 
+    // Feature-gated to `firecracker`; see VM Management Types comment above.
     #[allow(dead_code)]
     pub async fn get_vm_pool_stats(&self) -> Result<VmPoolStatsResponse> {
         let url = format!("{}/api/vm-pool/stats", self.base);
@@ -536,6 +455,7 @@ impl ApiClient {
         Ok(body)
     }
 
+    // Feature-gated to `firecracker`; see VM Management Types comment above.
     #[allow(dead_code)]
     pub async fn get_vm_status(&self, vm_id: &str) -> Result<VmStatusResponse> {
         let url = format!("{}/api/vms/{}", self.base, urlencoding::encode(vm_id));
@@ -544,6 +464,7 @@ impl ApiClient {
         Ok(body)
     }
 
+    // Feature-gated to `firecracker`; see VM Management Types comment above.
     #[allow(dead_code)]
     pub async fn execute_vm_code(
         &self,
@@ -564,6 +485,7 @@ impl ApiClient {
         Ok(body)
     }
 
+    // Feature-gated to `firecracker`; see VM Management Types comment above.
     #[allow(dead_code)]
     pub async fn list_vm_tasks(&self, vm_id: &str) -> Result<VmTasksResponse> {
         let url = format!("{}/api/vms/{}/tasks", self.base, urlencoding::encode(vm_id));
@@ -572,6 +494,7 @@ impl ApiClient {
         Ok(body)
     }
 
+    // Feature-gated to `firecracker`; see VM Management Types comment above.
     #[allow(dead_code)]
     pub async fn allocate_vm_ip(&self, vm_id: &str) -> Result<VmAllocateResponse> {
         let url = format!("{}/api/vm-pool/allocate", self.base);
@@ -583,6 +506,7 @@ impl ApiClient {
         Ok(body)
     }
 
+    // Feature-gated to `firecracker`; see VM Management Types comment above.
     #[allow(dead_code)]
     pub async fn release_vm_ip(&self, vm_id: &str) -> Result<()> {
         let url = format!(
@@ -595,6 +519,7 @@ impl ApiClient {
         Ok(())
     }
 
+    // Feature-gated to `firecracker`; see VM Management Types comment above.
     #[allow(dead_code)]
     pub async fn get_vm_metrics(&self, vm_id: &str) -> Result<VmMetricsResponse> {
         let url = format!(
@@ -607,6 +532,7 @@ impl ApiClient {
         Ok(body)
     }
 
+    // Feature-gated to `firecracker`; see VM Management Types comment above.
     #[allow(dead_code)]
     pub async fn get_all_vm_metrics(&self) -> Result<Vec<VmMetricsResponse>> {
         let url = format!("{}/api/vms/metrics", self.base);
@@ -618,6 +544,7 @@ impl ApiClient {
         Ok(body)
     }
 
+    // Feature-gated to `firecracker`; see VM Management Types comment above.
     #[allow(dead_code)]
     pub async fn execute_agent_task(
         &self,

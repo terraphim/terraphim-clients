@@ -42,17 +42,28 @@ fires when an item has no reachable user in the current compilation unit.
 **Allowed without justification:** none. Every `#[allow(dead_code)]` needs a
 comment explaining what is being suppressed and why.
 
-**Allowed with a justification comment:** cross-binary shared helpers in
-integration-test support modules. Rust integration tests compile each
-`tests/*.rs` file as its own binary, so an item that is genuinely used by
-one binary appears unused in every binary that does not import it. The
-function is not dead — only the per-binary view of it is. The annotation
-must say:
+**Allowed with a justification comment:**
 
-- which other binaries use the item,
-- why those binaries cannot directly reach it through their `use` chain, and
-- what refactor would remove the annotation entirely (e.g. moving the
-  helpers into a separate `*_test_support` crate consumed via `dev-dependency`).
+- **Cross-binary shared helpers in integration-test support modules.**
+  Rust integration tests compile each `tests/*.rs` file as its own
+  binary, so an item that is genuinely used by one binary appears
+  unused in every binary that does not import it. The function is not
+  dead — only the per-binary view of it is. The annotation must say:
+  - which other binaries use the item,
+  - why those binaries cannot directly reach it through their `use`
+    chain, and
+  - what refactor would remove the annotation entirely (e.g. moving the
+    helpers into a separate `*_test_support` crate consumed via
+    `dev-dependency`).
+- **Feature-gated public API.** Items that exist only to be reached when
+  a non-default Cargo feature is enabled (`--features firecracker`,
+  `--features server`, etc.). Such items are dead in the default
+  `cargo check --no-default-features` build and live in the
+  `cargo check --all-features` build. The annotation must say:
+  - the feature flag(s) under which the item is reachable,
+  - the names of the caller(s) that become reachable under that flag,
+    and
+  - the URL/path of the feature declaration in `Cargo.toml`.
 
 **Forbidden:**
 
