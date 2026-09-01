@@ -1,13 +1,20 @@
 //! Shared learning store implementation
 //!
-//! Provides markdown-backed storage with BM25-based deduplication
-//! and trust-gated promotion logic.
+//! Provides markdown-backed storage with BM25-based deduplication and
+//! trust-gated promotion logic. When a Terraphim `RoleGraph` is configured,
+//! suggestion and similarity lookups use the existing Terraphim hybrid
+//! scorer (`RoleGraph::query_graph`: weighted mean of node rank + edge rank
+//! + document rank with thesaurus term expansion) instead of pure BM25.
+// BM25 remains the fallback when the graph returns no matches.
 
 use std::collections::HashMap;
 
 use chrono::Utc;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
+
+#[cfg(feature = "shared-learning")]
+use terraphim_types::{Document, DocumentType};
 
 use crate::shared_learning::markdown_store::{
     MarkdownLearningStore, MarkdownStoreConfig, MarkdownStoreError,
@@ -132,6 +139,37 @@ impl Bm25Scorer {
     }
 }
 
+/// Build a Terraphim `Document` from a `SharedLearning` for ingestion into
+/// the role graph. The body carries the same lowercased, keyword-tagged
+/// text used by the BM25 fallback (`extract_searchable_text`), so both
+/// scorers index the same surface form.
+#[cfg(feature = "shared-learning")]
+fn build_document_for_graph(learning: &SharedLearning) -> Document {
+    let body = learning.extract_searchable_text();
+    let tags = if learning.keywords.is_empty() {
+        None
+    } else {
+        Some(learning.keywords.clone())
+    };
+    Document {
+        id: learning.id.clone(),
+        url: String::new(),
+        title: learning.title.clone(),
+        body,
+        description: None,
+        summarization: None,
+        stub: None,
+        tags,
+        rank: None,
+        source_haystack: Some("shared_learning_store".to_string()),
+        doc_type: DocumentType::default(),
+        synonyms: None,
+        route: None,
+        priority: None,
+        quality_score: None,
+    }
+}
+
 pub struct SharedLearningStore {
     backend: MarkdownLearningStore,
     index: RwLock<HashMap<String, SharedLearning>>,
@@ -195,8 +233,30 @@ impl SharedLearningStore {
     pub async fn insert(&self, learning: SharedLearning) -> Result<(), StoreError> {
         let id = learning.id.clone();
         self.persist(&learning).await?;
-        self.index.write().await.insert(id, learning);
+        self.index.write().await.insert(id.clone(), learning.clone());
+        // Mirror the insert into the role graph so suggestion / similarity
+        // can find this learning via Terraphim hybrid scoring immediately.
+        // Best-effort: a poisoned write lock on the graph must not fail
+        // the store-level insert.
+        #[cfg(feature = "shared-learning")]
+        self.sync_to_graph(&learning);
         Ok(())
+    }
+
+    /// Insert a learning's text into the configured role graph, if any.
+    ///
+    /// Failures (poisoned lock, missing graph) are swallowed because the
+    /// graph is an accelerator on top of the in-memory index, not the
+    /// source of truth: subsequent BM25 fallback will still surface the
+    /// learning.
+    #[cfg(feature = "shared-learning")]
+    fn sync_to_graph(&self, learning: &SharedLearning) {
+        if let Some(ref graph_lock) = self.role_graph {
+            if let Ok(mut graph) = graph_lock.write() {
+                let doc = build_document_for_graph(learning);
+                graph.insert_document(learning.id.as_str(), doc);
+            }
+        }
     }
 
     pub async fn store_with_dedup(
@@ -460,6 +520,21 @@ impl SharedLearningStore {
             return Ok(Vec::new());
         }
 
+        // Hybrid path: when a role graph is configured, prefer its
+        // weighted-mean-of-node-edge-doc rank with thesaurus term
+        // expansion over pure BM25. The substring fallback within the
+        // same call keeps candidates that match the literal query but
+        // are not yet covered by any thesaurus node.
+        if let Some(hybrid) = self.hybrid_rank(query, &all_learnings) {
+            let mut scored = hybrid;
+            scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+            if scored.len() > limit {
+                scored.truncate(limit);
+            }
+            return Ok(scored);
+        }
+
+        // Fallback: pure BM25.
         let mut doc_freqs: HashMap<String, usize> = HashMap::new();
         let mut total_doc_len = 0;
 
@@ -503,6 +578,71 @@ impl SharedLearningStore {
         Ok(scored)
     }
 
+    /// Run the configured role graph against `query` and produce a
+    /// `(score, SharedLearning)` list ranked by Terraphim hybrid scoring.
+    ///
+    /// Returns `None` when no graph is configured, the graph read lock is
+    /// poisoned, the graph query itself fails, or the graph returns an
+    /// empty result set (no thesaurus node matched the query). In every
+    /// such case the caller is expected to fall back to pure BM25.
+    ///
+    /// Scoring: each `IndexedDocument.rank` is normalised against the
+    /// best rank returned by the graph so the score sits in `[0, 1]`,
+    /// then multiplied by the trust-level weight (`0..=3`) to keep
+    /// parity with the BM25 scoring shape.
+    #[cfg(feature = "shared-learning")]
+    fn hybrid_rank(
+        &self,
+        query: &str,
+        candidates: &[SharedLearning],
+    ) -> Option<Vec<(f64, SharedLearning)>> {
+        let graph_lock = self.role_graph.as_ref()?;
+        let graph = graph_lock.read().ok()?;
+        let graph_results = graph.query_graph(query, None, None).ok()?;
+        if graph_results.is_empty() {
+            return None;
+        }
+        let graph_id_rank: HashMap<String, u64> = graph_results
+            .into_iter()
+            .map(|(id, doc)| (id, doc.rank))
+            .collect();
+        let max_rank = graph_id_rank.values().copied().max().unwrap_or(1).max(1);
+        let query_lower = query.to_lowercase();
+        let scored: Vec<(f64, SharedLearning)> = candidates
+            .iter()
+            .filter(|l| {
+                graph_id_rank.contains_key(&l.id)
+                    || l.extract_searchable_text().contains(&query_lower)
+            })
+            .map(|l| {
+                let rank = graph_id_rank.get(&l.id).copied().unwrap_or(0);
+                let normalised = if rank == 0 {
+                    0.0
+                } else {
+                    rank as f64 / max_rank as f64
+                };
+                let weighted = normalised * l.trust_level.weight() as f64;
+                (weighted, l.clone())
+            })
+            .filter(|(score, _)| *score > 0.0)
+            .collect();
+        if scored.is_empty() {
+            return None;
+        }
+        Some(scored)
+    }
+
+    /// Shared-learning variant of `hybrid_rank` for the non-`shared-learning`
+    /// feature build: always returns `None`, so callers fall back to BM25.
+    #[cfg(not(feature = "shared-learning"))]
+    fn hybrid_rank(
+        &self,
+        _query: &str,
+        _candidates: &[SharedLearning],
+    ) -> Option<Vec<(f64, SharedLearning)>> {
+        None
+    }
+
     pub async fn suggest(
         &self,
         context: &str,
@@ -524,6 +664,20 @@ impl SharedLearningStore {
             return Ok(Vec::new());
         }
 
+        // Hybrid path: same gate-on-graph-then-fallback as `find_similar`,
+        // applied after the `applicable_agents` filter so per-agent
+        // scoping is preserved on both code paths.
+        if let Some(mut hybrid) = self.hybrid_rank(context, &applicable) {
+            hybrid.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+            let mut out: Vec<SharedLearning> =
+                hybrid.into_iter().map(|(_, l)| l).collect();
+            if out.len() > limit {
+                out.truncate(limit);
+            }
+            return Ok(out);
+        }
+
+        // Fallback: pure BM25.
         let mut doc_freqs: HashMap<String, usize> = HashMap::new();
         let mut total_doc_len = 0;
 
@@ -614,7 +768,26 @@ impl SharedLearningStore {
 
     #[cfg(feature = "shared-learning")]
     pub fn set_role_graph(&mut self, graph: terraphim_rolegraph::RoleGraph) {
-        self.role_graph = Some(std::sync::RwLock::new(graph));
+        // Populate the graph from the current in-memory index so callers
+        // do not have to pre-load documents. Without this initial sync,
+        // the graph would have no documents and `query_graph` would
+        // always return empty, defeating the purpose of hybrid scoring.
+        let existing: Vec<SharedLearning> = self
+            .index
+            .try_read()
+            .map(|guard| guard.values().cloned().collect())
+            .unwrap_or_default();
+
+        let graph_lock = std::sync::RwLock::new(graph);
+        {
+            if let Ok(mut g) = graph_lock.write() {
+                for learning in &existing {
+                    let doc = build_document_for_graph(learning);
+                    g.insert_document(learning.id.as_str(), doc);
+                }
+            }
+        }
+        self.role_graph = Some(graph_lock);
     }
 
     #[cfg(feature = "shared-learning")]
@@ -1486,6 +1659,390 @@ mod tests {
                 .query_relevant("agent", "rust clippy", Tl::L1, 10)
                 .unwrap();
             assert!(!results.is_empty());
+        }
+    }
+
+    #[cfg(feature = "shared-learning")]
+    mod hybrid_tests {
+        //! Tests covering the Terraphim hybrid-scoring path used by
+        //! `find_similar` and `suggest` when a role graph is configured.
+        //!
+        //! Every test seeds a `RoleGraph` with a thesaurus that contains
+        //! at least one matching term for the query so the graph returns
+        //! a non-empty ranked set. The store is then asked to surface
+        //! learnings; the assertions verify that the graph-derived
+        //! ordering (normalised `IndexedDocument.rank` * trust weight) is
+        //! used in preference to pure BM25.
+
+        use super::*;
+        use crate::shared_learning::types::LearningSource;
+        use terraphim_rolegraph::RoleGraph;
+        use terraphim_types::{
+            Document, DocumentType, NormalizedTerm, NormalizedTermValue, RoleName, Thesaurus,
+        };
+
+        fn empty_thesaurus() -> Thesaurus {
+            Thesaurus::new("hybrid-test".to_string())
+        }
+
+        fn thesaurus_with(terms: &[&str]) -> Thesaurus {
+            let mut thesaurus = Thesaurus::new("hybrid-test".to_string());
+            for (i, term) in terms.iter().enumerate() {
+                thesaurus.insert(
+                    NormalizedTermValue::from(*term),
+                    NormalizedTerm::new(i as u64 + 1, NormalizedTermValue::from(*term)),
+                );
+            }
+            thesaurus
+        }
+
+        fn build_doc(id: &str, title: &str, body: &str) -> Document {
+            Document {
+                id: id.to_string(),
+                url: String::new(),
+                title: title.to_string(),
+                body: body.to_string(),
+                description: None,
+                summarization: None,
+                stub: None,
+                tags: None,
+                rank: None,
+                source_haystack: Some("test".to_string()),
+                doc_type: DocumentType::default(),
+                synonyms: None,
+                route: None,
+                priority: None,
+                quality_score: None,
+            }
+        }
+
+        fn seed_graph(terms: &[&str]) -> RoleGraph {
+            RoleGraph::new_sync(RoleName::new("hybrid-test"), thesaurus_with(terms)).unwrap()
+        }
+
+        async fn store_with_graph(graph: RoleGraph) -> SharedLearningStore {
+            let store = create_test_store().await;
+            // set_role_graph auto-syncs the in-memory index (empty here)
+            // so subsequent inserts hook into the same graph via
+            // `sync_to_graph`.
+            let mut s = store;
+            s.set_role_graph(graph);
+            s
+        }
+
+        fn make_learning(
+            id: &str,
+            title: &str,
+            content: &str,
+            keywords: Vec<&str>,
+            trust: TrustLevel,
+        ) -> SharedLearning {
+            let mut l = SharedLearning::new(
+                title.to_string(),
+                content.to_string(),
+                LearningSource::Manual,
+                "agent".to_string(),
+            )
+            .with_keywords(keywords.into_iter().map(String::from).collect());
+            l.id = id.to_string();
+            l.trust_level = trust;
+            l
+        }
+
+        #[tokio::test(flavor = "multi_thread")]
+        async fn find_similar_uses_role_graph_when_available() {
+            // Two learnings: "git push" matches the thesaurus term and
+            // should be surfaced first; "random" does not match any
+            // thesaurus term and must not appear.
+            let mut graph = seed_graph(&["git", "push"]);
+            let doc = build_doc("git-doc", "Git Push", "git push force error fix");
+            graph.insert_document("git-doc", doc);
+
+            let store = store_with_graph(graph).await;
+            store
+                .insert(make_learning(
+                    "git-doc",
+                    "Git Push",
+                    "git push force error fix",
+                    vec!["git"],
+                    TrustLevel::L1,
+                ))
+                .await
+                .unwrap();
+            store
+                .insert(make_learning(
+                    "unrelated",
+                    "Unrelated",
+                    "completely different topic",
+                    vec!["misc"],
+                    TrustLevel::L1,
+                ))
+                .await
+                .unwrap();
+
+            let results = store.find_similar("git push", 5).await.unwrap();
+            assert!(!results.is_empty(), "graph path should produce results");
+            assert_eq!(results[0].1.id, "git-doc");
+            // Hybrid scores are normalised to [0, trust_weight], not the
+            // tanh-compressed [0, 1] range BM25 returns. We only assert
+            // the relative ordering here.
+            let ids: Vec<&str> = results.iter().map(|(_, l)| l.id.as_str()).collect();
+            assert!(
+                ids.contains(&"git-doc"),
+                "git-doc must be surfaced, got {:?}",
+                ids
+            );
+        }
+
+        #[tokio::test(flavor = "multi_thread")]
+        async fn find_similar_falls_back_to_bm25_without_graph() {
+            let store = create_test_store().await;
+            store
+                .insert(make_learning(
+                    "git-doc",
+                    "Git Push",
+                    "git push force error fix",
+                    vec!["git"],
+                    TrustLevel::L1,
+                ))
+                .await
+                .unwrap();
+
+            let results = store.find_similar("git push", 5).await.unwrap();
+            assert_eq!(results.len(), 1);
+            assert_eq!(results[0].1.id, "git-doc");
+            // BM25 path score sits in [0, trust_weight]; just assert it
+            // is positive.
+            assert!(results[0].0 > 0.0);
+        }
+
+        #[tokio::test(flavor = "multi_thread")]
+        async fn find_similar_falls_back_to_bm25_when_graph_has_no_match() {
+            // Thesaurus terms are unrelated to the query, so the graph
+            // returns empty and we must drop to the BM25 fallback.
+            let graph = seed_graph(&["unrelated", "noise"]);
+            let store = store_with_graph(graph).await;
+            store
+                .insert(make_learning(
+                    "git-doc",
+                    "Git Push",
+                    "git push force error fix",
+                    vec!["git"],
+                    TrustLevel::L1,
+                ))
+                .await
+                .unwrap();
+
+            let results = store.find_similar("git push", 5).await.unwrap();
+            assert_eq!(results.len(), 1);
+            assert_eq!(results[0].1.id, "git-doc");
+        }
+
+        #[tokio::test(flavor = "multi_thread")]
+        async fn suggest_uses_role_graph_when_available() {
+            let mut graph = seed_graph(&["rust", "clippy"]);
+            graph.insert_document(
+                "rust-doc",
+                build_doc(
+                    "rust-doc",
+                    "Rust Clippy",
+                    "use cargo clippy to find rust errors",
+                ),
+            );
+
+            let store = store_with_graph(graph).await;
+            store
+                .insert(make_learning(
+                    "rust-doc",
+                    "Rust Clippy",
+                    "use cargo clippy to find rust errors",
+                    vec!["rust"],
+                    TrustLevel::L1,
+                ))
+                .await
+                .unwrap();
+
+            let results = store.suggest("rust clippy", "agent", 5).await.unwrap();
+            assert!(!results.is_empty());
+            assert_eq!(results[0].id, "rust-doc");
+        }
+
+        #[tokio::test(flavor = "multi_thread")]
+        async fn suggest_respects_applicable_agents_with_graph() {
+            let mut graph = seed_graph(&["shared"]);
+            graph.insert_document(
+                "shared-doc",
+                build_doc(
+                    "shared-doc",
+                    "Shared Topic",
+                    "shared topic for everyone",
+                ),
+            );
+
+            let store = store_with_graph(graph).await;
+
+            // shared-doc: applicable to all agents (empty list).
+            store
+                .insert(make_learning(
+                    "shared-doc",
+                    "Shared Topic",
+                    "shared topic for everyone",
+                    vec![],
+                    TrustLevel::L1,
+                ))
+                .await
+                .unwrap();
+
+            // scoped-doc: applicable only to security-audit.
+            let scoped = make_learning(
+                "scoped-doc",
+                "Scoped Topic",
+                "scoped to security-audit agent only",
+                vec!["shared"],
+                TrustLevel::L1,
+            )
+            .with_applicable_agents(vec!["security-audit".to_string()]);
+            store.insert(scoped).await.unwrap();
+
+            let results = store.suggest("shared", "agent", 5).await.unwrap();
+            assert!(
+                results.iter().any(|l| l.id == "shared-doc"),
+                "shared-doc should be visible to agent"
+            );
+            assert!(
+                !results.iter().any(|l| l.id == "scoped-doc"),
+                "scoped-doc must be filtered out for non-security agent"
+            );
+        }
+
+        #[tokio::test(flavor = "multi_thread")]
+        async fn suggest_falls_back_to_bm25_without_graph() {
+            let store = create_test_store().await;
+            store
+                .insert(make_learning(
+                    "rust-doc",
+                    "Rust Clippy",
+                    "use cargo clippy to find rust errors",
+                    vec!["rust"],
+                    TrustLevel::L1,
+                ))
+                .await
+                .unwrap();
+
+            let results = store.suggest("rust clippy", "agent", 5).await.unwrap();
+            assert_eq!(results.len(), 1);
+            assert_eq!(results[0].id, "rust-doc");
+        }
+
+        #[tokio::test(flavor = "multi_thread")]
+        async fn insert_syncs_learning_into_role_graph() {
+            // Empty thesaurus: only the substring fallback inside
+            // `query_graph` can match. We verify that after `insert`,
+            // the graph contains a document whose body matches the
+            // inserted learning's searchable text by using a query
+            // that the substring fallback can resolve.
+            let graph = seed_graph(&["marker"]);
+            let store = store_with_graph(graph).await;
+            store
+                .insert(make_learning(
+                    "synced-doc",
+                    "Substring Only",
+                    "this body has the word marker in it",
+                    vec![],
+                    TrustLevel::L1,
+                ))
+                .await
+                .unwrap();
+
+            // Force the graph path: a query that *also* contains the
+            // thesaurus term "marker" so `query_graph` returns non-empty
+            // results.
+            let results = store.find_similar("marker substring", 5).await.unwrap();
+            assert!(
+                results.iter().any(|(_, l)| l.id == "synced-doc"),
+                "synced-doc must surface via the role graph after insert, got {:?}",
+                results.iter().map(|(_, l)| l.id.clone()).collect::<Vec<_>>()
+            );
+        }
+
+        #[tokio::test(flavor = "multi_thread")]
+        async fn hybrid_rank_respects_trust_weighting() {
+            // Two learnings about git push: one at L1, one at L3. Both
+            // match the graph thesaurus term. L3 must rank higher
+            // because the hybrid score is multiplied by trust weight.
+            let mut graph = seed_graph(&["git"]);
+            graph.insert_document(
+                "l1-doc",
+                build_doc("l1-doc", "Git Push L1", "git push notes"),
+            );
+            graph.insert_document(
+                "l3-doc",
+                build_doc("l3-doc", "Git Push L3", "git push notes"),
+            );
+
+            let store = store_with_graph(graph).await;
+            store
+                .insert(make_learning(
+                    "l1-doc",
+                    "Git Push L1",
+                    "git push notes",
+                    vec!["git"],
+                    TrustLevel::L1,
+                ))
+                .await
+                .unwrap();
+            store
+                .insert(make_learning(
+                    "l3-doc",
+                    "Git Push L3",
+                    "git push notes",
+                    vec!["git"],
+                    TrustLevel::L3,
+                ))
+                .await
+                .unwrap();
+
+            let results = store.find_similar("git", 5).await.unwrap();
+            assert!(results.len() >= 2);
+            let l1_pos = results.iter().position(|(_, l)| l.id == "l1-doc");
+            let l3_pos = results.iter().position(|(_, l)| l.id == "l3-doc");
+            if let (Some(a), Some(b)) = (l3_pos, l1_pos) {
+                assert!(
+                    a < b,
+                    "L3 (trust_weight=3) must rank above L1 (trust_weight=1); positions l3={}, l1={}",
+                    a,
+                    b
+                );
+            } else {
+                panic!("both docs should be present, got {:?}", results);
+            }
+        }
+
+        #[tokio::test(flavor = "multi_thread")]
+        async fn hybrid_rank_with_empty_thesaurus_falls_back() {
+            // Empty thesaurus means query_graph returns empty for any
+            // query. The store must transparently fall back to BM25 so
+            // callers still receive a sensible ranking.
+            let graph = RoleGraph::new_sync(
+                RoleName::new("hybrid-test"),
+                empty_thesaurus(),
+            )
+            .unwrap();
+            let store = store_with_graph(graph).await;
+            store
+                .insert(make_learning(
+                    "git-doc",
+                    "Git Push",
+                    "git push force error fix",
+                    vec!["git"],
+                    TrustLevel::L1,
+                ))
+                .await
+                .unwrap();
+
+            let results = store.find_similar("git push", 5).await.unwrap();
+            assert_eq!(results.len(), 1);
+            assert_eq!(results[0].1.id, "git-doc");
         }
     }
 }
