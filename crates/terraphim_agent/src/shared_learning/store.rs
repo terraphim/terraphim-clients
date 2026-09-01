@@ -143,23 +143,27 @@ impl Bm25Scorer {
 /// the role graph. The body carries the same lowercased, keyword-tagged
 /// text used by the BM25 fallback (`extract_searchable_text`), so both
 /// scorers index the same surface form.
+///
+/// Notes on field choices:
+/// - `id` is left empty: `RoleGraph::insert_document` keys its internal
+///   hashmap on the `document_id` parameter, not on `Document.id`. The
+///   id field is purely informational and would otherwise cost a clone
+///   per insert.
+/// - `tags` is left empty: `Document::fmt`, which the rolegraph uses to
+///   derive the indexing string, does not include tags. Keyword coverage
+///   is already in `body` (see `extract_searchable_text`).
 #[cfg(feature = "shared-learning")]
 fn build_document_for_graph(learning: &SharedLearning) -> Document {
     let body = learning.extract_searchable_text();
-    let tags = if learning.keywords.is_empty() {
-        None
-    } else {
-        Some(learning.keywords.clone())
-    };
     Document {
-        id: learning.id.clone(),
+        id: String::new(),
         url: String::new(),
         title: learning.title.clone(),
         body,
         description: None,
         summarization: None,
         stub: None,
-        tags,
+        tags: None,
         rank: None,
         source_haystack: Some("shared_learning_store".to_string()),
         doc_type: DocumentType::default(),
@@ -233,7 +237,10 @@ impl SharedLearningStore {
     pub async fn insert(&self, learning: SharedLearning) -> Result<(), StoreError> {
         let id = learning.id.clone();
         self.persist(&learning).await?;
-        self.index.write().await.insert(id.clone(), learning.clone());
+        self.index
+            .write()
+            .await
+            .insert(id.clone(), learning.clone());
         // Mirror the insert into the role graph so suggestion / similarity
         // can find this learning via Terraphim hybrid scoring immediately.
         // Best-effort: a poisoned write lock on the graph must not fail
@@ -248,13 +255,23 @@ impl SharedLearningStore {
     /// Failures (poisoned lock, missing graph) are swallowed because the
     /// graph is an accelerator on top of the in-memory index, not the
     /// source of truth: subsequent BM25 fallback will still surface the
-    /// learning.
+    /// learning. A `tracing::warn!` is emitted when the lock is poisoned
+    /// so operators can detect degraded mode in logs.
     #[cfg(feature = "shared-learning")]
     fn sync_to_graph(&self, learning: &SharedLearning) {
         if let Some(ref graph_lock) = self.role_graph {
-            if let Ok(mut graph) = graph_lock.write() {
-                let doc = build_document_for_graph(learning);
-                graph.insert_document(learning.id.as_str(), doc);
+            match graph_lock.write() {
+                Ok(mut graph) => {
+                    let doc = build_document_for_graph(learning);
+                    graph.insert_document(learning.id.as_str(), doc);
+                }
+                Err(poisoned) => {
+                    warn!(
+                        learning_id = %learning.id,
+                        error = %poisoned,
+                        "rolegraph write lock poisoned; hybrid scoring will fall back to BM25 for this insert"
+                    );
+                }
             }
         }
     }
@@ -525,7 +542,7 @@ impl SharedLearningStore {
         // expansion over pure BM25. The substring fallback within the
         // same call keeps candidates that match the literal query but
         // are not yet covered by any thesaurus node.
-        if let Some(hybrid) = self.hybrid_rank(query, &all_learnings) {
+        if let Some(hybrid) = self.hybrid_rank(query, &all_learnings, limit) {
             let mut scored = hybrid;
             scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
             if scored.len() > limit {
@@ -581,6 +598,12 @@ impl SharedLearningStore {
     /// Run the configured role graph against `query` and produce a
     /// `(score, SharedLearning)` list ranked by Terraphim hybrid scoring.
     ///
+    /// `limit` is used to cap the graph result set (passed as
+    /// `limit * 2` with a floor) so the rolegraph does not over-fetch
+    /// when the corpus grows large. The caller is expected to truncate
+    /// the returned vector to its own `limit` after applying the trust
+    /// weight.
+    ///
     /// Returns `None` when no graph is configured, the graph read lock is
     /// poisoned, the graph query itself fails, or the graph returns an
     /// empty result set (no thesaurus node matched the query). In every
@@ -595,10 +618,12 @@ impl SharedLearningStore {
         &self,
         query: &str,
         candidates: &[SharedLearning],
+        limit: usize,
     ) -> Option<Vec<(f64, SharedLearning)>> {
         let graph_lock = self.role_graph.as_ref()?;
         let graph = graph_lock.read().ok()?;
-        let graph_results = graph.query_graph(query, None, None).ok()?;
+        let graph_cap = Some(limit.saturating_mul(2).max(8));
+        let graph_results = graph.query_graph(query, None, graph_cap).ok()?;
         if graph_results.is_empty() {
             return None;
         }
@@ -639,6 +664,7 @@ impl SharedLearningStore {
         &self,
         _query: &str,
         _candidates: &[SharedLearning],
+        _limit: usize,
     ) -> Option<Vec<(f64, SharedLearning)>> {
         None
     }
@@ -667,10 +693,9 @@ impl SharedLearningStore {
         // Hybrid path: same gate-on-graph-then-fallback as `find_similar`,
         // applied after the `applicable_agents` filter so per-agent
         // scoping is preserved on both code paths.
-        if let Some(mut hybrid) = self.hybrid_rank(context, &applicable) {
+        if let Some(mut hybrid) = self.hybrid_rank(context, &applicable, limit) {
             hybrid.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
-            let mut out: Vec<SharedLearning> =
-                hybrid.into_iter().map(|(_, l)| l).collect();
+            let mut out: Vec<SharedLearning> = hybrid.into_iter().map(|(_, l)| l).collect();
             if out.len() > limit {
                 out.truncate(limit);
             }
@@ -747,10 +772,8 @@ impl SharedLearningStore {
         let shared_results = self.suggest(context, agent_name, limit * 2).await?;
 
         // 2. Seed merged vec with shared results at default weight 1.0.
-        let mut merged: Vec<(f64, SharedLearning)> = shared_results
-            .into_iter()
-            .map(|l| (1.0, l))
-            .collect();
+        let mut merged: Vec<(f64, SharedLearning)> =
+            shared_results.into_iter().map(|l| (1.0, l)).collect();
 
         // 3. Append pre-scored local candidates at their caller-supplied weight.
         merged.extend(local_candidates);
@@ -772,18 +795,37 @@ impl SharedLearningStore {
         // do not have to pre-load documents. Without this initial sync,
         // the graph would have no documents and `query_graph` would
         // always return empty, defeating the purpose of hybrid scoring.
-        let existing: Vec<SharedLearning> = self
-            .index
-            .try_read()
-            .map(|guard| guard.values().cloned().collect())
-            .unwrap_or_default();
+        //
+        // Both lock acquisitions are best-effort: if either is contended
+        // or poisoned, the graph is left empty and `find_similar` /
+        // `suggest` fall back to BM25. A `tracing::warn!` is emitted so
+        // operators can detect the degraded mode in logs.
+        let existing: Vec<SharedLearning> = match self.index.try_read() {
+            Ok(guard) => guard.values().cloned().collect(),
+            Err(_) => {
+                warn!(
+                    "shared_learning_store index contended during set_role_graph; \
+                     initial sync skipped, hybrid scoring will fall back to BM25 \
+                     until the next insert re-syncs"
+                );
+                Vec::new()
+            }
+        };
 
         let graph_lock = std::sync::RwLock::new(graph);
         {
-            if let Ok(mut g) = graph_lock.write() {
-                for learning in &existing {
-                    let doc = build_document_for_graph(learning);
-                    g.insert_document(learning.id.as_str(), doc);
+            match graph_lock.write() {
+                Ok(mut g) => {
+                    for learning in &existing {
+                        let doc = build_document_for_graph(learning);
+                        g.insert_document(learning.id.as_str(), doc);
+                    }
+                }
+                Err(_) => {
+                    warn!(
+                        "rolegraph write lock poisoned during set_role_graph initial sync; \
+                         hybrid scoring will fall back to BM25"
+                    );
                 }
             }
         }
@@ -1872,11 +1914,7 @@ mod tests {
             let mut graph = seed_graph(&["shared"]);
             graph.insert_document(
                 "shared-doc",
-                build_doc(
-                    "shared-doc",
-                    "Shared Topic",
-                    "shared topic for everyone",
-                ),
+                build_doc("shared-doc", "Shared Topic", "shared topic for everyone"),
             );
 
             let store = store_with_graph(graph).await;
@@ -1961,7 +1999,10 @@ mod tests {
             assert!(
                 results.iter().any(|(_, l)| l.id == "synced-doc"),
                 "synced-doc must surface via the role graph after insert, got {:?}",
-                results.iter().map(|(_, l)| l.id.clone()).collect::<Vec<_>>()
+                results
+                    .iter()
+                    .map(|(_, l)| l.id.clone())
+                    .collect::<Vec<_>>()
             );
         }
 
@@ -2023,11 +2064,8 @@ mod tests {
             // Empty thesaurus means query_graph returns empty for any
             // query. The store must transparently fall back to BM25 so
             // callers still receive a sensible ranking.
-            let graph = RoleGraph::new_sync(
-                RoleName::new("hybrid-test"),
-                empty_thesaurus(),
-            )
-            .unwrap();
+            let graph =
+                RoleGraph::new_sync(RoleName::new("hybrid-test"), empty_thesaurus()).unwrap();
             let store = store_with_graph(graph).await;
             store
                 .insert(make_learning(
