@@ -16,6 +16,7 @@ use uuid::Uuid;
 
 use crate::learnings::LearningCaptureConfig;
 use crate::learnings::redaction::redact_secrets;
+use terraphim_types::shared_learning::SharedLearning;
 
 /// Errors that can occur during learning capture.
 #[derive(Error, Debug)]
@@ -1510,6 +1511,161 @@ pub fn query_all_entries_semantic(
     Ok(filtered)
 }
 
+/// Score entry relevance based on keyword matching.
+///
+/// Returns a score based on the number of matching keywords between
+/// the context and the learning content. Used as a fallback relevance
+/// scorer for the legacy `LearningEntry` corpus; the cross-agent
+/// `SharedLearning` store uses BM25 (`SharedLearningStore::suggest`).
+pub fn score_entry_relevance(entry: &LearningEntry, context_keywords: &[String]) -> usize {
+    let text = match entry {
+        LearningEntry::Learning(l) => {
+            format!("{} {} {:?}", l.command, l.error_output, l.tags)
+        }
+        LearningEntry::Correction(c) => {
+            format!("{} {} {}", c.original, c.corrected, c.context_description)
+        }
+        LearningEntry::Procedure(p) => {
+            format!("{} {}", p.title, p.description)
+        }
+    }
+    .to_lowercase();
+
+    context_keywords
+        .iter()
+        .filter(|keyword| text.contains(*keyword))
+        .count()
+}
+
+/// A scored learning entry with its relevance score.
+#[derive(Debug, Clone)]
+pub struct ScoredEntry {
+    /// The learning entry
+    pub entry: LearningEntry,
+    /// Relevance score (higher is better)
+    pub score: usize,
+}
+
+impl ScoredEntry {
+    /// Format as a suggestion line for display.
+    pub fn format_suggestion(&self) -> String {
+        match &self.entry {
+            LearningEntry::Learning(l) => {
+                format!("[cmd] {} (exit: {}) - {}", l.command, l.exit_code, l.id)
+            }
+            LearningEntry::Correction(c) => {
+                format!(
+                    "[{}] {} -> {} - {}",
+                    c.correction_type, c.original, c.corrected, c.id
+                )
+            }
+            LearningEntry::Procedure(p) => {
+                format!("[proc] {} ({} steps) - {}", p.title, p.step_count(), p.id)
+            }
+        }
+    }
+}
+
+/// Convert a legacy local `LearningEntry` into a `SharedLearning` suitable
+/// for cross-agent sharing. The returned learning mirrors the entry's data
+/// (id, title, content, keywords, source-agent) so it can be ranked alongside
+/// results from `SharedLearningStore::suggest` via BM25 without loss of
+/// semantic content.
+///
+/// # De-duplication
+///
+/// When `entry.id()` already appears in `shared_ids` (i.e., the local entry
+/// has been promoted to the shared index), the function returns `None` so
+/// callers can avoid emitting the same learning twice. This is the bridge
+/// between the legacy `LearningEntry` corpus and the cross-agent
+/// `SharedLearning` store: `SharedLearningStore::suggest_with_local` (in
+/// `shared_learning/store.rs`) ranks BM25 results, then iterates local
+/// `ScoredEntry`s and converts each through this helper.
+///
+/// # Source mapping
+///
+/// - `LearningEntry::Learning(..)` -> `SharedLearning.source = BashHook`
+/// - `LearningEntry::Correction(..)` -> `SharedLearning.source = Manual`
+/// - `LearningEntry::Procedure(..)` -> `SharedLearning.source = Manual`
+///
+/// `source_agent` is set to `"legacy-local"` to make the provenance
+/// distinguishable from natively-shared entries; callers may overwrite this
+/// by mutating the returned value before persisting.
+pub fn shared_learning_from_entry(
+    entry: &LearningEntry,
+    shared_ids: &std::collections::HashSet<String>,
+) -> Option<SharedLearning> {
+    if shared_ids.contains(entry.id()) {
+        return None;
+    }
+
+    let scored = ScoredEntry {
+        entry: entry.clone(),
+        score: 0,
+    };
+    let title = scored.format_suggestion();
+
+    let (content, keywords, source) = match entry {
+        LearningEntry::Learning(l) => {
+            let body = match l.correction.as_deref() {
+                Some(c) => format!(
+                    "Command: `{}`\nExit code: {}\nError:\n```\n{}\n```\nSuggested correction: `{}`",
+                    l.command, l.exit_code, l.error_output, c
+                ),
+                None => format!(
+                    "Command: `{}`\nExit code: {}\nError:\n```\n{}\n```",
+                    l.command, l.exit_code, l.error_output
+                ),
+            };
+            let mut kws: Vec<String> = Vec::with_capacity(l.tags.len() + l.entities.len());
+            kws.extend(l.tags.iter().cloned());
+            kws.extend(l.entities.iter().cloned());
+            (body, kws, terraphim_types::shared_learning::LearningSource::BashHook)
+        }
+        LearningEntry::Correction(c) => {
+            let body = format!(
+                "Correction type: {}\nOriginal: `{}`\nCorrected: `{}`\nContext: {}",
+                c.correction_type, c.original, c.corrected, c.context_description
+            );
+            let mut kws = vec![
+                format!("type:{}", c.correction_type),
+                "correction".to_string(),
+            ];
+            kws.extend(c.tags.iter().cloned());
+            (body, kws, terraphim_types::shared_learning::LearningSource::Manual)
+        }
+        LearningEntry::Procedure(p) => {
+            let steps: Vec<String> = p
+                .steps
+                .iter()
+                .map(|s| format!("- {}", s.command))
+                .collect();
+            let body = format!(
+                "Procedure: {}\nDescription: {}\nSteps ({}):\n{}",
+                p.title,
+                p.description,
+                p.step_count(),
+                steps.join("\n")
+            );
+            let mut kws = vec!["procedure".to_string()];
+            kws.extend(p.tags.iter().cloned());
+            (body, kws, terraphim_types::shared_learning::LearningSource::Manual)
+        }
+    };
+
+    let source_agent = "legacy-local".to_string();
+
+    let mut learning = SharedLearning::new(title, content, source, source_agent);
+    // Preserve the legacy id so dedup via `shared_ids` works on subsequent
+    // runs even if the entry file is rewritten with a new UUID by the
+    // capture pipeline.
+    learning.id = entry.id().to_string();
+    if !keywords.is_empty() {
+        learning = learning.with_keywords(keywords);
+    }
+    Some(learning)
+}
+
 /// JSONL transcript entry types for auto-extraction.
 #[derive(Debug, Clone, Deserialize)]
 // serde-deserialised type constructed only by `mod tests` in this file; cross-binary test API
@@ -1732,6 +1888,81 @@ pub fn auto_extract_corrections(
     }
 
     Ok(corrections)
+}
+
+/// Suggest learnings based on context relevance.
+///
+/// Takes a context string (e.g., current working directory or task description),
+/// extracts keywords from it, and scores all learnings by keyword frequency.
+/// Returns the top-N most relevant learnings.
+///
+/// This is the relevance scorer for the legacy `LearningEntry` corpus
+/// (local learnings captured by `capture_failed_command` /
+/// `auto_extract_corrections`). The cross-agent `SharedLearning` system
+/// uses BM25 via `SharedLearningStore::suggest`; see
+/// `shared_learning/store.rs`.
+///
+/// # Arguments
+///
+/// * `storage_dir` - Directory containing learning markdown files
+/// * `context` - Context string to match against (e.g., "rust project with cargo build")
+/// * `limit` - Maximum number of suggestions to return
+///
+/// # Returns
+///
+/// List of scored entries sorted by relevance (highest first).
+pub fn suggest_learnings(
+    storage_dir: &PathBuf,
+    context: &str,
+    limit: usize,
+) -> Result<Vec<ScoredEntry>, LearningError> {
+    let all_entries = list_all_entries(storage_dir, usize::MAX)?;
+
+    if all_entries.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Extract keywords from context (simple word tokenization)
+    let context_keywords: Vec<String> = context
+        .split_whitespace()
+        .map(|w| {
+            w.to_lowercase()
+                .trim_matches(|c: char| !c.is_alphanumeric())
+                .to_string()
+        })
+        .filter(|w| !w.is_empty() && w.len() > 2) // Filter out short words
+        .collect();
+
+    if context_keywords.is_empty() {
+        // Fallback: return most recent entries if no keywords extracted
+        let recent: Vec<ScoredEntry> = all_entries
+            .into_iter()
+            .take(limit)
+            .map(|entry| ScoredEntry { entry, score: 0 })
+            .collect();
+        return Ok(recent);
+    }
+
+    // Score all entries
+    let mut scored: Vec<ScoredEntry> = all_entries
+        .into_iter()
+        .map(|entry| {
+            let score = score_entry_relevance(&entry, &context_keywords);
+            ScoredEntry { entry, score }
+        })
+        .filter(|se| se.score > 0) // Only include entries with at least one match
+        .collect();
+
+    // Sort by score descending
+    #[allow(clippy::unnecessary_sort_by)]
+    scored.sort_by(|a, b| b.score.cmp(&a.score));
+
+    // Limit results
+    if scored.len() > limit {
+        scored.truncate(limit);
+    }
+
+    Ok(scored)
 }
 
 #[cfg(test)]
@@ -2674,5 +2905,376 @@ mod tests {
         );
         let entry2 = LearningEntry::Correction(correction);
         assert!(matches!(entry2, LearningEntry::Correction(_)));
+    }
+
+    // --- suggest_learnings cluster tests ---
+
+    /// Build a `Learning` entry with a fixed id for deterministic assertions.
+    fn fixed_learning(id: &str, command: &str, error: &str, tags: &[&str]) -> LearningEntry {
+        let mut learning = CapturedLearning::new(
+            command.to_string(),
+            error.to_string(),
+            1,
+            LearningSource::Project,
+        );
+        learning.id = id.to_string();
+        learning.tags = tags.iter().map(|t| t.to_string()).collect();
+        LearningEntry::Learning(learning)
+    }
+
+    fn fixed_correction(
+        id: &str,
+        original: &str,
+        corrected: &str,
+        tags: &[&str],
+    ) -> LearningEntry {
+        let mut c = CorrectionEvent::new(
+            CorrectionType::ToolPreference,
+            original.to_string(),
+            corrected.to_string(),
+            "test context".to_string(),
+            LearningSource::Project,
+        );
+        c.id = id.to_string();
+        c.tags = tags.iter().map(|t| t.to_string()).collect();
+        LearningEntry::Correction(c)
+    }
+
+    #[test]
+    fn test_score_entry_relevance_counts_keyword_hits() {
+        let entry = fixed_learning("L1", "git push origin main", "fatal: rejected", &[]);
+        let keywords = vec!["git".to_string(), "cargo".to_string()];
+        // "git" matches the command and the error text lowercase; "cargo" matches neither.
+        let score = score_entry_relevance(&entry, &keywords);
+        assert_eq!(score, 1, "exactly one keyword matches");
+    }
+
+    #[test]
+    fn test_score_entry_relevance_is_case_insensitive() {
+        let entry = fixed_learning("L2", "GIT push origin main", "FATAL: rejected", &[]);
+        let keywords = vec!["git".to_string(), "fatal".to_string()];
+        let score = score_entry_relevance(&entry, &keywords);
+        assert_eq!(score, 2, "both keywords match regardless of case");
+    }
+
+    #[test]
+    fn test_score_entry_relevance_correction_variant() {
+        let entry = fixed_correction(
+            "C1",
+            "npm install",
+            "bun add",
+            &["tool-preference", "package-mgr"],
+        );
+        let keywords = vec!["npm".to_string(), "bun".to_string(), "python".to_string()];
+        // "npm" hits the original; "bun" hits the corrected; "python" misses.
+        let score = score_entry_relevance(&entry, &keywords);
+        assert_eq!(score, 2);
+    }
+
+    #[test]
+    fn test_score_entry_relevance_zero_when_no_match() {
+        let entry = fixed_learning("L3", "ls -la", "ok", &[]);
+        let keywords = vec!["git".to_string(), "cargo".to_string()];
+        assert_eq!(score_entry_relevance(&entry, &keywords), 0);
+    }
+
+    #[test]
+    fn test_score_entry_relevance_procedure_variant() {
+        let proc_json = serde_json::json!({
+            "id": "P1",
+            "title": "deploy rust service",
+            "description": "deploys the rust binary to staging",
+            "steps": [
+                {"ordinal": 1, "command": "cargo build --release", "privileged": false, "tags": []}
+            ],
+            "confidence": {"success_count": 1, "failure_count": 0, "score": 1.0},
+            "tags": ["deploy"],
+            "created_at": "2026-01-01T00:00:00+00:00",
+            "updated_at": "2026-01-01T00:00:00+00:00",
+            "source_session": null,
+            "disabled": false
+        });
+        let proc: terraphim_types::procedure::CapturedProcedure =
+            serde_json::from_value(proc_json).unwrap();
+        let entry = LearningEntry::Procedure(proc);
+
+        let keywords = vec![
+            "deploy".to_string(),
+            "staging".to_string(),
+            "kubernetes".to_string(),
+        ];
+        let score = score_entry_relevance(&entry, &keywords);
+        assert_eq!(score, 2, "deploy and staging match; kubernetes does not");
+    }
+
+    #[test]
+    fn test_scored_entry_format_suggestion_for_learning() {
+        let entry = fixed_learning("L-FMT-1", "git push -f", "rejected", &[]);
+        let scored = ScoredEntry { entry, score: 3 };
+        let line = scored.format_suggestion();
+        assert!(line.starts_with("[cmd]"), "got: {line}");
+        assert!(line.contains("git push -f"));
+        assert!(line.contains("exit: 1"));
+        assert!(line.contains("L-FMT-1"));
+    }
+
+    #[test]
+    fn test_scored_entry_format_suggestion_for_correction() {
+        let entry = fixed_correction("C-FMT-1", "npm", "bun", &[]);
+        let scored = ScoredEntry { entry, score: 2 };
+        let line = scored.format_suggestion();
+        assert!(line.starts_with("[tool-preference]"), "got: {line}");
+        assert!(line.contains("npm"));
+        assert!(line.contains("bun"));
+        assert!(line.contains("C-FMT-1"));
+    }
+
+    #[test]
+    fn test_suggest_learnings_returns_matches_only() {
+        let temp_dir = TempDir::new().unwrap();
+        let storage = temp_dir.path().join("learnings");
+        fs::create_dir(&storage).unwrap();
+
+        // Two learnings: one matches the context, one doesn't.
+        let matching = fixed_learning("MATCH-1", "git push origin main", "rejected", &[]);
+        let nonmatching = fixed_learning("NOMATCH-1", "ls -la", "no error", &[]);
+        fs::write(
+            storage.join("learning-match.md"),
+            match &matching {
+                LearningEntry::Learning(l) => l.to_markdown(),
+                _ => unreachable!(),
+            },
+        )
+        .unwrap();
+        fs::write(
+            storage.join("learning-nomatch.md"),
+            match &nonmatching {
+                LearningEntry::Learning(l) => l.to_markdown(),
+                _ => unreachable!(),
+            },
+        )
+        .unwrap();
+
+        let results = suggest_learnings(&storage, "git push problems", 10).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].entry.id(), "MATCH-1");
+        assert!(results[0].score >= 1);
+    }
+
+    #[test]
+    fn test_suggest_learnings_sorts_by_score_descending() {
+        let temp_dir = TempDir::new().unwrap();
+        let storage = temp_dir.path().join("learnings");
+        fs::create_dir(&storage).unwrap();
+
+        // Three learnings, each matching the context with different counts.
+        let one_hit = fixed_learning("ONE", "git", "ok", &[]);
+        let two_hit = fixed_learning("TWO", "git commit -m rust", "ok", &["rust"]);
+        let three_hit = fixed_learning(
+            "THREE",
+            "git commit rust",
+            "rust error",
+            &["rust", "tag-rust"],
+        );
+        for entry in [&one_hit, &two_hit, &three_hit] {
+            let path = match entry {
+                LearningEntry::Learning(l) => {
+                    storage.join(format!("learning-{}.md", l.id))
+                }
+                _ => unreachable!(),
+            };
+            fs::write(
+                path,
+                match entry {
+                    LearningEntry::Learning(l) => l.to_markdown(),
+                    _ => unreachable!(),
+                },
+            )
+            .unwrap();
+        }
+
+        let results = suggest_learnings(&storage, "git commit rust", 10).unwrap();
+        assert_eq!(results.len(), 3, "all entries match at least one keyword");
+        assert_eq!(results[0].entry.id(), "THREE", "highest score first");
+        // Strictly descending.
+        assert!(results[0].score >= results[1].score);
+        assert!(results[1].score >= results[2].score);
+    }
+
+    #[test]
+    fn test_suggest_learnings_limit_truncates() {
+        let temp_dir = TempDir::new().unwrap();
+        let storage = temp_dir.path().join("learnings");
+        fs::create_dir(&storage).unwrap();
+
+        for i in 0..5 {
+            let entry = fixed_learning(&format!("L{i}"), "git push", "rejected", &[]);
+            if let LearningEntry::Learning(l) = &entry {
+                fs::write(storage.join(format!("learning-{i}.md")), l.to_markdown()).unwrap();
+            }
+        }
+
+        let results = suggest_learnings(&storage, "git push", 2).unwrap();
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn test_suggest_learnings_no_keywords_returns_recent() {
+        let temp_dir = TempDir::new().unwrap();
+        let storage = temp_dir.path().join("learnings");
+        fs::create_dir(&storage).unwrap();
+
+        // Two entries: only short keywords ("a", "i") won't survive the
+        // `len() > 2` filter, so the scorer falls back to recent-by-time.
+        let entry = fixed_learning("FALLBACK-1", "ls -la", "ok", &[]);
+        if let LearningEntry::Learning(l) = &entry {
+            fs::write(
+                storage.join("learning-fb.md"),
+                l.to_markdown(),
+            )
+            .unwrap();
+        }
+
+        // Context "a i" → after `len() > 2` filter, no keywords remain.
+        let results = suggest_learnings(&storage, "a i", 10).unwrap();
+        assert_eq!(results.len(), 1, "fallback path returns the entry");
+        assert_eq!(results[0].entry.id(), "FALLBACK-1");
+        assert_eq!(results[0].score, 0);
+    }
+
+    #[test]
+    fn test_suggest_learnings_empty_dir_returns_empty() {
+        let temp_dir = TempDir::new().unwrap();
+        let storage = temp_dir.path().join("learnings");
+        let results = suggest_learnings(&storage, "anything", 10).unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_shared_learning_from_entry_returns_none_when_already_shared() {
+        let entry = fixed_learning("ALREADY-SHARED-1", "git status", "ok", &[]);
+        let mut shared_ids = std::collections::HashSet::new();
+        shared_ids.insert("ALREADY-SHARED-1".to_string());
+        assert!(shared_learning_from_entry(&entry, &shared_ids).is_none());
+    }
+
+    #[test]
+    fn test_shared_learning_from_entry_converts_learning_variant() {
+        let entry = fixed_learning("FRESH-1", "git push -f", "remote: rejected", &["git"]);
+        let shared_ids = std::collections::HashSet::new();
+        let shared = shared_learning_from_entry(&entry, &shared_ids)
+            .expect("fresh id should be retained");
+        assert_eq!(shared.id, "FRESH-1");
+        assert_eq!(shared.source_agent, "legacy-local");
+        assert!(matches!(
+            shared.source,
+            terraphim_types::shared_learning::LearningSource::BashHook
+        ));
+        assert!(
+            shared.title.contains("git push -f"),
+            "title carries the suggestion, got: {}",
+            shared.title
+        );
+        assert!(
+            shared.content.contains("git push -f"),
+            "content carries the command, got: {}",
+            shared.content
+        );
+        assert!(
+            shared.keywords.contains(&"git".to_string()),
+            "tag must become keyword, got: {:?}",
+            shared.keywords
+        );
+    }
+
+    #[test]
+    fn test_shared_learning_from_entry_includes_correction_text() {
+        let mut entry_unwrapped = CapturedLearning::new(
+            "git push -f".to_string(),
+            "remote: rejected".to_string(),
+            1,
+            LearningSource::Project,
+        );
+        entry_unwrapped.id = "FRESH-2".to_string();
+        entry_unwrapped.correction = Some("git push origin main".to_string());
+        let entry = LearningEntry::Learning(entry_unwrapped);
+        let shared_ids = std::collections::HashSet::new();
+        let shared = shared_learning_from_entry(&entry, &shared_ids)
+            .expect("fresh id should be retained");
+        assert_eq!(shared.id, "FRESH-2");
+        assert!(
+            shared
+                .content
+                .contains("Suggested correction: `git push origin main`"),
+            "correction must be embedded in content, got: {}",
+            shared.content
+        );
+    }
+
+    #[test]
+    fn test_shared_learning_from_entry_converts_correction_variant() {
+        let entry = fixed_correction(
+            "FRESH-3",
+            "npm install",
+            "bun add",
+            &["tool"],
+        );
+        let shared_ids = std::collections::HashSet::new();
+        let shared = shared_learning_from_entry(&entry, &shared_ids)
+            .expect("correction id should be retained");
+        assert_eq!(shared.id, "FRESH-3");
+        assert!(matches!(
+            shared.source,
+            terraphim_types::shared_learning::LearningSource::Manual
+        ));
+        assert!(shared.title.contains("npm"));
+        assert!(shared.title.contains("bun"));
+        assert!(
+            shared
+                .keywords
+                .iter()
+                .any(|k| k.contains("tool-preference") || k == "tool"),
+            "correction type tag should appear, got: {:?}",
+            shared.keywords
+        );
+    }
+
+    #[test]
+    fn test_shared_learning_from_entry_converts_procedure_variant() {
+        let proc_json = serde_json::json!({
+            "id": "FRESH-PROC-1",
+            "title": "deploy service",
+            "description": "build and push docker image",
+            "steps": [
+                {"ordinal": 1, "command": "cargo build --release", "privileged": false, "tags": []},
+                {"ordinal": 2, "command": "docker build -t myapp .", "privileged": false, "tags": []},
+                {"ordinal": 3, "command": "docker push myapp:latest", "privileged": false, "tags": []}
+            ],
+            "confidence": {"success_count": 5, "failure_count": 0, "score": 1.0},
+            "tags": ["deploy"],
+            "created_at": "2026-01-01T00:00:00+00:00",
+            "updated_at": "2026-01-01T00:00:00+00:00",
+            "source_session": null,
+            "disabled": false
+        });
+        let proc: terraphim_types::procedure::CapturedProcedure =
+            serde_json::from_value(proc_json).unwrap();
+        let entry = LearningEntry::Procedure(proc);
+
+        let shared_ids = std::collections::HashSet::new();
+        let shared = shared_learning_from_entry(&entry, &shared_ids)
+            .expect("procedure id should be retained");
+        assert_eq!(shared.id, "FRESH-PROC-1");
+        assert!(matches!(
+            shared.source,
+            terraphim_types::shared_learning::LearningSource::Manual
+        ));
+        assert!(shared.content.contains("cargo build --release"));
+        assert!(shared.content.contains("docker push"));
+        assert!(
+            shared.keywords.contains(&"procedure".to_string()),
+            "procedure keyword missing, got: {:?}",
+            shared.keywords
+        );
     }
 }

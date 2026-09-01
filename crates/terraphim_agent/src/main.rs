@@ -3916,13 +3916,69 @@ async fn run_suggest_command(sub: SuggestSub) -> Result<()> {
                 println!("[suggestions] No pending suggestions.");
                 return Ok(());
             }
+            // Rank across shared (BM25) and local legacy corpus
+            // (`learnings::capture::suggest_learnings`). The local scorer
+            // produces `Vec<ScoredEntry>`; each entry that is not already
+            // represented in the shared index is converted to a
+            // `SharedLearning` via `shared_learning_from_entry` and tagged
+            // with a small score-weighted tie-breaker so it surfaces next
+            // to (not behind) the BM25-ranked shared entries.
             let top = if let Some(ref ctx) = context {
-                store
-                    .suggest(ctx, "session-end", 1)
+                let capture_config = crate::learnings::LearningCaptureConfig::default();
+                let local_storage_dir = capture_config.storage_location();
+
+                // 1. BM25 across the shared index.
+                let shared_top = store
+                    .suggest(ctx, "session-end", 5)
                     .await
-                    .map_err(|e| anyhow::anyhow!("{}", e))
-                    .ok()
-                    .and_then(|v| v.into_iter().next())
+                    .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+                // 2. Keyword scoring across the local legacy corpus.
+                let local_scored = crate::learnings::capture::suggest_learnings(
+                    &local_storage_dir,
+                    ctx,
+                    5,
+                )
+                .unwrap_or_default();
+
+                // 3. De-duplicate against the shared index.
+                let shared_ids: std::collections::HashSet<String> = shared_top
+                    .iter()
+                    .map(|l| l.id.clone())
+                    .collect();
+                let local_candidates: Vec<(f64, _)> = local_scored
+                    .into_iter()
+                    .filter_map(|se| {
+                        let shared = crate::learnings::capture::shared_learning_from_entry(
+                            &se.entry,
+                            &shared_ids,
+                        )?;
+                        // Tie-breaker boost proportional to local keyword score.
+                        let boost = 0.05 * se.score as f64;
+                        Some((1.0 + boost, shared))
+                    })
+                    .collect();
+
+                // 4. Merge and rank.
+                let merged = store
+                    .suggest_with_local_scored(
+                        ctx,
+                        "session-end",
+                        local_candidates,
+                        1,
+                    )
+                    .await
+                    .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+                // If BM25 produced nothing but the local corpus had hits,
+                // fall back to the BM25 results (which may be empty); this
+                // mirrors the previous behaviour of surfacing the first
+                // shared suggestion when available.
+                if merged.is_empty() {
+                    shared_top.into_iter().next()
+                } else {
+                    merged.into_iter().next()
+                }
             } else {
                 pending.into_iter().next()
             };

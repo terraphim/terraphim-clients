@@ -563,6 +563,51 @@ impl SharedLearningStore {
         Ok(scored)
     }
 
+    /// Suggest relevant entries from the legacy local `LearningEntry` corpus
+    /// alongside BM25-scored `SharedLearning` results.
+    ///
+    /// The shared corpus is ranked with BM25 via `Self::suggest`. The local
+    /// corpus is ranked outside this method by the caller (e.g.
+    /// `learnings::capture::suggest_learnings` in `main.rs`) and passed in
+    /// as `local_candidates` together with per-candidate weights. Results are
+    /// merged, sorted by weight descending, and truncated to `limit`.
+    ///
+    /// Why decouple: the legacy learning module lives in the binary
+    /// (`mod learnings` in `main.rs`) and the library crate cannot depend
+    /// on it. Splitting the orchestration this way keeps the library free
+    /// of binary-only paths while still letting callers (like
+    /// `SuggestSub::SessionEnd`) rank across both corpora.
+    ///
+    /// `local_candidates` carries `(weight, SharedLearning)` pairs already
+    /// converted by the caller (typically via
+    /// `learnings::capture::shared_learning_from_entry`). Callers that have
+    /// no local corpus to merge can pass an empty Vec.
+    pub async fn suggest_with_local_scored(
+        &self,
+        context: &str,
+        agent_name: &str,
+        local_candidates: Vec<(f64, SharedLearning)>,
+        limit: usize,
+    ) -> Result<Vec<SharedLearning>, StoreError> {
+        // 1. Rank shared corpus.
+        let shared_results = self.suggest(context, agent_name, limit * 2).await?;
+
+        // 2. Seed merged vec with shared results at default weight 1.0.
+        let mut merged: Vec<(f64, SharedLearning)> = shared_results
+            .into_iter()
+            .map(|l| (1.0, l))
+            .collect();
+
+        // 3. Append pre-scored local candidates at their caller-supplied weight.
+        merged.extend(local_candidates);
+
+        // 4. Sort by weighted score descending and truncate.
+        merged.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+        merged.truncate(limit);
+
+        Ok(merged.into_iter().map(|(_, l)| l).collect())
+    }
+
     pub async fn close(&self) {
         info!("Shared learning store closed");
     }
