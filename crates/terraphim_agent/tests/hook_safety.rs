@@ -6,10 +6,20 @@
 //! `CARGO_BIN_EXE_terraphim-agent` (set by Cargo for integration tests) so
 //! they run in seconds without nesting `cargo build`.
 //!
-//! The hook service takes ~7s to build the thesaurus for the default role, so
-//! each test only runs one invocation.
+//! Each invocation runs under the hermetic environment from
+//! `support::cli_test_env`, so the thesaurus comes from the fixture role
+//! config (`tests/fixtures/terraphim_engineer_config.json`, KG at
+//! `tests/test_kg/`) rather than whatever `~/.config/terraphim` holds on the
+//! host. The substitution tests rely on `tests/test_kg/trash.md`, which maps
+//! `rm -rf` to `trash`; without a fixture term the "KG-replaceable" branch is
+//! never reached and the tests only pass on machines whose personal KG
+//! happens to contain a matching synonym (which is how they passed locally
+//! and failed on the Gitea runner).
 
 use std::process::{Command, Stdio};
+
+mod support;
+use support::cli_test_env::apply_hermetic_env;
 
 fn agent_binary() -> &'static str {
     env!("CARGO_BIN_EXE_terraphim-agent")
@@ -17,13 +27,13 @@ fn agent_binary() -> &'static str {
 
 /// Spawn the binary, pipe JSON to stdin, return parsed stdout.
 fn run_hook(extra_args: &[&str], payload: &str) -> (i32, String, String) {
-    let tmp = tempfile::tempdir().expect("create temp dir");
-    let mut child = Command::new(agent_binary())
-        .arg("hook")
+    let mut cmd = Command::new(agent_binary());
+    cmd.arg("hook")
         .arg("--hook-type")
         .arg("pre-tool-use")
-        .args(extra_args)
-        .current_dir(tmp.path())
+        .args(extra_args);
+    apply_hermetic_env(&mut cmd).expect("apply hermetic env");
+    let mut child = cmd
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

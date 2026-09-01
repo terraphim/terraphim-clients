@@ -12,6 +12,12 @@ fn grep_binary() -> &'static str {
     env!("CARGO_BIN_EXE_terraphim-grep")
 }
 
+/// The binary's tracing filter defaults to `info,terraphim_grep=debug` but
+/// defers to `RUST_LOG` when the environment sets one (the Gitea runner
+/// exports `RUST_LOG=info`). The assertions below read a `debug!` line from
+/// stderr, so pin the filter instead of inheriting the host's.
+const TEST_RUST_LOG: &str = "info,terraphim_grep=debug";
+
 #[test]
 fn search_only_flag_is_accepted() {
     // Run from a tempdir so we know what file content is being searched.
@@ -29,6 +35,7 @@ fn search_only_flag_is_accepted() {
             "--paths",
             tmp.path().to_str().unwrap(),
         ])
+        .env("RUST_LOG", TEST_RUST_LOG)
         .output()
         .expect("failed to run terraphim-grep --search-only");
 
@@ -67,6 +74,7 @@ fn search_only_skips_llm_client_with_openrouter_key_present() {
             tmp.path().to_str().unwrap(),
         ])
         .env("OPENROUTER_API_KEY", "sk-test-placeholder")
+        .env("RUST_LOG", TEST_RUST_LOG)
         .output()
         .expect("failed to run terraphim-grep --search-only");
 
