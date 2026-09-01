@@ -46,8 +46,28 @@ fn create_unique_test_root() -> Result<PathBuf> {
     Ok(root)
 }
 
-pub fn apply_hermetic_env(cmd: &mut Command) -> Result<()> {
+/// Create a fresh, unique hermetic test root under `std::env::temp_dir()`.
+/// Returns the root path so callers that need to read files written by the
+/// spawned subprocess (e.g. `user_prompt_submit_tests` reading correction
+/// files at `<root>/data/terraphim/learnings/`) can locate them. Refs #144.
+pub fn create_hermetic_root() -> Result<PathBuf> {
     let root = create_unique_test_root()?;
+    let data_dir = root.join("data");
+    fs::create_dir_all(&data_dir)?;
+    Ok(root)
+}
+
+#[allow(dead_code)]
+pub fn apply_hermetic_env(cmd: &mut Command) -> Result<()> {
+    let root = create_hermetic_root()?;
+    set_hermetic_env(cmd, &root)
+}
+
+/// Apply the hermetic test environment rooted at `root` to `cmd`. Use this
+/// when the caller needs to know the root path (e.g. to read files written
+/// by the spawned subprocess). Refs #144.
+#[allow(dead_code)]
+pub fn set_hermetic_env(cmd: &mut Command, root: &PathBuf) -> Result<()> {
     let home_dir = root.join("home");
     let xdg_config_home = home_dir.join(".config");
     let terraphim_config_dir = xdg_config_home.join("terraphim");
