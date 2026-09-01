@@ -219,6 +219,7 @@ impl ListenerConfig {
         Ok(())
     }
 
+    // event listener helper used by `service.rs` and integration tests; cross-binary test API
     #[allow(dead_code)]
     pub fn load_from_path(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
@@ -1359,6 +1360,7 @@ impl ListenerRuntime {
         }
     }
 
+    // Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
     #[allow(dead_code)]
     pub async fn run_once(mut self) -> Result<()> {
         self.poll_once().await
@@ -1717,6 +1719,7 @@ impl ListenerRuntime {
         Ok(PollDecision::AdvanceCursor)
     }
 
+    // Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
     #[allow(dead_code)]
     pub async fn handoff_issue(
         &self,

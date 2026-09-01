@@ -338,6 +338,7 @@ pub enum HookError {
 /// when a tool is executed. It contains the tool name, input parameters,
 /// and execution result.
 #[derive(Debug, Clone, Deserialize)]
+// Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
 pub struct HookInput {
     /// Tool name (e.g., "Bash", "Write", "Edit")
@@ -353,6 +354,7 @@ pub struct HookInput {
 /// For Bash tools, this contains the command string.
 /// For other tools, additional fields are captured via the `extra` map.
 #[derive(Debug, Clone, Deserialize)]
+// Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
 pub struct ToolInput {
     /// Command to execute (for Bash tool)
@@ -366,6 +368,7 @@ pub struct ToolInput {
 ///
 /// Contains the exit code and captured output from the tool execution.
 #[derive(Debug, Clone, Deserialize)]
+// Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
 pub struct ToolResult {
     /// Exit code (0 = success, non-zero = failure)
@@ -442,6 +445,7 @@ impl OpencodeEvent {
     }
 }
 
+// Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
 impl HookInput {
     /// Build a non-capturing input for an agent event that carries no

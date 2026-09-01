@@ -254,6 +254,7 @@ impl CapturedLearning {
     }
 
     /// Set a suggested correction.
+    // Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
     #[allow(dead_code)]
     pub fn with_correction(mut self, correction: String) -> Self {
         self.correction = Some(correction);
@@ -544,6 +545,7 @@ impl CorrectionEvent {
     }
 
     /// Set session ID.
+    // Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
     #[allow(dead_code)]
     pub fn with_session_id(mut self, session_id: String) -> Self {
         self.session_id = Some(session_id);
@@ -883,6 +885,7 @@ pub fn annotate_with_entities(text: &str) -> Vec<String> {
 /// Annotate text with entities using a provided thesaurus.
 ///
 /// This is useful for testing or when a pre-built thesaurus is available.
+// Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
 pub fn annotate_with_thesaurus(text: &str, thesaurus: terraphim_types::Thesaurus) -> Vec<String> {
     match terraphim_automata::matcher::find_matches(text, thesaurus, false) {
@@ -1145,6 +1148,7 @@ fn timestamp_millis() -> u64 {
 }
 
 /// List recent learnings from storage.
+// Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
 pub fn list_learnings(
     storage_dir: &PathBuf,
@@ -1180,6 +1184,7 @@ pub fn list_learnings(
     Ok(learnings)
 }
 
+// Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
 /// Query learnings by pattern (simple text search).
 pub fn query_learnings(
@@ -1254,6 +1259,7 @@ impl LearningEntry {
         }
     }
 
+    // accessor used by same-file tests via `entry.id()`; cross-binary test API
     #[allow(dead_code)]
     pub fn id(&self) -> &str {
         match self {
@@ -1506,6 +1512,7 @@ pub fn query_all_entries_semantic(
 /// Score entry relevance based on keyword matching.
 /// Returns a score based on the number of matching keywords between
 /// the context and the learning content.
+// Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
 fn score_entry_relevance(entry: &LearningEntry, context_keywords: &[String]) -> usize {
     let text = match entry {
@@ -1538,6 +1545,7 @@ pub struct ScoredEntry {
 
 impl ScoredEntry {
     /// Format as a suggestion line for display.
+    // Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
     #[allow(dead_code)]
     pub fn format_suggestion(&self) -> String {
         match &self.entry {
@@ -1559,6 +1567,7 @@ impl ScoredEntry {
 
 /// JSONL transcript entry types for auto-extraction.
 #[derive(Debug, Clone, Deserialize)]
+// serde-deserialised type constructed only by `mod tests` in this file; cross-binary test API
 #[allow(dead_code)]
 pub struct TranscriptEntry {
     #[serde(default)]
@@ -1578,6 +1587,7 @@ pub struct TranscriptEntry {
 }
 
 /// Check if content contains explicit correction phrases.
+// Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
 fn contains_correction_phrase(content: &str) -> Option<(String, String)> {
     let lower = content.to_lowercase();
@@ -1634,6 +1644,7 @@ fn contains_correction_phrase(content: &str) -> Option<(String, String)> {
 }
 
 /// Extract command from Bash tool input.
+// Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
 fn extract_command_from_input(input: &serde_json::Value) -> Option<String> {
     input
@@ -1656,6 +1667,7 @@ fn extract_command_from_input(input: &serde_json::Value) -> Option<String> {
 /// # Returns
 ///
 /// Vector of extracted CorrectionEvent objects.
+// Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
 pub fn auto_extract_corrections(
     transcript_path: &std::path::Path,

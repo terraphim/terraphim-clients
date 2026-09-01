@@ -111,6 +111,9 @@ fn ensure_server_running() -> Result<u16> {
 }
 
 /// Detect if running in CI environment (GitHub Actions, Docker containers in CI, etc.)
+// Cross-binary test API: defined identically in `server_mode_tests.rs`,
+// `replace_feature_tests.rs`, and `update_functionality_tests.rs`; each
+// `tests/*.rs` is its own compilation unit and only references the local copy.
 #[allow(dead_code)]
 fn is_ci_environment() -> bool {
     // Check standard CI environment variables
@@ -156,6 +159,9 @@ fn run_extract_command_with_port(args: &[&str], port: u16) -> Result<(String, St
     ))
 }
 
+// Cross-binary test helper: this file's tests use `run_extract_command_with_port`
+// directly; the wrapper exists for parity with other test crates and is kept
+// here so the file's public API is self-describing.
 #[allow(dead_code)]
 fn run_extract_command(args: &[&str]) -> Result<(String, String, i32)> {
     run_extract_command_with_port(args, 8000)

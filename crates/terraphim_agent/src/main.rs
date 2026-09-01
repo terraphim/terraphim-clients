@@ -31,6 +31,7 @@ mod guard_patterns;
 mod listener;
 mod onboarding;
 mod service;
+// Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
 mod shell_dispatch;
 
@@ -645,6 +646,7 @@ mod session_output {
     }
 }
 
+// Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
 fn print_json_output<T: Serialize>(value: &T, mode: CommandOutputMode) -> Result<()> {
     let out = match mode {
@@ -1837,6 +1839,7 @@ fn run_tui_offline_mode(transparent: bool) -> Result<()> {
     run_tui(None, transparent)
 }
 
+// Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
 fn run_tui_server_mode(server_url: &str, transparent: bool) -> Result<()> {
     run_tui(Some(server_url.to_string()), transparent)

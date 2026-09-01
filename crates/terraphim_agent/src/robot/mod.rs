@@ -5,12 +5,16 @@
 
 #[allow(dead_code)]
 pub mod budget;
+// Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
 pub mod docs;
+// Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
 pub mod exit_codes;
+// Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
 pub mod output;
+// Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
 pub mod schema;
 

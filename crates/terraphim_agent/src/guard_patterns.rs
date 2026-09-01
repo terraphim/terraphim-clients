@@ -116,6 +116,7 @@ impl CommandGuard {
     }
 
     /// Get the default embedded suspicious patterns JSON string
+    // Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
     #[allow(dead_code)]
     pub fn default_suspicious_json() -> &'static str {
         DEFAULT_SUSPICIOUS_JSON

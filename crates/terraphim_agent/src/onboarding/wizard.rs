@@ -23,6 +23,7 @@ pub enum SetupResult {
         /// The template that was applied
         template: ConfigTemplate,
         /// Custom path if provided
+        // Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
         #[allow(dead_code)]
         custom_path: Option<String>,
         /// The built role

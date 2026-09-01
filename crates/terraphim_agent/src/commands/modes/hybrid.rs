@@ -30,6 +30,7 @@ pub struct RiskAssessmentSettings {
     /// Keywords that indicate high risk
     high_risk_keywords: Vec<String>,
     /// Always use VM for commands from unknown sources
+    // Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
     #[allow(dead_code)]
     vm_for_unknown: bool,
     /// Maximum risk level for local execution

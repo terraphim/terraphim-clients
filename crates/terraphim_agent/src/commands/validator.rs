@@ -286,6 +286,7 @@ impl CommandValidator {
     }
 
     /// Determine execution mode based on command and role
+    // Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
     #[allow(dead_code)]
     fn determine_execution_mode(&self, command: &str, role: &str) -> ExecutionMode {
         self.determine_execution_mode_with_override(command, role, None)

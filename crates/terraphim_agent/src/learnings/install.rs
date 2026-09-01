@@ -17,6 +17,7 @@ use thiserror::Error;
 
 /// AI agent type for hook installation.
 #[derive(Debug, Clone, Copy, PartialEq, clap::ValueEnum)]
+// Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
 pub enum AgentType {
     /// Claude Code (Claude CLI)
@@ -126,6 +127,7 @@ fi
 
 /// Errors that can occur during hook installation.
 #[derive(Debug, Error)]
+// Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
 pub enum InstallError {
     /// Failed to create config directory
@@ -237,6 +239,7 @@ pub async fn install_hook(agent: AgentType) -> Result<(), InstallError> {
 /// # Returns
 ///
 /// Ok(()) if uninstallation succeeds, Err(InstallError) otherwise.
+// Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
 pub async fn uninstall_hook(agent: AgentType) -> Result<(), InstallError> {
     let hook_path = agent.hook_path().ok_or(InstallError::ConfigNotFound)?;
@@ -272,6 +275,7 @@ pub async fn uninstall_hook(agent: AgentType) -> Result<(), InstallError> {
 /// # Returns
 ///
 /// true if the hook is installed, false otherwise.
+// Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
 pub fn is_hook_installed(agent: AgentType) -> bool {
     agent.hook_path().map(|p| p.exists()).unwrap_or(false)
@@ -282,6 +286,7 @@ pub fn is_hook_installed(agent: AgentType) -> bool {
 /// # Returns
 ///
 /// A vector of tuples containing the agent type and installation status.
+// Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
 pub fn get_installation_status() -> Vec<(AgentType, bool)> {
     vec![

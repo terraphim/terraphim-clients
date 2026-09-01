@@ -924,9 +924,7 @@ struct ToolStatsData {
 /// Helper struct for tracking tool chain sequence data.
 ///
 /// Only constructed by `Analyzer::detect_tool_chains`, which is consumed only
-/// by integration tests and unit tests in this module. The conditional allow
-/// suppresses the bin-build warning.
-/// Only constructed by `Analyzer::detect_tool_chains`, which is consumed only by lib and integration tests.
+/// by integration tests and unit tests in this module.
 #[allow(dead_code)]
 struct SequenceData {
     frequency: u32,
@@ -935,6 +933,8 @@ struct SequenceData {
     total_with_exit_code: usize,
     successful: usize,
 }
+// impl block consumed only by lib unit tests and `tests/integration_tests.rs`;
+// the `tsa` binary does not construct or use `SequenceData`.
 #[allow(dead_code)]
 impl SequenceData {
     fn new() -> Self {

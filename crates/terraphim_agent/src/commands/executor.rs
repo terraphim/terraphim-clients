@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 /// Main command executor
 pub struct CommandExecutor {
+    // Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
     #[allow(dead_code)]
     api_client: Option<crate::client::ApiClient>,
     hook_manager: Arc<HookManager>,

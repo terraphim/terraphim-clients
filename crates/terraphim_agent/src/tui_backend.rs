@@ -18,6 +18,7 @@ use crate::client::ApiClient;
 #[derive(Clone)]
 pub enum TuiBackend {
     /// Local/offline backend using TuiService directly.
+    // Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
     #[allow(dead_code)]
     Local(TuiService),
     /// Remote/server backend using HTTP API client.
@@ -129,6 +130,7 @@ impl TuiBackend {
     }
 
     /// Switch to a different role and return the updated config.
+    // Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
     #[allow(dead_code)]
     pub async fn switch_role(&self, role: &str) -> Result<Config> {
         use terraphim_types::RoleName;

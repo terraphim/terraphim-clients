@@ -100,6 +100,7 @@ pub struct McpService {
     /// Optional KG scorer for boosting file search results by path concept matches.
     kg_scorer: Option<Arc<KgPathScorer>>,
     /// Optional persistent frecency tracker (LMDB-backed) for access-frequency scoring.
+    // Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
     #[allow(dead_code)]
     frecency: Option<SharedFrecency>,
 }

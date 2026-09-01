@@ -105,12 +105,16 @@ pub struct LearnedPattern {
     pub learned_at: Timestamp,
 }
 
+// impl block consumed only by `tests/knowledge_graph_tests.rs` (cross-binary
+// integration test); the `tsa` binary does not use `PatternLearner`.
 #[allow(dead_code)]
 impl Default for PatternLearner {
     fn default() -> Self {
         Self::new()
     }
 }
+// impl block consumed only by `tests/knowledge_graph_tests.rs` (cross-binary
+// integration test); the `tsa` binary does not use `PatternLearner`.
 #[allow(dead_code)]
 impl PatternLearner {
     /// Create a new pattern learner with default threshold (3 observations)
@@ -516,7 +520,8 @@ fn is_known_dependency(dependency: &str, dependent: &str) -> bool {
 
 /// Knowledge graph containing tool relationships
 #[cfg(feature = "terraphim")]
-/// Public API consumed only by `tests/knowledge_graph_tests.rs` (cross-binary integration test). The `tsa` binary does not use it.
+// Public API consumed only by `tests/knowledge_graph_tests.rs` (cross-binary
+// integration test); the `tsa` binary does not use `KnowledgeGraph`.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct KnowledgeGraph {
@@ -706,7 +711,8 @@ impl KnowledgeGraph {
 
 /// Check if two tools are known alternatives
 #[cfg(feature = "terraphim")]
-/// Called only by `KnowledgeGraph` methods, which are consumed by `tests/knowledge_graph_tests.rs`. The `tsa` binary does not use it.
+// Called only by `KnowledgeGraph` methods, which are consumed by
+// `tests/knowledge_graph_tests.rs`; the `tsa` binary does not use it.
 #[allow(dead_code)]
 fn are_known_alternatives(tool1: &str, tool2: &str) -> bool {
     let alternatives = [

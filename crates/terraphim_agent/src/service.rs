@@ -297,6 +297,7 @@ impl TuiService {
     ///
     /// `selected_role` passed to `auto_select_role` is normalised: persisted
     /// `selected_role` is treated as `None` when it does not exist in `config.roles`.
+    // Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
     #[allow(dead_code)]
     pub async fn resolve_or_auto_route(
         &self,

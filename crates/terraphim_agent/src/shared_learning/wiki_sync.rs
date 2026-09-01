@@ -338,11 +338,13 @@ impl GiteaWikiClient {
 }
 
 /// Sync service that periodically syncs learnings to Gitea wiki
+// Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
 pub struct WikiSyncService {
     client: GiteaWikiClient,
 }
 
+// Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
 impl WikiSyncService {
     /// Create new sync service
@@ -380,6 +382,7 @@ impl WikiSyncService {
 }
 
 /// Report of a wiki sync operation
+// Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct WikiSyncReport {
@@ -391,6 +394,7 @@ pub struct WikiSyncReport {
     pub results: Vec<(String, Result<SyncResult, WikiSyncError>)>,
 }
 
+// Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
 impl WikiSyncReport {
     /// Check if all operations were successful

@@ -51,6 +51,7 @@ pub enum OnboardingError {
     #[error(
         "Not a TTY - interactive mode requires a terminal. Use --template for non-interactive mode."
     )]
+    // Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
     #[allow(dead_code)]
     NotATty,
 

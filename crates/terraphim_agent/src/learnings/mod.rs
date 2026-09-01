@@ -122,6 +122,7 @@ impl Default for LearningCaptureConfig {
 
 impl LearningCaptureConfig {
     /// Create config with custom directories
+    // Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
     #[allow(dead_code)]
     pub fn new(project_dir: PathBuf, global_dir: PathBuf) -> Self {
         Self {

@@ -7,6 +7,8 @@ use terraphim_agent::client::{ApiClient, ChatResponse, ConfigResponse, SearchRes
 use terraphim_types::{Layer, NormalizedTermValue, RoleName, SearchQuery};
 
 const TEST_SERVER_URL: &str = "http://localhost:8000";
+// Cross-binary test constant: shared with `tests/*.rs` files in this crate; this
+// test binary does not reference it directly, but sibling binaries do.
 #[allow(dead_code)]
 const TEST_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -17,6 +19,8 @@ async fn is_server_running() -> bool {
 }
 
 /// Test helper to wait for server startup
+// Cross-binary test API: this file's tests do not call it; sibling `tests/*.rs`
+// binaries in this crate do.
 #[allow(dead_code)]
 async fn wait_for_server() -> Result<()> {
     let max_attempts = 30;
