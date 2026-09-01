@@ -57,6 +57,15 @@ pub fn create_hermetic_root() -> Result<PathBuf> {
     Ok(root)
 }
 
+/// Configure `cmd` with a fresh hermetic environment rooted at a unique temp
+/// dir. Used by `integration_tests` and `offline_mode_tests`.
+///
+/// Each integration-test binary compiles its own copy of this support module,
+/// so `apply_hermetic_env` appears unused in `user_prompt_submit_tests` (which
+/// needs the root path and so calls `set_hermetic_env` directly). The function
+/// itself is not dead — only the per-binary view is. Removing this annotation
+/// would require splitting the support helpers into a separate crate so that
+/// each test binary only sees the items it imports; tracked for follow-up.
 #[allow(dead_code)]
 pub fn apply_hermetic_env(cmd: &mut Command) -> Result<()> {
     let root = create_hermetic_root()?;
@@ -66,6 +75,10 @@ pub fn apply_hermetic_env(cmd: &mut Command) -> Result<()> {
 /// Apply the hermetic test environment rooted at `root` to `cmd`. Use this
 /// when the caller needs to know the root path (e.g. to read files written
 /// by the spawned subprocess). Refs #144.
+///
+/// Only referenced by `user_prompt_submit_tests`, which needs to read the
+/// correction files the hook writes; the other agent integration tests use
+/// the simpler `apply_hermetic_env` wrapper. Hence the cross-binary allow.
 #[allow(dead_code)]
 pub fn set_hermetic_env(cmd: &mut Command, root: &PathBuf) -> Result<()> {
     let home_dir = root.join("home");
