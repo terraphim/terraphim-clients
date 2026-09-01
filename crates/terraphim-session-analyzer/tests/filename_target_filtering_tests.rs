@@ -17,7 +17,7 @@ use tempfile::{NamedTempFile, tempdir};
 use terraphim_session_analyzer::{Analyzer, Reporter};
 
 /// Test data directory path
-#[allow(dead_code)]
+#[allow(dead_code)] // Cross-binary test helper. This file does not call it directly; `integration_tests.rs` defines and uses it.
 fn test_data_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
@@ -25,7 +25,7 @@ fn test_data_dir() -> PathBuf {
 }
 
 /// Create a test session file with given content
-#[allow(dead_code)]
+#[allow(dead_code)] // Cross-binary test helper. This file does not call it directly; `integration_tests.rs` defines and uses it.
 fn create_test_session_file(content: &str) -> Result<NamedTempFile> {
     let mut file = NamedTempFile::new()?;
     writeln!(file, "{}", content)?;

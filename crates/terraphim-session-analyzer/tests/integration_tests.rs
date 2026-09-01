@@ -14,7 +14,7 @@ use terraphim_session_analyzer::utils;
 use terraphim_session_analyzer::{Analyzer, Reporter, SessionParser, TimelineEventType};
 
 /// Test data directory path
-#[allow(dead_code)]
+#[allow(dead_code)] // Cross-binary test helper. Used by sibling test files in this crate that link the lib without --test; the `tests/` integration test for `filename_target_filtering` does not call this helper directly.
 fn test_data_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
@@ -22,7 +22,7 @@ fn test_data_dir() -> PathBuf {
 }
 
 /// Create a test session file with given content
-#[allow(dead_code)]
+#[allow(dead_code)] // Cross-binary test helper. Defined here so `filename_target_filtering_tests.rs` can call it; that integration test is compiled as a separate test target and shares helpers with this file.
 fn create_test_session_file(content: &str) -> Result<NamedTempFile> {
     let mut file = NamedTempFile::new()?;
     writeln!(file, "{}", content)?;

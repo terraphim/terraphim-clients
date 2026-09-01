@@ -428,60 +428,6 @@ impl Reporter {
         }
     }
 
-    /// Print tool usage analysis to terminal
-    #[allow(dead_code)] // Replaced by print_tool_analysis_detailed
-    pub fn print_tool_analysis(
-        &self,
-        stats: &std::collections::HashMap<String, crate::models::ToolStatistics>,
-    ) {
-        if stats.is_empty() {
-            println!("{}", "No tool usage found".yellow());
-            return;
-        }
-
-        println!("{}", "Tool Usage Analysis".bold().cyan());
-        println!();
-
-        // Convert to sorted vector
-        let mut tool_stats: Vec<_> = stats.iter().collect();
-        tool_stats.sort_by_key(|(_, stat)| std::cmp::Reverse(stat.total_invocations));
-
-        // Create table rows
-        let mut rows = Vec::new();
-        for (tool_name, stat) in tool_stats {
-            let agents_str = if stat.agents_using.is_empty() {
-                "-".to_string()
-            } else {
-                stat.agents_using.join(", ")
-            };
-
-            let sessions_str = format!("{} sessions", stat.sessions.len());
-            let category_str = format!("{:?}", stat.category);
-
-            rows.push(ToolRow {
-                tool: tool_name.clone(),
-                count: stat.total_invocations.to_string(),
-                category: category_str,
-                agents: self.truncate_text(&agents_str, 40),
-                sessions: sessions_str,
-            });
-        }
-
-        let table = Table::new(rows)
-            .with(Style::modern())
-            .with(Modify::new(Columns::new(0..1)).with(Width::wrap(20)))
-            .with(Modify::new(Columns::new(3..4)).with(Width::wrap(40)))
-            .to_string();
-
-        println!("{table}");
-        println!();
-        println!(
-            "{} {} unique tools found",
-            "Total:".bold(),
-            stats.len().to_string().yellow()
-        );
-    }
-
     /// Print detailed tool analysis with correlation matrix
     pub fn print_tool_analysis_detailed(
         &self,
@@ -880,21 +826,6 @@ struct FileRow {
     confidence: String,
     #[tabled(rename = "Ops")]
     operations: String,
-}
-
-#[derive(Tabled)]
-#[allow(dead_code)] // Replaced by DetailedToolRow
-struct ToolRow {
-    #[tabled(rename = "Tool")]
-    tool: String,
-    #[tabled(rename = "Count")]
-    count: String,
-    #[tabled(rename = "Category")]
-    category: String,
-    #[tabled(rename = "Agents")]
-    agents: String,
-    #[tabled(rename = "Sessions")]
-    sessions: String,
 }
 
 #[derive(Tabled)]

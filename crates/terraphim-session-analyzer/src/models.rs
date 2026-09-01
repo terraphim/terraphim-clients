@@ -2,132 +2,7 @@ use indexmap::IndexMap;
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fmt::{self, Display};
 use std::str::FromStr;
-
-/// Newtype wrappers for better type safety
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct SessionId(String);
-
-impl SessionId {
-    #[must_use]
-    #[allow(dead_code)]
-    pub fn new(id: String) -> Self {
-        Self(id)
-    }
-
-    #[must_use]
-    #[allow(dead_code)]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl Display for SessionId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl From<String> for SessionId {
-    fn from(id: String) -> Self {
-        Self(id)
-    }
-}
-
-impl From<&str> for SessionId {
-    fn from(id: &str) -> Self {
-        Self(id.to_string())
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct AgentType(String);
-
-impl AgentType {
-    #[must_use]
-    #[allow(dead_code)]
-    pub fn new(agent_type: String) -> Self {
-        Self(agent_type)
-    }
-
-    #[must_use]
-    #[allow(dead_code)]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl Display for AgentType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl From<String> for AgentType {
-    fn from(agent_type: String) -> Self {
-        Self(agent_type)
-    }
-}
-
-impl From<&str> for AgentType {
-    fn from(agent_type: &str) -> Self {
-        Self(agent_type.to_string())
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct MessageId(String);
-
-impl MessageId {
-    #[must_use]
-    #[allow(dead_code)]
-    pub fn new(id: String) -> Self {
-        Self(id)
-    }
-
-    #[must_use]
-    #[allow(dead_code)]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl Display for MessageId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl From<String> for MessageId {
-    fn from(id: String) -> Self {
-        Self(id)
-    }
-}
-
-impl From<&str> for MessageId {
-    fn from(id: &str) -> Self {
-        Self(id.to_string())
-    }
-}
-
-impl AsRef<str> for SessionId {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl AsRef<str> for AgentType {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl AsRef<str> for MessageId {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
 
 /// Parse JSONL session entries from Claude Code
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -254,9 +129,13 @@ pub enum ToolCategory {
 }
 
 impl ToolCategory {
-    /// Parse a string category into ToolCategory
-    /// Used in parser for converting string categories
-    #[must_use]
+    /// Parse a string category into ToolCategory.
+    ///
+    /// Public API consumed only by integration tests and downstream callers.
+    /// The `tsa` binary does not call this method, hence the conditional allow.
+    /// Consumers: `tests/integration_tests.rs` (cross-binary integration test).
+        #[must_use]
+    /// Public API consumed only by `tests/integration_tests.rs` (cross-binary integration test). The `tsa` binary does not call this method.
     #[allow(dead_code)]
     pub fn from_string(s: &str) -> Self {
         match s {
@@ -450,15 +329,24 @@ pub fn extract_file_path(input: &serde_json::Value) -> Option<String> {
     None
 }
 
-/// Agent type utilities
-/// Used in integration tests and public API
+/// Normalise an agent type identifier (e.g. "Backend Architect" -> "backend_architect").
+///
+/// Public API re-exported from `lib.rs`. Only the `tsa` binary is built in this
+/// crate and the binary does not call this helper, hence the annotation.
+/// Consumers: `tests/integration_tests.rs` (cross-binary integration test).
+/// A future refactor could move the body into a test helper or a `dev` module.
 #[allow(dead_code)]
 #[must_use]
 pub fn normalize_agent_name(agent_type: &str) -> String {
     agent_type.to_lowercase().replace(['-', ' '], "_")
 }
 
-/// Used in integration tests and public API
+/// Map an agent type to its high-level category (e.g. "architect" -> "architecture").
+///
+/// Public API re-exported from `lib.rs`. Only the `tsa` binary is built in this
+/// crate and the binary does not call this helper, hence the annotation.
+/// Consumers: `tests/integration_tests.rs` (cross-binary integration test).
+/// A future refactor could move the body into a test helper or a `dev` module.
 #[allow(dead_code)]
 #[must_use]
 pub fn get_agent_category(agent_type: &str) -> &'static str {
@@ -483,28 +371,6 @@ mod tests {
         let timestamp_str = "2025-10-01T09:05:21.902Z";
         let result = parse_timestamp(timestamp_str);
         assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_newtype_wrappers() {
-        // Test SessionId
-        let session_id = SessionId::new("test-session".to_string());
-        assert_eq!(session_id.as_str(), "test-session");
-        assert_eq!(session_id.to_string(), "test-session");
-        assert_eq!(session_id.as_ref(), "test-session");
-
-        let session_id_from_str: SessionId = "another-session".into();
-        assert_eq!(session_id_from_str.as_str(), "another-session");
-
-        // Test AgentType
-        let agent_type = AgentType::new("architect".to_string());
-        assert_eq!(agent_type.as_str(), "architect");
-        assert_eq!(agent_type.to_string(), "architect");
-
-        // Test MessageId
-        let message_id = MessageId::new("msg-123".to_string());
-        assert_eq!(message_id.as_str(), "msg-123");
-        assert_eq!(message_id.to_string(), "msg-123");
     }
 
     #[test]
@@ -598,27 +464,6 @@ mod tests {
                 prop_assert_eq!(result_path, Some(file_path.clone()));
             }
 
-            #[test]
-            fn test_newtype_wrapper_roundtrip(
-                session_id in "[a-zA-Z0-9-]{10,50}",
-                agent_type in "[a-zA-Z0-9-_]{3,30}",
-                message_id in "[a-zA-Z0-9-]{10,50}"
-            ) {
-                // Test SessionId roundtrip
-                let session = SessionId::new(session_id.clone());
-                prop_assert_eq!(session.as_str(), &session_id);
-                prop_assert_eq!(session.to_string(), session_id);
-
-                // Test AgentType roundtrip
-                let agent = AgentType::new(agent_type.clone());
-                prop_assert_eq!(agent.as_str(), &agent_type);
-                prop_assert_eq!(agent.to_string(), agent_type);
-
-                // Test MessageId roundtrip
-                let message = MessageId::new(message_id.clone());
-                prop_assert_eq!(message.as_str(), &message_id);
-                prop_assert_eq!(message.to_string(), message_id);
-            }
         }
     }
 }

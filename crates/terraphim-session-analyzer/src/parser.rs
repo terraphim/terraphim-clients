@@ -1,9 +1,7 @@
 use crate::models::{
-    AgentInvocation, ContentBlock, FileOpType, FileOperation, Message, SessionEntry, ToolCategory,
-    ToolInvocation, extract_file_path, parse_timestamp,
+    AgentInvocation, ContentBlock, FileOpType, FileOperation, Message, SessionEntry,
+    extract_file_path, parse_timestamp,
 };
-use crate::patterns::PatternMatcher;
-use crate::tool_analyzer;
 use anyhow::{Context, Result};
 use rayon::prelude::*;
 use serde::Deserialize;
@@ -271,28 +269,6 @@ impl SessionParser {
             .collect()
     }
 
-    /// Extract tool invocations from Bash commands
-    ///
-    /// # Arguments
-    /// * `matcher` - Pattern matcher for identifying tools in commands
-    ///
-    /// # Returns
-    /// A vector of `ToolInvocation` instances found in Bash tool uses
-    #[must_use]
-    #[allow(dead_code)] // Will be used in Phase 2
-    pub fn extract_tool_invocations(&self, matcher: &dyn PatternMatcher) -> Vec<ToolInvocation> {
-        self.entries
-            .par_iter()
-            .filter_map(|entry| {
-                if let Message::Assistant { content, .. } = &entry.message {
-                    extract_from_bash_command(entry, content, matcher, &self.session_id)
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-
     /// Find the active agent context for a given message
     #[must_use]
     pub fn find_active_agent(&self, message_id: &str) -> Option<String> {
@@ -361,10 +337,13 @@ impl SessionParser {
         )
     }
 
-    /// Get entry count for statistics
-    /// Used in integration tests
+    /// Get entry count for statistics.
+    ///
+    /// Public API consumed only by cross-binary integration tests.
+    /// Consumers: `tests/integration_tests.rs`.
+        #[must_use]
+    /// Public API consumed only by `tests/integration_tests.rs` (cross-binary integration test). The `tsa` binary does not call this method.
     #[allow(dead_code)]
-    #[must_use]
     pub fn entry_count(&self) -> usize {
         self.entries.len()
     }
@@ -375,10 +354,13 @@ impl SessionParser {
         &self.entries
     }
 
-    /// Find entries within a time window
-    /// Used in integration tests
+    /// Find entries within a time window.
+    ///
+    /// Public API consumed only by cross-binary integration tests.
+    /// Consumers: `tests/integration_tests.rs`.
+        #[must_use]
+    /// Public API consumed only by `tests/integration_tests.rs` (cross-binary integration test). The `tsa` binary does not call this method.
     #[allow(dead_code)]
-    #[must_use]
     pub fn entries_in_window(
         &self,
         start: jiff::Timestamp,
@@ -399,10 +381,13 @@ impl SessionParser {
             .collect()
     }
 
-    /// Find all unique agent types used in this session
-    /// Used in integration tests
+    /// Find all unique agent types used in this session.
+    ///
+    /// Public API consumed only by cross-binary integration tests.
+    /// Consumers: `tests/integration_tests.rs`.
+        #[must_use]
+    /// Public API consumed only by `tests/integration_tests.rs` (cross-binary integration test). The `tsa` binary does not call this method.
     #[allow(dead_code)]
-    #[must_use]
     pub fn get_agent_types(&self) -> Vec<String> {
         let agents = self.extract_agent_invocations();
         let mut agent_types: Vec<String> = agents
@@ -415,10 +400,13 @@ impl SessionParser {
         agent_types
     }
 
-    /// Build a timeline of events for visualization
-    /// Used in integration tests
+    /// Build a timeline of events for visualization.
+    ///
+    /// Public API consumed only by cross-binary integration tests.
+    /// Consumers: `tests/integration_tests.rs`.
+        #[must_use]
+    /// Public API consumed only by `tests/integration_tests.rs` (cross-binary integration test). The `tsa` binary does not call this method.
     #[allow(dead_code)]
-    #[must_use]
     pub fn build_timeline(&self) -> Vec<TimelineEvent> {
         let mut events = Vec::new();
 
@@ -450,63 +438,11 @@ impl SessionParser {
     }
 }
 
-/// Helper function to extract tool invocations from Bash command content
-#[allow(dead_code)] // Will be used in Phase 2
-fn extract_from_bash_command(
-    entry: &SessionEntry,
-    content: &[ContentBlock],
-    matcher: &dyn PatternMatcher,
-    session_id: &str,
-) -> Option<ToolInvocation> {
-    for block in content {
-        if let ContentBlock::ToolUse { name, input, .. } = block
-            && name == "Bash"
-        {
-            // Extract the command from the input
-            let command = input.get("command").and_then(|v| v.as_str())?;
-
-            // Find tool matches using the pattern matcher
-            let matches = matcher.find_matches(command);
-
-            if let Some(tool_match) = matches.first() {
-                // Parse command context to extract arguments and flags
-                if let Some((full_cmd, arguments, flags)) =
-                    tool_analyzer::parse_command_context(command, tool_match.start)
-                {
-                    // Filter out shell built-ins
-                    if !tool_analyzer::is_actual_tool(&tool_match.tool_name) {
-                        continue;
-                    }
-
-                    let timestamp = match parse_timestamp(&entry.timestamp) {
-                        Ok(ts) => ts,
-                        Err(e) => {
-                            warn!("Failed to parse timestamp '{}': {}", entry.timestamp, e);
-                            continue;
-                        }
-                    };
-
-                    return Some(ToolInvocation {
-                        timestamp,
-                        tool_name: tool_match.tool_name.clone(),
-                        tool_category: ToolCategory::from_string(&tool_match.category),
-                        command_line: full_cmd,
-                        arguments,
-                        flags,
-                        exit_code: None,     // Exit code not available from logs
-                        agent_context: None, // Will be populated later
-                        session_id: session_id.to_string(),
-                        message_id: entry.uuid.clone(),
-                    });
-                }
-            }
-        }
-    }
-
-    None
-}
-
-/// Used in integration tests and public API
+/// Timeline event produced by `SessionParser::build_timeline`.
+///
+/// Public API consumed only by cross-binary integration tests.
+/// Consumers: `tests/integration_tests.rs`.
+/// Produced by `SessionParser::build_timeline`. Public API consumed only by `tests/integration_tests.rs` (cross-binary integration test). The `tsa` binary does not construct it.
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct TimelineEvent {
@@ -517,7 +453,11 @@ pub struct TimelineEvent {
     pub file: Option<String>,
 }
 
-/// Used in integration tests and public API
+/// Discriminant for `TimelineEvent`.
+///
+/// Public API consumed only by cross-binary integration tests.
+/// Consumers: `tests/integration_tests.rs`.
+/// Discriminant for `TimelineEvent`. Public API consumed only by `tests/integration_tests.rs` (cross-binary integration test). The `tsa` binary does not use it.
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum TimelineEventType {

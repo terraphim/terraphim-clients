@@ -49,8 +49,12 @@ struct GitInfo {
 /// Response item entry
 #[derive(Debug, Clone, Deserialize)]
 struct ResponseItem {
+    /// Required by serde to discriminate the JSON `type` field during
+    /// deserialisation. The Rust field is intentionally never read because
+    /// the enum tag is consumed by serde; the discriminator is needed to
+    /// drive per-variant parsing.
     #[serde(rename = "type")]
-    #[allow(dead_code)] // Required for deserializing "type" field
+    #[allow(dead_code)]
     msg_type: String,
     role: String,
     #[serde(default)]

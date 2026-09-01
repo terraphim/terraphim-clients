@@ -51,10 +51,13 @@ impl Analyzer {
         })
     }
 
-    /// Set custom configuration
-    /// Used in integration tests
+    /// Set custom configuration.
+    ///
+    /// Public API consumed only by cross-binary integration tests.
+    /// Consumers: `tests/integration_tests.rs`.
+        #[must_use]
+    /// Public API consumed only by `tests/integration_tests.rs` (cross-binary integration test). The `tsa` binary does not call this method.
     #[allow(dead_code)]
-    #[must_use]
     pub fn with_config(mut self, config: AnalyzerConfig) -> Self {
         self.config = config;
         self
@@ -757,9 +760,14 @@ impl Analyzer {
     /// 3. Use sliding windows (2-5 tools) to find sequences
     /// 4. Group identical sequences across sessions
     /// 5. Calculate frequency, timing, and success rate
-    /// 6. Filter chains that appear at least twice
-    #[must_use]
-    #[allow(dead_code)] // Will be used when tool chain analysis is exposed in CLI
+    /// 6. Filter chains that appear at least twice.
+    ///
+    /// Public API consumed only by cross-binary integration tests
+    /// (in-file unit tests in this module also exercise it directly).
+    /// Consumers: `tests/integration_tests.rs` and lib unit tests in this file.
+        #[must_use]
+    /// Public API consumed only by lib unit tests in this file and `tests/integration_tests.rs` (cross-binary integration test). The `tsa` binary does not call this method.
+    #[allow(dead_code)]
     pub fn detect_tool_chains(
         &self,
         tool_invocations: &[ToolInvocation],
@@ -913,8 +921,13 @@ struct ToolStatsData {
     sessions: HashSet<String>,
 }
 
-/// Helper struct for tracking tool chain sequence data
-#[allow(dead_code)] // Used in tool chain detection
+/// Helper struct for tracking tool chain sequence data.
+///
+/// Only constructed by `Analyzer::detect_tool_chains`, which is consumed only
+/// by integration tests and unit tests in this module. The conditional allow
+/// suppresses the bin-build warning.
+/// Only constructed by `Analyzer::detect_tool_chains`, which is consumed only by lib and integration tests.
+#[allow(dead_code)]
 struct SequenceData {
     frequency: u32,
     time_diffs: Vec<u64>,
@@ -922,8 +935,7 @@ struct SequenceData {
     total_with_exit_code: usize,
     successful: usize,
 }
-
-#[allow(dead_code)] // Used in tool chain detection
+#[allow(dead_code)]
 impl SequenceData {
     fn new() -> Self {
         Self {
