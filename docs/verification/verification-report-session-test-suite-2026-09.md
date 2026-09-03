@@ -32,3 +32,24 @@ Wave-1 of the cass-parity session-search test suite (design: docs/plans/design-s
 - Wave-2 backlog from the traceability CSV remains: REPL `/sessions` handler-level tests (concepts/related/timeline/enrich/cluster/files/by-file/index — handler.rs still has 0 direct tests), cursor SQLite hermetic corpus, opencode SQLite import test, service `search_by_concept`/`find_related` tests, native watcher nightly lane.
 - GAP-deferred rows (pagination, aggregations, --explain, pack, analytics, resume, doctor/health) remain deferred by design; each has an implementation-ready spec in the research artefact Ch5/Ch6.
 - NFR bench not yet wired into CI schedule (native-ci nightly job still to be added — tracked in the #154 PR notes).
+
+## Addendum (2026-09-03, structured PR review round)
+
+All five wave-1 PRs received structural-semantic reviews (skill: `structural-pr-review`), posted as PR comments:
+
+| PR | Score | Key findings |
+|---|---|---|
+| #156 | 4/5 | `.github/workflows/ci.yml` alignment missing; manual temp-dir instead of `tempfile` |
+| #157 | 4/5 | 3 claimed TC rows (MAX_SEARCH_RESULTS cap, MIN_SCORE_FRACTION cutoff, body-cap in hybrid context) not delivered |
+| #158 | 3/5 | P1: `auto_import_single_attempt` reads real user stores; assertion can't detect its named regression |
+| #159 | 4/5 | Entry-shape assertions dead-code on empty-corpus path; needs seeded fixture |
+| #160 | 3/5 | Nightly bench job + p50<100ms regression test promised but absent; hardcoded accepted-format list |
+
+Immediate fixes merged via #161 (panic-safe tempdirs, dead-code shim). Remaining findings recorded as wave-2 backlog:
+
+1. Nightly bench CI job (`cargo bench -p terraphim_sessions --features enrichment,search-index --bench search_nfr` on schedule)
+2. p50 < 100ms regression `#[test]` (release-profile, `#[ignore]`d on debug)
+3. Auto-import hermeticity rewrite (serial HOME override or registry injection)
+4. Seeded-corpus CLI tests (populate hermetic `~/.claude/projects`, assert populated JSON shapes incl. preview ≤100 chars)
+5. Hybrid cap/threshold TCs (TC-SEARCH-05/09/10)
+6. Also reviewed the two pre-existing open PRs: #147 (LearningStore changelog docs — 5/5, merged after rebase + review) and #146 (fmt PR — 2/5, branch carries a 17-commit feature stack; owner decision required, review posted with resolution options).
