@@ -409,3 +409,174 @@ mod tests {
         assert!(!body.is_empty());
     }
 }
+
+// ---------------------------------------------------------------------------
+// Cass-parity hybrid KG-boost suite (issue #151).
+//
+// Covers parity rows C07(p)/C62/T15/T18/E17a from
+// docs/plans/research-session-test-parity-2026-09.md — `search_with_thesaurus`
+// previously had zero tests. Per the design's assert rule: ORDERING and boost
+// direction only, never score equality (fusion math is implementation detail).
+// ---------------------------------------------------------------------------
+
+#[cfg(all(test, feature = "enrichment"))]
+mod hybrid_tests {
+    use super::*;
+    use crate::model::{MessageRole, Session};
+    use crate::search_tests_support::{make_enriched_session, make_session as mk_session, make_thesaurus};
+
+    fn make_session(id: &str, title: &str, messages: Vec<(&str, MessageRole, &str)>) -> Session {
+        mk_session(id, title, messages)
+    }
+
+    /// Two sessions; s2 wins on raw BM25 for the query. s1 carries the
+    /// thesaurus concept. The hybrid boost must promote s1 above s2.
+    fn boost_fixture() -> (Vec<Session>, terraphim_types::Thesaurus) {
+        let sessions = vec![
+            make_enriched_session(
+                "s1",
+                "tokio runtime notes",
+                vec![("user", MessageRole::User, "runtime setup walkthrough")],
+                &[("tokio", 3)],
+            ),
+            make_session(
+                "s2",
+                "tokio runtime configuration deep dive",
+                vec![("user", MessageRole::User, "tokio runtime configuration for workers")],
+            ),
+        ];
+        let thesaurus = make_thesaurus(&[("tokio", 1)]);
+        (sessions, thesaurus)
+    }
+
+    /// TC-SEARCH-01 (P0): thesaurus-matching session ranks above the
+    /// higher-raw-BM25 session.
+    #[test]
+    fn hybrid_boost_promotes_kg_session_over_pure_bm25() {
+        let (sessions, thesaurus) = boost_fixture();
+
+        // Sanity: without the thesaurus the raw-BM25 leader is s2.
+        let plain = search_sessions(&sessions, "tokio runtime");
+        assert!(!plain.is_empty(), "plain search must hit the corpus");
+        assert_eq!(
+            plain[0].value().id, "s2",
+            "fixture precondition: s2 leads raw BM25"
+        );
+
+        let hybrid = search_sessions_hybrid(&sessions, "tokio runtime", Some(thesaurus.clone()));
+        assert!(!hybrid.is_empty());
+        assert_eq!(
+            hybrid[0].value().id, "s1",
+            "KG concept boost must promote the enriched session above raw BM25 leader"
+        );
+    }
+
+    /// TC-SEARCH-02: boost is monotone in thesaurus match count.
+    #[test]
+    fn hybrid_boost_monotone_in_match_count() {
+        let sessions = vec![
+            make_enriched_session(
+                "a1",
+                "one match",
+                vec![("user", MessageRole::User, "rust ecosystem")],
+                &[("rust", 1)],
+            ),
+            make_enriched_session(
+                "a2",
+                "two matches",
+                vec![("user", MessageRole::User, "rust async ecosystem")],
+                &[("rust", 2), ("async", 2)],
+            ),
+        ];
+        let thesaurus = make_thesaurus(&[("rust", 1), ("async", 2)]);
+        let results = search_sessions_hybrid(&sessions, "rust async", Some(thesaurus.clone()));
+        assert!(!results.is_empty());
+        assert_eq!(
+            results[0].value().id, "a2",
+            "session matching more thesaurus terms outranks the single-term session"
+        );
+    }
+
+    /// TC-SEARCH-03: `Some(&empty thesaurus)` degrades to plain BM25
+    /// (no KG terms found in query => identical ordering).
+    #[test]
+    fn hybrid_with_no_matching_terms_equals_plain_bm25() {
+        let (sessions, _) = boost_fixture();
+        let empty_thesaurus = make_thesaurus(&[("unrelated-term", 9)]);
+        let plain = search_sessions(&sessions, "tokio runtime");
+        let hybrid = search_sessions_hybrid(&sessions, "tokio runtime", Some(empty_thesaurus.clone()));
+        let plain_ids: Vec<&str> = plain.iter().map(|s| s.value().id.as_str()).collect();
+        let hybrid_ids: Vec<&str> = hybrid.iter().map(|s| s.value().id.as_str()).collect();
+        assert_eq!(plain_ids, hybrid_ids);
+    }
+
+    /// TC-SEARCH-03b: `None` thesaurus degrades to plain BM25, no panic.
+    #[test]
+    fn hybrid_none_thesaurus_is_plain_bm25() {
+        let (sessions, _) = boost_fixture();
+        let plain = search_sessions(&sessions, "tokio runtime");
+        let hybrid = search_sessions_hybrid(&sessions, "tokio runtime", None);
+        let plain_ids: Vec<&str> = plain.iter().map(|s| s.value().id.as_str()).collect();
+        let hybrid_ids: Vec<&str> = hybrid.iter().map(|s| s.value().id.as_str()).collect();
+        assert_eq!(plain_ids, hybrid_ids);
+    }
+
+    /// TC-SEARCH-05/07: empty query and empty corpus return empty, no panic.
+    #[test]
+    fn hybrid_empty_query_and_empty_corpus() {
+        let thesaurus = make_thesaurus(&[("tokio", 1)]);
+        assert!(search_sessions_hybrid(&[], "tokio", Some(thesaurus.clone())).is_empty());
+        let sessions = vec![make_enriched_session(
+            "s1",
+            "t",
+            vec![("user", MessageRole::User, "tokio")],
+            &[("tokio", 1)],
+        )];
+        assert!(search_sessions_hybrid(&sessions, "   ", Some(thesaurus.clone())).is_empty());
+    }
+
+    /// TC-SEARCH-08: deterministic ordering across repeated calls.
+    #[test]
+    fn hybrid_ordering_is_deterministic() {
+        let (sessions, thesaurus) = boost_fixture();
+        let first: Vec<String> = search_sessions_hybrid(&sessions, "tokio runtime", Some(thesaurus.clone()))
+            .iter()
+            .map(|s| s.value().id.clone())
+            .collect();
+        for _ in 0..5 {
+            let again: Vec<String> =
+                search_sessions_hybrid(&sessions, "tokio runtime", Some(thesaurus.clone()))
+                    .iter()
+                    .map(|s| s.value().id.clone())
+                    .collect();
+            assert_eq!(first, again);
+        }
+    }
+
+    /// Unenriched sessions are untouched by the boost path: their relative
+    /// order among themselves is preserved.
+    #[test]
+    fn hybrid_leaves_unenriched_sessions_in_bm25_order() {
+        let (sessions, thesaurus) = boost_fixture();
+        let hybrid = search_sessions_hybrid(&sessions, "tokio runtime", Some(thesaurus.clone()));
+        let s2_pos = hybrid
+            .iter()
+            .position(|s| s.value().id == "s2")
+            .expect("unenriched session still present");
+        assert_eq!(
+            s2_pos,
+            hybrid.len() - 1,
+            "sole unenriched session stays after the boosted one"
+        );
+    }
+
+    /// A query whose KG terms match nothing the session carries must not
+    /// zero-out the corpus: results still come back (from BM25).
+    #[test]
+    fn hybrid_no_boost_still_returns_bm25_results() {
+        let (sessions, thesaurus) = boost_fixture();
+        let hybrid = search_sessions_hybrid(&sessions, "runtime", Some(thesaurus.clone()));
+        // "runtime" is not a thesaurus term; results are pure BM25 but present.
+        assert!(!hybrid.is_empty());
+    }
+}
