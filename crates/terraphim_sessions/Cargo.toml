@@ -92,3 +92,12 @@ terraphim_types = { version = "1.21.0", registry = "terraphim", optional = true 
 tempfile = { workspace = true }
 
 tokio-test = "0.4"
+
+criterion = { version = "0.8", features = ["html_reports"] }
+
+# NFR bench for the session-search latency claims (ports terraphim-ai#3014
+# into this repo; issue #154).
+[[bench]]
+name = "search_nfr"
+harness = false
+required-features = ["search-index"]
