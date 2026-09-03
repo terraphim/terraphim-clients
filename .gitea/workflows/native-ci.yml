@@ -53,6 +53,10 @@ jobs:
       # not covered by --all-targets with default features).
       - run: cargo clippy -p terraphim_sessions --features enrichment -- -D warnings
       - run: cargo test -p terraphim_sessions --features enrichment --lib --no-fail-fast
+      # Refs terraphim-clients#150: cass-parity suite gates (cursor/codex/extras
+      # connectors and the search-index score module are invisible to the
+      # default-features and enrichment-only lanes above).
+      - run: cargo test -p terraphim_sessions --all-features --no-fail-fast
       # #95: isolated packaged install-graph regression (covered by --all-targets
       # above but kept as a focused gate for faster failure attribution).
       - run: cargo test -p terraphim_agent --test packaged_install_graph_regression -- --nocapture

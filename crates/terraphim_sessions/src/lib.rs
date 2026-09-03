@@ -40,6 +40,11 @@ pub mod enrichment;
 #[cfg(feature = "search-index")]
 pub mod search;
 
+/// Test-support builders for the cass-parity suite. Compiled only for tests;
+/// never part of the release surface.
+#[cfg(test)]
+pub mod search_tests_support;
+
 // Re-exports for convenience
 pub use connector::{ConnectorRegistry, ConnectorStatus, ImportOptions, SessionConnector};
 pub use model::{
