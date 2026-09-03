@@ -500,4 +500,34 @@ mod tests {
             "a file below the depth cap must not be counted"
         );
     }
+
+    // Cass-parity hermetic import test (issue #152): history file in a
+    // tempdir via ImportOptions.path (CWD-scoped detection is bounded by
+    // MAX_DETECT_DEPTH; the import path override bypasses CWD entirely).
+    #[tokio::test]
+    async fn test_import_from_tempdir_history_file() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join(".aider.chat.history.md"),
+            "#### how to parse
+
+> use the parser
+
+#### second
+
+> answer two
+",
+        )
+        .unwrap();
+
+        let connector = AiderConnector;
+        let options = ImportOptions::default().with_path(dir.path().to_path_buf());
+        let sessions = connector.import(&options).await.unwrap();
+
+        assert_eq!(sessions.len(), 1, "one history file -> one session");
+        assert!(sessions[0].messages.len() >= 2);
+        assert_eq!(sessions[0].messages[0].role, MessageRole::User);
+        assert!(sessions[0].messages[0].content.contains("how to parse"));
+    }
+
 }
