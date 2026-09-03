@@ -455,4 +455,46 @@ mod tests {
         assert_eq!(item.task, "Implement auth");
         assert!(item.ulid.is_some());
     }
+
+    // Cass-parity hermetic import test (issue #152): taskHistory + api
+    // history in a tempdir via ImportOptions.path.
+    #[tokio::test]
+    async fn test_import_from_tempdir_task_history() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = dir.path().join("state");
+        std::fs::create_dir_all(&state).unwrap();
+        std::fs::write(
+            state.join("taskHistory.json"),
+            r#"[{"id":"t1","ulid":"ulid1","ts":1750000000000,"task":"add login","cwd":"/proj","tokensIn":10,"tokensOut":20,"totalCost":0.001}]"#,
+        )
+        .unwrap();
+        let tasks = dir.path().join("tasks").join("t1");
+        std::fs::create_dir_all(&tasks).unwrap();
+        std::fs::write(
+            tasks.join("api_conversation_history.json"),
+            r#"[{"role":"user","content":"please add login"},{"role":"assistant","content":"done"}]"#,
+        )
+        .unwrap();
+
+        let connector = ClineConnector::new();
+        let options = ImportOptions::default().with_path(dir.path().to_path_buf());
+        let sessions = connector.import(&options).await.unwrap();
+
+        assert_eq!(sessions.len(), 1, "one task -> one session");
+        assert_eq!(sessions[0].messages.len(), 2);
+        assert_eq!(sessions[0].messages[0].role, MessageRole::User);
+        assert_eq!(sessions[0].messages[0].content, "please add login");
+        assert_eq!(sessions[0].messages[1].role, MessageRole::Assistant);
+    }
+
+    // Hermetic: empty history dir imports nothing without error.
+    #[tokio::test]
+    async fn test_import_from_empty_tempdir() {
+        let dir = tempfile::tempdir().unwrap();
+        let connector = ClineConnector::new();
+        let options = ImportOptions::default().with_path(dir.path().to_path_buf());
+        let sessions = connector.import(&options).await.unwrap();
+        assert!(sessions.is_empty());
+    }
+
 }
