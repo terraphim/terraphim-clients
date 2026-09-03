@@ -21,7 +21,7 @@ use anyhow::Result;
 use serde_json::Value;
 
 mod support;
-use support::cli_test_env::{apply_hermetic_env, create_hermetic_root, set_hermetic_env};
+use support::cli_test_env::{create_hermetic_root, set_hermetic_env};
 
 fn run(args: &[&str], extra_env: &[(&str, &str)]) -> Result<(String, String, i32)> {
     let root = create_hermetic_root()?;
@@ -111,10 +111,4 @@ fn sessions_import_removed_message() -> Result<()> {
         "CLI rejects import as unrecognized, got: {combined}"
     );
     Ok(())
-}
-
-// Silence unused-import warning when apply_hermetic_env is unused here.
-#[allow(dead_code)]
-fn _unused() {
-    let _ = apply_hermetic_env;
 }

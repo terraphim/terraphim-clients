@@ -1188,8 +1188,8 @@ mod import_contract_tests {
     /// TC-IMPORT-03: global limit truncates across the corpus.
     #[tokio::test]
     async fn import_all_respects_global_limit() {
-        let dir = std::env::temp_dir().join(format!("parity-imp-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = tmp.path().to_path_buf();
         corpus_sessions(&dir);
         let registry = ConnectorRegistry::new();
         let connector = registry
@@ -1204,7 +1204,6 @@ mod import_contract_tests {
         let limited = connector.import(&limit_opts).await.expect("import ok");
         assert_eq!(unlimited.len(), 3);
         assert_eq!(limited.len(), 2);
-        std::fs::remove_dir_all(&dir).ok();
     }
 
     /// TC-IMPORT-04: auto-import is attempted at most once per service
