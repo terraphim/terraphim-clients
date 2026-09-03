@@ -20,6 +20,13 @@ All notable changes to terraphim_agent are documented here.
 
 ## Unreleased
 
+### Added
+- `LearningStore::query_relevant` now uses Terraphim role-graph hybrid
+  scoring: `RoleGraph::query_graph` ranks candidates by graph rank when a
+  role graph is configured, and a `min_trust` filter plus
+  `applicable_agents` gate are preserved. Substring text matching remains
+  as the no-graph fallback. (Refs #850)
+
 ### Changed
 - `check-update` / `update` now use the **R2 manifest backend** by default
   (`downloads.terraphim.ai`), with GitHub Releases as an automatic fallback.

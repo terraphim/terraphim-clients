@@ -60,10 +60,7 @@ fn sessions_sources_membership_json() -> Result<()> {
     let v = parse_json(&stdout)?;
     let sources = v["sources"].as_array().expect("sources array");
     assert!(!sources.is_empty(), "at least one compiled connector");
-    let ids: Vec<&str> = sources
-        .iter()
-        .filter_map(|s| s["id"].as_str())
-        .collect();
+    let ids: Vec<&str> = sources.iter().filter_map(|s| s["id"].as_str()).collect();
     assert!(
         ids.contains(&"claude-code-native"),
         "native Claude connector is always compiled in, got {ids:?}"
@@ -79,8 +76,12 @@ fn sessions_sources_membership_json() -> Result<()> {
 /// documented but unimplemented -> covered in the docs-drift suite (#154).
 #[test]
 fn sessions_search_machine_empty_exits_4_with_payload() -> Result<()> {
-    let (stdout, _stderr, code) = run_robot(&["sessions", "search", "definitely-not-in-any-session"])?;
-    assert_eq!(code, 4, "machine-mode empty search exits ERROR_NOT_FOUND(4)");
+    let (stdout, _stderr, code) =
+        run_robot(&["sessions", "search", "definitely-not-in-any-session"])?;
+    assert_eq!(
+        code, 4,
+        "machine-mode empty search exits ERROR_NOT_FOUND(4)"
+    );
     let v = parse_json(&stdout)?;
     assert_eq!(v["query"], "definitely-not-in-any-session");
     assert_eq!(v["total"], 0);
@@ -96,8 +97,7 @@ fn sessions_search_machine_empty_exits_4_with_payload() -> Result<()> {
 /// Flag-order rule: `--robot` after the subcommand is a usage error (exit 2).
 #[test]
 fn sessions_search_robot_flag_after_subcommand_rejected() -> Result<()> {
-    let (stdout, stderr, code) =
-        run_robot_flag_after(&["sessions", "search", "tokio", "--robot"])?;
+    let (stdout, stderr, code) = run_robot_flag_after(&["sessions", "search", "tokio", "--robot"])?;
     assert_eq!(code, 2, "root flag after subcommand -> ERROR_USAGE(2)");
     let combined = format!("{stdout}\n{stderr}");
     assert!(
