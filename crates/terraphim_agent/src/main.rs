@@ -578,7 +578,9 @@ mod tests {
         };
         let json = serde_json::to_string(&payload).expect("serialisation failed");
         assert!(json.contains("sess-xyz"));
-        assert!(json.contains("null") || !json.contains("\"title\"") || json.contains("\"title\":null"));
+        assert!(
+            json.contains("null") || !json.contains("\"title\"") || json.contains("\"title\":null")
+        );
     }
 }
 
