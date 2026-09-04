@@ -6626,6 +6626,7 @@ dependencies = [
  "log",
  "serde",
  "serde_json",
+ "terraphim_automata",
  "terraphim_negative_contribution",
  "terraphim_types",
  "tokio",
