@@ -97,6 +97,7 @@ impl SessionConnector for AiderConnector {
         }
 
         info!("Successfully imported {} Aider sessions", sessions.len());
+        crate::redaction::redact_sessions(&mut sessions);
         Ok(sessions)
     }
 }
@@ -529,5 +530,4 @@ mod tests {
         assert_eq!(sessions[0].messages[0].role, MessageRole::User);
         assert!(sessions[0].messages[0].content.contains("how to parse"));
     }
-
 }

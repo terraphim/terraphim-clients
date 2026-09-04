@@ -29,6 +29,7 @@
 
 pub mod connector;
 pub mod model;
+pub mod redaction;
 pub mod service;
 
 #[cfg(feature = "terraphim-session-analyzer")]

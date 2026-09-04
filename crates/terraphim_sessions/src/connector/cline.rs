@@ -388,6 +388,7 @@ impl SessionConnector for ClineConnector {
             });
         }
 
+        crate::redaction::redact_sessions(&mut sessions);
         Ok(sessions)
     }
 }
@@ -496,5 +497,4 @@ mod tests {
         let sessions = connector.import(&options).await.unwrap();
         assert!(sessions.is_empty());
     }
-
 }

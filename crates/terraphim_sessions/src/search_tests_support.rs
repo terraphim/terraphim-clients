@@ -59,12 +59,7 @@ pub fn make_enriched_session(
     let mut session = make_session(id, title, messages);
     let mut sc = SessionConcepts::default();
     for (term, count) in concepts {
-        let mut cm = ConceptMatch::new(
-            term.to_string(),
-            term.to_string(),
-            0,
-            None,
-        );
+        let mut cm = ConceptMatch::new(term.to_string(), term.to_string(), 0, None);
         for i in 0..*count {
             cm.add_occurrence(ConceptOccurrence {
                 message_idx: 0,

@@ -423,7 +423,9 @@ mod tests {
 mod hybrid_tests {
     use super::*;
     use crate::model::{MessageRole, Session};
-    use crate::search_tests_support::{make_enriched_session, make_session as mk_session, make_thesaurus};
+    use crate::search_tests_support::{
+        make_enriched_session, make_session as mk_session, make_thesaurus,
+    };
 
     fn make_session(id: &str, title: &str, messages: Vec<(&str, MessageRole, &str)>) -> Session {
         mk_session(id, title, messages)
@@ -442,7 +444,11 @@ mod hybrid_tests {
             make_session(
                 "s2",
                 "tokio runtime configuration deep dive",
-                vec![("user", MessageRole::User, "tokio runtime configuration for workers")],
+                vec![(
+                    "user",
+                    MessageRole::User,
+                    "tokio runtime configuration for workers",
+                )],
             ),
         ];
         let thesaurus = make_thesaurus(&[("tokio", 1)]);
@@ -459,14 +465,16 @@ mod hybrid_tests {
         let plain = search_sessions(&sessions, "tokio runtime");
         assert!(!plain.is_empty(), "plain search must hit the corpus");
         assert_eq!(
-            plain[0].value().id, "s2",
+            plain[0].value().id,
+            "s2",
             "fixture precondition: s2 leads raw BM25"
         );
 
         let hybrid = search_sessions_hybrid(&sessions, "tokio runtime", Some(thesaurus.clone()));
         assert!(!hybrid.is_empty());
         assert_eq!(
-            hybrid[0].value().id, "s1",
+            hybrid[0].value().id,
+            "s1",
             "KG concept boost must promote the enriched session above raw BM25 leader"
         );
     }
@@ -492,7 +500,8 @@ mod hybrid_tests {
         let results = search_sessions_hybrid(&sessions, "rust async", Some(thesaurus.clone()));
         assert!(!results.is_empty());
         assert_eq!(
-            results[0].value().id, "a2",
+            results[0].value().id,
+            "a2",
             "session matching more thesaurus terms outranks the single-term session"
         );
     }
@@ -504,7 +513,8 @@ mod hybrid_tests {
         let (sessions, _) = boost_fixture();
         let empty_thesaurus = make_thesaurus(&[("unrelated-term", 9)]);
         let plain = search_sessions(&sessions, "tokio runtime");
-        let hybrid = search_sessions_hybrid(&sessions, "tokio runtime", Some(empty_thesaurus.clone()));
+        let hybrid =
+            search_sessions_hybrid(&sessions, "tokio runtime", Some(empty_thesaurus.clone()));
         let plain_ids: Vec<&str> = plain.iter().map(|s| s.value().id.as_str()).collect();
         let hybrid_ids: Vec<&str> = hybrid.iter().map(|s| s.value().id.as_str()).collect();
         assert_eq!(plain_ids, hybrid_ids);
@@ -539,10 +549,11 @@ mod hybrid_tests {
     #[test]
     fn hybrid_ordering_is_deterministic() {
         let (sessions, thesaurus) = boost_fixture();
-        let first: Vec<String> = search_sessions_hybrid(&sessions, "tokio runtime", Some(thesaurus.clone()))
-            .iter()
-            .map(|s| s.value().id.clone())
-            .collect();
+        let first: Vec<String> =
+            search_sessions_hybrid(&sessions, "tokio runtime", Some(thesaurus.clone()))
+                .iter()
+                .map(|s| s.value().id.clone())
+                .collect();
         for _ in 0..5 {
             let again: Vec<String> =
                 search_sessions_hybrid(&sessions, "tokio runtime", Some(thesaurus.clone()))

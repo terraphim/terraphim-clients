@@ -1169,7 +1169,9 @@ mod cluster_tests {
 #[cfg(test)]
 mod import_contract_tests {
     use super::*;
-    use crate::search_tests_support::{claude_assistant_entry, claude_user_entry, write_claude_jsonl};
+    use crate::search_tests_support::{
+        claude_assistant_entry, claude_user_entry, write_claude_jsonl,
+    };
 
     fn corpus_sessions(dir: &std::path::Path) {
         // write 3 well-formed claude transcripts

@@ -119,6 +119,7 @@ impl SessionConnector for NativeClaudeConnector {
             sessions.len(),
             total
         );
+        crate::redaction::redact_sessions(&mut sessions);
         Ok(sessions)
     }
 
