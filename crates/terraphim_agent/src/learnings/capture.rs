@@ -1055,7 +1055,7 @@ pub fn capture_failed_command(
         crate::learnings::compile::compile_corrections_to_thesaurus(&storage_dir)
         && !corrections.is_empty()
         && let Ok(matches) =
-            terraphim_automata::matcher::find_matches(&annotation_text, corrections, false)
+            terraphim_automata::matcher::find_matches(&annotation_text, &corrections, false)
         && let Some(first) = matches.first()
     {
         learning = learning.with_correction(first.normalized_term.display().to_string());
