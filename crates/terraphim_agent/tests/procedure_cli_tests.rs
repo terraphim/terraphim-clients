@@ -535,7 +535,6 @@ fn procedure_from_session_deduplicates_on_repeat() {
             .join("Caches")
             .join("terraphim-agent"),
     ];
-    let cache_dir = cache_variants[0].clone();
     for dir in &cache_variants {
         std::fs::create_dir_all(dir).expect("create cache dir variants");
     }

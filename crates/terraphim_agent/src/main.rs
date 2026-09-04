@@ -533,6 +533,55 @@ mod tests {
         assert!(msg.contains("terraphim-agent repl"));
         assert!(msg.contains("http://localhost:8000"));
     }
+
+    #[test]
+    fn session_expand_output_serialises_to_json() {
+        use session_output::{ExpandedMessage, SessionExpandOutput};
+        let payload = SessionExpandOutput {
+            id: "sess-abc".to_string(),
+            title: Some("My session".to_string()),
+            message_count: 2,
+            messages: vec![
+                ExpandedMessage {
+                    idx: 0,
+                    role: "user".to_string(),
+                    content: "hello".to_string(),
+                },
+                ExpandedMessage {
+                    idx: 1,
+                    role: "assistant".to_string(),
+                    content: "world".to_string(),
+                },
+            ],
+        };
+        let json = serde_json::to_string(&payload).expect("serialisation failed");
+        assert!(json.contains("sess-abc"));
+        assert!(json.contains("My session"));
+        assert!(json.contains("hello"));
+        assert!(json.contains("world"));
+        assert!(json.contains("\"idx\":0"));
+        assert!(json.contains("\"idx\":1"));
+    }
+
+    #[test]
+    fn session_expand_output_no_title_serialises() {
+        use session_output::{ExpandedMessage, SessionExpandOutput};
+        let payload = SessionExpandOutput {
+            id: "sess-xyz".to_string(),
+            title: None,
+            message_count: 1,
+            messages: vec![ExpandedMessage {
+                idx: 0,
+                role: "user".to_string(),
+                content: "test".to_string(),
+            }],
+        };
+        let json = serde_json::to_string(&payload).expect("serialisation failed");
+        assert!(json.contains("sess-xyz"));
+        assert!(
+            json.contains("null") || !json.contains("\"title\"") || json.contains("\"title\":null")
+        );
+    }
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Default)]
@@ -643,6 +692,21 @@ mod session_output {
         pub total_user_messages: usize,
         pub total_assistant_messages: usize,
         pub by_source: std::collections::HashMap<String, usize>,
+    }
+
+    #[derive(Debug, Serialize)]
+    pub struct SessionExpandOutput {
+        pub id: String,
+        pub title: Option<String>,
+        pub message_count: usize,
+        pub messages: Vec<ExpandedMessage>,
+    }
+
+    #[derive(Debug, Serialize)]
+    pub struct ExpandedMessage {
+        pub idx: usize,
+        pub role: String,
+        pub content: String,
     }
 }
 
@@ -1315,6 +1379,14 @@ enum SessionsSub {
     },
     /// Show session statistics (auto-imports if cache is empty)
     Stats,
+    /// Print the full body of a session by ID
+    Expand {
+        /// Session ID to expand
+        id: String,
+        /// Lines of context to show around matched content (reserved for future --query support)
+        #[arg(long, default_value_t = 5)]
+        context_lines: usize,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -3363,6 +3435,52 @@ async fn run_offline_command(
                         }
                     }
                     Ok(())
+                }
+                SessionsSub::Expand {
+                    id,
+                    context_lines: _,
+                } => {
+                    let session = service.get_session(&id).await;
+                    match session {
+                        None => {
+                            if !output.is_machine_readable() {
+                                eprintln!("Session '{}' not found.", id);
+                            }
+                            std::process::exit(
+                                robot::exit_codes::ExitCode::ErrorNotFound.code().into(),
+                            );
+                        }
+                        Some(session) => {
+                            if output.is_machine_readable() {
+                                let payload = SessionExpandOutput {
+                                    id: session.id.clone(),
+                                    title: session.title.clone(),
+                                    message_count: session.message_count(),
+                                    messages: session
+                                        .messages
+                                        .iter()
+                                        .map(|msg| ExpandedMessage {
+                                            idx: msg.idx,
+                                            role: msg.role.to_string(),
+                                            content: msg.content.clone(),
+                                        })
+                                        .collect(),
+                                };
+                                print_json_output(&payload, output.mode)?;
+                            } else {
+                                let title = session.title.as_deref().unwrap_or("(untitled)");
+                                println!("Session: {} ({})", title, session.id);
+                                println!("Messages: {}", session.message_count());
+                                println!("{}", "=".repeat(80));
+                                for msg in &session.messages {
+                                    println!("[{}]", msg.role);
+                                    println!("{}", msg.content);
+                                    println!("{}", "-".repeat(40));
+                                }
+                            }
+                            Ok(())
+                        }
+                    }
                 }
             }
         }
@@ -6233,6 +6351,54 @@ async fn run_server_command(
                             }
                         }
                         Ok(())
+                    }
+                    SessionsSub::Expand {
+                        id,
+                        context_lines: _,
+                    } => {
+                        // Populate cache via auto-import before lookup
+                        let _ = service.list_sessions().await;
+                        let session = service.get_session(&id).await;
+                        match session {
+                            None => {
+                                if !output.is_machine_readable() {
+                                    eprintln!("Session '{}' not found.", id);
+                                }
+                                std::process::exit(
+                                    robot::exit_codes::ExitCode::ErrorNotFound.code().into(),
+                                );
+                            }
+                            Some(session) => {
+                                if output.is_machine_readable() {
+                                    let payload = SessionExpandOutput {
+                                        id: session.id.clone(),
+                                        title: session.title.clone(),
+                                        message_count: session.message_count(),
+                                        messages: session
+                                            .messages
+                                            .iter()
+                                            .map(|msg| ExpandedMessage {
+                                                idx: msg.idx,
+                                                role: msg.role.to_string(),
+                                                content: msg.content.clone(),
+                                            })
+                                            .collect(),
+                                    };
+                                    print_json_output(&payload, output.mode)?;
+                                } else {
+                                    let title = session.title.as_deref().unwrap_or("(untitled)");
+                                    println!("Session: {} ({})", title, session.id);
+                                    println!("Messages: {}", session.message_count());
+                                    println!("{}", "=".repeat(80));
+                                    for msg in &session.messages {
+                                        println!("[{}]", msg.role);
+                                        println!("{}", msg.content);
+                                        println!("{}", "-".repeat(40));
+                                    }
+                                }
+                                Ok(())
+                            }
+                        }
                     }
                 }
             })
