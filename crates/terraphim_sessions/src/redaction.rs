@@ -47,12 +47,32 @@ const SECRET_PATTERNS: &[(&str, &str)] = &[
 /// assert!(redacted.contains("[REDACTED]"));
 /// assert!(!redacted.contains("sk-1234567890abcdef1234567890abcdef"));
 /// ```
+/// Compiled redaction patterns, built once per process.
+///
+/// Compiling on every call is pathological: import over a large corpus
+/// (hundreds of thousands of messages) would recompile the whole pattern
+/// set per message. `OnceLock` keeps the build cost to one pay-up-front.
+static COMPILED_PATTERNS: std::sync::OnceLock<Vec<(Regex, &'static str)>> =
+    std::sync::OnceLock::new();
+
+fn compiled_patterns() -> &'static [(Regex, &'static str)] {
+    COMPILED_PATTERNS.get_or_init(|| {
+        SECRET_PATTERNS
+            .iter()
+            .filter_map(|(pattern, replacement)| {
+                Regex::new(pattern)
+                    .map(|re| (re, *replacement))
+                    .map_err(|e| tracing::warn!("invalid redaction pattern {pattern:?}: {e}"))
+                    .ok()
+            })
+            .collect()
+    })
+}
+
 pub fn redact_session_content(text: &str) -> String {
     let mut result = text.to_string();
-    for (pattern, replacement) in SECRET_PATTERNS {
-        if let Ok(re) = Regex::new(pattern) {
-            result = re.replace_all(&result, *replacement).to_string();
-        }
+    for (re, replacement) in compiled_patterns() {
+        result = re.replace_all(&result, *replacement).to_string();
     }
     result
 }

@@ -530,5 +530,4 @@ mod tests {
         assert_eq!(sessions[0].messages[0].role, MessageRole::User);
         assert!(sessions[0].messages[0].content.contains("how to parse"));
     }
-
 }

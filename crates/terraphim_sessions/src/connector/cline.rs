@@ -497,5 +497,4 @@ mod tests {
         let sessions = connector.import(&options).await.unwrap();
         assert!(sessions.is_empty());
     }
-
 }
