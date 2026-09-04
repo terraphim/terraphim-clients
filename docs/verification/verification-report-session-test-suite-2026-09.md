@@ -53,3 +53,14 @@ Immediate fixes merged via #161 (panic-safe tempdirs, dead-code shim). Remaining
 4. Seeded-corpus CLI tests (populate hermetic `~/.claude/projects`, assert populated JSON shapes incl. preview ≤100 chars)
 5. Hybrid cap/threshold TCs (TC-SEARCH-05/09/10)
 6. Also reviewed the two pre-existing open PRs: #147 (LearningStore changelog docs — 5/5, merged after rebase + review) and #146 (fmt PR — 2/5, branch carries a 17-commit feature stack; owner decision required, review posted with resolution options).
+
+## Addendum 2 (2026-09-04, PR-queue triage + ≥4/5 gate)
+
+Triage of all 22 open PRs by patch-presence against main:
+- **Superseded (commits already in main, closed):** #76, #75, #74, #72, #71, #70, #134 (0 unique commits each).
+- **Revived, fixed, reviewed ≥4/5, merged:**
+  - #34 → **#162** redaction of secrets in session import (found P1 during verification: per-message regex recompilation hung auto-import on a 151MB real corpus; fixed with OnceLock-cached patterns; 143 tests green). Superseded #34.
+  - #21 → **#163** from-session CLI tests (fixed macOS false-fail: fixture now written to all platform cache variants; dedup assertion aligned with current high-confidence-only merge semantics; 15/15 green). Superseded #21.
+- **Closed as superseded duplicates:** #20, #18 (earlier iterations; final work landed on main).
+- **Owner decisions requested (review notes posted, not merged):** #41 (L0-promotion semantics conflict with main), #26 (default-features change), #146 (branch scope mismatch: fmt title over 17-commit feature stack).
+- UBS scanner gap: rust module fails upstream checksum verification; cargo fmt/clippy/test gates used as substitute evidence.
