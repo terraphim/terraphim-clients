@@ -756,7 +756,6 @@ impl Analyzer {
     /// 5. Calculate frequency, timing, and success rate
     /// 6. Filter chains that appear at least twice
     #[must_use]
-    #[allow(dead_code)] // Will be used when tool chain analysis is exposed in CLI
     pub fn detect_tool_chains(
         &self,
         tool_invocations: &[ToolInvocation],
@@ -911,7 +910,6 @@ struct ToolStatsData {
 }
 
 /// Helper struct for tracking tool chain sequence data
-#[allow(dead_code)] // Used in tool chain detection
 struct SequenceData {
     frequency: u32,
     time_diffs: Vec<u64>,
@@ -920,7 +918,6 @@ struct SequenceData {
     successful: usize,
 }
 
-#[allow(dead_code)] // Used in tool chain detection
 impl SequenceData {
     fn new() -> Self {
         Self {

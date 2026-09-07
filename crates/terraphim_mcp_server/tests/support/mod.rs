@@ -1,3 +1,9 @@
+//! Shared helpers for mcp_server integration-test binaries.
+//!
+//! Each integration-test binary compiles its own copy of this module, so some
+//! helpers are unused in any given binary — that is inherent to shared test
+//! support, not dead code. (File-level allow is scoped to test infrastructure.)
+#![allow(dead_code)]
 //! Test support for `terraphim_mcp_server` integration tests.
 //!
 //! Provides a hermetic test root + `apply_hermetic_env` so stdio-driven tests
@@ -16,10 +22,8 @@ use anyhow::{Context, Result};
 // helpers below can appear "unused" when only some of them are referenced by a
 // particular test target. Suppress the noise rather than gating on a feature
 // flag we do not need.
-#[allow(dead_code)]
 static COUNTER: AtomicU64 = AtomicU64::new(0);
 
-#[allow(dead_code)]
 fn create_unique_test_root() -> Result<PathBuf> {
     let nonce = COUNTER.fetch_add(1, Ordering::SeqCst);
     let ts = SystemTime::now()
@@ -45,7 +49,6 @@ fn create_unique_test_root() -> Result<PathBuf> {
 /// 2. `CARGO_BIN_EXE_terraphim_mcp_server`, which Cargo sets for this package's
 ///    integration tests and guarantees is built first. Unlike a
 ///    `../../target/debug` guess this holds under any `CARGO_TARGET_DIR`.
-#[allow(dead_code)]
 pub fn mcp_server_binary() -> anyhow::Result<std::path::PathBuf> {
     if let Ok(bin) = std::env::var("TERRAPHIM_MCP_SERVER_BIN") {
         let path = std::path::PathBuf::from(bin);
@@ -68,7 +71,6 @@ pub fn mcp_server_binary() -> anyhow::Result<std::path::PathBuf> {
 /// Create a fresh, unique hermetic test root under `std::env::temp_dir()`.
 /// Tests should `cmd.current_dir(&root)` so `terraphim_config::project::discover()`
 /// does not walk up to a host `.terraphim/` directory. Refs #143.
-#[allow(dead_code)]
 pub fn create_hermetic_root() -> Result<PathBuf> {
     create_unique_test_root()
 }

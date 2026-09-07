@@ -431,8 +431,6 @@ struct ComposerData {
 #[serde(rename_all = "camelCase")]
 struct ComposerTab {
     bubbles: Vec<Bubble>,
-    #[allow(dead_code)]
-    model: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

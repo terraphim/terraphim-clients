@@ -429,7 +429,6 @@ impl Reporter {
     }
 
     /// Print tool usage analysis to terminal
-    #[allow(dead_code)] // Replaced by print_tool_analysis_detailed
     pub fn print_tool_analysis(
         &self,
         stats: &std::collections::HashMap<String, crate::models::ToolStatistics>,
@@ -883,7 +882,6 @@ struct FileRow {
 }
 
 #[derive(Tabled)]
-#[allow(dead_code)] // Replaced by DetailedToolRow
 struct ToolRow {
     #[tabled(rename = "Tool")]
     tool: String,

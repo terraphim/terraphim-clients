@@ -420,7 +420,6 @@ fn build_llm_for_role(
 }
 
 #[cfg(not(feature = "llm"))]
-#[allow(dead_code)]
 fn build_llm_for_role(
     _role_name: &str,
     _role_config_path: Option<&std::path::Path>,

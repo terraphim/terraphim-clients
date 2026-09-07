@@ -100,7 +100,6 @@ pub struct McpService {
     /// Optional KG scorer for boosting file search results by path concept matches.
     kg_scorer: Option<Arc<KgPathScorer>>,
     /// Optional persistent frecency tracker (LMDB-backed) for access-frequency scoring.
-    #[allow(dead_code)]
     frecency: Option<SharedFrecency>,
 }
 
@@ -116,6 +115,10 @@ impl McpService {
                 })
                 .ok()
         });
+        tracing::debug!(
+            frecency_enabled = frecency.is_some(),
+            "MCP service initialised (frecency tracking wired when FFF_FRECENCY_PATH is set)"
+        );
 
         Self {
             config_state,
@@ -124,6 +127,12 @@ impl McpService {
             kg_scorer: None,
             frecency,
         }
+    }
+
+    /// Read-only access to the optional frecency tracker (for consumers that
+    /// score file access frequency, e.g. `terraphim_find_files`).
+    pub fn frecency(&self) -> Option<&SharedFrecency> {
+        self.frecency.as_ref()
     }
 
     /// Attach a KG scorer so that `terraphim_find_files` boosts results by

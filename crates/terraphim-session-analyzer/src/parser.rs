@@ -279,7 +279,6 @@ impl SessionParser {
     /// # Returns
     /// A vector of `ToolInvocation` instances found in Bash tool uses
     #[must_use]
-    #[allow(dead_code)] // Will be used in Phase 2
     pub fn extract_tool_invocations(&self, matcher: &dyn PatternMatcher) -> Vec<ToolInvocation> {
         self.entries
             .par_iter()
@@ -447,7 +446,6 @@ impl SessionParser {
 }
 
 /// Helper function to extract tool invocations from Bash command content
-#[allow(dead_code)] // Will be used in Phase 2
 fn extract_from_bash_command(
     entry: &SessionEntry,
     content: &[ContentBlock],
