@@ -3,15 +3,10 @@
 //! This module provides structured JSON output and self-documentation
 //! capabilities for integration with AI agents and automation tools.
 
-#[allow(dead_code)]
 pub mod budget;
-#[allow(dead_code)]
 pub mod docs;
-#[allow(dead_code)]
 pub mod exit_codes;
-#[allow(dead_code)]
 pub mod output;
-#[allow(dead_code)]
 pub mod schema;
 
 #[allow(unused_imports)]
