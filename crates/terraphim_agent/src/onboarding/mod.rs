@@ -51,7 +51,6 @@ pub enum OnboardingError {
     #[error(
         "Not a TTY - interactive mode requires a terminal. Use --template for non-interactive mode."
     )]
-    #[allow(dead_code)]
     NotATty,
 
     /// JSON serialization/deserialization error

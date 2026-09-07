@@ -4,11 +4,8 @@
 //! Uses edit distance algorithms to auto-correct common typos and suggest
 //! alternatives for unknown commands.
 
-#[allow(dead_code)]
 pub mod aliases;
-#[allow(dead_code)]
 pub mod parser;
-#[allow(dead_code)]
 pub mod suggestions;
 
 #[allow(unused_imports)]

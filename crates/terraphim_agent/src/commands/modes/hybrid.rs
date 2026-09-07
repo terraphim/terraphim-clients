@@ -29,9 +29,6 @@ pub struct RiskAssessmentSettings {
     safe_commands: Vec<String>,
     /// Keywords that indicate high risk
     high_risk_keywords: Vec<String>,
-    /// Always use VM for commands from unknown sources
-    #[allow(dead_code)]
-    vm_for_unknown: bool,
     /// Maximum risk level for local execution
     max_local_risk_level: RiskLevel,
 }
@@ -138,7 +135,6 @@ impl Default for RiskAssessmentSettings {
             high_risk_commands,
             safe_commands,
             high_risk_keywords,
-            vm_for_unknown: true,
             max_local_risk_level: RiskLevel::Medium,
         }
     }

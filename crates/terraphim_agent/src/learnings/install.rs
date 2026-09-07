@@ -17,7 +17,6 @@ use thiserror::Error;
 
 /// AI agent type for hook installation.
 #[derive(Debug, Clone, Copy, PartialEq, clap::ValueEnum)]
-#[allow(dead_code)]
 pub enum AgentType {
     /// Claude Code (Claude CLI)
     Claude,
@@ -126,7 +125,6 @@ fi
 
 /// Errors that can occur during hook installation.
 #[derive(Debug, Error)]
-#[allow(dead_code)]
 pub enum InstallError {
     /// Failed to create config directory
     #[error("failed to create config directory: {0}")]
@@ -224,71 +222,6 @@ pub async fn install_hook(agent: AgentType) -> Result<(), InstallError> {
     println!("Or add the above line to your shell profile (~/.bashrc, ~/.zshrc, etc.)");
 
     Ok(())
-}
-
-/// Uninstall hook for the specified AI agent.
-///
-/// Removes the hook script from the agent's config directory.
-///
-/// # Arguments
-///
-/// * `agent` - The AI agent type to uninstall the hook for
-///
-/// # Returns
-///
-/// Ok(()) if uninstallation succeeds, Err(InstallError) otherwise.
-#[allow(dead_code)]
-pub async fn uninstall_hook(agent: AgentType) -> Result<(), InstallError> {
-    let hook_path = agent.hook_path().ok_or(InstallError::ConfigNotFound)?;
-
-    if !hook_path.exists() {
-        println!(
-            "No hook found for {} at: {}",
-            agent.as_str(),
-            hook_path.display()
-        );
-        return Ok(());
-    }
-
-    tokio::fs::remove_file(&hook_path)
-        .await
-        .map_err(InstallError::WriteError)?;
-
-    println!(
-        "Uninstalled Terraphim hook for {} from: {}",
-        agent.as_str(),
-        hook_path.display()
-    );
-
-    Ok(())
-}
-
-/// Check if a hook is installed for the specified agent.
-///
-/// # Arguments
-///
-/// * `agent` - The AI agent type to check
-///
-/// # Returns
-///
-/// true if the hook is installed, false otherwise.
-#[allow(dead_code)]
-pub fn is_hook_installed(agent: AgentType) -> bool {
-    agent.hook_path().map(|p| p.exists()).unwrap_or(false)
-}
-
-/// Get installation status for all supported agents.
-///
-/// # Returns
-///
-/// A vector of tuples containing the agent type and installation status.
-#[allow(dead_code)]
-pub fn get_installation_status() -> Vec<(AgentType, bool)> {
-    vec![
-        (AgentType::Claude, is_hook_installed(AgentType::Claude)),
-        (AgentType::Codex, is_hook_installed(AgentType::Codex)),
-        (AgentType::Opencode, is_hook_installed(AgentType::Opencode)),
-    ]
 }
 
 #[cfg(test)]

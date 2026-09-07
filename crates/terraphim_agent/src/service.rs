@@ -213,7 +213,6 @@ impl TuiService {
     // Reachable only from the lib target: `tests/tui_service_tests.rs` uses it, the binary
     // no longer does since the embedded-defaults fallback now goes through
     // `load_config_embedded_defaults`. Refs #120.
-    #[allow(dead_code)]
     pub async fn new_with_embedded_defaults(no_project_config: bool) -> Result<Self> {
         let config = Self::load_config_embedded_defaults(no_project_config)?;
         Self::from_config(config).await
@@ -345,7 +344,6 @@ impl TuiService {
     ///
     /// `selected_role` passed to `auto_select_role` is normalised: persisted
     /// `selected_role` is treated as `None` when it does not exist in `config.roles`.
-    #[allow(dead_code)]
     pub async fn resolve_or_auto_route(
         &self,
         role: Option<&str>,

@@ -122,7 +122,6 @@ impl Default for LearningCaptureConfig {
 
 impl LearningCaptureConfig {
     /// Create config with custom directories
-    #[allow(dead_code)]
     pub fn new(project_dir: PathBuf, global_dir: PathBuf) -> Self {
         Self {
             project_dir,

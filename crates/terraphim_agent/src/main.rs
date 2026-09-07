@@ -26,7 +26,6 @@ use terraphim_persistence::Persistable;
 use tokio::runtime::Runtime;
 
 mod listener;
-#[allow(dead_code)]
 mod shell_dispatch;
 
 // Robot mode and forgiving CLI - always available
@@ -698,7 +697,6 @@ mod session_output {
     }
 }
 
-#[allow(dead_code)]
 fn print_json_output<T: Serialize>(value: &T, mode: CommandOutputMode) -> Result<()> {
     let out = match mode {
         CommandOutputMode::Human => serde_json::to_string_pretty(value)?,
@@ -2069,7 +2067,6 @@ fn run_tui_offline_mode(transparent: bool) -> Result<()> {
     run_tui(None, transparent)
 }
 
-#[allow(dead_code)]
 fn run_tui_server_mode(server_url: &str, transparent: bool) -> Result<()> {
     run_tui(Some(server_url.to_string()), transparent)
 }

@@ -179,7 +179,6 @@ impl CommandGuard {
     }
 
     /// Get the default embedded suspicious patterns JSON string
-    #[allow(dead_code)]
     pub fn default_suspicious_json() -> &'static str {
         DEFAULT_SUSPICIOUS_JSON
     }

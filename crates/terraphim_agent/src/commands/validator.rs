@@ -285,12 +285,6 @@ impl CommandValidator {
             .to_lowercase()
     }
 
-    /// Determine execution mode based on command and role
-    #[allow(dead_code)]
-    fn determine_execution_mode(&self, command: &str, role: &str) -> ExecutionMode {
-        self.determine_execution_mode_with_override(command, role, None)
-    }
-
     /// Determine execution mode with optional override from command definition
     fn determine_execution_mode_with_override(
         &self,
