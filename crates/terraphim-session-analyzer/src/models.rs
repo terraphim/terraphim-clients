@@ -11,13 +11,11 @@ pub struct SessionId(String);
 
 impl SessionId {
     #[must_use]
-    #[allow(dead_code)]
     pub fn new(id: String) -> Self {
         Self(id)
     }
 
     #[must_use]
-    #[allow(dead_code)]
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -46,13 +44,11 @@ pub struct AgentType(String);
 
 impl AgentType {
     #[must_use]
-    #[allow(dead_code)]
     pub fn new(agent_type: String) -> Self {
         Self(agent_type)
     }
 
     #[must_use]
-    #[allow(dead_code)]
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -81,13 +77,11 @@ pub struct MessageId(String);
 
 impl MessageId {
     #[must_use]
-    #[allow(dead_code)]
     pub fn new(id: String) -> Self {
         Self(id)
     }
 
     #[must_use]
-    #[allow(dead_code)]
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -257,7 +251,6 @@ impl ToolCategory {
     /// Parse a string category into ToolCategory
     /// Used in parser for converting string categories
     #[must_use]
-    #[allow(dead_code)]
     pub fn from_string(s: &str) -> Self {
         match s {
             "PackageManager" => ToolCategory::PackageManager,
@@ -452,14 +445,12 @@ pub fn extract_file_path(input: &serde_json::Value) -> Option<String> {
 
 /// Agent type utilities
 /// Used in integration tests and public API
-#[allow(dead_code)]
 #[must_use]
 pub fn normalize_agent_name(agent_type: &str) -> String {
     agent_type.to_lowercase().replace(['-', ' '], "_")
 }
 
 /// Used in integration tests and public API
-#[allow(dead_code)]
 #[must_use]
 pub fn get_agent_category(agent_type: &str) -> &'static str {
     match agent_type {

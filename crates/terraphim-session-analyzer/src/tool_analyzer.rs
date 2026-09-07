@@ -142,7 +142,6 @@ pub fn is_actual_tool(tool_name: &str) -> bool {
 /// Calculate tool statistics from invocations
 /// Replaced by Analyzer::calculate_tool_statistics - kept for compatibility
 #[must_use]
-#[allow(dead_code)]
 pub fn calculate_tool_statistics(
     invocations: &[ToolInvocation],
 ) -> HashMap<String, ToolStatistics> {

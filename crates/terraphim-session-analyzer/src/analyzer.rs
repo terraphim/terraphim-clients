@@ -53,7 +53,6 @@ impl Analyzer {
 
     /// Set custom configuration
     /// Used in integration tests
-    #[allow(dead_code)]
     #[must_use]
     pub fn with_config(mut self, config: AnalyzerConfig) -> Self {
         self.config = config;
