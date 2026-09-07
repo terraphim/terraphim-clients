@@ -2491,13 +2491,16 @@ async fn run_offline_command(
                         Ok(thesaurus) => {
                             let concepts =
                                 terraphim_automata::compute_concepts_matched(&query, &thesaurus);
+                            // `thesaurus_matched` used to be a naive substring scan, so any
+                            // term appearing *inside* a longer query word was reported --
+                            // the two-letter term `ce` matched `con(ce)pt`. Derive it from
+                            // the same boundary-aware matcher that produces `concepts`, so
+                            // the two fields can never disagree.
+                            let matched: std::collections::HashSet<String> =
+                                concepts.iter().map(|c| c.to_lowercase()).collect();
                             let thesaurus_terms: Vec<String> = thesaurus
                                 .keys()
-                                .filter(|key| {
-                                    query
-                                        .to_lowercase()
-                                        .contains(&key.to_string().to_lowercase())
-                                })
+                                .filter(|key| matched.contains(&key.to_string().to_lowercase()))
                                 .map(|key| key.to_string())
                                 .collect();
                             (concepts, thesaurus_terms)
@@ -5536,7 +5539,7 @@ async fn run_server_command(
             operator,
             role,
             limit,
-            fail_on_empty: _,
+            fail_on_empty,
             include_pinned,
             min_quality,
             max_tokens,
@@ -5586,6 +5589,9 @@ async fn run_server_command(
             };
 
             let res: SearchResponse = api.search(&q).await?;
+            // Captured before `res.results` is consumed below, so `--fail-on-empty`
+            // behaves identically in server mode and offline mode.
+            let results_count = res.results.len();
 
             if let Some(ref additional_terms) = q.search_terms {
                 let op_str = match q.operator {
@@ -5681,11 +5687,13 @@ async fn run_server_command(
                                 let concepts = terraphim_automata::compute_concepts_matched(
                                     &query, &thesaurus,
                                 );
+                                // See the offline path: derive from the boundary-aware
+                                // matcher rather than a naive substring scan.
+                                let matched: std::collections::HashSet<String> =
+                                    concepts.iter().map(|c| c.to_lowercase()).collect();
                                 let thesaurus_terms: Vec<String> = entries
                                     .values()
-                                    .filter(|value| {
-                                        query.to_lowercase().contains(&value.to_lowercase())
-                                    })
+                                    .filter(|value| matched.contains(&value.to_lowercase()))
                                     .cloned()
                                     .collect();
                                 (concepts, thesaurus_terms)
@@ -5738,6 +5746,9 @@ async fn run_server_command(
                     }
                     println!();
                 }
+            }
+            if fail_on_empty && results_count == 0 {
+                std::process::exit(robot::exit_codes::ExitCode::ErrorNotFound.code().into());
             }
             Ok(())
         }
