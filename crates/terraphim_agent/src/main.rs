@@ -5539,7 +5539,7 @@ async fn run_server_command(
             operator,
             role,
             limit,
-            fail_on_empty: _,
+            fail_on_empty,
             include_pinned,
             min_quality,
             max_tokens,
@@ -5589,6 +5589,9 @@ async fn run_server_command(
             };
 
             let res: SearchResponse = api.search(&q).await?;
+            // Captured before `res.results` is consumed below, so `--fail-on-empty`
+            // behaves identically in server mode and offline mode.
+            let results_count = res.results.len();
 
             if let Some(ref additional_terms) = q.search_terms {
                 let op_str = match q.operator {
@@ -5743,6 +5746,9 @@ async fn run_server_command(
                     }
                     println!();
                 }
+            }
+            if fail_on_empty && results_count == 0 {
+                std::process::exit(robot::exit_codes::ExitCode::ErrorNotFound.code().into());
             }
             Ok(())
         }
