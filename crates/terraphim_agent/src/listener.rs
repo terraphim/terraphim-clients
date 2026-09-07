@@ -219,7 +219,6 @@ impl ListenerConfig {
         Ok(())
     }
 
-    #[allow(dead_code)]
     pub fn load_from_path(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
         let raw = fs::read_to_string(path)
@@ -1359,11 +1358,6 @@ impl ListenerRuntime {
         }
     }
 
-    #[allow(dead_code)]
-    pub async fn run_once(mut self) -> Result<()> {
-        self.poll_once().await
-    }
-
     pub async fn poll_once(&mut self) -> Result<()> {
         let mut page = 1u32;
         let mut newest_seen_at: Option<jiff::Timestamp> = None;
@@ -1715,17 +1709,6 @@ impl ListenerRuntime {
         }
 
         Ok(PollDecision::AdvanceCursor)
-    }
-
-    #[allow(dead_code)]
-    pub async fn handoff_issue(
-        &self,
-        issue_number: u64,
-        specialist_name: &str,
-        note: &str,
-    ) -> Result<()> {
-        self.handoff_issue_with_context(issue_number, specialist_name, note, None, None)
-            .await
     }
 
     pub async fn handoff_issue_with_context(

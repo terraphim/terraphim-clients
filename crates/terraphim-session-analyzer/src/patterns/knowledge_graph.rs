@@ -98,7 +98,6 @@ impl Default for PatternLearner {
     }
 }
 
-#[allow(dead_code)] // Will be used in Phase 3 Part 3
 impl PatternLearner {
     /// Create a new pattern learner with default threshold (3 observations)
     #[must_use]
@@ -256,7 +255,6 @@ impl PatternLearner {
 }
 
 /// Determine the category based on voting results and context analysis
-#[allow(dead_code)] // Will be used in Phase 3 Part 3
 fn determine_category(category_votes: &HashMap<String, u32>, contexts: &[String]) -> ToolCategory {
     // Find the category with the most votes
     let winner = category_votes
@@ -273,7 +271,6 @@ fn determine_category(category_votes: &HashMap<String, u32>, contexts: &[String]
 }
 
 /// Calculate confidence score based on voting consistency
-#[allow(dead_code)] // Used in tests
 fn calculate_confidence(category_votes: &HashMap<String, u32>, total_observations: u32) -> f32 {
     if total_observations == 0 {
         return 0.0;
@@ -291,7 +288,6 @@ fn calculate_confidence(category_votes: &HashMap<String, u32>, total_observation
 }
 
 /// Infer category from tool name and command contexts using heuristics
-#[allow(dead_code)] // Will be used in Phase 3 Part 3
 pub fn infer_category_from_contexts(contexts: &[String]) -> ToolCategory {
     // Analyze the contexts to find common patterns
     let combined_context = contexts.join(" ").to_lowercase();
@@ -369,7 +365,6 @@ pub fn infer_category_from_contexts(contexts: &[String]) -> ToolCategory {
 }
 
 /// Convert ToolCategory to string for storage
-#[allow(dead_code)] // Will be used in Phase 3 Part 3
 fn category_to_string(category: &ToolCategory) -> String {
     match category {
         ToolCategory::PackageManager => "PackageManager".to_string(),
@@ -384,7 +379,6 @@ fn category_to_string(category: &ToolCategory) -> String {
 }
 
 /// Convert string back to ToolCategory
-#[allow(dead_code)] // Will be used in Phase 3 Part 3
 fn string_to_category(s: &str) -> ToolCategory {
     match s {
         "PackageManager" => ToolCategory::PackageManager,
@@ -407,7 +401,6 @@ fn string_to_category(s: &str) -> ToolCategory {
 /// # Errors
 ///
 /// Returns an error if the home directory cannot be determined
-#[allow(dead_code)] // Used in tests
 fn get_cache_path() -> Result<PathBuf> {
     let home = home::home_dir().context("Could not find home directory")?;
     Ok(home
@@ -423,7 +416,6 @@ fn get_cache_path() -> Result<PathBuf> {
 /// Relationship between two tools indicating how they interact in workflows
 #[cfg(feature = "terraphim")]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[allow(dead_code)] // Will be used in future terraphim integration
 pub struct ToolRelationship {
     /// The source tool in the relationship
     pub from_tool: String,
@@ -441,7 +433,6 @@ pub struct ToolRelationship {
 /// Types of relationships between tools
 #[cfg(feature = "terraphim")]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[allow(dead_code)] // Will be used in future terraphim integration
 pub enum RelationType {
     /// Tool A requires Tool B to function (e.g., wrangler depends on npm build)
     DependsOn,
@@ -457,7 +448,6 @@ pub enum RelationType {
 }
 
 #[cfg(feature = "terraphim")]
-#[allow(dead_code)] // Methods will be used in future terraphim integration
 impl ToolRelationship {
     /// Infer relationships from tool chain patterns
     ///
@@ -534,7 +524,6 @@ impl ToolRelationship {
 
 /// Check if a tool dependency is well-known
 #[cfg(feature = "terraphim")]
-#[allow(dead_code)] // Used in inference and tests
 fn is_known_dependency(dependency: &str, dependent: &str) -> bool {
     // Common dependency patterns
     matches!(
@@ -553,14 +542,12 @@ fn is_known_dependency(dependency: &str, dependent: &str) -> bool {
 /// Knowledge graph containing tool relationships
 #[cfg(feature = "terraphim")]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[allow(dead_code)] // Will be used in future terraphim integration
 pub struct KnowledgeGraph {
     /// All known tool relationships
     pub relationships: Vec<ToolRelationship>,
 }
 
 #[cfg(feature = "terraphim")]
-#[allow(dead_code)] // Methods will be used in future terraphim integration
 impl KnowledgeGraph {
     /// Create a new empty knowledge graph
     #[must_use]
@@ -741,7 +728,6 @@ impl KnowledgeGraph {
 
 /// Check if two tools are known alternatives
 #[cfg(feature = "terraphim")]
-#[allow(dead_code)] // Used in inference and tests
 fn are_known_alternatives(tool1: &str, tool2: &str) -> bool {
     let alternatives = [
         ("npm", "yarn"),

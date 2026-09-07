@@ -1,9 +1,4 @@
-mod analyzer;
-mod models;
-mod parser;
-mod patterns;
-mod reporter;
-mod tool_analyzer;
+use terraphim_session_analyzer::{analyzer, models, parser, patterns, reporter, tool_analyzer};
 
 use models::SessionAnalysis;
 
@@ -745,79 +740,6 @@ struct ChainData {
     success_count: u32,
     total_count: u32,
     agents: std::collections::HashSet<String>,
-}
-
-/// Calculate agent-tool correlations
-/// TODO: Remove in Phase 2 Part 2 - now handled by Analyzer::calculate_agent_tool_correlations
-#[allow(dead_code)]
-fn calculate_agent_tool_correlations(
-    invocations: &[models::ToolInvocation],
-) -> Vec<models::AgentToolCorrelation> {
-    use std::collections::HashMap;
-
-    // Group by (agent, tool)
-    let mut correlation_data: HashMap<(String, String), CorrelationData> = HashMap::new();
-
-    for inv in invocations {
-        if let Some(ref agent) = inv.agent_context {
-            let key = (agent.clone(), inv.tool_name.clone());
-            let entry = correlation_data
-                .entry(key)
-                .or_insert_with(|| CorrelationData {
-                    usage_count: 0,
-                    success_count: 0,
-                    sessions: std::collections::HashSet::new(),
-                });
-
-            entry.usage_count += 1;
-            entry.sessions.insert(inv.session_id.clone());
-
-            if inv.exit_code == Some(0) {
-                entry.success_count += 1;
-            }
-        }
-    }
-
-    // Convert to correlation structs
-    let mut correlations: Vec<models::AgentToolCorrelation> = correlation_data
-        .into_iter()
-        .map(|((agent, tool), data)| {
-            #[allow(clippy::cast_precision_loss)]
-            let success_rate = if data.usage_count > 0 {
-                data.success_count as f32 / data.usage_count as f32
-            } else {
-                0.0
-            };
-
-            #[allow(clippy::cast_precision_loss)]
-            let avg_per_session = if !data.sessions.is_empty() {
-                data.usage_count as f32 / data.sessions.len() as f32
-            } else {
-                0.0
-            };
-
-            models::AgentToolCorrelation {
-                agent_type: agent,
-                tool_name: tool,
-                usage_count: data.usage_count,
-                success_rate,
-                average_invocations_per_session: avg_per_session,
-            }
-        })
-        .collect();
-
-    // Sort by usage count
-    correlations.sort_by_key(|c| std::cmp::Reverse(c.usage_count));
-    correlations.truncate(20); // Top 20 correlations
-
-    correlations
-}
-
-#[allow(dead_code)]
-struct CorrelationData {
-    usage_count: u32,
-    success_count: u32,
-    sessions: std::collections::HashSet<String>,
 }
 
 #[allow(clippy::too_many_arguments)]

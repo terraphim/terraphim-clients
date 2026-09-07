@@ -41,7 +41,6 @@ pub enum LearnHookType {
 
 /// AI agent format for hook processing.
 #[derive(Debug, Clone, Copy, PartialEq, clap::ValueEnum)]
-#[allow(dead_code)]
 pub enum AgentFormat {
     /// Claude Code format
     Claude,
@@ -282,7 +281,6 @@ fn parse_correction_pattern(text: &str) -> Option<(String, String)> {
 
 /// Errors that can occur during hook processing.
 #[derive(Debug, Error)]
-#[allow(dead_code)]
 // Variant names match the published terraphim_agent 1.21.3 public API. Renaming
 // them to satisfy clippy::enum_variant_names would diverge this source from the
 // crate it must reproduce. Refs #112.
@@ -305,7 +303,6 @@ pub enum HookError {
 /// when a tool is executed. It contains the tool name, input parameters,
 /// and execution result.
 #[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
 pub struct HookInput {
     /// Tool name (e.g., "Bash", "Write", "Edit")
     pub tool_name: String,
@@ -320,7 +317,6 @@ pub struct HookInput {
 /// For Bash tools, this contains the command string.
 /// For other tools, additional fields are captured via the `extra` map.
 #[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
 pub struct ToolInput {
     /// Command to execute (for Bash tool)
     pub command: Option<String>,
@@ -333,7 +329,6 @@ pub struct ToolInput {
 ///
 /// Contains the exit code and captured output from the tool execution.
 #[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
 pub struct ToolResult {
     /// Exit code (0 = success, non-zero = failure)
     pub exit_code: i32,
@@ -345,7 +340,6 @@ pub struct ToolResult {
     pub stderr: String,
 }
 
-#[allow(dead_code)]
 impl HookInput {
     /// Parse hook input from a JSON string.
     ///
@@ -372,7 +366,16 @@ impl HookInput {
     /// assert_eq!(input.tool_name, "Bash");
     /// ```
     pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
-        serde_json::from_str(json)
+        let input: Self = serde_json::from_str(json)?;
+        // Surface the forward-compat `extra` map so unknown tool fields are
+        // observable at capture time (the field exists so unknown hook JSON
+        // never breaks deserialization).
+        tracing::debug!(
+            tool = %input.tool_name,
+            extra_fields = input.tool_input.extra.len(),
+            "hook input parsed"
+        );
+        Ok(input)
     }
 
     /// Check if this input should be captured as a learning.

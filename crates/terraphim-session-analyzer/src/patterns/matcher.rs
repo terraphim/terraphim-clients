@@ -30,7 +30,6 @@ pub trait PatternMatcher: Send + Sync {
     fn find_matches<'a>(&self, text: &'a str) -> Vec<ToolMatch<'a>>;
 
     /// Get the matcher type identifier
-    #[allow(dead_code)] // May be used for debugging
     fn matcher_type(&self) -> &'static str;
 }
 
@@ -297,7 +296,6 @@ impl PatternMatcher for TerraphimMatcher {
 /// Returns Terraphim matcher if the feature is enabled,
 /// otherwise returns the default Aho-Corasick implementation
 #[must_use]
-#[allow(dead_code)] // Used in doc examples
 pub fn create_matcher() -> Box<dyn PatternMatcher> {
     #[cfg(feature = "terraphim")]
     {

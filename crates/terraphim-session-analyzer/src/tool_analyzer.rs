@@ -5,7 +5,6 @@ use std::collections::HashMap;
 use crate::models::{ToolInvocation, ToolStatistics};
 
 /// Shell built-ins and keywords to exclude from tool detection
-#[allow(dead_code)] // Will be used in Phase 2
 const EXCLUDED_SHELL_BUILTINS: &[&str] = &[
     "cd", "ls", "pwd", "echo", "cat", "mkdir", "rm", "cp", "mv", "export", "source", "if", "then",
     "else", "fi", "for", "while", "do", "done", "case", "esac", "function", "return", "local",
@@ -130,7 +129,6 @@ pub fn split_command_pipeline(command: &str) -> Vec<String> {
 
 /// Check if a command is an actual tool invocation (not a shell built-in)
 #[must_use]
-#[allow(dead_code)] // Used in parser for filtering shell builtins
 pub fn is_actual_tool(tool_name: &str) -> bool {
     // Extract just the command name without path
     let base_name = tool_name.rsplit('/').next().unwrap_or(tool_name).trim();
@@ -142,7 +140,6 @@ pub fn is_actual_tool(tool_name: &str) -> bool {
 /// Calculate tool statistics from invocations
 /// Replaced by Analyzer::calculate_tool_statistics - kept for compatibility
 #[must_use]
-#[allow(dead_code)]
 pub fn calculate_tool_statistics(
     invocations: &[ToolInvocation],
 ) -> HashMap<String, ToolStatistics> {

@@ -19,38 +19,25 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Paragraph},
 };
 use serde::Serialize;
+#[cfg(feature = "repl")]
+use terraphim_agent::repl;
+use terraphim_agent::{forgiving, guard_patterns, learnings, onboarding, robot, tui_backend};
 use terraphim_persistence::Persistable;
 use tokio::runtime::Runtime;
 
-#[cfg(feature = "server")]
-mod client;
-
-mod tui_backend;
-
-mod guard_patterns;
 mod listener;
-mod logging;
-mod onboarding;
-mod service;
-#[allow(dead_code)]
 mod shell_dispatch;
 
 // Robot mode and forgiving CLI - always available
-mod forgiving;
-mod robot;
 
 // Learning capture for failed commands
-mod learnings;
 
 // KG-based command validation for PreToolUse hook pipeline
 mod kg_validation;
 
-#[cfg(feature = "repl")]
-mod repl;
-
 #[cfg(feature = "server")]
-use client::{ApiClient, SearchResponse};
-use service::TuiService;
+use terraphim_agent::client::{ApiClient, SearchResponse};
+use terraphim_agent::service::TuiService;
 use terraphim_types::{
     Document, Layer, LogicalOperator, NormalizedTermValue, RoleName, SearchQuery,
 };
@@ -710,7 +697,6 @@ mod session_output {
     }
 }
 
-#[allow(dead_code)]
 fn print_json_output<T: Serialize>(value: &T, mode: CommandOutputMode) -> Result<()> {
     let out = match mode {
         CommandOutputMode::Human => serde_json::to_string_pretty(value)?,
@@ -1561,7 +1547,7 @@ fn emit_robot_error_and_exit(
     format: &OutputFormat,
 ) -> ! {
     if robot || !matches!(format, OutputFormat::Human) {
-        use crate::robot::schema::{ResponseMeta, RobotError, RobotResponse};
+        use robot::schema::{ResponseMeta, RobotError, RobotResponse};
         let meta = ResponseMeta::new("unknown");
         let robot_error = RobotError::new(format!("E{:03}", code.code()), format!("{:#}", err));
         let response = RobotResponse::<()>::error(vec![robot_error], meta);
@@ -2081,7 +2067,6 @@ fn run_tui_offline_mode(transparent: bool) -> Result<()> {
     run_tui(None, transparent)
 }
 
-#[allow(dead_code)]
 fn run_tui_server_mode(server_url: &str, transparent: bool) -> Result<()> {
     run_tui(Some(server_url.to_string()), transparent)
 }
@@ -2436,14 +2421,14 @@ async fn run_offline_command(
 
             let results_count = results.len();
             if output.is_machine_readable() {
-                use crate::robot::schema::{SearchResultItem, SearchResultsData};
-                use crate::robot::{ResponseMeta, RobotConfig, RobotFormatter, RobotResponse};
+                use robot::schema::{SearchResultItem, SearchResultsData};
+                use robot::{ResponseMeta, RobotConfig, RobotFormatter, RobotResponse};
                 use std::time::Instant;
 
                 let start = Instant::now();
                 let robot_format = match output.mode {
-                    CommandOutputMode::JsonCompact => crate::robot::output::OutputFormat::Minimal,
-                    _ => crate::robot::output::OutputFormat::Json,
+                    CommandOutputMode::JsonCompact => robot::output::OutputFormat::Minimal,
+                    _ => robot::output::OutputFormat::Json,
                 };
                 let mut robot_config = RobotConfig::new()
                     .with_format(robot_format)
@@ -5051,7 +5036,7 @@ fn compute_risk(content: &str) -> f64 {
 
 #[cfg(feature = "shared-learning")]
 async fn run_suggest_command(sub: SuggestSub) -> Result<()> {
-    use crate::learnings::suggest::{SuggestionMetrics, SuggestionMetricsEntry};
+    use learnings::suggest::{SuggestionMetrics, SuggestionMetricsEntry};
     use terraphim_agent::shared_learning::{SharedLearningStore, StoreConfig, SuggestionStatus};
     use terraphim_types::shared_learning::SuggestionStatus as Status;
 
@@ -5380,7 +5365,7 @@ async fn run_shared_learning_command(
             Ok(())
         }
         SharedLearningSub::Import => {
-            use crate::learnings::capture::list_learnings;
+            use learnings::list_learnings;
 
             let storage_loc = config.storage_location();
             let local_learnings = list_learnings(&storage_loc, usize::MAX).unwrap_or_default();
@@ -5620,14 +5605,14 @@ async fn run_server_command(
             }
 
             if output.is_machine_readable() {
-                use crate::robot::schema::{SearchResultItem, SearchResultsData};
-                use crate::robot::{ResponseMeta, RobotConfig, RobotFormatter, RobotResponse};
+                use robot::schema::{SearchResultItem, SearchResultsData};
+                use robot::{ResponseMeta, RobotConfig, RobotFormatter, RobotResponse};
                 use std::time::Instant;
 
                 let start = Instant::now();
                 let robot_format = match output.mode {
-                    CommandOutputMode::JsonCompact => crate::robot::output::OutputFormat::Minimal,
-                    _ => crate::robot::output::OutputFormat::Json,
+                    CommandOutputMode::JsonCompact => robot::output::OutputFormat::Minimal,
+                    _ => robot::output::OutputFormat::Json,
                 };
                 let mut robot_config = RobotConfig::new()
                     .with_format(robot_format)
@@ -6568,13 +6553,13 @@ fn ui_loop(
         let effective_url = resolve_tui_server_url(server_url.as_deref());
         let api = ApiClient::new(effective_url.clone());
         ensure_tui_server_reachable(&rt, &api, &effective_url)?;
-        crate::tui_backend::TuiBackend::Remote(api)
+        tui_backend::TuiBackend::Remote(api)
     };
 
     #[cfg(not(feature = "server"))]
     let backend = {
         let service = rt.block_on(async { TuiService::new(None, false).await })?;
-        crate::tui_backend::TuiBackend::Local(service)
+        tui_backend::TuiBackend::Local(service)
     };
 
     // Initialize terms from rolegraph (selected role)

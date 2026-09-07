@@ -50,8 +50,6 @@ struct GitInfo {
 #[derive(Debug, Clone, Deserialize)]
 struct ResponseItem {
     #[serde(rename = "type")]
-    #[allow(dead_code)] // Required for deserializing "type" field
-    msg_type: String,
     role: String,
     #[serde(default)]
     content: Vec<ContentBlock>,
