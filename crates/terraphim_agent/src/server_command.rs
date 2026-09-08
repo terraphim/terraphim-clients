@@ -731,7 +731,9 @@ pub(crate) async fn run_server_command(
             Ok(())
         }
         Command::Learn { sub } => run_learn_command(sub).await,
-        Command::Memory { sub } => run_memory_command(sub, &output).await,
+        // Server mode: the server owns the role config, so there is no local
+        // `--config` to honour here.
+        Command::Memory { sub } => run_memory_command(sub, &output, None).await,
         Command::Interactive => {
             unreachable!("Interactive mode should be handled above")
         }

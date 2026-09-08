@@ -9,10 +9,16 @@
 
 use anyhow::Result;
 
+use terraphim_agent::service::TuiService;
+
 use crate::cli_schema::MemorySub;
 use crate::{CommandOutputConfig, load_evolution, save_evolution, truncate_snippet};
 
-pub(crate) async fn run_memory_command(sub: MemorySub, output: &CommandOutputConfig) -> Result<()> {
+pub(crate) async fn run_memory_command(
+    sub: MemorySub,
+    output: &CommandOutputConfig,
+    config_path: Option<String>,
+) -> Result<()> {
     match sub {
         MemorySub::Capture { provenance_tag } => {
             use terraphim_agent_evolution::{ImportanceLevel, MemoryItem, MemoryItemType};
@@ -167,15 +173,104 @@ pub(crate) async fn run_memory_command(sub: MemorySub, output: &CommandOutputCon
             }
             Ok(())
         }
-        MemorySub::Retrieve { role, query } => {
-            if output.is_machine_readable() {
+        MemorySub::Retrieve {
+            role,
+            format,
+            limit,
+            offset,
+            query,
+        } => {
+            use terraphim_agent::memory_retrieve::{collect_memory_items, retrieve};
+
+            let service = TuiService::new(config_path, false).await?;
+            let role_name = service.resolve_role(role.as_deref()).await?;
+            let thesaurus = service.get_thesaurus(&role_name).await.map_err(|e| {
+                anyhow::anyhow!(
+                    "no knowledge graph available for role '{}': {}",
+                    role_name,
+                    e
+                )
+            })?;
+
+            let evolution = load_evolution();
+            let items = collect_memory_items(&evolution.memory.current_state);
+
+            let outcome = retrieve(
+                &role_name,
+                thesaurus,
+                &items,
+                &query,
+                Some(offset),
+                Some(limit),
+            )?;
+            let hits = &outcome.hits;
+
+            let as_json = output.is_machine_readable() || format.eq_ignore_ascii_case("json");
+            if as_json {
+                let json_items: Vec<serde_json::Value> = hits
+                    .iter()
+                    .map(|h| {
+                        serde_json::json!({
+                            "id": h.item.id,
+                            "item_type": format!("{:?}", h.item.item_type),
+                            "content": h.item.content,
+                            "importance": format!("{:?}", h.item.importance),
+                            "tags": h.item.tags,
+                            "rank": h.rank,
+                            "matched_concepts": h.matched_concepts,
+                        })
+                    })
+                    .collect();
                 println!(
                     "{}",
-                    serde_json::json!({ "status": "ok", "action": "retrieve", "role": role, "query": query })
+                    serde_json::json!({
+                        "status": "ok",
+                        "action": "retrieve",
+                        "role": role_name.to_string(),
+                        "query": query,
+                        "query_concepts": outcome.query_concepts,
+                        "count": json_items.len(),
+                        "items": json_items,
+                    })
                 );
+            } else if hits.is_empty() {
+                println!(
+                    "No memory items matched '{}' in the knowledge graph for role '{}'.",
+                    query, role_name
+                );
+                // Two different causes, and saying which one saves the reader
+                // from assuming the command is broken.
+                if outcome.query_concepts.is_empty() {
+                    println!(
+                        "  The query names none of this role's concepts, so there is nothing to rank."
+                    );
+                    println!("  Retrieval is concept-based; there is no lexical fallback.");
+                } else {
+                    println!(
+                        "  The query maps to concept(s): {}.",
+                        outcome.query_concepts.join(", ")
+                    );
+                    println!("  No stored memory item is indexed under them. Note that an item");
+                    println!("  must contain at least two concepts to be indexed at all.");
+                }
+                println!("  ({} memory items in the store)", items.len());
             } else {
-                println!("Memory retrieve: routing to search (role: {:?})", role);
-                println!("  query: {}", query);
+                println!("Memory items matching '{}' (role: {}):", query, role_name);
+                for (i, h) in hits.iter().enumerate() {
+                    let first_line = h.item.content.lines().next().unwrap_or(&h.item.content);
+                    println!(
+                        "  {}. [{:?}] {} -- rank {} via {}",
+                        i + 1,
+                        h.item.item_type,
+                        truncate_snippet(first_line, 80),
+                        h.rank,
+                        if h.matched_concepts.is_empty() {
+                            "knowledge graph".to_string()
+                        } else {
+                            h.matched_concepts.join(", ")
+                        }
+                    );
+                }
             }
             Ok(())
         }

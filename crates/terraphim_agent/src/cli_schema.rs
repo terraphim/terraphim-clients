@@ -817,12 +817,24 @@ pub(crate) enum MemorySub {
         /// Search query
         query: Option<String>,
     },
-    /// Retrieve memory items by query within role scope
-    /// (routes to `search`)
+    /// Retrieve memory items by query, ranked by the role's knowledge graph
+    ///
+    /// Memory items are indexed into a scratch rolegraph built from the role's
+    /// thesaurus, and ranked by graph rank. A query that matches none of the
+    /// role's concepts returns no results -- there is no lexical fallback.
     Retrieve {
-        /// Role scope for retrieval
+        /// Role scope for retrieval (defaults to the selected role)
         #[arg(long)]
         role: Option<String>,
+        /// Output format: json or text
+        #[arg(long, default_value = "text")]
+        format: String,
+        /// Maximum number of items to return
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+        /// Number of ranked items to skip
+        #[arg(long, default_value_t = 0)]
+        offset: usize,
         /// Search query
         query: String,
     },

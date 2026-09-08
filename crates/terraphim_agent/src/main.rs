@@ -1406,9 +1406,12 @@ async fn run_offline_command(
         return learn_command::run_learn_command(sub).await;
     }
 
-    // Memory lifecycle CLI commands are stateless - handle before TuiService initialization.
+    // Memory lifecycle CLI commands are handled before TuiService initialization:
+    // most of them only touch the evolution store. `retrieve` is the exception --
+    // it needs the role's thesaurus -- so `config_path` is threaded through and it
+    // builds its own service, rather than every memory command paying for one.
     if let Command::Memory { sub } = command {
-        return memory_command::run_memory_command(sub, &output).await;
+        return memory_command::run_memory_command(sub, &output, config_path).await;
     }
 
     let service = TuiService::new(config_path, false).await?;

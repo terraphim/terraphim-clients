@@ -6,6 +6,8 @@
 #[cfg(feature = "server")]
 pub mod client;
 pub mod logging;
+/// Knowledge-graph retrieval over the agent evolution memory store.
+pub mod memory_retrieve;
 pub mod onboarding;
 pub mod service;
 #[cfg(feature = "shared-learning")]
