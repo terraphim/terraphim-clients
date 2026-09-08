@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{info, warn};
 
+#[cfg(feature = "shared-learning")]
+use crate::shared_learning::redact_secrets;
 use crate::shared_learning::types::{LearningSource, QualityMetrics, SharedLearning, TrustLevel};
 
 #[derive(Error, Debug)]
@@ -248,10 +250,50 @@ impl MarkdownLearningStore {
     }
 
     /// Convert a SharedLearning to markdown with YAML frontmatter
+    ///
+    /// **Refs #178 — central redaction before persistence**: every
+    /// user-controlled string field is passed through `redact_secrets()`
+    /// before serialization, ensuring credentials and connection strings
+    /// never reach disk. Idempotent (re-applying to already-redacted
+    /// text is a no-op; verified by
+    /// `terraphim_sessions::redaction::tests::test_idempotent_on_already_redacted_text`).
     fn to_markdown(learning: &SharedLearning) -> Result<String, MarkdownStoreError> {
+        // Refs #178: redact every user-controlled string field BEFORE
+        // building frontmatter and body. Doing this here (instead of
+        // in each save() / save_to_shared() call site) means every
+        // new persistence method automatically inherits the policy.
+        //
+        // When the `shared-learning` feature is OFF, the `learnings`
+        // module is not compiled, so `redact_secrets` is not available;
+        // the build then runs without redaction. This is acceptable
+        // because `markdown_store.rs` itself is feature-gated and is
+        // not compiled without `shared-learning` either.
+        #[cfg(feature = "shared-learning")]
+        let (title, body, error_context, original_command, correction, verify_pattern) = {
+            (
+                redact_secrets(&learning.title),
+                redact_secrets(&learning.content),
+                learning.error_context.as_deref().map(redact_secrets),
+                learning.original_command.as_deref().map(redact_secrets),
+                learning.correction.as_deref().map(redact_secrets),
+                learning.verify_pattern.as_deref().map(redact_secrets),
+            )
+        };
+        #[cfg(not(feature = "shared-learning"))]
+        let (title, body, error_context, original_command, correction, verify_pattern) = {
+            (
+                learning.title.clone(),
+                learning.content.clone(),
+                learning.error_context.clone(),
+                learning.original_command.clone(),
+                learning.correction.clone(),
+                learning.verify_pattern.clone(),
+            )
+        };
+
         let frontmatter = LearningFrontmatter {
             id: learning.id.clone(),
-            title: learning.title.clone(),
+            title,
             agent_id: learning.source_agent.clone(),
             captured_at: Some(learning.created_at.to_rfc3339()),
             updated_at: Some(learning.updated_at.to_rfc3339()),
@@ -260,17 +302,15 @@ impl MarkdownLearningStore {
             source: Self::learning_source_to_string(&learning.source),
             applicable_agents: learning.applicable_agents.clone(),
             keywords: learning.keywords.clone(),
-            verify_pattern: learning.verify_pattern.clone(),
+            verify_pattern,
             quality: Some(learning.quality.clone()),
-            original_command: learning.original_command.clone(),
-            error_context: learning.error_context.clone(),
-            correction: learning.correction.clone(),
+            original_command,
+            error_context,
+            correction,
             wiki_page_name: learning.wiki_page_name.clone(),
         };
 
         let yaml = serde_yaml::to_string(&frontmatter)?;
-        let body = &learning.content;
-
         Ok(format!("---\n{}---\n\n{}", yaml, body))
     }
 
@@ -637,5 +677,149 @@ This is content from an old learning.
 
         let all = store.list_all().await.unwrap();
         assert!(all.is_empty());
+    }
+
+    /// Refs #178: `save()` must redact secrets in title, content,
+    /// error_context, original_command, correction, and verify_pattern
+    /// before writing the markdown file to disk.
+    #[tokio::test]
+    async fn save_redacts_secrets_in_all_user_fields() {
+        use crate::shared_learning::types::{LearningSource, TrustLevel};
+
+        let temp_dir = TempDir::new().unwrap();
+        let config = MarkdownStoreConfig {
+            learnings_dir: temp_dir.path().to_path_buf(),
+            shared_dir_name: "shared".to_string(),
+        };
+        let store = MarkdownLearningStore::with_config(config);
+
+        let mut learning = SharedLearning::new(
+            "AWS_KEY=AKIAIOSFODNN7EXAMPLE secrets in title".to_string(),
+            "Used connection string postgresql://user:pw@host/db".to_string(),
+            LearningSource::BashHook,
+            "agent-redact-test".to_string(),
+        );
+        learning.error_context = Some("Failed with sk-proj-abcdefghijklmnopqrstuvwxyz".to_string());
+        learning.original_command = Some("echo AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE".to_string());
+        learning.correction = Some("Use DATABASE_URL=postgres://u:p@h/db instead".to_string());
+        learning.verify_pattern = Some("verify AKIAIOSFODNN7EXAMPLE not in output".to_string());
+
+        store.save(&learning).await.unwrap();
+
+        let saved = std::fs::read_to_string(
+            store.agent_dir("agent-redact-test").join(format!("{}.md", learning.id)),
+        )
+        .unwrap();
+
+        assert!(saved.contains("[AWS_KEY_REDACTED]"), "title not redacted: {saved}");
+        assert!(saved.contains("[REDACTED]@"), "body connection string not redacted: {saved}");
+        assert!(saved.contains("[OPENAI_KEY_REDACTED]"), "error_context not redacted: {saved}");
+        assert!(saved.contains("[ENV_REDACTED]"), "original_command env var not redacted: {saved}");
+        assert!(
+            !saved.contains("AKIAIOSFODNN7EXAMPLE"),
+            "AWS key leaked through to disk: {saved}"
+        );
+        assert!(!saved.contains("postgres://u:p@h"), "connection string leaked: {saved}");
+    }
+
+    /// Refs #178: same redaction applies on `save_to_shared()`.
+    #[tokio::test]
+    async fn save_to_shared_redacts_secrets() {
+        use crate::shared_learning::types::{LearningSource, TrustLevel};
+
+        let temp_dir = TempDir::new().unwrap();
+        let config = MarkdownStoreConfig {
+            learnings_dir: temp_dir.path().to_path_buf(),
+            shared_dir_name: "shared".to_string(),
+        };
+        let store = MarkdownLearningStore::with_config(config);
+
+        let mut learning = SharedLearning::new(
+            "Benign title".to_string(),
+            "AWS_KEY=AKIAIOSFODNN7EXAMPLE leaked".to_string(),
+            LearningSource::BashHook,
+            "agent-shared".to_string(),
+        );
+        // shared_dir uses agent-id prefix in filename
+        store.save_to_shared(&learning).await.unwrap();
+
+        let saved = std::fs::read_to_string(
+            store
+                .shared_dir()
+                .join(format!("agent-shared-{}.md", learning.id)),
+        )
+        .unwrap();
+
+        assert!(saved.contains("[AWS_KEY_REDACTED]"), "shared body not redacted: {saved}");
+        assert!(!saved.contains("AKIAIOSFODNN7EXAMPLE"), "AWS key leaked in shared: {saved}");
+    }
+
+    /// Refs #178 logging hygiene: pre-redaction body is never logged.
+    /// This is a structural property — the test inspects the source file
+    /// and asserts no `tracing::warn!`/`tracing::debug!`/`dbg!` in
+    /// `markdown_store.rs` formats a log message that includes the
+    /// pre-redaction `learning.content` field. The redaction happens in
+    /// `to_markdown()` BEFORE the file is written, but we want to make
+    /// sure no future log line accidentally logs the unredacted body.
+    ///
+    /// Scope: this test checks the persistence methods (`save`,
+    /// `save_to_shared`, `to_markdown`) and excludes the `tests` module
+    /// itself (which contains this very check) so the needles don't
+    /// trigger on themselves.
+    #[test]
+    fn test_no_unredacted_log_in_persistence_path() {
+        let full_src = include_str!("markdown_store.rs");
+        // Truncate at the start of the `tests` module so we only check
+        // production code, not the test module's own needles.
+        let prod_src = match full_src.find("\n#[cfg(test)]\nmod tests {") {
+            Some(idx) => &full_src[..idx],
+            None => full_src,
+        };
+        for needle in [
+            "tracing::warn!(\"{learning.content}\"",
+            "tracing::debug!(\"{learning.content}\"",
+            "tracing::info!(\"{learning.content}\"",
+            "tracing::error!(\"{learning.content}\"",
+            "dbg!(learning.content)",
+        ] {
+            assert!(
+                !prod_src.contains(needle),
+                "forbidden pre-redaction log line found in markdown_store.rs production code: `{needle}`. \
+                 If you need to log the body, log the REDACTED variant instead."
+            );
+        }
+    }
+
+    /// Refs #178 negative test: benign content passes through unmodified.
+    /// Regression guard: if a future SECRET_PATTERNS edit becomes too
+    /// aggressive, this catches it before it ships.
+    #[tokio::test]
+    async fn save_preserves_benign_content_unchanged() {
+        use crate::shared_learning::types::LearningSource;
+
+        let temp_dir = TempDir::new().unwrap();
+        let config = MarkdownStoreConfig {
+            learnings_dir: temp_dir.path().to_path_buf(),
+            shared_dir_name: "shared".to_string(),
+        };
+        let store = MarkdownLearningStore::with_config(config);
+
+        let learning = SharedLearning::new(
+            "We use Result<T> not unwrap()".to_string(),
+            "Always run tests before committing. The endpoint is /api/v2/users.".to_string(),
+            LearningSource::BashHook,
+            "agent-benign".to_string(),
+        );
+
+        store.save(&learning).await.unwrap();
+
+        let saved = std::fs::read_to_string(
+            store.agent_dir("agent-benign").join(format!("{}.md", learning.id)),
+        )
+        .unwrap();
+
+        assert!(saved.contains("Result<T> not unwrap()"));
+        assert!(saved.contains("Always run tests before committing."));
+        assert!(saved.contains("/api/v2/users"));
     }
 }

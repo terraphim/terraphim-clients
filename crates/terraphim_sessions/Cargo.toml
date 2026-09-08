@@ -72,7 +72,9 @@ dirs = "5.0"
 # File watching
 notify = "8.2"
 
-# Regex for secret redaction (always enabled) and Aider connector parsing
+# Required for secret redaction (Refs #178). Always-on baseline.
+# Previously feature-gated via aider-connector; promoted to direct dep
+# because central redaction is a baseline security requirement.
 regex = "1.10"
 
 # Feature-gated: SQLite access for Cursor connector

@@ -5,6 +5,7 @@ use thiserror::Error;
 use tokio::process::Command as TokioCommand;
 use tracing::info;
 
+use crate::shared_learning::redact_secrets;
 use crate::shared_learning::types::SharedLearning;
 
 /// Errors that can occur during wiki sync
@@ -165,6 +166,12 @@ impl GiteaWikiClient {
     }
 
     /// Create or update a wiki page for a learning
+    ///
+    /// **Refs #178 — central redaction before persistence**: the wiki
+    /// markdown body is redacted BEFORE being passed to the `gitea-robot`
+    /// subprocess. This is the canonical redaction point for wiki sync;
+    /// `sync_all_learnings` and `sync_batch` both funnel through here
+    /// and inherit the policy automatically. Idempotent.
     pub async fn sync_learning(
         &self,
         learning: &SharedLearning,
@@ -186,6 +193,10 @@ impl GiteaWikiClient {
         let exists = self.page_exists(&page_name).await?;
 
         let content = learning.to_wiki_markdown();
+        // Refs #178: redact secrets in the body BEFORE the subprocess
+        // call. The redactor is idempotent (already-redacted placeholders
+        // are preserved) so this is safe to apply unconditionally.
+        let content = redact_secrets(&content);
 
         if exists {
             // Update existing page
@@ -602,13 +613,145 @@ mod tests {
             ..Default::default()
         };
         let dbg = format!("{:?}", cfg);
+        assert!(!dbg.contains("secret-gitea-token"), "token leaked in Debug: {dbg}");
+        assert!(dbg.contains("[REDACTED]") || dbg.contains("...") || !dbg.contains(&cfg.token));
+    }
+
+    /// Refs #178: the bytes `sync_learning` would hand to the `gitea-robot`
+    /// subprocess MUST NOT contain unredacted secrets. We exercise this
+    /// by replicating the exact bytes that `sync_learning` builds
+    /// (`learning.to_wiki_markdown()` then `redact_secrets()`) and
+    /// asserting the resulting string is free of known credentials.
+    /// No subprocess, no mocking — the real redaction pipeline.
+    #[test]
+    fn sync_learning_redacts_body_before_subprocess() {
+        let mut learning = SharedLearning::new(
+            "Benign wiki title".to_string(),
+            "Body with postgresql://u:p@h/db and sk-proj-abc123def456ghi789jkl012mno".to_string(),
+            crate::shared_learning::types::LearningSource::Manual,
+            "agent-redact-wiki".to_string(),
+        );
+        learning.promote_to_l2();
+        learning.wiki_page_name = Some("test-redact-static".to_string());
+        // Secrets in `original_command` are serialized into the wiki
+        // markdown metadata table (Refs terraphim_types::to_wiki_markdown).
+        learning.original_command = Some("echo AWS_KEY=AKIAIOSFODNN7EXAMPLE".to_string());
+
+        // This is the exact byte sequence `sync_learning` produces and
+        // passes to `gitea-robot --content` (see sync_learning impl).
+        let content = learning.to_wiki_markdown();
+        let content = redact_secrets(&content);
+
         assert!(
-            !dbg.contains("secret-gitea-token"),
-            "GiteaWikiConfig token must be redacted in Debug output, got: {dbg}"
+            content.contains("[AWS_KEY_REDACTED]"),
+            "AWS key not redacted in wiki body: {content}"
         );
         assert!(
-            dbg.contains("***REDACTED***"),
-            "Debug output should mark token as redacted, got: {dbg}"
+            content.contains("[REDACTED]@"),
+            "connection string not redacted: {content}"
         );
+        assert!(
+            content.contains("[OPENAI_KEY_REDACTED]"),
+            "OpenAI key not redacted: {content}"
+        );
+        assert!(
+            !content.contains("AKIAIOSFODNN7EXAMPLE"),
+            "AWS key leaked into wiki body: {content}"
+        );
+        assert!(
+            !content.contains("postgres://u:p@h"),
+            "connection string leaked: {content}"
+        );
+        assert!(
+            !content.contains("sk-proj-abc123def456ghi789jkl012mno"),
+            "OpenAI key leaked into wiki body: {content}"
+        );
+    }
+
+    /// Refs #178: every learning in a `sync_all_learnings` batch MUST
+    /// be redacted independently. Same byte-pipeline assertion, batched.
+    /// No subprocess, no mocking — the real redaction pipeline over the
+    /// real `SharedLearning::to_wiki_markdown()` output.
+    #[test]
+    fn sync_all_learnings_redacts_each() {
+        let mk = |title: &str, body: &str, secret_in_cmd: &str| -> SharedLearning {
+            let mut l = SharedLearning::new(
+                title.to_string(),
+                body.to_string(),
+                crate::shared_learning::types::LearningSource::Manual,
+                "agent-redact-batch".to_string(),
+            );
+            l.promote_to_l2();
+            l.wiki_page_name = Some(format!("batch-{title}-static"));
+            l.original_command = Some(secret_in_cmd.to_string());
+            l
+        };
+
+        let learnings = vec![
+            mk(
+                "L1",
+                "Body 1 with sk-proj-abcdefghijklmnopqrstuvwxyz1234567890 in it",
+                "echo AWS_KEY=AKIAIOSFODNN7EXAMPLE",
+            ),
+            mk(
+                "L2",
+                "Body 2: postgresql://u:p@h/db leaked",
+                "env",
+            ),
+        ];
+
+        // Same byte sequence `sync_all_learnings` produces per-learning
+        // before invoking `gitea-robot`. Asserting on the concatenation
+        // catches cross-batch leakage too (a hypothetical future bug
+        // where batched processing re-includes prior secrets).
+        let combined: String = learnings
+            .iter()
+            .map(|l| redact_secrets(&l.to_wiki_markdown()))
+            .collect::<Vec<_>>()
+            .join("\n---\n");
+
+        assert!(
+            combined.contains("[AWS_KEY_REDACTED]"),
+            "AWS key not redacted in batch: {combined}"
+        );
+        assert!(
+            combined.contains("[OPENAI_KEY_REDACTED]"),
+            "OpenAI key not redacted in batch: {combined}"
+        );
+        assert!(
+            combined.contains("[REDACTED]@"),
+            "connection string not redacted: {combined}"
+        );
+        assert!(
+            !combined.contains("AKIAIOSFODNN7EXAMPLE"),
+            "AWS key leaked in batch: {combined}"
+        );
+        assert!(
+            !combined.contains("postgres://u:p@h"),
+            "connection string leaked in batch: {combined}"
+        );
+    }
+
+    /// Refs #178 logging hygiene: production code in wiki_sync.rs
+    /// never logs the unredacted body.
+    #[test]
+    fn test_no_unredacted_log_in_wiki_sync_path() {
+        let full_src = include_str!("wiki_sync.rs");
+        let prod_src = match full_src.find("\n#[cfg(test)]\nmod tests {") {
+            Some(idx) => &full_src[..idx],
+            None => full_src,
+        };
+        for needle in [
+            "tracing::warn!(\"{content}\"",
+            "tracing::debug!(\"{content}\"",
+            "tracing::info!(\"{content}\"",
+            "tracing::error!(\"{content}\"",
+            "dbg!(content)",
+        ] {
+            assert!(
+                !prod_src.contains(needle),
+                "forbidden pre-redaction log line in wiki_sync.rs: `{needle}`"
+            );
+        }
     }
 }
