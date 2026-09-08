@@ -22,6 +22,7 @@ mod markdown_store;
 mod redaction;
 mod store;
 mod types;
+pub mod validation;
 mod wiki_sync;
 
 pub use markdown_store::{MarkdownLearningStore, MarkdownStoreConfig, MarkdownStoreError};
