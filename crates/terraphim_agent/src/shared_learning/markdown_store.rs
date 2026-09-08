@@ -13,6 +13,7 @@ use tracing::{info, warn};
 #[cfg(feature = "shared-learning")]
 use crate::shared_learning::redact_secrets;
 use crate::shared_learning::types::{LearningSource, QualityMetrics, SharedLearning, TrustLevel};
+use crate::shared_learning::validation;
 
 #[derive(Error, Debug)]
 pub enum MarkdownStoreError {
@@ -27,6 +28,9 @@ pub enum MarkdownStoreError {
 
     #[error("invalid markdown format: {0}")]
     InvalidFormat(String),
+
+    #[error("invalid learning field: {0}")]
+    InvalidField(&'static str),
 }
 
 /// Configuration for the markdown learning store
@@ -126,6 +130,16 @@ impl MarkdownLearningStore {
     ///
     /// The learning is saved as `{learnings_dir}/{agent_id}/{learning_id}.md`
     pub async fn save(&self, learning: &SharedLearning) -> Result<(), MarkdownStoreError> {
+        // Refs #22 (P1-3): `source_agent` and `id` are interpolated into
+        // filesystem paths below — validate BEFORE any filesystem op so a
+        // malicious value (`../`, `a/b`) can never reach `create_dir_all`
+        // or `write`. Lexical check only; race-resistant path containment
+        // (openat/RESOLVE_BENEATH) is deferred to ADR-011.
+        validation::validate_source_agent(&learning.source_agent)
+            .map_err(MarkdownStoreError::InvalidField)?;
+        validation::validate_learning_id(&learning.id)
+            .map_err(MarkdownStoreError::InvalidField)?;
+
         let agent_dir = self.agent_dir(&learning.source_agent);
         tokio::fs::create_dir_all(&agent_dir).await?;
 
@@ -143,6 +157,13 @@ impl MarkdownLearningStore {
         &self,
         learning: &SharedLearning,
     ) -> Result<(), MarkdownStoreError> {
+        // Refs #22 (P1-3): same entry-point validation as `save()` — each
+        // method validates independently (no delegation), before any FS op.
+        validation::validate_source_agent(&learning.source_agent)
+            .map_err(MarkdownStoreError::InvalidField)?;
+        validation::validate_learning_id(&learning.id)
+            .map_err(MarkdownStoreError::InvalidField)?;
+
         let shared_dir = self.shared_dir();
         tokio::fs::create_dir_all(&shared_dir).await?;
 

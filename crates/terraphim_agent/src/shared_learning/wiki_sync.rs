@@ -5,8 +5,8 @@ use thiserror::Error;
 use tokio::process::Command as TokioCommand;
 use tracing::info;
 
-use crate::shared_learning::redact_secrets;
 use crate::shared_learning::types::SharedLearning;
+use crate::shared_learning::validation;
 
 /// Errors that can occur during wiki sync
 #[derive(Error, Debug, Clone)]
@@ -25,6 +25,8 @@ pub enum WikiSyncError {
     InvalidResponse(String),
     #[error("configuration error: {0}")]
     Config(String),
+    #[error("invalid page name: {0}")]
+    InvalidPageName(&'static str),
 }
 
 /// Configuration for Gitea wiki client
@@ -189,14 +191,22 @@ impl GiteaWikiClient {
             .clone()
             .unwrap_or_else(|| learning.generate_wiki_page_name());
 
+        // Refs #22 (P1-2): the page name is passed verbatim as a
+        // `gitea-robot` subprocess argument — validate it before ANY
+        // subprocess invocation (page_exists included). Rejects path
+        // traversal (`..`, `/`) and option-identifier injection (leading
+        // `-`).
+        validation::validate_wiki_page_name(&page_name)
+            .map_err(WikiSyncError::InvalidPageName)?;
+
         // Check if page exists
         let exists = self.page_exists(&page_name).await?;
 
-        let content = learning.to_wiki_markdown();
-        // Refs #178: redact secrets in the body BEFORE the subprocess
-        // call. The redactor is idempotent (already-redacted placeholders
-        // are preserved) so this is safe to apply unconditionally.
-        let content = redact_secrets(&content);
+        // Refs #178 + Refs #22 (P1-1): the wiki markdown body is redacted
+        // (secrets) and stripped (XSS-capable tags) BEFORE the subprocess
+        // call. `preprocess_wiki_content` is the single canonical
+        // pipeline: redact_secrets then strip_dangerous_tags. Idempotent.
+        let content = validation::preprocess_wiki_content(&learning.to_wiki_markdown());
 
         if exists {
             // Update existing page
@@ -638,9 +648,9 @@ mod tests {
         learning.original_command = Some("echo AWS_KEY=AKIAIOSFODNN7EXAMPLE".to_string());
 
         // This is the exact byte sequence `sync_learning` produces and
-        // passes to `gitea-robot --content` (see sync_learning impl).
-        let content = learning.to_wiki_markdown();
-        let content = redact_secrets(&content);
+        // passes to `gitea-robot --content` (see sync_learning impl):
+        // `to_wiki_markdown()` then `validation::preprocess_wiki_content`.
+        let content = validation::preprocess_wiki_content(&learning.to_wiki_markdown());
 
         assert!(
             content.contains("[AWS_KEY_REDACTED]"),
@@ -706,7 +716,7 @@ mod tests {
         // where batched processing re-includes prior secrets).
         let combined: String = learnings
             .iter()
-            .map(|l| redact_secrets(&l.to_wiki_markdown()))
+            .map(|l| validation::preprocess_wiki_content(&l.to_wiki_markdown()))
             .collect::<Vec<_>>()
             .join("\n---\n");
 
@@ -751,6 +761,78 @@ mod tests {
             assert!(
                 !prod_src.contains(needle),
                 "forbidden pre-redaction log line in wiki_sync.rs: `{needle}`"
+            );
+        }
+    }
+
+    /// Refs #22 (P1-1): the bytes `sync_learning` hands to the
+    /// `gitea-robot` subprocess MUST NOT contain XSS-capable HTML tags.
+    /// We call `validation::preprocess_wiki_content` directly — the very
+    /// function `sync_learning` invokes internally — over the real
+    /// `SharedLearning::to_wiki_markdown()` output. No subprocess, no
+    /// mocking.
+    #[test]
+    fn sync_learning_strips_xss_before_subprocess() {
+        let mut learning = SharedLearning::new(
+            "Benign title".to_string(),
+            r#"Body <script>alert(1)</script> and <iframe src="evil"></iframe> tail"#.to_string(),
+            crate::shared_learning::types::LearningSource::Manual,
+            "agent-xss-wiki".to_string(),
+        );
+        learning.promote_to_l2();
+        learning.wiki_page_name = Some("test-xss-static".to_string());
+
+        // Same byte sequence `sync_learning` produces for
+        // `gitea-robot --content` (see sync_learning impl).
+        let content = validation::preprocess_wiki_content(&learning.to_wiki_markdown());
+
+        let lowered = content.to_ascii_lowercase();
+        for tag in ["<script", "<iframe", "<object", "<embed"] {
+            assert!(
+                !lowered.contains(tag),
+                "dangerous tag `{tag}` survived preprocessing: {content}"
+            );
+        }
+        assert!(
+            !content.contains("alert(1)"),
+            "script body leaked: {content}"
+        );
+        assert!(
+            content.contains("tail"),
+            "benign trailing content lost: {content}"
+        );
+    }
+
+    /// Refs #22 (P1-2): `sync_learning` rejects an unsafe page name with
+    /// `WikiSyncError::InvalidPageName` BEFORE any subprocess call. Uses
+    /// `/bin/true` as the robot binary so that, if validation were missing,
+    /// the test would observe a successful subprocess result instead.
+    #[tokio::test]
+    async fn sync_learning_rejects_unsafe_page_name() {
+        let config = GiteaWikiConfig {
+            gitea_url: "http://localhost".to_string(),
+            token: "test".to_string(),
+            owner: "test".to_string(),
+            repo: "test".to_string(),
+            robot_path: "/bin/true".to_string(),
+            timeout: Duration::from_secs(5),
+        };
+        let client = GiteaWikiClient::new(config);
+
+        for bad_name in ["-flag", "../etc", "page/evil", "page.with.dot"] {
+            let mut learning = SharedLearning::new(
+                "Test".to_string(),
+                "Content".to_string(),
+                crate::shared_learning::types::LearningSource::Manual,
+                "agent".to_string(),
+            );
+            learning.promote_to_l2();
+            learning.wiki_page_name = Some(bad_name.to_string());
+
+            let result = client.sync_learning(&learning).await;
+            assert!(
+                matches!(result, Err(WikiSyncError::InvalidPageName(_))),
+                "page name `{bad_name}` should be rejected, got: {result:?}"
             );
         }
     }
