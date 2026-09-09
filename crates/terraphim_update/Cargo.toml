@@ -39,7 +39,7 @@ base64 = "0.22"
 # Archive extraction
 flate2 = "1.1"
 tar = "0.4"
-zip = "7"
+zip = "8"
 tempfile = { workspace = true }
 
 

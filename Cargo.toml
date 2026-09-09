@@ -64,11 +64,8 @@ readme = "README.md"
 # the corresponding `[workspace.dependencies]` entry. Refs #112.
 #
 # Mirrors the block terraphim-ai already runs.
-terraphim_types = { version = "=1.22.1", registry = "terraphim" }
-# terraphim_automata: now resolved directly from each crate's [dependencies] at 1.21.1
-# instead of via this [patch.crates-io] entry. The transitive-only redirect would
-# cause 'patch location does not contain packages matching' when cargo update
-# ran ahead of the Gitea mirror sync.
+terraphim_types = { version = "1.21.0", registry = "terraphim" }
+terraphim_automata = { version = "1.21.0", registry = "terraphim" }
 # file_search/middleware 1.20.x still pass owned Thesaurus into automata.
 terraphim_file_search = { version = "1.21.0", registry = "terraphim" }
 terraphim_middleware = { version = "1.21.0", registry = "terraphim" }
