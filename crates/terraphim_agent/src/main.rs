@@ -745,6 +745,22 @@ async fn handle_guard_command(args: &GuardArgs<'_>) -> Result<()> {
     Ok(())
 }
 
+async fn handle_check_update_command() -> Result<()> {
+    println!("Checking for terraphim-agent updates...");
+    let config = UpdaterConfig::new("terraphim-agent").with_version(env!("CARGO_PKG_VERSION"));
+    let updater = TerraphimUpdater::new(config);
+    match updater.check_update().await {
+        Ok(status) => {
+            println!("{}", status);
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!("Failed to check for updates: {}", e);
+            std::process::exit(1);
+        }
+    }
+}
+
 async fn run_offline_command(
     command: Command,
     output: CommandOutputConfig,
@@ -773,19 +789,7 @@ async fn run_offline_command(
 
     // CheckUpdate is stateless - handle before TuiService initialization
     if let Command::CheckUpdate = &command {
-        println!("Checking for terraphim-agent updates...");
-        let config = UpdaterConfig::new("terraphim-agent").with_version(env!("CARGO_PKG_VERSION"));
-        let updater = TerraphimUpdater::new(config);
-        match updater.check_update().await {
-            Ok(status) => {
-                println!("{}", status);
-                return Ok(());
-            }
-            Err(e) => {
-                eprintln!("Failed to check for updates: {}", e);
-                std::process::exit(1);
-            }
-        }
+        return handle_check_update_command().await;
     }
 
     // Update is stateless - handle before TuiService initialization
