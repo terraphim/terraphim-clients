@@ -761,6 +761,112 @@ async fn handle_check_update_command() -> Result<()> {
     }
 }
 
+struct SetupArgs {
+    template: Option<String>,
+    path: Option<String>,
+    add_role: bool,
+    list_templates: bool,
+}
+
+async fn handle_setup_command(args: SetupArgs, service: &TuiService) -> Result<()> {
+    use onboarding::{
+        SetupMode, SetupResult, apply_template, list_templates as get_templates,
+        run_setup_wizard,
+    };
+
+    // List templates and exit if requested
+    if args.list_templates {
+        println!("Available templates:\n");
+        for template in get_templates() {
+            let path_note = if template.requires_path {
+                " (requires --path)"
+            } else if template.default_path.is_some() {
+                &format!(" (default: {})", template.default_path.as_ref().unwrap())
+            } else {
+                ""
+            };
+            println!("  {} - {}{}", template.id, template.description, path_note);
+        }
+        println!("\nUse --template <id> to apply a template directly.");
+        return Ok(());
+    }
+
+    // Apply template directly if specified
+    if let Some(template_id) = args.template {
+        println!("Applying template: {}", template_id);
+        match apply_template(&template_id, args.path.as_deref()) {
+            Ok(role) => {
+                // Save the role to config
+                if args.add_role {
+                    service.add_role(role.clone()).await?;
+                    println!("Role '{}' added to configuration.", role.name);
+                } else {
+                    service.set_role(role.clone()).await?;
+                    println!("Configuration set to role '{}'.", role.name);
+                }
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("Failed to apply template: {}", e);
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // Run interactive wizard
+    let mode = if args.add_role {
+        SetupMode::AddRole
+    } else {
+        SetupMode::FirstRun
+    };
+
+    match run_setup_wizard(mode).await {
+        Ok(SetupResult::Template {
+            template,
+            custom_path: _,
+            role,
+        }) => {
+            if args.add_role {
+                service.add_role(role.clone()).await?;
+                println!(
+                    "\nRole '{}' added from template '{}'.",
+                    role.name, template.id
+                );
+            } else {
+                service.set_role(role.clone()).await?;
+                println!(
+                    "\nConfiguration set to role '{}' from template '{}'.",
+                    role.name, template.id
+                );
+            }
+        }
+        Ok(SetupResult::Custom { role }) => {
+            if args.add_role {
+                service.add_role(role.clone()).await?;
+                println!("\nCustom role '{}' added to configuration.", role.name);
+            } else {
+                service.set_role(role.clone()).await?;
+                println!("\nConfiguration set to custom role '{}'.", role.name);
+            }
+        }
+        Ok(SetupResult::Cancelled) => {
+            println!("\nSetup cancelled.");
+        }
+        Err(onboarding::OnboardingError::NotATty) => {
+            eprintln!(
+                "Interactive mode requires a terminal. Use --template for non-interactive setup."
+            );
+            std::process::exit(1);
+        }
+        Err(e) => {
+            eprintln!("Setup failed: {}", e);
+            std::process::exit(1);
+        }
+    }
+
+    Ok(())
+}
+
 async fn run_offline_command(
     command: Command,
     output: CommandOutputConfig,
@@ -1687,102 +1793,16 @@ async fn run_offline_command(
             add_role,
             list_templates,
         } => {
-            use onboarding::{
-                SetupMode, SetupResult, apply_template, list_templates as get_templates,
-                run_setup_wizard,
-            };
-
-            // List templates and exit if requested
-            if list_templates {
-                println!("Available templates:\n");
-                for template in get_templates() {
-                    let path_note = if template.requires_path {
-                        " (requires --path)"
-                    } else if template.default_path.is_some() {
-                        &format!(" (default: {})", template.default_path.as_ref().unwrap())
-                    } else {
-                        ""
-                    };
-                    println!("  {} - {}{}", template.id, template.description, path_note);
-                }
-                println!("\nUse --template <id> to apply a template directly.");
-                return Ok(());
-            }
-
-            // Apply template directly if specified
-            if let Some(template_id) = template {
-                println!("Applying template: {}", template_id);
-                match apply_template(&template_id, path.as_deref()) {
-                    Ok(role) => {
-                        // Save the role to config
-                        if add_role {
-                            service.add_role(role.clone()).await?;
-                            println!("Role '{}' added to configuration.", role.name);
-                        } else {
-                            service.set_role(role.clone()).await?;
-                            println!("Configuration set to role '{}'.", role.name);
-                        }
-                        return Ok(());
-                    }
-                    Err(e) => {
-                        eprintln!("Failed to apply template: {}", e);
-                        std::process::exit(1);
-                    }
-                }
-            }
-
-            // Run interactive wizard
-            let mode = if add_role {
-                SetupMode::AddRole
-            } else {
-                SetupMode::FirstRun
-            };
-
-            match run_setup_wizard(mode).await {
-                Ok(SetupResult::Template {
+            return handle_setup_command(
+                SetupArgs {
                     template,
-                    custom_path: _,
-                    role,
-                }) => {
-                    if add_role {
-                        service.add_role(role.clone()).await?;
-                        println!(
-                            "\nRole '{}' added from template '{}'.",
-                            role.name, template.id
-                        );
-                    } else {
-                        service.set_role(role.clone()).await?;
-                        println!(
-                            "\nConfiguration set to role '{}' from template '{}'.",
-                            role.name, template.id
-                        );
-                    }
-                }
-                Ok(SetupResult::Custom { role }) => {
-                    if add_role {
-                        service.add_role(role.clone()).await?;
-                        println!("\nCustom role '{}' added to configuration.", role.name);
-                    } else {
-                        service.set_role(role.clone()).await?;
-                        println!("\nConfiguration set to custom role '{}'.", role.name);
-                    }
-                }
-                Ok(SetupResult::Cancelled) => {
-                    println!("\nSetup cancelled.");
-                }
-                Err(onboarding::OnboardingError::NotATty) => {
-                    eprintln!(
-                        "Interactive mode requires a terminal. Use --template for non-interactive setup."
-                    );
-                    std::process::exit(1);
-                }
-                Err(e) => {
-                    eprintln!("Setup failed: {}", e);
-                    std::process::exit(1);
-                }
-            }
-
-            Ok(())
+                    path,
+                    add_role,
+                    list_templates,
+                },
+                &service,
+            )
+            .await;
         }
         Command::CheckUpdate => {
             unreachable!("CheckUpdate command should be handled before TuiService initialization")
