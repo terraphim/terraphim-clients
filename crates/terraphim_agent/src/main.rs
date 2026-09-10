@@ -1608,182 +1608,18 @@ async fn run_offline_command(
             no_with_guard,
             rewrite,
         } => {
-            // For pre-tool-use, default the guard check to ON so destructive
-            // commands are denied unless the user explicitly opts out. Other
-            // hook types (post-tool-use, pre-commit, prepare-commit-msg) fire
-            // after execution or on text inputs and do not need a guard, so
-            // they keep the user's explicit `--with-guard` setting. An
-            // explicit `--no-with-guard` overrides everything.
-            let with_guard =
-                !no_with_guard && (with_guard || matches!(hook_type, HookType::PreToolUse));
-            // Read JSON input from argument or stdin
-            let input_json = match input {
-                Some(i) => i,
-                None => {
-                    use std::io::Read;
-                    let mut buffer = String::new();
-                    std::io::stdin().read_to_string(&mut buffer)?;
-                    buffer
-                }
-            };
-
-            let role_name = service.resolve_role(role.as_deref()).await?;
-
-            // Parse input JSON
-            let input_value: serde_json::Value = serde_json::from_str(&input_json)
-                .map_err(|e| anyhow::anyhow!("Invalid JSON input: {}", e))?;
-
-            match hook_type {
-                HookType::PreToolUse => {
-                    // Extract tool_name and tool_input from the hook input
-                    let tool_name = input_value
-                        .get("tool_name")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
-
-                    // Only process Bash commands
-                    if tool_name == "Bash" {
-                        if let Some(command) = input_value
-                            .get("tool_input")
-                            .and_then(|v| v.get("command"))
-                            .and_then(|v| v.as_str())
-                        {
-                            // Guard check if --with-guard flag is set (default ON
-                            // for pre-tool-use; see the Hook args doc comment).
-                            if with_guard {
-                                let guard = guard_patterns::CommandGuard::new();
-                                let guard_result = guard.check(command);
-
-                                if guard_result.decision == guard_patterns::GuardDecision::Block {
-                                    // Output deny response for Claude Code
-                                    let output = serde_json::json!({
-                                        "hookSpecificOutput": {
-                                            "hookEventName": "PreToolUse",
-                                            "permissionDecision": "deny",
-                                            "permissionDecisionReason": format!(
-                                                "BLOCKED: {}",
-                                                guard_result.reason.unwrap_or_default()
-                                            )
-                                        }
-                                    });
-                                    println!("{}", serde_json::to_string(&output)?);
-                                    return Ok(());
-                                }
-                            }
-
-                            // Substitution is opt-in. We always probe the
-                            // replacement so we can warn the user when their
-                            // command contained KG-replaceable substrings, but
-                            // we only emit a rewritten command when `--rewrite`
-                            // is set. This prevents the previous behaviour
-                            // where any substring match could silently mutate
-                            // a destructive command (Refs #126).
-                            let thesaurus = service.get_thesaurus(&role_name).await?;
-                            let replacement_service =
-                                terraphim_hooks::ReplacementService::new(thesaurus);
-                            let hook_result = replacement_service.replace_fail_open(command);
-
-                            let kg_validation = kg_validation::validate_command_against_kg(command);
-
-                            let mut output = input_value.clone();
-                            let mut emitted_warning = false;
-
-                            if hook_result.replacements > 0 {
-                                if rewrite {
-                                    // Opt-in: actually substitute
-                                    if let Some(tool_input) = output.get_mut("tool_input")
-                                        && let Some(obj) = tool_input.as_object_mut()
-                                    {
-                                        obj.insert(
-                                            "command".to_string(),
-                                            serde_json::Value::String(hook_result.result.clone()),
-                                        );
-                                    }
-                                } else {
-                                    // Suppressed: warn the user
-                                    if let Some(obj) = output.as_object_mut() {
-                                        let warnings = obj
-                                            .entry("warnings".to_string())
-                                            .or_insert(serde_json::Value::Array(vec![]));
-                                        if let Some(arr) = warnings.as_array_mut() {
-                                            arr.push(serde_json::Value::String(format!(
-                                                "command contained {} KG-replaceable substring(s); pass --rewrite to enable substitution. Original: `{}`",
-                                                hook_result.replacements, command
-                                            )));
-                                        }
-                                    }
-                                    emitted_warning = true;
-                                }
-                            }
-
-                            if kg_validation.has_findings
-                                && let Some(obj) = output.as_object_mut()
-                            {
-                                obj.insert(
-                                    "validations".to_string(),
-                                    serde_json::to_value(&kg_validation).unwrap_or_default(),
-                                );
-                            }
-
-                            if emitted_warning
-                                || (rewrite && hook_result.replacements > 0)
-                                || kg_validation.has_findings
-                            {
-                                println!("{}", serde_json::to_string(&output)?);
-                            } else {
-                                // No changes, pass through
-                                println!("{}", input_json);
-                            }
-                        } else {
-                            // No command to process
-                            println!("{}", input_json);
-                        }
-                    } else {
-                        // Not a Bash command, pass through
-                        println!("{}", input_json);
-                    }
-                }
-                HookType::PostToolUse => {
-                    // Post-tool-use: validate output against checklist or connectivity
-                    let tool_result = input_value
-                        .get("tool_result")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
-
-                    // Check connectivity of the output
-                    let connectivity = service.check_connectivity(&role_name, tool_result).await?;
-
-                    let output = serde_json::json!({
-                        "original": input_value,
-                        "validation": {
-                            "connected": connectivity.connected,
-                            "matched_terms": connectivity.matched_terms
-                        }
-                    });
-                    println!("{}", serde_json::to_string(&output)?);
-                }
-                HookType::PreCommit | HookType::PrepareCommitMsg => {
-                    // Extract commit message or diff
-                    let content = input_value
-                        .get("message")
-                        .or_else(|| input_value.get("diff"))
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
-
-                    // Extract concepts from the content
-                    let matches = service.find_matches(&role_name, content).await?;
-                    let concepts: Vec<String> = matches.iter().map(|m| m.term.clone()).collect();
-
-                    let output = serde_json::json!({
-                        "original": input_value,
-                        "concepts": concepts,
-                        "concept_count": concepts.len()
-                    });
-                    println!("{}", serde_json::to_string(&output)?);
-                }
-            }
-
-            Ok(())
+            return handle_hook_command(
+                HookArgs {
+                    hook_type,
+                    input,
+                    role,
+                    with_guard,
+                    no_with_guard,
+                    rewrite,
+                },
+                &service,
+            )
+            .await;
         }
         Command::Guard { .. } => {
             // Handled above before TuiService initialization
@@ -2151,6 +1987,197 @@ async fn handle_validate_command(args: ValidateArgs, service: &TuiService) -> Re
             for m in &matches {
                 println!("    - {}", m.term);
             }
+        }
+    }
+
+    Ok(())
+}
+
+struct HookArgs {
+    hook_type: HookType,
+    input: Option<String>,
+    role: Option<String>,
+    with_guard: bool,
+    no_with_guard: bool,
+    rewrite: bool,
+}
+
+// Third post-TuiService match arm extracted. Hook follows the same
+// template as Replace (5.1) and Validate (5.2). The body shape is
+// similar: calls service.hook(...), formats output, returns Ok.
+async fn handle_hook_command(args: HookArgs, service: &TuiService) -> Result<()> {
+    // For pre-tool-use, default the guard check to ON so destructive
+    // commands are denied unless the user explicitly opts out. Other
+    // hook types (post-tool-use, pre-commit, prepare-commit-msg) fire
+    // after execution or on text inputs and do not need a guard, so
+    // they keep the user's explicit `--with-guard` setting. An
+    // explicit `--no-with-guard` overrides everything.
+    let with_guard = !args.no_with_guard
+        && (args.with_guard || matches!(args.hook_type, HookType::PreToolUse));
+    // Read JSON input from argument or stdin
+    let input_json = match args.input {
+        Some(i) => i,
+        None => {
+            use std::io::Read;
+            let mut buffer = String::new();
+            std::io::stdin().read_to_string(&mut buffer)?;
+            buffer
+        }
+    };
+
+    let role_name = service.resolve_role(args.role.as_deref()).await?;
+
+    // Parse input JSON
+    let input_value: serde_json::Value = serde_json::from_str(&input_json)
+        .map_err(|e| anyhow::anyhow!("Invalid JSON input: {}", e))?;
+
+    match args.hook_type {
+        HookType::PreToolUse => {
+            // Extract tool_name and tool_input from the hook input
+            let tool_name = input_value
+                .get("tool_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+
+            // Only process Bash commands
+            if tool_name == "Bash" {
+                if let Some(command) = input_value
+                    .get("tool_input")
+                    .and_then(|v| v.get("command"))
+                    .and_then(|v| v.as_str())
+                {
+                    // Guard check if --with-guard flag is set (default ON
+                    // for pre-tool-use; see the Hook args doc comment).
+                    if with_guard {
+                        let guard = guard_patterns::CommandGuard::new();
+                        let guard_result = guard.check(command);
+
+                        if guard_result.decision == guard_patterns::GuardDecision::Block {
+                            // Output deny response for Claude Code
+                            let output = serde_json::json!({
+                                "hookSpecificOutput": {
+                                    "hookEventName": "PreToolUse",
+                                    "permissionDecision": "deny",
+                                    "permissionDecisionReason": format!(
+                                        "BLOCKED: {}",
+                                        guard_result.reason.unwrap_or_default()
+                                    )
+                                }
+                            });
+                            println!("{}", serde_json::to_string(&output)?);
+                            return Ok(());
+                        }
+                    }
+
+                    // Substitution is opt-in. We always probe the
+                    // replacement so we can warn the user when their
+                    // command contained KG-replaceable substrings, but
+                    // we only emit a rewritten command when `--rewrite`
+                    // is set. This prevents the previous behaviour
+                    // where any substring match could silently mutate
+                    // a destructive command (Refs #126).
+                    let thesaurus = service.get_thesaurus(&role_name).await?;
+                    let replacement_service =
+                        terraphim_hooks::ReplacementService::new(thesaurus);
+                    let hook_result = replacement_service.replace_fail_open(command);
+
+                    let kg_validation = kg_validation::validate_command_against_kg(command);
+
+                    let mut output = input_value.clone();
+                    let mut emitted_warning = false;
+
+                    if hook_result.replacements > 0 {
+                        if args.rewrite {
+                            // Opt-in: actually substitute
+                            if let Some(tool_input) = output.get_mut("tool_input")
+                                && let Some(obj) = tool_input.as_object_mut()
+                            {
+                                obj.insert(
+                                    "command".to_string(),
+                                    serde_json::Value::String(hook_result.result.clone()),
+                                );
+                            }
+                        } else {
+                            // Suppressed: warn the user
+                            if let Some(obj) = output.as_object_mut() {
+                                let warnings = obj
+                                    .entry("warnings".to_string())
+                                    .or_insert(serde_json::Value::Array(vec![]));
+                                if let Some(arr) = warnings.as_array_mut() {
+                                    arr.push(serde_json::Value::String(format!(
+                                        "command contained {} KG-replaceable substring(s); pass --rewrite to enable substitution. Original: `{}`",
+                                        hook_result.replacements, command
+                                    )));
+                                }
+                            }
+                            emitted_warning = true;
+                        }
+                    }
+
+                    if kg_validation.has_findings
+                        && let Some(obj) = output.as_object_mut()
+                    {
+                        obj.insert(
+                            "validations".to_string(),
+                            serde_json::to_value(&kg_validation).unwrap_or_default(),
+                        );
+                    }
+
+                    if emitted_warning
+                        || (args.rewrite && hook_result.replacements > 0)
+                        || kg_validation.has_findings
+                    {
+                        println!("{}", serde_json::to_string(&output)?);
+                    } else {
+                        // No changes, pass through
+                        println!("{}", input_json);
+                    }
+                } else {
+                    // No command to process
+                    println!("{}", input_json);
+                }
+            } else {
+                // Not a Bash command, pass through
+                println!("{}", input_json);
+            }
+        }
+        HookType::PostToolUse => {
+            // Post-tool-use: validate output against checklist or connectivity
+            let tool_result = input_value
+                .get("tool_result")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+
+            // Check connectivity of the output
+            let connectivity = service.check_connectivity(&role_name, tool_result).await?;
+
+            let output = serde_json::json!({
+                "original": input_value,
+                "validation": {
+                    "connected": connectivity.connected,
+                    "matched_terms": connectivity.matched_terms
+                }
+            });
+            println!("{}", serde_json::to_string(&output)?);
+        }
+        HookType::PreCommit | HookType::PrepareCommitMsg => {
+            // Extract commit message or diff
+            let content = input_value
+                .get("message")
+                .or_else(|| input_value.get("diff"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+
+            // Extract concepts from the content
+            let matches = service.find_matches(&role_name, content).await?;
+            let concepts: Vec<String> = matches.iter().map(|m| m.term.clone()).collect();
+
+            let output = serde_json::json!({
+                "original": input_value,
+                "concepts": concepts,
+                "concept_count": concepts.len()
+            });
+            println!("{}", serde_json::to_string(&output)?);
         }
     }
 
