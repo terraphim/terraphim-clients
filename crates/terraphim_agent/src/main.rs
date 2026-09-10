@@ -931,24 +931,6 @@ async fn handle_suggest_command(service: &TuiService, suggest: &Command) -> Resu
 
     let input_query = match query {
         Some(q) => q.clone(),
-struct ReplaceArgs {
-    text: Option<String>,
-    role: Option<String>,
-    format: Option<String>,
-    boundary: BoundaryMode,
-    json: bool,
-    fail_open: bool,
-}
-
-// First post-TuiService match arm extracted. The Replace handler is
-// ~150 LOC of inline thesaurus-driven text replacement; pulling it out
-// makes the surrounding match block shorter and easier to review. The
-// body shape (calls `service.get_thesaurus`, runs `ReplacementService`,
-// emits JSON or plain output, returns `Ok`) is structurally similar to
-// other post-TuiService arms (`Validate`, `Hook`) that follow.
-async fn handle_replace_command(args: ReplaceArgs, service: &TuiService) -> Result<()> {
-    let input_text = match args.text {
-        Some(t) => t,
         None => {
             use std::io::Read;
             let mut buffer = String::new();
@@ -978,6 +960,33 @@ async fn handle_replace_command(args: ReplaceArgs, service: &TuiService) -> Resu
         for s in &suggestions {
             println!("  {} (similarity: {:.2})", s.term, s.similarity);
         }
+    }
+
+    Ok(())
+}
+
+struct ReplaceArgs {
+    text: Option<String>,
+    role: Option<String>,
+    format: Option<String>,
+    boundary: BoundaryMode,
+    json: bool,
+    fail_open: bool,
+}
+
+// First post-TuiService match arm extracted. The Replace handler is
+// ~150 LOC of inline thesaurus-driven text replacement; pulling it out
+// makes the surrounding match block shorter and easier to review. The
+// body shape (calls `service.get_thesaurus`, runs `ReplacementService`,
+// emits JSON or plain output, returns `Ok`) is structurally similar to
+// other post-TuiService arms (`Validate`, `Hook`) that follow.
+async fn handle_replace_command(args: ReplaceArgs, service: &TuiService) -> Result<()> {
+    let input_text = match args.text {
+        Some(t) => t,
+        None => {
+            use std::io::Read;
+            let mut buffer = String::new();
+            std::io::stdin().read_to_string(&mut buffer)?;
             buffer
         }
     };
@@ -1083,6 +1092,9 @@ async fn handle_replace_command(args: ReplaceArgs, service: &TuiService) -> Resu
         }
         print!("{}", hook_result.result);
     }
+
+    Ok(())
+}
 
 // Largest single extraction from `run_offline_command`. The `Search` arm is the
 // original entry point of `run_offline_command` and carries the full
@@ -1407,6 +1419,8 @@ async fn run_offline_command(
     // take `&Command` (re-destructured internally) just like Search does.
     if let Command::Suggest { .. } = &command {
         return handle_suggest_command(&service, &command).await;
+    }
+
     // Search is the largest single arm. Pulling it out ahead of the match
     // block mirrors how Guard / CheckUpdate / Update / Cache / Learn / Memory
     // are already handled -- they short-circuit before the match consumes
