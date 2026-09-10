@@ -1584,78 +1584,17 @@ async fn run_offline_command(
             checklist,
             json,
         } => {
-            let input_text = match text {
-                Some(t) => t,
-                None => {
-                    use std::io::Read;
-                    let mut buffer = String::new();
-                    std::io::stdin().read_to_string(&mut buffer)?;
-                    buffer.trim().to_string()
-                }
-            };
-
-            let role_name = service.resolve_role(role.as_deref()).await?;
-
-            if connectivity {
-                let result = service.check_connectivity(&role_name, &input_text).await?;
-
-                if json {
-                    println!("{}", serde_json::to_string(&result)?);
-                } else {
-                    println!("Connectivity Check for role '{}':", role_name);
-                    println!("  Connected: {}", result.connected);
-                    println!("  Matched terms: {:?}", result.matched_terms);
-                    println!("  {}", result.message);
-                }
-            } else if let Some(checklist_name) = checklist {
-                // Checklist validation mode
-                let result = service
-                    .validate_checklist(&role_name, &checklist_name, &input_text)
-                    .await?;
-
-                if json {
-                    println!("{}", serde_json::to_string(&result)?);
-                } else {
-                    println!(
-                        "Checklist '{}' Validation for role '{}':",
-                        checklist_name, role_name
-                    );
-                    println!("  Passed: {}", result.passed);
-                    println!("  Score: {}/{}", result.satisfied.len(), result.total_items);
-                    if !result.satisfied.is_empty() {
-                        println!("  Satisfied items:");
-                        for item in &result.satisfied {
-                            println!("    ✓ {}", item);
-                        }
-                    }
-                    if !result.missing.is_empty() {
-                        println!("  Missing items:");
-                        for item in &result.missing {
-                            println!("    ✗ {}", item);
-                        }
-                    }
-                }
-            } else {
-                // Default validation: find matches
-                let matches = service.find_matches(&role_name, &input_text).await?;
-
-                if json {
-                    let output = serde_json::json!({
-                        "role": role_name.to_string(),
-                        "matched_count": matches.len(),
-                        "matches": matches.iter().map(|m| m.term.clone()).collect::<Vec<_>>()
-                    });
-                    println!("{}", serde_json::to_string(&output)?);
-                } else {
-                    println!("Validation for role '{}':", role_name);
-                    println!("  Found {} matched term(s)", matches.len());
-                    for m in &matches {
-                        println!("    - {}", m.term);
-                    }
-                }
-            }
-
-            Ok(())
+            return handle_validate_command(
+                ValidateArgs {
+                    text,
+                    role,
+                    connectivity,
+                    checklist,
+                    json,
+                },
+                &service,
+            )
+            .await;
         }
         Command::Suggest { .. } => {
             unreachable!("Suggest commands are handled after TuiService initialization")
@@ -2130,6 +2069,92 @@ async fn run_offline_command(
             unreachable!("Cache commands are handled before TuiService initialization")
         }
     }
+}
+
+struct ValidateArgs {
+    text: Option<String>,
+    role: Option<String>,
+    connectivity: bool,
+    checklist: Option<String>,
+    json: bool,
+}
+
+// Second post-TuiService match arm extracted. Validate follows the
+// same template as Replace (step 5.1). The body shape is similar:
+// calls service.validate(), formats output, returns Ok.
+async fn handle_validate_command(args: ValidateArgs, service: &TuiService) -> Result<()> {
+    let input_text = match args.text {
+        Some(t) => t,
+        None => {
+            use std::io::Read;
+            let mut buffer = String::new();
+            std::io::stdin().read_to_string(&mut buffer)?;
+            buffer.trim().to_string()
+        }
+    };
+
+    let role_name = service.resolve_role(args.role.as_deref()).await?;
+
+    if args.connectivity {
+        let result = service.check_connectivity(&role_name, &input_text).await?;
+
+        if args.json {
+            println!("{}", serde_json::to_string(&result)?);
+        } else {
+            println!("Connectivity Check for role '{}':", role_name);
+            println!("  Connected: {}", result.connected);
+            println!("  Matched terms: {:?}", result.matched_terms);
+            println!("  {}", result.message);
+        }
+    } else if let Some(checklist_name) = args.checklist {
+        // Checklist validation mode
+        let result = service
+            .validate_checklist(&role_name, &checklist_name, &input_text)
+            .await?;
+
+        if args.json {
+            println!("{}", serde_json::to_string(&result)?);
+        } else {
+            println!(
+                "Checklist '{}' Validation for role '{}':",
+                checklist_name, role_name
+            );
+            println!("  Passed: {}", result.passed);
+            println!("  Score: {}/{}", result.satisfied.len(), result.total_items);
+            if !result.satisfied.is_empty() {
+                println!("  Satisfied items:");
+                for item in &result.satisfied {
+                    println!("    ✓ {}", item);
+                }
+            }
+            if !result.missing.is_empty() {
+                println!("  Missing items:");
+                for item in &result.missing {
+                    println!("    ✗ {}", item);
+                }
+            }
+        }
+    } else {
+        // Default validation: find matches
+        let matches = service.find_matches(&role_name, &input_text).await?;
+
+        if args.json {
+            let output = serde_json::json!({
+                "role": role_name.to_string(),
+                "matched_count": matches.len(),
+                "matches": matches.iter().map(|m| m.term.clone()).collect::<Vec<_>>()
+            });
+            println!("{}", serde_json::to_string(&output)?);
+        } else {
+            println!("Validation for role '{}':", role_name);
+            println!("  Found {} matched term(s)", matches.len());
+            for m in &matches {
+                println!("    - {}", m.term);
+            }
+        }
+    }
+
+    Ok(())
 }
 
 async fn run_cache_command(sub: &CacheSub) -> Result<()> {
