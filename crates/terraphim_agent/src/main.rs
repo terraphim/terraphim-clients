@@ -1432,42 +1432,7 @@ async fn run_offline_command(
     }
 
     match command {
-        Command::Roles { sub } => {
-            match sub {
-                RolesSub::List => {
-                    let roles_with_info = service.list_roles_with_info().await;
-                    let selected = service.get_selected_role().await;
-                    for (name, shortname) in roles_with_info {
-                        let marker = if name == selected.to_string() {
-                            "*"
-                        } else {
-                            " "
-                        };
-                        if let Some(short) = shortname {
-                            println!("{} {} ({})", marker, name, short);
-                        } else {
-                            println!("{} {}", marker, name);
-                        }
-                    }
-                }
-                RolesSub::Select { name } => {
-                    // Find role by name or shortname
-                    let role_name = service
-                        .find_role_by_name_or_shortname(&name)
-                        .await
-                        .ok_or_else(|| {
-                            anyhow::anyhow!(
-                                "Role '{}' not found (checked name and shortname)",
-                                name
-                            )
-                        })?;
-                    service.update_selected_role(role_name.clone()).await?;
-                    service.save_config().await?;
-                    println!("selected:{}", role_name);
-                }
-            }
-            Ok(())
-        }
+        Command::Roles { sub } => handle_roles_command(sub, &service).await,
         Command::Config { sub } => handle_config_command(sub, &service).await,
         Command::Graph {
             role,
@@ -1967,6 +1932,41 @@ async fn handle_config_command(sub: ConfigSub, service: &TuiService) -> Result<(
                     std::process::exit(1);
                 }
             }
+        }
+    }
+    Ok(())
+}
+
+// Post-TuiService arm extracted (step 5.8). The Roles arm fans out over
+// List / Select. List is unreachable here: it is caught by the
+// pre-TuiService early return (handle_roles_list_command, Refs #120) so it
+// never initialises the service. Select resolves a role by name or
+// shortname, persists it, and prints the selection.
+//
+// The handler takes `sub: RolesSub` by value (the match consumes
+// `command`) and `service: &TuiService`. The output config is not needed:
+// both sub-arms print directly and neither inspects the output mode.
+async fn handle_roles_command(sub: RolesSub, service: &TuiService) -> Result<()> {
+    match sub {
+        // Handled as a stateless early-return before TuiService init
+        // (handle_roles_list_command, Refs #120); should not reach here.
+        RolesSub::List => {
+            unreachable!("roles list is handled before TuiService init")
+        }
+        RolesSub::Select { name } => {
+            // Find role by name or shortname
+            let role_name = service
+                .find_role_by_name_or_shortname(&name)
+                .await
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Role '{}' not found (checked name and shortname)",
+                        name
+                    )
+                })?;
+            service.update_selected_role(role_name.clone()).await?;
+            service.save_config().await?;
+            println!("selected:{}", role_name);
         }
     }
     Ok(())
