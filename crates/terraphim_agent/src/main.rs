@@ -777,6 +777,27 @@ async fn handle_update_command() -> Result<()> {
     }
 }
 
+// Reads the configuration directly and skips the thesaurus/rolegraph build that
+// `TuiService::new` does (~63% of startup per profiling). See the comment at the
+// call site for the broader rationale (Refs #120).
+async fn handle_roles_list_command(config_path: Option<String>) -> Result<()> {
+    let config = TuiService::load_config(config_path, false).await?;
+    let selected = TuiService::selected_role_of(&config);
+    for (name, shortname) in TuiService::roles_with_info_of(&config) {
+        let marker = if name == selected.to_string() {
+            "*"
+        } else {
+            " "
+        };
+        if let Some(short) = shortname {
+            println!("{} {} ({})", marker, name, short);
+        } else {
+            println!("{} {}", marker, name);
+        }
+    }
+    Ok(())
+}
+
 struct SetupArgs {
     template: Option<String>,
     path: Option<String>,
@@ -945,21 +966,7 @@ async fn run_offline_command(
         sub: RolesSub::List,
     } = &command
     {
-        let config = TuiService::load_config(config_path, false).await?;
-        let selected = TuiService::selected_role_of(&config);
-        for (name, shortname) in TuiService::roles_with_info_of(&config) {
-            let marker = if name == selected.to_string() {
-                "*"
-            } else {
-                " "
-            };
-            if let Some(short) = shortname {
-                println!("{} {} ({})", marker, name, short);
-            } else {
-                println!("{} {}", marker, name);
-            }
-        }
-        return Ok(());
+        return handle_roles_list_command(config_path).await;
     }
 
     // Cache is stateless - handle before TuiService initialization
