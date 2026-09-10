@@ -1468,55 +1468,7 @@ async fn run_offline_command(
             }
             Ok(())
         }
-        Command::Config { sub } => {
-            match sub {
-                ConfigSub::Show => {
-                    let config = service.get_config().await;
-                    println!("{}", serde_json::to_string_pretty(&config)?);
-                }
-                ConfigSub::Set { key, value } => match key.as_str() {
-                    "selected_role" => {
-                        let role_name = RoleName::new(&value);
-                        service.update_selected_role(role_name).await?;
-                        service.save_config().await?;
-                        println!("updated selected_role to {}", value);
-                    }
-                    _ => {
-                        println!("unsupported key: {}", key);
-                    }
-                },
-                ConfigSub::Validate => {
-                    // Handled as early-return above; should not reach here
-                    unreachable!("config validate is handled before TuiService init");
-                }
-                ConfigSub::Reload => {
-                    let ds = terraphim_settings::DeviceSettings::load_from_env_and_file(None)
-                        .unwrap_or_else(|_| terraphim_settings::DeviceSettings::default_embedded());
-                    match &ds.role_config {
-                        Some(path) => match service.reload_from_json(path).await {
-                            Ok(count) => {
-                                println!(
-                                    "Reloaded {} role(s) from '{}' and saved to persistence",
-                                    count, path
-                                );
-                            }
-                            Err(e) => {
-                                eprintln!("Failed to reload from '{}': {:?}", path, e);
-                                std::process::exit(1);
-                            }
-                        },
-                        None => {
-                            eprintln!("No role_config set in settings.toml. Nothing to reload.");
-                            eprintln!(
-                                "Add role_config = \"path/to/roles.json\" to your settings.toml"
-                            );
-                            std::process::exit(1);
-                        }
-                    }
-                }
-            }
-            Ok(())
-        }
+        Command::Config { sub } => handle_config_command(sub, &service).await,
         Command::Graph {
             role,
             top_k,
@@ -1959,6 +1911,65 @@ async fn handle_sessions_command(sub: SessionsSub, output: &CommandOutputConfig)
             }
         }
     }
+}
+
+// Post-TuiService arm extracted (step 5.7). The Config arm fans out over
+// Show / Set / Validate / Reload. Validate is unreachable here (handled as
+// a stateless early-return before TuiService init); Reload re-reads
+// DeviceSettings and reloads roles from the configured JSON.
+//
+// The handler takes `sub: ConfigSub` by value (the match consumes
+// `command`) and `service: &TuiService` for get_config /
+// update_selected_role / save_config / reload_from_json. `output` is not
+// needed: every sub-arm prints directly and none inspects the output mode.
+async fn handle_config_command(sub: ConfigSub, service: &TuiService) -> Result<()> {
+    match sub {
+        ConfigSub::Show => {
+            let config = service.get_config().await;
+            println!("{}", serde_json::to_string_pretty(&config)?);
+        }
+        ConfigSub::Set { key, value } => match key.as_str() {
+            "selected_role" => {
+                let role_name = RoleName::new(&value);
+                service.update_selected_role(role_name).await?;
+                service.save_config().await?;
+                println!("updated selected_role to {}", value);
+            }
+            _ => {
+                println!("unsupported key: {}", key);
+            }
+        },
+        ConfigSub::Validate => {
+            // Handled as early-return above; should not reach here
+            unreachable!("config validate is handled before TuiService init");
+        }
+        ConfigSub::Reload => {
+            let ds = terraphim_settings::DeviceSettings::load_from_env_and_file(None)
+                .unwrap_or_else(|_| terraphim_settings::DeviceSettings::default_embedded());
+            match &ds.role_config {
+                Some(path) => match service.reload_from_json(path).await {
+                    Ok(count) => {
+                        println!(
+                            "Reloaded {} role(s) from '{}' and saved to persistence",
+                            count, path
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to reload from '{}': {:?}", path, e);
+                        std::process::exit(1);
+                    }
+                },
+                None => {
+                    eprintln!("No role_config set in settings.toml. Nothing to reload.");
+                    eprintln!(
+                        "Add role_config = \"path/to/roles.json\" to your settings.toml"
+                    );
+                    std::process::exit(1);
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 struct ValidateArgs {
