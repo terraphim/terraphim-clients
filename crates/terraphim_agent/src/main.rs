@@ -666,6 +666,85 @@ async fn run_config_validate() -> Result<()> {
     Ok(())
 }
 
+struct GuardArgs<'a> {
+    command: &'a Option<String>,
+    json: bool,
+    fail_open: bool,
+    guard_thesaurus: &'a Option<String>,
+    guard_allowlist: &'a Option<String>,
+    explain: bool,
+}
+
+async fn handle_guard_command(args: &GuardArgs<'_>) -> Result<()> {
+    let input_command = match args.command {
+        Some(c) => c.clone(),
+        None => {
+            use std::io::Read;
+            let mut buffer = String::new();
+            std::io::stdin().read_to_string(&mut buffer)?;
+            buffer.trim().to_string()
+        }
+    };
+
+    let guard = match (args.guard_thesaurus, args.guard_allowlist) {
+        (Some(thesaurus_path), Some(allowlist_path)) => {
+            let destructive_json = std::fs::read_to_string(thesaurus_path)?;
+            let allowlist_json = std::fs::read_to_string(allowlist_path)?;
+            guard_patterns::CommandGuard::from_json(&destructive_json, &allowlist_json, None)
+                .map_err(|e| anyhow::anyhow!("Failed to load custom guard thesauruses: {}", e))?
+        }
+        (Some(thesaurus_path), None) => {
+            let destructive_json = std::fs::read_to_string(thesaurus_path)?;
+            guard_patterns::CommandGuard::from_json(
+                &destructive_json,
+                guard_patterns::CommandGuard::default_allowlist_json(),
+                None,
+            )
+            .map_err(|e| anyhow::anyhow!("Failed to load custom guard thesaurus: {}", e))?
+        }
+        (None, Some(allowlist_path)) => {
+            let allowlist_json = std::fs::read_to_string(allowlist_path)?;
+            guard_patterns::CommandGuard::from_json(
+                guard_patterns::CommandGuard::default_destructive_json(),
+                &allowlist_json,
+                None,
+            )
+            .map_err(|e| anyhow::anyhow!("Failed to load custom guard allowlist: {}", e))?
+        }
+        (None, None) => guard_patterns::CommandGuard::new(),
+    };
+    let result = guard.check(&input_command);
+
+    if args.explain {
+        // Recompute the trace so we can show the per-stage path even
+        // when the final decision came from a short-circuit. The trace
+        // shares the same matchers as `check`, so this is a second
+        // walk over the same inputs (cheap: a `Vec<4>` plus three
+        // Aho-Corasick matches).
+        let trace = guard.check_with_trace(&input_command);
+        trace.print(args.json)?;
+        // Still respect the normal exit-code semantics when --explain is on
+        // so scripts can use `--explain --fail-on-empty` style gating.
+        if trace.result.decision == guard_patterns::GuardDecision::Block && !args.fail_open {
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+
+    if args.json {
+        println!("{}", serde_json::to_string(&result)?);
+    } else if result.decision == guard_patterns::GuardDecision::Block
+        && let Some(reason) = &result.reason
+    {
+        eprintln!("BLOCKED: {}", reason);
+        if !args.fail_open {
+            std::process::exit(1);
+        }
+    }
+    // If allowed, no output in non-JSON mode (silent success)
+    Ok(())
+}
+
 async fn run_offline_command(
     command: Command,
     output: CommandOutputConfig,
@@ -673,7 +752,7 @@ async fn run_offline_command(
 ) -> Result<()> {
     // Handle stateless commands that don't need TuiService first
     if let Command::Guard {
-        command,
+        command: guard_command,
         json,
         fail_open,
         guard_thesaurus,
@@ -681,75 +760,15 @@ async fn run_offline_command(
         explain,
     } = &command
     {
-        let input_command = match command {
-            Some(c) => c.clone(),
-            None => {
-                use std::io::Read;
-                let mut buffer = String::new();
-                std::io::stdin().read_to_string(&mut buffer)?;
-                buffer.trim().to_string()
-            }
-        };
-
-        let guard = match (guard_thesaurus, guard_allowlist) {
-            (Some(thesaurus_path), Some(allowlist_path)) => {
-                let destructive_json = std::fs::read_to_string(thesaurus_path)?;
-                let allowlist_json = std::fs::read_to_string(allowlist_path)?;
-                guard_patterns::CommandGuard::from_json(&destructive_json, &allowlist_json, None)
-                    .map_err(|e| {
-                        anyhow::anyhow!("Failed to load custom guard thesauruses: {}", e)
-                    })?
-            }
-            (Some(thesaurus_path), None) => {
-                let destructive_json = std::fs::read_to_string(thesaurus_path)?;
-                guard_patterns::CommandGuard::from_json(
-                    &destructive_json,
-                    guard_patterns::CommandGuard::default_allowlist_json(),
-                    None,
-                )
-                .map_err(|e| anyhow::anyhow!("Failed to load custom guard thesaurus: {}", e))?
-            }
-            (None, Some(allowlist_path)) => {
-                let allowlist_json = std::fs::read_to_string(allowlist_path)?;
-                guard_patterns::CommandGuard::from_json(
-                    guard_patterns::CommandGuard::default_destructive_json(),
-                    &allowlist_json,
-                    None,
-                )
-                .map_err(|e| anyhow::anyhow!("Failed to load custom guard allowlist: {}", e))?
-            }
-            (None, None) => guard_patterns::CommandGuard::new(),
-        };
-        let result = guard.check(&input_command);
-
-        if *explain {
-            // Recompute the trace so we can show the per-stage path even
-            // when the final decision came from a short-circuit. The trace
-            // shares the same matchers as `check`, so this is a second
-            // walk over the same inputs (cheap: a `Vec<4>` plus three
-            // Aho-Corasick matches).
-            let trace = guard.check_with_trace(&input_command);
-            trace.print(*json)?;
-            // Still respect the normal exit-code semantics when --explain is on
-            // so scripts can use `--explain --fail-on-empty` style gating.
-            if trace.result.decision == guard_patterns::GuardDecision::Block && !*fail_open {
-                std::process::exit(1);
-            }
-            return Ok(());
-        }
-
-        if *json {
-            println!("{}", serde_json::to_string(&result)?);
-        } else if result.decision == guard_patterns::GuardDecision::Block
-            && let Some(reason) = &result.reason
-        {
-            eprintln!("BLOCKED: {}", reason);
-            if !fail_open {
-                std::process::exit(1);
-            }
-        }
-        // If allowed, no output in non-JSON mode (silent success)
-        return Ok(());
+        return handle_guard_command(&GuardArgs {
+            command: guard_command,
+            json: *json,
+            fail_open: *fail_open,
+            guard_thesaurus,
+            guard_allowlist,
+            explain: *explain,
+        })
+        .await;
     }
 
     // CheckUpdate is stateless - handle before TuiService initialization
