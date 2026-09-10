@@ -932,6 +932,24 @@ async fn handle_suggest_command(service: &TuiService, suggest: &Command) -> Resu
 
     let input_query = match query {
         Some(q) => q.clone(),
+struct ReplaceArgs {
+    text: Option<String>,
+    role: Option<String>,
+    format: Option<String>,
+    boundary: BoundaryMode,
+    json: bool,
+    fail_open: bool,
+}
+
+// First post-TuiService match arm extracted. The Replace handler is
+// ~150 LOC of inline thesaurus-driven text replacement; pulling it out
+// makes the surrounding match block shorter and easier to review. The
+// body shape (calls `service.get_thesaurus`, runs `ReplacementService`,
+// emits JSON or plain output, returns `Ok`) is structurally similar to
+// other post-TuiService arms (`Validate`, `Hook`) that follow.
+async fn handle_replace_command(args: ReplaceArgs, service: &TuiService) -> Result<()> {
+    let input_text = match args.text {
+        Some(t) => t,
         None => {
             use std::io::Read;
             let mut buffer = String::new();
@@ -961,6 +979,110 @@ async fn handle_suggest_command(service: &TuiService, suggest: &Command) -> Resu
         for s in &suggestions {
             println!("  {} (similarity: {:.2})", s.term, s.similarity);
         }
+            buffer
+        }
+    };
+
+    let role_name = service.resolve_role(args.role.as_deref()).await?;
+
+    let link_type = match args.format.as_deref() {
+        Some("markdown") => terraphim_hooks::LinkType::MarkdownLinks,
+        Some("wiki") => terraphim_hooks::LinkType::WikiLinks,
+        Some("html") => terraphim_hooks::LinkType::HTMLLinks,
+        _ => terraphim_hooks::LinkType::PlainText,
+    };
+
+    let thesaurus = match service.get_thesaurus(&role_name).await {
+        Ok(t) => t,
+        Err(e) => {
+            if args.fail_open {
+                let hook_result = terraphim_hooks::HookResult::fail_open(
+                    input_text.clone(),
+                    e.to_string(),
+                );
+                if args.json {
+                    println!("{}", serde_json::to_string(&hook_result)?);
+                } else {
+                    eprintln!("Warning: {}", e);
+                    print!("{}", input_text);
+                }
+                return Ok(());
+            } else {
+                return Err(e);
+            }
+        }
+    };
+
+    let replacement_service = terraphim_hooks::ReplacementService::new(thesaurus.clone())
+        .with_link_type(link_type);
+
+    let hook_result = match args.boundary {
+        BoundaryMode::None => {
+            // Standard replacement - match anywhere
+            if args.fail_open {
+                replacement_service.replace_fail_open(&input_text)
+            } else {
+                replacement_service.replace(&input_text)?
+            }
+        }
+        BoundaryMode::Word => {
+            // Word boundary mode - only match at word boundaries
+            let matches_result = replacement_service.find_matches(&input_text);
+            match matches_result {
+                Ok(matches) => {
+                    // Filter matches to only those at word boundaries
+                    let filtered_matches: Vec<_> = matches
+                        .into_iter()
+                        .filter(|m| {
+                            if let Some((start, end)) = m.pos {
+                                is_at_word_boundary(&input_text, start, end)
+                            } else {
+                                false
+                            }
+                        })
+                        .collect();
+
+                    if filtered_matches.is_empty() {
+                        terraphim_hooks::HookResult::pass_through(input_text.clone())
+                    } else {
+                        // Apply filtered matches in reverse order to preserve positions
+                        let mut result = input_text.clone();
+                        let mut sorted_matches = filtered_matches;
+                        #[allow(clippy::unnecessary_sort_by)]
+                        sorted_matches.sort_by(|a, b| b.pos.cmp(&a.pos));
+
+                        for m in sorted_matches {
+                            if let Some((start, end)) = m.pos {
+                                let replacement =
+                                    format_replacement_link(&m.normalized_term, link_type);
+                                result.replace_range(start..end, &replacement);
+                            }
+                        }
+
+                        terraphim_hooks::HookResult::success(input_text.clone(), result)
+                    }
+                }
+                Err(e) => {
+                    if args.fail_open {
+                        terraphim_hooks::HookResult::fail_open(
+                            input_text.clone(),
+                            e.to_string(),
+                        )
+                    } else {
+                        return Err(anyhow::anyhow!("Failed to find matches: {}", e));
+                    }
+                }
+            }
+        }
+    };
+
+    if args.json {
+        println!("{}", serde_json::to_string(&hook_result)?);
+    } else {
+        if let Some(ref err) = hook_result.error {
+            eprintln!("Warning: {}", err);
+        }
+        print!("{}", hook_result.result);
     }
 
     Ok(())
@@ -1442,119 +1564,18 @@ async fn run_offline_command(
             json,
             fail_open,
         } => {
-            let input_text = match text {
-                Some(t) => t,
-                None => {
-                    use std::io::Read;
-                    let mut buffer = String::new();
-                    std::io::stdin().read_to_string(&mut buffer)?;
-                    buffer
-                }
-            };
-
-            let role_name = service.resolve_role(role.as_deref()).await?;
-
-            let link_type = match format.as_deref() {
-                Some("markdown") => terraphim_hooks::LinkType::MarkdownLinks,
-                Some("wiki") => terraphim_hooks::LinkType::WikiLinks,
-                Some("html") => terraphim_hooks::LinkType::HTMLLinks,
-                _ => terraphim_hooks::LinkType::PlainText,
-            };
-
-            let thesaurus = match service.get_thesaurus(&role_name).await {
-                Ok(t) => t,
-                Err(e) => {
-                    if fail_open {
-                        let hook_result = terraphim_hooks::HookResult::fail_open(
-                            input_text.clone(),
-                            e.to_string(),
-                        );
-                        if json {
-                            println!("{}", serde_json::to_string(&hook_result)?);
-                        } else {
-                            eprintln!("Warning: {}", e);
-                            print!("{}", input_text);
-                        }
-                        return Ok(());
-                    } else {
-                        return Err(e);
-                    }
-                }
-            };
-
-            let replacement_service = terraphim_hooks::ReplacementService::new(thesaurus.clone())
-                .with_link_type(link_type);
-
-            let hook_result = match boundary {
-                BoundaryMode::None => {
-                    // Standard replacement - match anywhere
-                    if fail_open {
-                        replacement_service.replace_fail_open(&input_text)
-                    } else {
-                        replacement_service.replace(&input_text)?
-                    }
-                }
-                BoundaryMode::Word => {
-                    // Word boundary mode - only match at word boundaries
-                    let matches_result = replacement_service.find_matches(&input_text);
-                    match matches_result {
-                        Ok(matches) => {
-                            // Filter matches to only those at word boundaries
-                            let filtered_matches: Vec<_> = matches
-                                .into_iter()
-                                .filter(|m| {
-                                    if let Some((start, end)) = m.pos {
-                                        is_at_word_boundary(&input_text, start, end)
-                                    } else {
-                                        false
-                                    }
-                                })
-                                .collect();
-
-                            if filtered_matches.is_empty() {
-                                terraphim_hooks::HookResult::pass_through(input_text.clone())
-                            } else {
-                                // Apply filtered matches in reverse order to preserve positions
-                                let mut result = input_text.clone();
-                                let mut sorted_matches = filtered_matches;
-                                #[allow(clippy::unnecessary_sort_by)]
-                                sorted_matches.sort_by(|a, b| b.pos.cmp(&a.pos));
-
-                                for m in sorted_matches {
-                                    if let Some((start, end)) = m.pos {
-                                        let replacement =
-                                            format_replacement_link(&m.normalized_term, link_type);
-                                        result.replace_range(start..end, &replacement);
-                                    }
-                                }
-
-                                terraphim_hooks::HookResult::success(input_text.clone(), result)
-                            }
-                        }
-                        Err(e) => {
-                            if fail_open {
-                                terraphim_hooks::HookResult::fail_open(
-                                    input_text.clone(),
-                                    e.to_string(),
-                                )
-                            } else {
-                                return Err(anyhow::anyhow!("Failed to find matches: {}", e));
-                            }
-                        }
-                    }
-                }
-            };
-
-            if json {
-                println!("{}", serde_json::to_string(&hook_result)?);
-            } else {
-                if let Some(ref err) = hook_result.error {
-                    eprintln!("Warning: {}", err);
-                }
-                print!("{}", hook_result.result);
-            }
-
-            Ok(())
+            return handle_replace_command(
+                ReplaceArgs {
+                    text,
+                    role,
+                    format,
+                    boundary,
+                    json,
+                    fail_open,
+                },
+                &service,
+            )
+            .await;
         }
         Command::Validate {
             text,
