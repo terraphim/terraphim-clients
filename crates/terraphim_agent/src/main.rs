@@ -904,6 +904,68 @@ async fn handle_setup_command(args: SetupArgs, service: &TuiService) -> Result<(
     Ok(())
 }
 
+// Fuzzy suggestion arm extracted from `run_offline_command`. The Suggest arm
+// reads the query from stdin (when `--query` is not given), resolves the
+// active role, asks the thesaurus for fuzzy matches above the configured
+// threshold, and prints either a JSON payload or a human-readable listing.
+//
+// The body has no machine-readable / mode-specific branches and never inspects
+// `output`, so `output: &CommandOutputConfig` is intentionally omitted from the
+// signature. Like `handle_search_command`, the function takes `&Command` rather
+// than a dedicated `*Args` struct and re-destructures the variant internally:
+// variants are not types in Rust, so `&Command::Suggest` is not valid syntax.
+// The caller (the early-return in `run_offline_command`) has already verified
+// the variant via `if let Command::Suggest { .. }`, so the `else` branch is
+// truly unreachable.
+async fn handle_suggest_command(service: &TuiService, suggest: &Command) -> Result<()> {
+    let Command::Suggest {
+        query,
+        role,
+        fuzzy: _,
+        threshold,
+        limit,
+        json,
+    } = suggest
+    else {
+        unreachable!("handle_suggest_command called with non-Suggest command")
+    };
+
+    let input_query = match query {
+        Some(q) => q.clone(),
+        None => {
+            use std::io::Read;
+            let mut buffer = String::new();
+            std::io::stdin().read_to_string(&mut buffer)?;
+            buffer.trim().to_string()
+        }
+    };
+
+    let role_name = service.resolve_role(role.as_deref()).await?;
+
+    let suggestions = service
+        .fuzzy_suggest(&role_name, &input_query, *threshold, Some(*limit))
+        .await?;
+
+    if *json {
+        println!("{}", serde_json::to_string(&suggestions)?);
+    } else if suggestions.is_empty() {
+        println!(
+            "No suggestions found for '{}' with threshold {}",
+            input_query, threshold
+        );
+    } else {
+        println!(
+            "Suggestions for '{}' (threshold: {}):",
+            input_query, threshold
+        );
+        for s in &suggestions {
+            println!("  {} (similarity: {:.2})", s.term, s.similarity);
+        }
+    }
+
+    Ok(())
+}
+
 async fn run_offline_command(
     command: Command,
     output: CommandOutputConfig,
@@ -986,6 +1048,15 @@ async fn run_offline_command(
     }
 
     let service = TuiService::new(config_path, false).await?;
+
+    // Suggest is a stateful command (needs the thesaurus / role index the
+    // `TuiService` exposes via `fuzzy_suggest`), so it lives in the same
+    // early-return tier as `Search`. Pulling it out ahead of the match keeps
+    // `run_offline_command` from growing another long body and lets the body
+    // take `&Command` (re-destructured internally) just like Search does.
+    if let Command::Suggest { .. } = &command {
+        return handle_suggest_command(&service, &command).await;
+    }
 
     match command {
         Command::Search {
@@ -1565,48 +1636,8 @@ async fn run_offline_command(
 
             Ok(())
         }
-        Command::Suggest {
-            query,
-            role,
-            fuzzy: _,
-            threshold,
-            limit,
-            json,
-        } => {
-            let input_query = match query {
-                Some(q) => q,
-                None => {
-                    use std::io::Read;
-                    let mut buffer = String::new();
-                    std::io::stdin().read_to_string(&mut buffer)?;
-                    buffer.trim().to_string()
-                }
-            };
-
-            let role_name = service.resolve_role(role.as_deref()).await?;
-
-            let suggestions = service
-                .fuzzy_suggest(&role_name, &input_query, threshold, Some(limit))
-                .await?;
-
-            if json {
-                println!("{}", serde_json::to_string(&suggestions)?);
-            } else if suggestions.is_empty() {
-                println!(
-                    "No suggestions found for '{}' with threshold {}",
-                    input_query, threshold
-                );
-            } else {
-                println!(
-                    "Suggestions for '{}' (threshold: {}):",
-                    input_query, threshold
-                );
-                for s in &suggestions {
-                    println!("  {} (similarity: {:.2})", s.term, s.similarity);
-                }
-            }
-
-            Ok(())
+        Command::Suggest { .. } => {
+            unreachable!("Suggest commands are handled after TuiService initialization")
         }
         Command::Hook {
             hook_type,
