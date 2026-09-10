@@ -1694,228 +1694,7 @@ async fn run_offline_command(
         }
 
         #[cfg(feature = "repl-sessions")]
-        Command::Sessions { sub } => {
-            use session_output::*;
-            use terraphim_sessions::SessionService;
-
-            let service = SessionService::new();
-
-            // Load cached sessions from disk
-            let cache_path = get_session_cache_path();
-            if cache_path.exists()
-                && let Ok(data) = std::fs::read_to_string(&cache_path)
-                && let Ok(cached) = serde_json::from_str::<Vec<terraphim_sessions::Session>>(&data)
-            {
-                service.load_sessions(cached).await;
-                if !output.is_machine_readable() {
-                    println!("Loaded sessions from cache.");
-                }
-            }
-
-            match sub {
-                SessionsSub::Sources => {
-                    let sources = service.detect_sources();
-                    if output.is_machine_readable() {
-                        let payload = SourcesOutput {
-                            count: sources.len(),
-                            sources: sources
-                                .into_iter()
-                                .map(|s| {
-                                    let available = s.is_available();
-                                    SourceEntry {
-                                        id: s.id,
-                                        name: s.name,
-                                        available,
-                                    }
-                                })
-                                .collect(),
-                        };
-                        print_json_output(&payload, output.mode)?;
-                    } else if sources.is_empty() {
-                        println!("No session sources detected.");
-                    } else {
-                        println!("Available session sources:");
-                        for source in sources {
-                            let status = if source.is_available() {
-                                "available"
-                            } else {
-                                "not found"
-                            };
-                            println!(
-                                "  - {} ({})",
-                                source.name.unwrap_or_else(|| source.id.clone()),
-                                status
-                            );
-                        }
-                    }
-                    Ok(())
-                }
-                SessionsSub::List { limit } => {
-                    let sessions = service.list_sessions().await;
-                    if output.is_machine_readable() {
-                        let session_entries: Vec<SessionEntry> = sessions
-                            .iter()
-                            .take(limit)
-                            .map(|s| SessionEntry {
-                                id: s.id.to_string(),
-                                title: s.title.clone(),
-                                message_count: s.message_count(),
-                                source: s.source.clone(),
-                            })
-                            .collect();
-                        let shown = session_entries.len();
-                        let payload = SessionListOutput {
-                            total: sessions.len(),
-                            shown,
-                            sessions: session_entries,
-                        };
-                        print_json_output(&payload, output.mode)?;
-                    } else if sessions.is_empty() {
-                        println!("No sessions found.");
-                    } else {
-                        println!("Cached sessions ({} total):", sessions.len());
-                        for session in sessions.iter().take(limit) {
-                            let msg_count = session.message_count();
-                            let title = session.title.as_deref().unwrap_or("(untitled)");
-                            println!("  - {} ({} messages)", title, msg_count);
-                        }
-                        if sessions.len() > limit {
-                            println!("  ... and {} more", sessions.len() - limit);
-                        }
-                    }
-                    Ok(())
-                }
-                SessionsSub::Search { query, limit } => {
-                    let results = service.search(&query).await;
-                    if output.is_machine_readable() {
-                        let entries: Vec<SessionSearchEntry> = results
-                            .iter()
-                            .take(limit)
-                            .map(|s| {
-                                let preview = s
-                                    .messages
-                                    .iter()
-                                    .find(|msg| {
-                                        msg.content.to_lowercase().contains(&query.to_lowercase())
-                                    })
-                                    .map(|msg| {
-                                        let p: String = msg.content.chars().take(100).collect();
-                                        p
-                                    });
-                                SessionSearchEntry {
-                                    id: s.id.to_string(),
-                                    title: s.title.clone(),
-                                    message_count: s.message_count(),
-                                    preview,
-                                }
-                            })
-                            .collect();
-                        let shown = entries.len();
-                        let payload = SessionSearchOutput {
-                            query: query.clone(),
-                            total: results.len(),
-                            shown,
-                            sessions: entries,
-                        };
-                        print_json_output(&payload, output.mode)?;
-                        if results.is_empty() {
-                            std::process::exit(
-                                robot::exit_codes::ExitCode::ErrorNotFound.code().into(),
-                            );
-                        }
-                    } else if results.is_empty() {
-                        println!("No sessions matching '{}'.", query);
-                    } else {
-                        println!("Found {} matching sessions:", results.len());
-                        for session in results.iter().take(limit) {
-                            let title = session.title.as_deref().unwrap_or("(untitled)");
-                            println!("  - {}", title);
-                            for msg in &session.messages {
-                                let content_lower = msg.content.to_lowercase();
-                                if content_lower.contains(&query.to_lowercase()) {
-                                    let preview: String = msg.content.chars().take(100).collect();
-                                    println!("    > {}", preview);
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    Ok(())
-                }
-                SessionsSub::Stats => {
-                    let stats = service.statistics().await;
-                    if output.is_machine_readable() {
-                        let payload = SessionStatsOutput {
-                            total_sessions: stats.total_sessions,
-                            total_messages: stats.total_messages,
-                            total_user_messages: stats.total_user_messages,
-                            total_assistant_messages: stats.total_assistant_messages,
-                            by_source: stats.sessions_by_source,
-                        };
-                        print_json_output(&payload, output.mode)?;
-                    } else {
-                        println!("Session Statistics:");
-                        println!("  Total sessions: {}", stats.total_sessions);
-                        println!("  Total messages: {}", stats.total_messages);
-                        println!("  User messages: {}", stats.total_user_messages);
-                        println!("  Assistant messages: {}", stats.total_assistant_messages);
-                        if !stats.sessions_by_source.is_empty() {
-                            println!("  By source:");
-                            for (source, count) in stats.sessions_by_source {
-                                println!("    - {}: {}", source, count);
-                            }
-                        }
-                    }
-                    Ok(())
-                }
-                SessionsSub::Expand {
-                    id,
-                    context_lines: _,
-                } => {
-                    let session = service.get_session(&id).await;
-                    match session {
-                        None => {
-                            if !output.is_machine_readable() {
-                                eprintln!("Session '{}' not found.", id);
-                            }
-                            std::process::exit(
-                                robot::exit_codes::ExitCode::ErrorNotFound.code().into(),
-                            );
-                        }
-                        Some(session) => {
-                            if output.is_machine_readable() {
-                                let payload = SessionExpandOutput {
-                                    id: session.id.clone(),
-                                    title: session.title.clone(),
-                                    message_count: session.message_count(),
-                                    messages: session
-                                        .messages
-                                        .iter()
-                                        .map(|msg| ExpandedMessage {
-                                            idx: msg.idx,
-                                            role: msg.role.to_string(),
-                                            content: msg.content.clone(),
-                                        })
-                                        .collect(),
-                                };
-                                print_json_output(&payload, output.mode)?;
-                            } else {
-                                let title = session.title.as_deref().unwrap_or("(untitled)");
-                                println!("Session: {} ({})", title, session.id);
-                                println!("Messages: {}", session.message_count());
-                                println!("{}", "=".repeat(80));
-                                for msg in &session.messages {
-                                    println!("[{}]", msg.role);
-                                    println!("{}", msg.content);
-                                    println!("{}", "-".repeat(40));
-                                }
-                            }
-                            Ok(())
-                        }
-                    }
-                }
-            }
-        }
+        Command::Sessions { sub } => handle_sessions_command(sub, &output).await,
 
         Command::Listen {
             identity, config, ..
@@ -1944,6 +1723,240 @@ async fn run_offline_command(
         }
         Command::Search { .. } => {
             unreachable!("Search commands are handled after TuiService initialization")
+        }
+    }
+}
+
+// Post-TuiService arm extracted (step 5.6). The Sessions arm is the largest
+// remaining inline branch (~220 LOC): it shadows the outer TuiService with
+// its own terraphim_sessions::SessionService, loads the on-disk session
+// cache, then fans out over Sources/List/Search/Stats/Expand with
+// machine-readable and human-readable renderings of each.
+//
+// The handler takes `sub: SessionsSub` by value (the match consumes
+// `command`) and `output: &CommandOutputConfig` because every sub-arm
+// branches on `output.is_machine_readable()` / `output.mode`. It does NOT
+// take `&TuiService`: session state lives in SessionService, and the arm
+// never touches the thesaurus or role index.
+async fn handle_sessions_command(sub: SessionsSub, output: &CommandOutputConfig) -> Result<()> {
+    use session_output::*;
+    use terraphim_sessions::SessionService;
+
+    let service = SessionService::new();
+
+    // Load cached sessions from disk
+    let cache_path = get_session_cache_path();
+    if cache_path.exists()
+        && let Ok(data) = std::fs::read_to_string(&cache_path)
+        && let Ok(cached) = serde_json::from_str::<Vec<terraphim_sessions::Session>>(&data)
+    {
+        service.load_sessions(cached).await;
+        if !output.is_machine_readable() {
+            println!("Loaded sessions from cache.");
+        }
+    }
+
+    match sub {
+        SessionsSub::Sources => {
+            let sources = service.detect_sources();
+            if output.is_machine_readable() {
+                let payload = SourcesOutput {
+                    count: sources.len(),
+                    sources: sources
+                        .into_iter()
+                        .map(|s| {
+                            let available = s.is_available();
+                            SourceEntry {
+                                id: s.id,
+                                name: s.name,
+                                available,
+                            }
+                        })
+                        .collect(),
+                };
+                print_json_output(&payload, output.mode)?;
+            } else if sources.is_empty() {
+                println!("No session sources detected.");
+            } else {
+                println!("Available session sources:");
+                for source in sources {
+                    let status = if source.is_available() {
+                        "available"
+                    } else {
+                        "not found"
+                    };
+                    println!(
+                        "  - {} ({})",
+                        source.name.unwrap_or_else(|| source.id.clone()),
+                        status
+                    );
+                }
+            }
+            Ok(())
+        }
+        SessionsSub::List { limit } => {
+            let sessions = service.list_sessions().await;
+            if output.is_machine_readable() {
+                let session_entries: Vec<SessionEntry> = sessions
+                    .iter()
+                    .take(limit)
+                    .map(|s| SessionEntry {
+                        id: s.id.to_string(),
+                        title: s.title.clone(),
+                        message_count: s.message_count(),
+                        source: s.source.clone(),
+                    })
+                    .collect();
+                let shown = session_entries.len();
+                let payload = SessionListOutput {
+                    total: sessions.len(),
+                    shown,
+                    sessions: session_entries,
+                };
+                print_json_output(&payload, output.mode)?;
+            } else if sessions.is_empty() {
+                println!("No sessions found.");
+            } else {
+                println!("Cached sessions ({} total):", sessions.len());
+                for session in sessions.iter().take(limit) {
+                    let msg_count = session.message_count();
+                    let title = session.title.as_deref().unwrap_or("(untitled)");
+                    println!("  - {} ({} messages)", title, msg_count);
+                }
+                if sessions.len() > limit {
+                    println!("  ... and {} more", sessions.len() - limit);
+                }
+            }
+            Ok(())
+        }
+        SessionsSub::Search { query, limit } => {
+            let results = service.search(&query).await;
+            if output.is_machine_readable() {
+                let entries: Vec<SessionSearchEntry> = results
+                    .iter()
+                    .take(limit)
+                    .map(|s| {
+                        let preview = s
+                            .messages
+                            .iter()
+                            .find(|msg| {
+                                msg.content.to_lowercase().contains(&query.to_lowercase())
+                            })
+                            .map(|msg| {
+                                let p: String = msg.content.chars().take(100).collect();
+                                p
+                            });
+                        SessionSearchEntry {
+                            id: s.id.to_string(),
+                            title: s.title.clone(),
+                            message_count: s.message_count(),
+                            preview,
+                        }
+                    })
+                    .collect();
+                let shown = entries.len();
+                let payload = SessionSearchOutput {
+                    query: query.clone(),
+                    total: results.len(),
+                    shown,
+                    sessions: entries,
+                };
+                print_json_output(&payload, output.mode)?;
+                if results.is_empty() {
+                    std::process::exit(
+                        robot::exit_codes::ExitCode::ErrorNotFound.code().into(),
+                    );
+                }
+            } else if results.is_empty() {
+                println!("No sessions matching '{}'.", query);
+            } else {
+                println!("Found {} matching sessions:", results.len());
+                for session in results.iter().take(limit) {
+                    let title = session.title.as_deref().unwrap_or("(untitled)");
+                    println!("  - {}", title);
+                    for msg in &session.messages {
+                        let content_lower = msg.content.to_lowercase();
+                        if content_lower.contains(&query.to_lowercase()) {
+                            let preview: String = msg.content.chars().take(100).collect();
+                            println!("    > {}", preview);
+                            break;
+                        }
+                    }
+                }
+            }
+            Ok(())
+        }
+        SessionsSub::Stats => {
+            let stats = service.statistics().await;
+            if output.is_machine_readable() {
+                let payload = SessionStatsOutput {
+                    total_sessions: stats.total_sessions,
+                    total_messages: stats.total_messages,
+                    total_user_messages: stats.total_user_messages,
+                    total_assistant_messages: stats.total_assistant_messages,
+                    by_source: stats.sessions_by_source,
+                };
+                print_json_output(&payload, output.mode)?;
+            } else {
+                println!("Session Statistics:");
+                println!("  Total sessions: {}", stats.total_sessions);
+                println!("  Total messages: {}", stats.total_messages);
+                println!("  User messages: {}", stats.total_user_messages);
+                println!("  Assistant messages: {}", stats.total_assistant_messages);
+                if !stats.sessions_by_source.is_empty() {
+                    println!("  By source:");
+                    for (source, count) in stats.sessions_by_source {
+                        println!("    - {}: {}", source, count);
+                    }
+                }
+            }
+            Ok(())
+        }
+        SessionsSub::Expand {
+            id,
+            context_lines: _,
+        } => {
+            let session = service.get_session(&id).await;
+            match session {
+                None => {
+                    if !output.is_machine_readable() {
+                        eprintln!("Session '{}' not found.", id);
+                    }
+                    std::process::exit(
+                        robot::exit_codes::ExitCode::ErrorNotFound.code().into(),
+                    );
+                }
+                Some(session) => {
+                    if output.is_machine_readable() {
+                        let payload = SessionExpandOutput {
+                            id: session.id.clone(),
+                            title: session.title.clone(),
+                            message_count: session.message_count(),
+                            messages: session
+                                .messages
+                                .iter()
+                                .map(|msg| ExpandedMessage {
+                                    idx: msg.idx,
+                                    role: msg.role.to_string(),
+                                    content: msg.content.clone(),
+                                })
+                                .collect(),
+                        };
+                        print_json_output(&payload, output.mode)?;
+                    } else {
+                        let title = session.title.as_deref().unwrap_or("(untitled)");
+                        println!("Session: {} ({})", title, session.id);
+                        println!("Messages: {}", session.message_count());
+                        println!("{}", "=".repeat(80));
+                        for msg in &session.messages {
+                            println!("[{}]", msg.role);
+                            println!("{}", msg.content);
+                            println!("{}", "-".repeat(40));
+                        }
+                    }
+                    Ok(())
+                }
+            }
         }
     }
 }
