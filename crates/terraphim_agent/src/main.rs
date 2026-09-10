@@ -761,6 +761,22 @@ async fn handle_check_update_command() -> Result<()> {
     }
 }
 
+async fn handle_update_command() -> Result<()> {
+    println!("Updating terraphim-agent...");
+    let config = UpdaterConfig::new("terraphim-agent").with_version(env!("CARGO_PKG_VERSION"));
+    let updater = TerraphimUpdater::new(config);
+    match updater.check_and_update().await {
+        Ok(status) => {
+            println!("{}", status);
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!("Update failed: {}", e);
+            std::process::exit(1);
+        }
+    }
+}
+
 struct SetupArgs {
     template: Option<String>,
     path: Option<String>,
@@ -900,19 +916,7 @@ async fn run_offline_command(
 
     // Update is stateless - handle before TuiService initialization
     if let Command::Update = &command {
-        println!("Updating terraphim-agent...");
-        let config = UpdaterConfig::new("terraphim-agent").with_version(env!("CARGO_PKG_VERSION"));
-        let updater = TerraphimUpdater::new(config);
-        match updater.check_and_update().await {
-            Ok(status) => {
-                println!("{}", status);
-                return Ok(());
-            }
-            Err(e) => {
-                eprintln!("Update failed: {}", e);
-                std::process::exit(1);
-            }
-        }
+        return handle_update_command().await;
     }
 
     // Config validate is stateless - handle before TuiService initialization
