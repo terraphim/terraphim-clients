@@ -807,8 +807,7 @@ struct SetupArgs {
 
 async fn handle_setup_command(args: SetupArgs, service: &TuiService) -> Result<()> {
     use onboarding::{
-        SetupMode, SetupResult, apply_template, list_templates as get_templates,
-        run_setup_wizard,
+        SetupMode, SetupResult, apply_template, list_templates as get_templates, run_setup_wizard,
     };
 
     // List templates and exit if requested
@@ -1085,6 +1084,236 @@ async fn handle_replace_command(args: ReplaceArgs, service: &TuiService) -> Resu
         print!("{}", hook_result.result);
     }
 
+// Largest single extraction from `run_offline_command`. The `Search` arm is the
+// original entry point of `run_offline_command` and carries the full
+// `Command::Search` variant destructuring (eleven fields) along with the
+// machine-readable formatter path and the `fail-on-empty` exit-code path.
+//
+// Passing `&Command` rather than a dedicated `SearchArgs` struct keeps this
+// diff focused on the extraction itself. The body destructures `search`
+// internally via `let Command::Search { .. } = search else { unreachable!() }`,
+// so the caller has already verified the variant. `output` is taken by
+// reference because the body inspects `output.is_machine_readable()`,
+// `output.mode`, and `output.robot`; passing it through here means the
+// surrounding match block no longer needs to keep it in scope across arms.
+async fn handle_search_command(
+    service: &TuiService,
+    output: &CommandOutputConfig,
+    search: &Command,
+) -> Result<()> {
+    let Command::Search {
+        query,
+        terms,
+        operator,
+        role,
+        limit,
+        fail_on_empty,
+        include_pinned,
+        min_quality,
+        max_tokens,
+        max_content_length,
+        fields,
+    } = search
+    else {
+        unreachable!("handle_search_command called with non-Search command")
+    };
+
+    let (role_name, auto) = service
+        .resolve_or_auto_route(role.as_deref(), query)
+        .await?;
+    if let Some(ref ar) = auto {
+        eprintln!("{}", format_auto_route_line(ar));
+    }
+
+    let results = if let Some(additional_terms) = terms {
+        // Multi-term query with logical operators
+        let mut all_terms = vec![query.as_str().to_string()];
+        all_terms.extend(additional_terms.iter().cloned());
+
+        let op_str = match operator {
+            Some(LogicalOperatorCli::And) => "AND",
+            Some(LogicalOperatorCli::Or) | None => "OR", // Default to OR
+        };
+        if !output.is_machine_readable() {
+            println!(
+                "Multi-term search: {} terms using {} operator",
+                all_terms.len(),
+                op_str
+            );
+        }
+
+        let search_query = SearchQuery {
+            search_term: NormalizedTermValue::from(all_terms[0].as_str()),
+            search_terms: if all_terms.len() > 1 {
+                Some(
+                    all_terms[1..]
+                        .iter()
+                        .map(|t| NormalizedTermValue::from(t.as_str()))
+                        .collect(),
+                )
+            } else {
+                None
+            },
+            operator: operator.as_ref().map(|op| op.clone().into()),
+            skip: Some(0),
+            limit: Some(*limit),
+            include_pinned: *include_pinned,
+            role: Some(role_name.clone()),
+            layer: Layer::default(),
+            min_quality: *min_quality,
+        };
+
+        service.search_with_query(&search_query).await?
+    } else {
+        // Single term query
+        let search_query = SearchQuery {
+            search_term: NormalizedTermValue::from(query.as_str()),
+            search_terms: None,
+            operator: None,
+            skip: Some(0),
+            limit: Some(*limit),
+            include_pinned: *include_pinned,
+            role: Some(role_name.clone()),
+            layer: Layer::default(),
+            min_quality: *min_quality,
+        };
+        service.search_with_query(&search_query).await?
+    };
+
+    let results_count = results.len();
+    if output.is_machine_readable() {
+        use robot::schema::{SearchResultItem, SearchResultsData};
+        use robot::{ResponseMeta, RobotConfig, RobotFormatter, RobotResponse};
+        use std::time::Instant;
+
+        let start = Instant::now();
+        let robot_format = match output.mode {
+            CommandOutputMode::JsonCompact => robot::output::OutputFormat::Minimal,
+            _ => robot::output::OutputFormat::Json,
+        };
+        let mut robot_config = RobotConfig::new()
+            .with_format(robot_format)
+            .with_max_results(*limit);
+        if let Some(mt) = max_tokens {
+            robot_config = robot_config.with_max_tokens(*mt);
+        } else if output.robot {
+            robot_config = robot_config.with_max_tokens(8000);
+        }
+        if let Some(mcl) = max_content_length {
+            robot_config = robot_config.with_max_content_length(*mcl);
+        } else if output.robot {
+            robot_config = robot_config.with_max_content_length(2000);
+        }
+        if let Some(fm) = fields {
+            robot_config = robot_config.with_fields(fm.clone());
+        }
+
+        let formatter = RobotFormatter::new(robot_config.clone());
+        let max_results = robot_config.max_results.unwrap_or(*limit);
+        let truncated_results: Vec<_> = results.into_iter().take(max_results).collect();
+        let total = truncated_results.len();
+
+        let items: Vec<SearchResultItem> = truncated_results
+            .iter()
+            .enumerate()
+            .map(|(i, doc)| {
+                let preview = doc.description.as_deref().or(if doc.body.is_empty() {
+                    None
+                } else {
+                    Some(doc.body.as_str())
+                });
+                let (preview_text, preview_truncated) = match preview {
+                    Some(text) => {
+                        let (t, was_truncated) = formatter.truncate_content(text.trim());
+                        (Some(t), was_truncated)
+                    }
+                    None => (None, false),
+                };
+                SearchResultItem {
+                    rank: i + 1,
+                    id: doc.id.clone(),
+                    title: doc.title.clone(),
+                    url: if doc.url.is_empty() {
+                        None
+                    } else {
+                        Some(doc.url.clone())
+                    },
+                    score: doc.rank.unwrap_or_default() as f64,
+                    preview: preview_text,
+                    source: None,
+                    date: None,
+                    preview_truncated,
+                }
+            })
+            .collect();
+
+        let (concepts_matched, thesaurus_matched) = match service.get_thesaurus(&role_name).await {
+            Ok(thesaurus) => {
+                let concepts = terraphim_automata::compute_concepts_matched(query, &thesaurus);
+                // `thesaurus_matched` used to be a naive substring scan, so any
+                // term appearing *inside* a longer query word was reported --
+                // the two-letter term `ce` matched `con(ce)pt`. Derive it from
+                // the same boundary-aware matcher that produces `concepts`, so
+                // the two fields can never disagree.
+                let matched: std::collections::HashSet<String> =
+                    concepts.iter().map(|c| c.to_lowercase()).collect();
+                let thesaurus_terms: Vec<String> = thesaurus
+                    .keys()
+                    .filter(|key| matched.contains(&key.to_string().to_lowercase()))
+                    .map(|key| key.to_string())
+                    .collect();
+                (concepts, thesaurus_terms)
+            }
+            Err(e) => {
+                log::debug!(
+                    "get_thesaurus failed for {}: {}; concepts_matched empty",
+                    role_name,
+                    e
+                );
+                (Vec::new(), Vec::new())
+            }
+        };
+
+        let wildcard_fallback = concepts_matched.is_empty();
+        let data = SearchResultsData {
+            results: items,
+            total_matches: total,
+            concepts_matched,
+            thesaurus_matched,
+            wildcard_fallback,
+        };
+
+        let meta = ResponseMeta::new("search")
+            .with_elapsed(start.elapsed().as_millis() as u64)
+            .with_query(query)
+            .with_role(role_name.as_str());
+        let response = RobotResponse::success(data, meta);
+        let output_str = formatter.format(&response)?;
+        println!("{}", output_str);
+    } else {
+        for doc in results.iter() {
+            let snippet = doc
+                .description
+                .as_deref()
+                .or(if doc.body.is_empty() {
+                    None
+                } else {
+                    Some(doc.body.as_str())
+                })
+                .map(|s| truncate_snippet(s.trim(), 120));
+            println!("[{}] {}", doc.rank.unwrap_or_default(), doc.title);
+            if !doc.url.is_empty() {
+                println!("    {}", doc.url);
+            }
+            if let Some(snip) = snippet {
+                println!("    {}", snip);
+            }
+            println!();
+        }
+    }
+    if *fail_on_empty && results_count == 0 {
+        std::process::exit(robot::exit_codes::ExitCode::ErrorNotFound.code().into());
+    }
     Ok(())
 }
 
@@ -1178,222 +1407,17 @@ async fn run_offline_command(
     // take `&Command` (re-destructured internally) just like Search does.
     if let Command::Suggest { .. } = &command {
         return handle_suggest_command(&service, &command).await;
+    // Search is the largest single arm. Pulling it out ahead of the match
+    // block mirrors how Guard / CheckUpdate / Update / Cache / Learn / Memory
+    // are already handled -- they short-circuit before the match consumes
+    // `command` so they can pass `&command` (or move sub-fields out of it)
+    // to the dedicated handler. The remaining arms all need to consume
+    // `command` directly, so the match stays below.
+    if let Command::Search { .. } = &command {
+        return handle_search_command(&service, &output, &command).await;
     }
 
     match command {
-        Command::Search {
-            query,
-            terms,
-            operator,
-            role,
-            limit,
-            fail_on_empty,
-            include_pinned,
-            min_quality,
-            max_tokens,
-            max_content_length,
-            fields,
-        } => {
-            let (role_name, auto) = service
-                .resolve_or_auto_route(role.as_deref(), &query)
-                .await?;
-            if let Some(ref ar) = auto {
-                eprintln!("{}", format_auto_route_line(ar));
-            }
-
-            let results = if let Some(additional_terms) = terms {
-                // Multi-term query with logical operators
-                let mut all_terms = vec![query.clone()];
-                all_terms.extend(additional_terms);
-
-                let op_str = match operator {
-                    Some(LogicalOperatorCli::And) => "AND",
-                    Some(LogicalOperatorCli::Or) | None => "OR", // Default to OR
-                };
-                if !output.is_machine_readable() {
-                    println!(
-                        "Multi-term search: {} terms using {} operator",
-                        all_terms.len(),
-                        op_str
-                    );
-                }
-
-                let search_query = SearchQuery {
-                    search_term: NormalizedTermValue::from(all_terms[0].as_str()),
-                    search_terms: if all_terms.len() > 1 {
-                        Some(
-                            all_terms[1..]
-                                .iter()
-                                .map(|t| NormalizedTermValue::from(t.as_str()))
-                                .collect(),
-                        )
-                    } else {
-                        None
-                    },
-                    operator: operator.map(|op| op.into()),
-                    skip: Some(0),
-                    limit: Some(limit),
-                    include_pinned,
-                    role: Some(role_name.clone()),
-                    layer: Layer::default(),
-                    min_quality,
-                };
-
-                service.search_with_query(&search_query).await?
-            } else {
-                // Single term query
-                let search_query = SearchQuery {
-                    search_term: NormalizedTermValue::from(query.as_str()),
-                    search_terms: None,
-                    operator: None,
-                    skip: Some(0),
-                    limit: Some(limit),
-                    include_pinned,
-                    role: Some(role_name.clone()),
-                    layer: Layer::default(),
-                    min_quality,
-                };
-                service.search_with_query(&search_query).await?
-            };
-
-            let results_count = results.len();
-            if output.is_machine_readable() {
-                use robot::schema::{SearchResultItem, SearchResultsData};
-                use robot::{ResponseMeta, RobotConfig, RobotFormatter, RobotResponse};
-                use std::time::Instant;
-
-                let start = Instant::now();
-                let robot_format = match output.mode {
-                    CommandOutputMode::JsonCompact => robot::output::OutputFormat::Minimal,
-                    _ => robot::output::OutputFormat::Json,
-                };
-                let mut robot_config = RobotConfig::new()
-                    .with_format(robot_format)
-                    .with_max_results(limit);
-                if let Some(mt) = max_tokens {
-                    robot_config = robot_config.with_max_tokens(mt);
-                } else if output.robot {
-                    robot_config = robot_config.with_max_tokens(8000);
-                }
-                if let Some(mcl) = max_content_length {
-                    robot_config = robot_config.with_max_content_length(mcl);
-                } else if output.robot {
-                    robot_config = robot_config.with_max_content_length(2000);
-                }
-                if let Some(fm) = fields {
-                    robot_config = robot_config.with_fields(fm);
-                }
-
-                let formatter = RobotFormatter::new(robot_config.clone());
-                let max_results = robot_config.max_results.unwrap_or(limit);
-                let truncated_results: Vec<_> = results.into_iter().take(max_results).collect();
-                let total = truncated_results.len();
-
-                let items: Vec<SearchResultItem> = truncated_results
-                    .iter()
-                    .enumerate()
-                    .map(|(i, doc)| {
-                        let preview = doc.description.as_deref().or(if doc.body.is_empty() {
-                            None
-                        } else {
-                            Some(doc.body.as_str())
-                        });
-                        let (preview_text, preview_truncated) = match preview {
-                            Some(text) => {
-                                let (t, was_truncated) = formatter.truncate_content(text.trim());
-                                (Some(t), was_truncated)
-                            }
-                            None => (None, false),
-                        };
-                        SearchResultItem {
-                            rank: i + 1,
-                            id: doc.id.clone(),
-                            title: doc.title.clone(),
-                            url: if doc.url.is_empty() {
-                                None
-                            } else {
-                                Some(doc.url.clone())
-                            },
-                            score: doc.rank.unwrap_or_default() as f64,
-                            preview: preview_text,
-                            source: None,
-                            date: None,
-                            preview_truncated,
-                        }
-                    })
-                    .collect();
-
-                let (concepts_matched, thesaurus_matched) =
-                    match service.get_thesaurus(&role_name).await {
-                        Ok(thesaurus) => {
-                            let concepts =
-                                terraphim_automata::compute_concepts_matched(&query, &thesaurus);
-                            // `thesaurus_matched` used to be a naive substring scan, so any
-                            // term appearing *inside* a longer query word was reported --
-                            // the two-letter term `ce` matched `con(ce)pt`. Derive it from
-                            // the same boundary-aware matcher that produces `concepts`, so
-                            // the two fields can never disagree.
-                            let matched: std::collections::HashSet<String> =
-                                concepts.iter().map(|c| c.to_lowercase()).collect();
-                            let thesaurus_terms: Vec<String> = thesaurus
-                                .keys()
-                                .filter(|key| matched.contains(&key.to_string().to_lowercase()))
-                                .map(|key| key.to_string())
-                                .collect();
-                            (concepts, thesaurus_terms)
-                        }
-                        Err(e) => {
-                            log::debug!(
-                                "get_thesaurus failed for {}: {}; concepts_matched empty",
-                                role_name,
-                                e
-                            );
-                            (Vec::new(), Vec::new())
-                        }
-                    };
-
-                let wildcard_fallback = concepts_matched.is_empty();
-                let data = SearchResultsData {
-                    results: items,
-                    total_matches: total,
-                    concepts_matched,
-                    thesaurus_matched,
-                    wildcard_fallback,
-                };
-
-                let meta = ResponseMeta::new("search")
-                    .with_elapsed(start.elapsed().as_millis() as u64)
-                    .with_query(&query)
-                    .with_role(role_name.as_str());
-                let response = RobotResponse::success(data, meta);
-                let output_str = formatter.format(&response)?;
-                println!("{}", output_str);
-            } else {
-                for doc in results.iter() {
-                    let snippet = doc
-                        .description
-                        .as_deref()
-                        .or(if doc.body.is_empty() {
-                            None
-                        } else {
-                            Some(doc.body.as_str())
-                        })
-                        .map(|s| truncate_snippet(s.trim(), 120));
-                    println!("[{}] {}", doc.rank.unwrap_or_default(), doc.title);
-                    if !doc.url.is_empty() {
-                        println!("    {}", doc.url);
-                    }
-                    if let Some(snip) = snippet {
-                        println!("    {}", snip);
-                    }
-                    println!();
-                }
-            }
-            if fail_on_empty && results_count == 0 {
-                std::process::exit(robot::exit_codes::ExitCode::ErrorNotFound.code().into());
-            }
-            Ok(())
-        }
         Command::Roles { sub } => {
             match sub {
                 RolesSub::List => {
@@ -1903,6 +1927,9 @@ async fn run_offline_command(
         }
         Command::Cache { .. } => {
             unreachable!("Cache commands are handled before TuiService initialization")
+        }
+        Command::Search { .. } => {
+            unreachable!("Search commands are handled after TuiService initialization")
         }
     }
 }
