@@ -839,8 +839,15 @@ pub(crate) enum MemorySub {
         query: String,
     },
     /// Show what hooks would inject for a given prompt or diff
-    /// (routes to `terraphim_hooks` diff)
+    ///
+    /// Runs the role's thesaurus over the input with the same
+    /// `ReplacementService::find_matches` the hook pipeline uses, and lists
+    /// every term that would be rewritten (with its normalised form and
+    /// position). Reads from stdin when no prompt is given.
     Apply {
+        /// Role scope for the hook preview (defaults to the selected role)
+        #[arg(long)]
+        role: Option<String>,
         /// Prompt text to diff hook application against
         #[arg(long)]
         prompt: Option<String>,

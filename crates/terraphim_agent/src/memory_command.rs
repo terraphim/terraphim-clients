@@ -277,16 +277,76 @@ pub(crate) async fn run_memory_command(
             }
             Ok(())
         }
-        MemorySub::Apply { prompt } => {
+        MemorySub::Apply { role, prompt } => {
+            // Real hook preview, not a scaffold: run the role's thesaurus
+            // over the input with the same find_matches the hook pipeline
+            // uses, and list every term that would be rewritten. Refs #237.
+            let input = match prompt {
+                Some(p) => p,
+                None => {
+                    use std::io::Read;
+                    let mut buffer = String::new();
+                    std::io::stdin().read_to_string(&mut buffer)?;
+                    buffer.trim().to_string()
+                }
+            };
+
+            // Single-role service: same per-call cost argument as retrieve
+            // (Refs #206).
+            let (service, role_name) =
+                TuiService::new_for_single_role(config_path, role.as_deref()).await?;
+            let thesaurus = service.get_thesaurus(&role_name).await.map_err(|e| {
+                anyhow::anyhow!(
+                    "no knowledge graph available for role '{}': {}",
+                    role_name,
+                    e
+                )
+            })?;
+
+            let replacement_service = terraphim_hooks::ReplacementService::new(thesaurus);
+            let matches = replacement_service.find_matches(&input)?;
+
             if output.is_machine_readable() {
+                let json_matches: Vec<serde_json::Value> = matches
+                    .iter()
+                    .map(|m| {
+                        serde_json::json!({
+                            "term": m.term,
+                            "normalized_term": m.normalized_term.value.to_string(),
+                            "start": m.pos.map(|(s, _)| s),
+                            "end": m.pos.map(|(_, e)| e),
+                        })
+                    })
+                    .collect();
                 println!(
                     "{}",
-                    serde_json::json!({ "status": "ok", "action": "apply", "prompt": prompt })
+                    serde_json::json!({
+                        "status": "ok",
+                        "action": "apply",
+                        "role": role_name.to_string(),
+                        "count": json_matches.len(),
+                        "matches": json_matches,
+                    })
+                );
+            } else if matches.is_empty() {
+                println!(
+                    "No hook injections for the given input (role: {}).",
+                    role_name
                 );
             } else {
-                println!("Memory apply: showing what hooks would inject for prompt");
-                if let Some(p) = prompt {
-                    println!("  prompt: {}", truncate_snippet(&p, 200));
+                println!(
+                    "Hooks would inject {} replacement(s) (role: {}):",
+                    matches.len(),
+                    role_name
+                );
+                for m in &matches {
+                    match m.pos {
+                        Some((start, end)) => println!(
+                            "  - '{}' -> {} (at {}..{})",
+                            m.term, m.normalized_term.value, start, end
+                        ),
+                        None => println!("  - '{}' -> {}", m.term, m.normalized_term.value),
+                    }
                 }
             }
             Ok(())
