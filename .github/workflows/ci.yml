@@ -63,7 +63,8 @@ jobs:
       # #95: isolated packaged install-graph regression.
       - run: cargo nextest run -p terraphim_agent --test packaged_install_graph_regression --profile ci
 
-  # Stage 3: coverage gate (Linux only; threshold only ever increases)
+  # Stage 3: coverage gate (Linux only; threshold only ever increases).
+  # --ignore-run-fail: the test job owns test failures; this job owns the number.
   coverage:
     needs: check
     runs-on: ubuntu-latest
@@ -75,7 +76,7 @@ jobs:
           components: llvm-tools
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-llvm-cov
-      - run: cargo llvm-cov --workspace --lib --lcov --output-path lcov.info
+      - run: cargo llvm-cov --workspace --lib --lcov --output-path lcov.info --ignore-run-fail
       - run: cargo llvm-cov report --fail-under-lines 65
       - uses: actions/upload-artifact@v4
         with:

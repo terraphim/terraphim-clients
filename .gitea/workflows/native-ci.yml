@@ -78,13 +78,15 @@ jobs:
       # steps: the runner allowlist rejects non-cargo programs).
       - run: cargo nextest run -p terraphim_agent --test packaged_install_graph_regression --test ci_guards --profile ci
   # Stage 3: coverage gate. Threshold only ever goes up (docs/ci-gap-analysis.md).
+  # --ignore-run-fail: the test job owns test failures; this job owns the
+  # percentage, so a red test must not hide the coverage number.
   coverage:
     needs: check
     runs-on: terraphim-native
     steps:
       - run: rustup component add llvm-tools
       - run: cargo install cargo-llvm-cov --locked
-      - run: cargo llvm-cov --workspace --lib --lcov --output-path lcov.info
+      - run: cargo llvm-cov --workspace --lib --lcov --output-path lcov.info --ignore-run-fail
       - run: cargo llvm-cov report --fail-under-lines 65
   # Stage 4: UB gates on nightly (from the #252 UB_RUNBOOK). Miri covers the
   # pure-computation crates only; tokio/reqwest paths are unsupported by Miri.
