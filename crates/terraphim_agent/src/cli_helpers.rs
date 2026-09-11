@@ -70,7 +70,9 @@ mod truncate_snippet_tests {
 ///
 /// Exact format pinned by the design (section 5):
 ///   `[auto-route] picked role "<name>" (score=<n>, candidates=<m>); to override, pass --role`
-pub(crate) fn format_auto_route_line(result: &terraphim_service::auto_route::AutoRouteResult) -> String {
+pub(crate) fn format_auto_route_line(
+    result: &terraphim_service::auto_route::AutoRouteResult,
+) -> String {
     format!(
         "[auto-route] picked role \"{}\" (score={}, candidates={}); to override, pass --role",
         result.role.as_str(),

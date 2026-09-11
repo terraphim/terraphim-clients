@@ -1004,10 +1004,8 @@ async fn handle_replace_command(args: ReplaceArgs, service: &TuiService) -> Resu
         Ok(t) => t,
         Err(e) => {
             if args.fail_open {
-                let hook_result = terraphim_hooks::HookResult::fail_open(
-                    input_text.clone(),
-                    e.to_string(),
-                );
+                let hook_result =
+                    terraphim_hooks::HookResult::fail_open(input_text.clone(), e.to_string());
                 if args.json {
                     println!("{}", serde_json::to_string(&hook_result)?);
                 } else {
@@ -1021,8 +1019,8 @@ async fn handle_replace_command(args: ReplaceArgs, service: &TuiService) -> Resu
         }
     };
 
-    let replacement_service = terraphim_hooks::ReplacementService::new(thesaurus.clone())
-        .with_link_type(link_type);
+    let replacement_service =
+        terraphim_hooks::ReplacementService::new(thesaurus.clone()).with_link_type(link_type);
 
     let hook_result = match args.boundary {
         BoundaryMode::None => {
@@ -1072,10 +1070,7 @@ async fn handle_replace_command(args: ReplaceArgs, service: &TuiService) -> Resu
                 }
                 Err(e) => {
                     if args.fail_open {
-                        terraphim_hooks::HookResult::fail_open(
-                            input_text.clone(),
-                            e.to_string(),
-                        )
+                        terraphim_hooks::HookResult::fail_open(input_text.clone(), e.to_string())
                     } else {
                         return Err(anyhow::anyhow!("Failed to find matches: {}", e));
                     }
@@ -1438,19 +1433,49 @@ async fn run_offline_command(
             role,
             top_k,
             pinned,
-        } => handle_graph_command(GraphArgs { role, top_k, pinned }, &service).await,
+        } => {
+            handle_graph_command(
+                GraphArgs {
+                    role,
+                    top_k,
+                    pinned,
+                },
+                &service,
+            )
+            .await
+        }
         Command::Kg { sub } => handle_kg_command(sub, &service).await,
         #[cfg(feature = "llm")]
         Command::Chat {
             role,
             prompt,
             model,
-        } => handle_chat_command(ChatArgs { role, prompt, model }, &service).await,
+        } => {
+            handle_chat_command(
+                ChatArgs {
+                    role,
+                    prompt,
+                    model,
+                },
+                &service,
+            )
+            .await
+        }
         Command::Extract {
             text,
             role,
             exclude_term,
-        } => handle_extract_command(ExtractArgs { text, role, exclude_term }, &service).await,
+        } => {
+            handle_extract_command(
+                ExtractArgs {
+                    text,
+                    role,
+                    exclude_term,
+                },
+                &service,
+            )
+            .await
+        }
         Command::Replace {
             text,
             role,
@@ -1696,9 +1721,7 @@ async fn handle_sessions_command(sub: SessionsSub, output: &CommandOutputConfig)
                         let preview = s
                             .messages
                             .iter()
-                            .find(|msg| {
-                                msg.content.to_lowercase().contains(&query.to_lowercase())
-                            })
+                            .find(|msg| msg.content.to_lowercase().contains(&query.to_lowercase()))
                             .map(|msg| {
                                 let p: String = msg.content.chars().take(100).collect();
                                 p
@@ -1720,9 +1743,7 @@ async fn handle_sessions_command(sub: SessionsSub, output: &CommandOutputConfig)
                 };
                 print_json_output(&payload, output.mode)?;
                 if results.is_empty() {
-                    std::process::exit(
-                        robot::exit_codes::ExitCode::ErrorNotFound.code().into(),
-                    );
+                    std::process::exit(robot::exit_codes::ExitCode::ErrorNotFound.code().into());
                 }
             } else if results.is_empty() {
                 println!("No sessions matching '{}'.", query);
@@ -1779,9 +1800,7 @@ async fn handle_sessions_command(sub: SessionsSub, output: &CommandOutputConfig)
                     if !output.is_machine_readable() {
                         eprintln!("Session '{}' not found.", id);
                     }
-                    std::process::exit(
-                        robot::exit_codes::ExitCode::ErrorNotFound.code().into(),
-                    );
+                    std::process::exit(robot::exit_codes::ExitCode::ErrorNotFound.code().into());
                 }
                 Some(session) => {
                     if output.is_machine_readable() {
@@ -1866,9 +1885,7 @@ async fn handle_config_command(sub: ConfigSub, service: &TuiService) -> Result<(
                 },
                 None => {
                     eprintln!("No role_config set in settings.toml. Nothing to reload.");
-                    eprintln!(
-                        "Add role_config = \"path/to/roles.json\" to your settings.toml"
-                    );
+                    eprintln!("Add role_config = \"path/to/roles.json\" to your settings.toml");
                     std::process::exit(1);
                 }
             }
@@ -1899,10 +1916,7 @@ async fn handle_roles_command(sub: RolesSub, service: &TuiService) -> Result<()>
                 .find_role_by_name_or_shortname(&name)
                 .await
                 .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "Role '{}' not found (checked name and shortname)",
-                        name
-                    )
+                    anyhow::anyhow!("Role '{}' not found (checked name and shortname)", name)
                 })?;
             service.update_selected_role(role_name.clone()).await?;
             service.save_config().await?;
@@ -1921,7 +1935,11 @@ struct GraphArgs {
 }
 
 async fn handle_graph_command(args: GraphArgs, service: &TuiService) -> Result<()> {
-    let GraphArgs { role, top_k, pinned } = args;
+    let GraphArgs {
+        role,
+        top_k,
+        pinned,
+    } = args;
     let role_name = service.resolve_role(role.as_deref()).await?;
 
     if pinned {
@@ -1978,7 +1996,11 @@ struct ChatArgs {
 
 #[cfg(feature = "llm")]
 async fn handle_chat_command(args: ChatArgs, service: &TuiService) -> Result<()> {
-    let ChatArgs { role, prompt, model } = args;
+    let ChatArgs {
+        role,
+        prompt,
+        model,
+    } = args;
     let role_name = service.resolve_role(role.as_deref()).await?;
 
     let response = service.chat(&role_name, &prompt, model).await?;
@@ -1996,7 +2018,11 @@ struct ExtractArgs {
 }
 
 async fn handle_extract_command(args: ExtractArgs, service: &TuiService) -> Result<()> {
-    let ExtractArgs { text, role, exclude_term } = args;
+    let ExtractArgs {
+        text,
+        role,
+        exclude_term,
+    } = args;
     let role_name = service.resolve_role(role.as_deref()).await?;
 
     let results = service
@@ -2121,8 +2147,8 @@ async fn handle_hook_command(args: HookArgs, service: &TuiService) -> Result<()>
     // after execution or on text inputs and do not need a guard, so
     // they keep the user's explicit `--with-guard` setting. An
     // explicit `--no-with-guard` overrides everything.
-    let with_guard = !args.no_with_guard
-        && (args.with_guard || matches!(args.hook_type, HookType::PreToolUse));
+    let with_guard =
+        !args.no_with_guard && (args.with_guard || matches!(args.hook_type, HookType::PreToolUse));
     // Read JSON input from argument or stdin
     let input_json = match args.input {
         Some(i) => i,
@@ -2186,8 +2212,7 @@ async fn handle_hook_command(args: HookArgs, service: &TuiService) -> Result<()>
                     // where any substring match could silently mutate
                     // a destructive command (Refs #126).
                     let thesaurus = service.get_thesaurus(&role_name).await?;
-                    let replacement_service =
-                        terraphim_hooks::ReplacementService::new(thesaurus);
+                    let replacement_service = terraphim_hooks::ReplacementService::new(thesaurus);
                     let hook_result = replacement_service.replace_fail_open(command);
 
                     let kg_validation = kg_validation::validate_command_against_kg(command);
