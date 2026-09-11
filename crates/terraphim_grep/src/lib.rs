@@ -39,7 +39,9 @@ pub use hybrid_searcher::{
 pub use kg_curation::KgCurationRlm;
 pub use rlm_context::RlmContext;
 pub use signatures::{AnswerWithCitations, Citation, Match, NewConcept, RlmSignature};
-pub use sufficiency_judge::{HeuristicThresholds, Sufficiency, SufficiencyJudge};
+pub use sufficiency_judge::{
+    HeuristicThresholds, Sufficiency, SufficiencyJudge, SufficiencyMetrics,
+};
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct GrepResult {
@@ -47,6 +49,9 @@ pub struct GrepResult {
     pub answer: Option<AnswerWithCitations>,
     pub concepts: Vec<KgConcept>,
     pub sufficiency: SufficiencyState,
+    /// Human-readable explanation of the sufficiency decision, including the
+    /// measurements and thresholds behind it. Refs #87.
+    pub sufficiency_explanation: String,
     pub stats: GrepStats,
 }
 
@@ -130,6 +135,7 @@ impl TerraphimGrep {
         chunks: Vec<RetrievedChunk>,
         hybrid_results: HybridResults,
         search_latency_ms: u64,
+        explanation: String,
     ) -> GrepResult {
         let stats = GrepStats {
             search_latency_ms,
@@ -143,6 +149,7 @@ impl TerraphimGrep {
             answer: None,
             concepts: hybrid_results.kg_concepts,
             sufficiency: SufficiencyState::SearchOnly,
+            sufficiency_explanation: explanation,
             stats,
         }
     }
@@ -162,13 +169,28 @@ impl TerraphimGrep {
 
         let search_latency_ms = start.elapsed().as_millis() as u64;
 
-        let sufficiency = self.sufficiency_judge.judge(&hybrid_results, query);
+        let (sufficiency, metrics) = self
+            .sufficiency_judge
+            .judge_with_metrics(&hybrid_results, query);
+        let thresholds = self.sufficiency_judge.thresholds();
 
         match sufficiency {
             sufficiency_judge::Sufficiency::Sufficient(chunks) => Ok(Self::search_only_result(
                 chunks,
                 hybrid_results,
                 search_latency_ms,
+                format!(
+                    "Results sufficient on their own: coverage {:.2} >= {:.2}, KG confidence \
+                     {:.2} >= {:.2}, diversity {} >= {} across {} chunks; answered directly \
+                     from search, no LLM was called.",
+                    metrics.coverage,
+                    thresholds.min_coverage,
+                    metrics.kg_confidence,
+                    thresholds.min_kg_confidence,
+                    metrics.diversity,
+                    thresholds.min_diversity,
+                    metrics.chunk_count,
+                ),
             )),
             sufficiency_judge::Sufficiency::NeedsSynthesis(chunks) => {
                 if !Self::rlm_requested(&options) {
@@ -177,14 +199,46 @@ impl TerraphimGrep {
                          (pass --answer or --force-rlm to synthesise)",
                         chunks.len()
                     );
+                    let mut below = Vec::new();
+                    if metrics.coverage < thresholds.min_coverage {
+                        below.push(format!(
+                            "coverage {:.2} < {:.2}",
+                            metrics.coverage, thresholds.min_coverage
+                        ));
+                    }
+                    if metrics.kg_confidence < thresholds.min_kg_confidence {
+                        below.push(format!(
+                            "KG confidence {:.2} < {:.2}",
+                            metrics.kg_confidence, thresholds.min_kg_confidence
+                        ));
+                    }
+                    if metrics.diversity < thresholds.min_diversity {
+                        below.push(format!(
+                            "diversity {} < {}",
+                            metrics.diversity, thresholds.min_diversity
+                        ));
+                    }
                     return Ok(Self::search_only_result(
                         chunks,
                         hybrid_results,
                         search_latency_ms,
+                        format!(
+                            "Found {} chunks but {}; returning search results only \
+                             (pass --answer or --force-rlm to synthesise).",
+                            metrics.chunk_count,
+                            below.join(", "),
+                        ),
                     ));
                 }
-                self.search_with_rlm_fallback(query, options, chunks, hybrid_results, start)
-                    .await
+                self.search_with_rlm_fallback(
+                    query,
+                    options,
+                    chunks,
+                    hybrid_results,
+                    start,
+                    metrics,
+                )
+                .await
             }
             sufficiency_judge::Sufficiency::NeedsExpansion(mut chunks) => {
                 if !Self::rlm_requested(&options) {
@@ -197,11 +251,24 @@ impl TerraphimGrep {
                         chunks,
                         hybrid_results,
                         search_latency_ms,
+                        format!(
+                            "Coverage of the query terms is low ({:.2} across {} chunks); the \
+                             result set likely needs expansion. Returning search results only \
+                             (pass --answer or --force-rlm to synthesise).",
+                            metrics.coverage, metrics.chunk_count,
+                        ),
                     ));
                 }
                 chunks.extend(hybrid_results.to_chunks());
-                self.search_with_rlm_fallback(query, options, chunks, hybrid_results, start)
-                    .await
+                self.search_with_rlm_fallback(
+                    query,
+                    options,
+                    chunks,
+                    hybrid_results,
+                    start,
+                    metrics,
+                )
+                .await
             }
             sufficiency_judge::Sufficiency::Insufficient(chunks) => {
                 let stats = GrepStats {
@@ -211,11 +278,28 @@ impl TerraphimGrep {
                     kg_hits: hybrid_results.kg_concepts.len(),
                 };
 
+                let explanation = if metrics.chunk_count == 0 && metrics.kg_hits == 0 {
+                    "No chunks or knowledge-graph concepts matched the query; there is nothing \
+                     to synthesise an answer from."
+                        .to_string()
+                } else {
+                    format!(
+                        "Only {} chunk(s) and {} KG concept(s) were retrieved; the minimum for \
+                         a meaningful answer is {} chunks, and coverage was {:.2}. Too little \
+                         evidence to synthesise -- try broadening the query or the searched paths.",
+                        metrics.chunk_count,
+                        metrics.kg_hits,
+                        thresholds.min_results,
+                        metrics.coverage,
+                    )
+                };
+
                 Ok(GrepResult {
                     chunks,
                     answer: None,
                     concepts: hybrid_results.kg_concepts,
                     sufficiency: SufficiencyState::RlmInsufficient,
+                    sufficiency_explanation: explanation,
                     stats,
                 })
             }
@@ -230,6 +314,7 @@ impl TerraphimGrep {
         chunks: Vec<RetrievedChunk>,
         hybrid_results: HybridResults,
         start: std::time::Instant,
+        metrics: SufficiencyMetrics,
     ) -> Result<GrepResult> {
         let rlm_start = std::time::Instant::now();
 
@@ -277,6 +362,13 @@ impl TerraphimGrep {
                 kg_hits: hybrid_results.kg_concepts.len(),
             };
             return Ok(GrepResult {
+                sufficiency_explanation: format!(
+                    "LLM synthesis was requested ({} chunks, coverage {:.2}, KG confidence \
+                     {:.2}) but no LLM client is configured; returning the search results as-is.",
+                    chunks.len(),
+                    metrics.coverage,
+                    metrics.kg_confidence,
+                ),
                 chunks,
                 answer: None,
                 concepts: hybrid_results.kg_concepts,
@@ -321,6 +413,14 @@ impl TerraphimGrep {
         }
 
         Ok(GrepResult {
+            sufficiency_explanation: format!(
+                "Found {} chunks (coverage {:.2}, KG confidence {:.2}); the answer was \
+                 synthesised by the LLM in {}ms.",
+                chunks.len(),
+                metrics.coverage,
+                metrics.kg_confidence,
+                rlm_latency_ms,
+            ),
             chunks,
             answer,
             concepts: hybrid_results.kg_concepts,
@@ -337,6 +437,7 @@ impl TerraphimGrep {
         _chunks: Vec<RetrievedChunk>,
         _hybrid_results: HybridResults,
         _start: std::time::Instant,
+        _metrics: SufficiencyMetrics,
     ) -> Result<GrepResult> {
         Err(TerraphimGrepError::LlmNotConfigured(
             "LLM feature not enabled".to_string(),
@@ -355,12 +456,17 @@ impl TerraphimGrep {
             .await
             .map_err(TerraphimGrepError::SearchFailed)?;
 
+        let (_sufficiency, metrics) = self
+            .sufficiency_judge
+            .judge_with_metrics(&hybrid_results, query);
+
         self.search_with_rlm_fallback(
             query,
             options,
             hybrid_results.to_chunks(),
             hybrid_results,
             start,
+            metrics,
         )
         .await
     }
@@ -380,6 +486,28 @@ mod tests {
     use super::*;
     #[cfg(feature = "code-search")]
     use terraphim_types::Thesaurus;
+
+    #[test]
+    fn grep_result_serialises_sufficiency_explanation() {
+        // Refs #87: the JSON contract carries a human-readable explanation
+        // alongside the machine-readable sufficiency state.
+        let result = GrepResult {
+            chunks: vec![],
+            answer: None,
+            concepts: vec![],
+            sufficiency: SufficiencyState::RlmInsufficient,
+            sufficiency_explanation: "No chunks matched".to_string(),
+            stats: GrepStats {
+                search_latency_ms: 1,
+                rlm_latency_ms: None,
+                chunks_returned: 0,
+                kg_hits: 0,
+            },
+        };
+        let json = serde_json::to_value(&result).unwrap();
+        assert_eq!(json["sufficiency"], "RlmInsufficient");
+        assert_eq!(json["sufficiency_explanation"], "No chunks matched");
+    }
 
     /// A local, in-process `LlmClient` that answers from a fixed string and counts calls.
     ///

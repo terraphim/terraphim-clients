@@ -599,6 +599,7 @@ fn print_results(result: &GrepResult, context_lines: usize) {
     println!("Chunks returned: {}", result.stats.chunks_returned);
     println!("KG hits: {}", result.stats.kg_hits);
     println!("Sufficiency: {:?}", result.sufficiency);
+    println!("  {}", result.sufficiency_explanation);
     println!();
 
     // Print concepts

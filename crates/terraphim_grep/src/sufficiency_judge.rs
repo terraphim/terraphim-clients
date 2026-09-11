@@ -27,6 +27,19 @@ pub enum Sufficiency {
     Insufficient(Vec<RetrievedChunk>),
 }
 
+/// The measurements behind a [`Sufficiency`] decision.
+///
+/// Exposed so callers can explain *why* a query was (in)sufficient without
+/// re-deriving the numbers or reading this module's source. Refs #87.
+#[derive(Debug, Clone, Copy)]
+pub struct SufficiencyMetrics {
+    pub chunk_count: usize,
+    pub kg_hits: usize,
+    pub coverage: f64,
+    pub kg_confidence: f64,
+    pub diversity: usize,
+}
+
 pub struct SufficiencyJudge {
     thresholds: HeuristicThresholds,
 }
@@ -36,33 +49,53 @@ impl SufficiencyJudge {
         Self { thresholds }
     }
 
+    /// The thresholds the judge decides against (for explanations).
+    pub fn thresholds(&self) -> &HeuristicThresholds {
+        &self.thresholds
+    }
+
     pub fn judge(&self, results: &HybridResults, query: &str) -> Sufficiency {
+        self.judge_with_metrics(results, query).0
+    }
+
+    /// Like [`SufficiencyJudge::judge`], but also returns the measurements
+    /// behind the decision.
+    pub fn judge_with_metrics(
+        &self,
+        results: &HybridResults,
+        query: &str,
+    ) -> (Sufficiency, SufficiencyMetrics) {
         let chunks = results.to_chunks();
 
-        if chunks.is_empty() && results.kg_concepts.is_empty() {
-            return Sufficiency::Insufficient(vec![]);
-        }
+        let metrics = SufficiencyMetrics {
+            chunk_count: chunks.len(),
+            kg_hits: results.kg_concepts.len(),
+            coverage: self.calculate_coverage(query, &chunks),
+            kg_confidence: self.calculate_kg_confidence(&results.kg_concepts),
+            diversity: self.calculate_diversity(&chunks),
+        };
 
-        let coverage = self.calculate_coverage(query, &chunks);
-        let confidence = self.calculate_kg_confidence(&results.kg_concepts);
-        let diversity = self.calculate_diversity(&chunks);
+        if chunks.is_empty() && results.kg_concepts.is_empty() {
+            return (Sufficiency::Insufficient(vec![]), metrics);
+        }
 
         if chunks.len() < self.thresholds.min_results {
-            return Sufficiency::Insufficient(chunks);
+            return (Sufficiency::Insufficient(chunks), metrics);
         }
 
-        if coverage >= self.thresholds.min_coverage
-            && confidence >= self.thresholds.min_kg_confidence
-            && diversity >= self.thresholds.min_diversity
+        let decision = if metrics.coverage >= self.thresholds.min_coverage
+            && metrics.kg_confidence >= self.thresholds.min_kg_confidence
+            && metrics.diversity >= self.thresholds.min_diversity
         {
             Sufficiency::Sufficient(chunks)
-        } else if coverage >= 0.3 && !chunks.is_empty() {
+        } else if metrics.coverage >= 0.3 && metrics.chunk_count > 0 {
             Sufficiency::NeedsSynthesis(chunks)
-        } else if coverage > 0.0 {
+        } else if metrics.coverage > 0.0 {
             Sufficiency::NeedsExpansion(chunks)
         } else {
             Sufficiency::Insufficient(chunks)
-        }
+        };
+        (decision, metrics)
     }
 
     fn calculate_coverage(&self, query: &str, chunks: &[RetrievedChunk]) -> f64 {
@@ -227,5 +260,64 @@ mod tests {
 
         let empty_confidence = judge.calculate_kg_confidence(&[]);
         assert_eq!(empty_confidence, 0.0);
+    }
+
+    #[test]
+    fn test_judge_with_metrics_reports_measurements() {
+        let judge = SufficiencyJudge::default();
+        let results = HybridResults {
+            code_results: vec![
+                make_chunk("retry configuration in test file", "retry.rs", "code"),
+                make_chunk("backoff settings", "config.rs", "code"),
+            ],
+            doc_results: vec![make_chunk("retry docs", "docs.md", "docs")],
+            kg_concepts: vec![KgConcept {
+                id: 1,
+                name: "retry".to_string(),
+                display_value: None,
+                score: 0.9,
+            }],
+        };
+
+        let (sufficiency, metrics) = judge.judge_with_metrics(&results, "retry configuration");
+        assert!(matches!(sufficiency, Sufficiency::Sufficient(_)));
+        assert_eq!(metrics.chunk_count, 3);
+        assert_eq!(metrics.kg_hits, 1);
+        assert!(metrics.coverage >= 0.99, "coverage: {}", metrics.coverage);
+        assert!((metrics.kg_confidence - 0.9).abs() < 0.001);
+        assert_eq!(metrics.diversity, 2);
+    }
+
+    #[test]
+    fn test_judge_with_metrics_empty_results() {
+        let judge = SufficiencyJudge::default();
+        let results = HybridResults {
+            code_results: vec![],
+            doc_results: vec![],
+            kg_concepts: vec![],
+        };
+
+        let (sufficiency, metrics) = judge.judge_with_metrics(&results, "test query");
+        assert!(matches!(sufficiency, Sufficiency::Insufficient(_)));
+        assert_eq!(metrics.chunk_count, 0);
+        assert_eq!(metrics.kg_hits, 0);
+        assert_eq!(metrics.coverage, 0.0);
+        assert_eq!(metrics.kg_confidence, 0.0);
+        assert_eq!(metrics.diversity, 0);
+    }
+
+    #[test]
+    fn test_judge_delegates_to_judge_with_metrics() {
+        // `judge` must keep making the same decisions as before #87.
+        let judge = SufficiencyJudge::default();
+        let results = HybridResults {
+            code_results: vec![make_chunk("test", "file.rs", "code")],
+            doc_results: vec![],
+            kg_concepts: vec![],
+        };
+        assert!(matches!(
+            judge.judge(&results, "test query"),
+            Sufficiency::Insufficient(_)
+        ));
     }
 }
