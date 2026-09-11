@@ -240,6 +240,47 @@ impl TuiService {
         config.selected_role.clone()
     }
 
+    /// Build a service that loads only the requested role's thesaurus.
+    ///
+    /// `new` builds a `ConfigState` covering every configured role -- a
+    /// thesaurus and a rolegraph each, which profiling put at ~63% of CLI
+    /// startup (Refs #120). Commands that need exactly one role's thesaurus
+    /// (`memory retrieve`, which agents invoke in a loop) would otherwise pay
+    /// for every role's graph and query none of them (Refs #206).
+    ///
+    /// This resolves the role from the plain config (exact name, then
+    /// shortname case-insensitively -- the same order as
+    /// [`TuiService::resolve_role`]), strips the config to that one role, and
+    /// builds the service from it. Returns the service and the resolved role.
+    pub async fn new_for_single_role(
+        config_path: Option<String>,
+        role: Option<&str>,
+    ) -> Result<(Self, RoleName)> {
+        let config = Self::load_config(config_path, false).await?;
+        let role_name = match role {
+            Some(query) => config
+                .roles
+                .iter()
+                .find(|(name, r)| {
+                    name.as_str() == query
+                        || r.shortname
+                            .as_deref()
+                            .map(|s| s.eq_ignore_ascii_case(query))
+                            .unwrap_or(false)
+                })
+                .map(|(name, _)| name.clone())
+                .ok_or_else(|| anyhow::anyhow!("Role '{}' not found in config", query))?,
+            None => Self::selected_role_of(&config),
+        };
+        let mut single_role_config = config.clone();
+        single_role_config
+            .roles
+            .retain(|name, _| name == &role_name);
+        single_role_config.selected_role = role_name.clone();
+        let service = Self::from_config(single_role_config).await?;
+        Ok((service, role_name))
+    }
+
     /// See [`TuiService::selected_role_of`].
     pub fn roles_with_info_of(config: &Config) -> Vec<(String, Option<String>)> {
         config

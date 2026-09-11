@@ -182,8 +182,11 @@ pub(crate) async fn run_memory_command(
         } => {
             use terraphim_agent::memory_retrieve::{collect_memory_items, retrieve};
 
-            let service = TuiService::new(config_path, false).await?;
-            let role_name = service.resolve_role(role.as_deref()).await?;
+            // Single-role service: `memory retrieve` runs in agent loops, so
+            // building every role's thesaurus + rolegraph (the full
+            // `TuiService::new` path) is a per-call tax we can skip. Refs #206.
+            let (service, role_name) =
+                TuiService::new_for_single_role(config_path, role.as_deref()).await?;
             let thesaurus = service.get_thesaurus(&role_name).await.map_err(|e| {
                 anyhow::anyhow!(
                     "no knowledge graph available for role '{}': {}",
