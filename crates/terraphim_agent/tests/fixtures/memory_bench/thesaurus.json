@@ -1,0 +1,258 @@
+{
+  "name": "Terraphim Engineer",
+  "data": {
+    "npm install": {
+      "id": 5,
+      "nterm": "npm install",
+      "display_value": "npm install",
+      "pinned": false
+    },
+    "security check": {
+      "id": 8,
+      "nterm": "cargo audit",
+      "display_value": "cargo audit",
+      "pinned": false
+    },
+    "cargo clippy": {
+      "id": 9,
+      "nterm": "cargo clippy",
+      "display_value": "cargo clippy",
+      "pinned": false
+    },
+    "pnpm run build": {
+      "id": 12,
+      "nterm": "pnpm build",
+      "display_value": "pnpm build",
+      "pinned": false
+    },
+    "npm run build": {
+      "id": 13,
+      "nterm": "npm run build",
+      "display_value": "npm run build",
+      "pinned": false
+    },
+    "gmake": {
+      "id": 2,
+      "nterm": "make",
+      "display_value": "make",
+      "pinned": false
+    },
+    "podman build": {
+      "id": 7,
+      "nterm": "docker build",
+      "display_value": "docker build",
+      "pinned": false
+    },
+    "rustfmt": {
+      "id": 11,
+      "nterm": "cargo fmt",
+      "display_value": "cargo fmt",
+      "pinned": false
+    },
+    "npm t": {
+      "id": 3,
+      "nterm": "npm test",
+      "display_value": "npm test",
+      "pinned": false
+    },
+    "docker compose": {
+      "id": 14,
+      "nterm": "docker compose",
+      "display_value": "docker compose",
+      "pinned": false
+    },
+    "docker-compose up": {
+      "id": 14,
+      "nterm": "docker compose",
+      "display_value": "docker compose",
+      "pinned": false
+    },
+    "rch": {
+      "id": 15,
+      "nterm": "rch",
+      "display_value": "rch",
+      "pinned": false
+    },
+    "cargo remote": {
+      "id": 15,
+      "nterm": "rch",
+      "display_value": "rch",
+      "pinned": false
+    },
+    "cargo t": {
+      "id": 6,
+      "nterm": "cargo test",
+      "display_value": "cargo test",
+      "pinned": false
+    },
+    "cargo fmt": {
+      "id": 11,
+      "nterm": "cargo fmt",
+      "display_value": "cargo fmt",
+      "pinned": false
+    },
+    "bun install": {
+      "id": 1,
+      "nterm": "bun install",
+      "display_value": "bun install",
+      "pinned": false
+    },
+    "pnpm build": {
+      "id": 13,
+      "nterm": "npm run build",
+      "display_value": "npm run build",
+      "pinned": false
+    },
+    "yarn install": {
+      "id": 5,
+      "nterm": "npm install",
+      "display_value": "npm install",
+      "pinned": false
+    },
+    "lint rust": {
+      "id": 9,
+      "nterm": "cargo clippy",
+      "display_value": "cargo clippy",
+      "pinned": false
+    },
+    "test rust": {
+      "id": 6,
+      "nterm": "cargo test",
+      "display_value": "cargo test",
+      "pinned": false
+    },
+    "format rust": {
+      "id": 11,
+      "nterm": "cargo fmt",
+      "display_value": "cargo fmt",
+      "pinned": false
+    },
+    "audit rust": {
+      "id": 8,
+      "nterm": "cargo audit",
+      "display_value": "cargo audit",
+      "pinned": false
+    },
+    "docker build": {
+      "id": 7,
+      "nterm": "docker build",
+      "display_value": "docker build",
+      "pinned": false
+    },
+    "cargo b": {
+      "id": 4,
+      "nterm": "cargo build",
+      "display_value": "cargo build",
+      "pinned": false
+    },
+    "rustc": {
+      "id": 4,
+      "nterm": "cargo build",
+      "display_value": "cargo build",
+      "pinned": false
+    },
+    "clippy": {
+      "id": 9,
+      "nterm": "cargo clippy",
+      "display_value": "cargo clippy",
+      "pinned": false
+    },
+    "npm build": {
+      "id": 13,
+      "nterm": "npm run build",
+      "display_value": "npm run build",
+      "pinned": false
+    },
+    "cargo audit": {
+      "id": 8,
+      "nterm": "cargo audit",
+      "display_value": "cargo audit",
+      "pinned": false
+    },
+    "make": {
+      "id": 2,
+      "nterm": "make",
+      "display_value": "make",
+      "pinned": false
+    },
+    "yarn build": {
+      "id": 13,
+      "nterm": "npm run build",
+      "display_value": "npm run build",
+      "pinned": false
+    },
+    "npm i": {
+      "id": 5,
+      "nterm": "npm install",
+      "display_value": "npm install",
+      "pinned": false
+    },
+    "pnpm install": {
+      "id": 5,
+      "nterm": "npm install",
+      "display_value": "npm install",
+      "pinned": false
+    },
+    "yarn test": {
+      "id": 3,
+      "nterm": "npm test",
+      "display_value": "npm test",
+      "pinned": false
+    },
+    "docker buildx build": {
+      "id": 7,
+      "nterm": "docker build",
+      "display_value": "docker build",
+      "pinned": false
+    },
+    "docker-compose": {
+      "id": 14,
+      "nterm": "docker compose",
+      "display_value": "docker compose",
+      "pinned": false
+    },
+    "pnpm test": {
+      "id": 3,
+      "nterm": "npm test",
+      "display_value": "npm test",
+      "pinned": false
+    },
+    "cargo test": {
+      "id": 6,
+      "nterm": "cargo test",
+      "display_value": "cargo test",
+      "pinned": false
+    },
+    "bmake": {
+      "id": 2,
+      "nterm": "make",
+      "display_value": "make",
+      "pinned": false
+    },
+    "yarn run build": {
+      "id": 10,
+      "nterm": "yarn build",
+      "display_value": "yarn build",
+      "pinned": false
+    },
+    "cargo build": {
+      "id": 4,
+      "nterm": "cargo build",
+      "display_value": "cargo build",
+      "pinned": false
+    },
+    "npm test": {
+      "id": 3,
+      "nterm": "npm test",
+      "display_value": "npm test",
+      "pinned": false
+    },
+    "remote cargo": {
+      "id": 15,
+      "nterm": "rch",
+      "display_value": "rch",
+      "pinned": false
+    }
+  },
+  "source_hash": "cfe89d16b096573e10ccd4c703be22cfe2f3d6e0dff92ad3064a8338fd4e0259"
+}
