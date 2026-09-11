@@ -355,16 +355,14 @@ pub(crate) async fn run_memory_command(
             use terraphim_agent_evolution::MemoryItem;
 
             let evolution = load_evolution();
+            // TODO(#208): replace with MemoryState::iter_all()
+            let all_items = terraphim_agent::memory_retrieve::collect_memory_items(
+                &evolution.memory.current_state,
+            );
             let items: Vec<&MemoryItem> = if all {
-                evolution.memory.current_state.short_term.iter().collect()
+                all_items.iter().collect()
             } else if let Some(ref id) = lesson_id {
-                evolution
-                    .memory
-                    .current_state
-                    .short_term
-                    .iter()
-                    .filter(|m| m.id == *id)
-                    .collect()
+                all_items.iter().filter(|m| m.id == *id).collect()
             } else {
                 evolution
                     .memory
@@ -405,7 +403,7 @@ pub(crate) async fn run_memory_command(
                     .collect();
                 println!(
                     "{}",
-                    serde_json::json!({ "status": "ok", "action": "validate", "scores": json_scores })
+                    serde_json::json!({ "status": "ok", "action": "validate", "scorer": RUBRIC_SCORER, "scores": json_scores })
                 );
             } else {
                 println!("Memory Validation Results\n");
@@ -477,11 +475,29 @@ pub(crate) async fn run_memory_command(
             use terraphim_agent_evolution::MemoryItem;
 
             let evolution = load_evolution();
-            let items: Vec<&MemoryItem> =
-                evolution.memory.current_state.short_term.iter().collect();
+            // TODO(#208): replace with MemoryState::iter_all()
+            let all_items = terraphim_agent::memory_retrieve::collect_memory_items(
+                &evolution.memory.current_state,
+            );
+            let items: Vec<&MemoryItem> = all_items.iter().collect();
 
             if items.is_empty() {
-                println!("No memory items found for rubric analysis.");
+                if output.is_machine_readable() {
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "status": "ok",
+                            "action": "rubric",
+                            "scorer": RUBRIC_SCORER,
+                            "scorer_note": RUBRIC_SCORER_NOTE,
+                            "project": project,
+                            "items_analysed": 0,
+                            "items": [],
+                        })
+                    );
+                } else {
+                    println!("No memory items found for rubric analysis.");
+                }
                 return Ok(());
             }
 
@@ -527,7 +543,9 @@ pub(crate) async fn run_memory_command(
                 "**Generated:** {}\n",
                 chrono::Utc::now().to_rfc3339()
             ));
+            report.push_str(&format!("**Scorer:** {}\n", RUBRIC_SCORER));
             report.push_str(&format!("**Items analysed:** {}\n\n", items.len()));
+            report.push_str(&format!("_{}_\n\n", RUBRIC_SCORER_NOTE));
 
             report.push_str("## Overall Scores\n\n");
             report.push_str("| Dimension | Score | Status |\n|---|---|---|\n");
@@ -581,8 +599,56 @@ pub(crate) async fn run_memory_command(
                 }
             }
 
-            if let Some(path) = outfile {
-                std::fs::write(&path, &report)?;
+            if let Some(ref path) = outfile {
+                std::fs::write(path, &report)?;
+            }
+
+            if output.is_machine_readable() {
+                let json_items: Vec<serde_json::Value> = scores
+                    .iter()
+                    .map(|(item, s)| {
+                        serde_json::json!({
+                            "memory_id": item.id,
+                            "importance": format!("{:?}", item.importance),
+                            "scores": s,
+                            "composite": s.composite(),
+                        })
+                    })
+                    .collect();
+                let json_offenders: Vec<serde_json::Value> = top_offenders
+                    .iter()
+                    .map(|entry| {
+                        serde_json::json!({ "memory_id": entry.0.id, "composite": entry.1 })
+                    })
+                    .collect();
+                let json_retirements: Vec<serde_json::Value> = retirement_recs
+                    .iter()
+                    .map(|item| {
+                        serde_json::json!({
+                            "memory_id": item.id,
+                            "decay": compute_decay(item.created_at),
+                            "risk": compute_risk(&item.content),
+                        })
+                    })
+                    .collect();
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "status": "ok",
+                        "action": "rubric",
+                        "scorer": RUBRIC_SCORER,
+                        "scorer_note": RUBRIC_SCORER_NOTE,
+                        "project": project,
+                        "items_analysed": items.len(),
+                        "dimensions": avg_dimensions,
+                        "composite": avg_composite,
+                        "top_offenders": json_offenders,
+                        "retirement_recommendations": json_retirements,
+                        "items": json_items,
+                        "output": outfile,
+                    })
+                );
+            } else if let Some(path) = outfile {
                 println!("Rubric report written to: {}", path);
             } else {
                 println!("{}", report);
@@ -592,11 +658,12 @@ pub(crate) async fn run_memory_command(
         MemorySub::List { item_type, limit } => {
             let evolution = load_evolution();
             let state = &evolution.memory.current_state;
+            // TODO(#208): replace with MemoryState::iter_all()
+            let all_items = terraphim_agent::memory_retrieve::collect_memory_items(state);
 
             let items = if let Some(ref t) = item_type {
                 let filter = t.to_lowercase();
-                state
-                    .short_term
+                all_items
                     .iter()
                     .filter(|m| {
                         format!("{:?}", m.item_type)
@@ -606,7 +673,7 @@ pub(crate) async fn run_memory_command(
                     .take(limit)
                     .collect::<Vec<_>>()
             } else {
-                state.short_term.iter().take(limit).collect::<Vec<_>>()
+                all_items.iter().take(limit).collect::<Vec<_>>()
             };
 
             if output.is_machine_readable() {
@@ -661,13 +728,12 @@ pub(crate) async fn run_memory_command(
         MemorySub::Show { id, json } => {
             let evolution = load_evolution();
 
-            let memory_item = evolution
-                .memory
-                .current_state
-                .short_term
-                .iter()
-                .find(|m| m.id == id)
-                .cloned();
+            // TODO(#208): replace with MemoryState::get(id)
+            let memory_item = terraphim_agent::memory_retrieve::collect_memory_items(
+                &evolution.memory.current_state,
+            )
+            .into_iter()
+            .find(|m| m.id == id);
             let all_lessons: Vec<_> = {
                 let ls = &evolution.lessons.current_state;
                 let mut v = Vec::new();
@@ -751,10 +817,11 @@ pub(crate) async fn run_memory_command(
         } => {
             let evolution = load_evolution();
 
-            let memory_items: Vec<serde_json::Value> = evolution
-                .memory
-                .current_state
-                .short_term
+            // TODO(#208): replace with MemoryState::iter_all()
+            let all_items = terraphim_agent::memory_retrieve::collect_memory_items(
+                &evolution.memory.current_state,
+            );
+            let memory_items: Vec<serde_json::Value> = all_items
                 .iter()
                 .map(|m| {
                     serde_json::json!({
@@ -942,6 +1009,18 @@ pub(crate) async fn run_memory_command(
         }
     }
 }
+
+/// Name of the rubric scorer implemented in this file.
+///
+/// The six dimensions are heuristics over content length, tag count, item
+/// type, age and keyword hits. This is not the judge-driven scorer specified in
+/// the memory lifecycle feature request; the label lets readers of a report
+/// tell the two apart.
+const RUBRIC_SCORER: &str = "heuristic-v1";
+
+/// One-line disclosure printed alongside [`RUBRIC_SCORER`].
+const RUBRIC_SCORER_NOTE: &str = "heuristic-v1 scores content length, tag count, item type, age and keyword hits; \
+it is not the judge-driven scorer specified in the memory lifecycle feature request.";
 
 #[derive(Debug, Clone, serde::Serialize)]
 struct RubricScore {

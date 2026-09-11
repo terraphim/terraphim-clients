@@ -852,8 +852,9 @@ pub(crate) enum MemorySub {
         #[arg(long)]
         prompt: Option<String>,
     },
-    /// Validate memory items against the reliability rubric
-    /// (calls judge pipeline for scoring)
+    /// Validate memory items against the reliability rubric (scorer: heuristic-v1)
+    /// (same heuristic scorer as `rubric`; not the judge-driven scorer
+    /// specified in the memory lifecycle feature request)
     Validate {
         /// Validate all stored memory items
         #[arg(long, default_value_t = false)]
@@ -872,8 +873,11 @@ pub(crate) enum MemorySub {
         #[arg(long)]
         reason: Option<String>,
     },
-    /// Run the full Memory Reliability Rubric diagnostic on a project
-    /// (6 dimensions: faithfulness, scope, provenance, actionability, decay, risk)
+    /// Run the full Memory Reliability Rubric diagnostic on a project (scorer: heuristic-v1)
+    /// (6 dimensions: faithfulness, scope, provenance, actionability, decay, risk,
+    /// scored by heuristic-v1 over content length, tag count, item type, age and
+    /// keyword hits; this is not the judge-driven scorer specified in the memory
+    /// lifecycle feature request)
     Rubric {
         /// Project path to run rubric against
         #[arg(long)]
