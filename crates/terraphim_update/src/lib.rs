@@ -8,6 +8,7 @@ pub mod downloader;
 pub mod manifest;
 pub mod notification;
 pub mod platform;
+pub mod policy;
 pub mod rollback;
 pub mod scheduler;
 pub mod signature;
@@ -44,6 +45,15 @@ pub enum UpdateStatus {
     },
     /// Update failed with error
     Failed(String),
+    /// The running binary is managed by a system package manager; self-update
+    /// is refused as a no-op and the operator should use the manager's own
+    /// update command instead (Gitea #247). Distinct from `Failed`: this is
+    /// the deterministic, correct answer for a package-managed install, not
+    /// an error.
+    PackageManaged {
+        manager: policy::PackageManager,
+        update_command: String,
+    },
 }
 
 /// Compare two version strings to determine if the first is newer than the second
@@ -80,6 +90,14 @@ fn log_status(status: &UpdateStatus) {
             from_version, to_version
         ),
         UpdateStatus::Failed(error) => error!("Update check failed: {}", error),
+        UpdateStatus::PackageManaged {
+            manager,
+            update_command,
+        } => info!(
+            "Package-managed install ({}); run `{}` to update",
+            manager.name(),
+            update_command
+        ),
     }
 }
 
@@ -108,6 +126,17 @@ impl fmt::Display for UpdateStatus {
             UpdateStatus::Failed(error) => {
                 write!(f, "[ERROR] Update failed: {}", error)
             }
+            UpdateStatus::PackageManaged {
+                manager,
+                update_command,
+            } => {
+                write!(
+                    f,
+                    "[OK] Managed by {}; run `{}` to update",
+                    manager.name(),
+                    update_command
+                )
+            }
         }
     }
 }
@@ -132,6 +161,12 @@ pub struct UpdaterConfig {
     /// Optional GitHub auth token, forwarded to the GitHub fallback backend to
     /// avoid rate limiting. Picked up from `GITHUB_TOKEN` by [`Self::new`].
     pub auth_token: Option<String>,
+    /// Runtime update policy (Gitea #247): whether self-update is safe, or
+    /// whether the running binary is package-managed and self-update must be
+    /// refused. Resolved via [`policy::detect_update_policy_default`] by
+    /// [`Self::new`]; override with [`Self::with_policy`] for injection
+    /// (tests, or a call site that needs an explicit policy).
+    pub policy: policy::UpdatePolicy,
 }
 
 impl UpdaterConfig {
@@ -184,6 +219,7 @@ impl UpdaterConfig {
                 .ok()
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty()),
+            policy: policy::detect_update_policy_default(),
         }
     }
 
@@ -220,6 +256,17 @@ impl UpdaterConfig {
         self.auth_token = if t.is_empty() { None } else { Some(t) };
         self
     }
+
+    /// Explicitly inject the update policy, overriding the automatic
+    /// [`policy::detect_update_policy_default`] resolution done by
+    /// [`Self::new`]. Used by production call sites that need to
+    /// short-circuit before constructing a `Runtime`, and by tests that want
+    /// to exercise [`TerraphimUpdater`] under a specific policy without
+    /// relying on real `/usr` state.
+    pub fn with_policy(mut self, policy: policy::UpdatePolicy) -> Self {
+        self.policy = policy;
+        self
+    }
 }
 
 /// Updater client for Terraphim AI binaries
@@ -240,6 +287,16 @@ impl TerraphimUpdater {
     /// failure does **not** fall back here — callers that want fallback
     /// behaviour should use [`Self::check_and_update`].
     pub async fn check_update(&self) -> Result<UpdateStatus> {
+        if let policy::UpdatePolicy::PackageManaged {
+            manager,
+            update_command,
+        } = &self.config.policy
+        {
+            return Ok(UpdateStatus::PackageManaged {
+                manager: *manager,
+                update_command: update_command.clone(),
+            });
+        }
         info!(
             "Checking for updates: {} v{} (backend: {:?})",
             self.config.bin_name, self.config.current_version, self.config.backend
@@ -256,6 +313,16 @@ impl TerraphimUpdater {
     /// against the current version using semver. No secrets, no per-IP rate
     /// limit.
     pub async fn check_update_r2(&self) -> Result<UpdateStatus> {
+        if let policy::UpdatePolicy::PackageManaged {
+            manager,
+            update_command,
+        } = &self.config.policy
+        {
+            return Ok(UpdateStatus::PackageManaged {
+                manager: *manager,
+                update_command: update_command.clone(),
+            });
+        }
         let cfg = self.config.manifest.clone();
         let current_version = self.config.current_version.clone();
         let bin_name = self.config.bin_name.clone();
@@ -299,6 +366,16 @@ impl TerraphimUpdater {
     /// - `Err` — transport/manifest failure (network, parse). Caller SHOULD
     ///   fall back to the GitHub backend.
     pub async fn update_r2(&self) -> Result<UpdateStatus> {
+        if let policy::UpdatePolicy::PackageManaged {
+            manager,
+            update_command,
+        } = &self.config.policy
+        {
+            return Ok(UpdateStatus::PackageManaged {
+                manager: *manager,
+                update_command: update_command.clone(),
+            });
+        }
         let cfg = self.config.manifest.clone();
         let current_version = self.config.current_version.clone();
         let bin_name = self.config.bin_name.clone();
@@ -498,6 +575,11 @@ impl TerraphimUpdater {
                             UpdateStatus::Failed(error) => {
                                 error!("Update check failed: {}", error);
                             }
+                            // Unreachable here: this backend-dispatch path is
+                            // never entered when the policy is
+                            // PackageManaged (short-circuited in
+                            // `check_update`/`update`/`check_and_update`).
+                            UpdateStatus::PackageManaged { .. } => {}
                         }
                         Ok(status)
                     }
@@ -520,6 +602,16 @@ impl TerraphimUpdater {
     /// (`Err`) transparently falls back to the GitHub backend; a definitive
     /// failure (`Ok(Failed)`, e.g. signature rejection) does **not** fall back.
     pub async fn update(&self) -> Result<UpdateStatus> {
+        if let policy::UpdatePolicy::PackageManaged {
+            manager,
+            update_command,
+        } = &self.config.policy
+        {
+            return Ok(UpdateStatus::PackageManaged {
+                manager: *manager,
+                update_command: update_command.clone(),
+            });
+        }
         match self.config.backend {
             UpdateBackend::R2 => match self.update_r2().await {
                 Ok(status) => Ok(status),
@@ -640,6 +732,11 @@ impl TerraphimUpdater {
                             UpdateStatus::Failed(error) => {
                                 error!("Update failed: {}", error);
                             }
+                            // Unreachable here: this backend-dispatch path is
+                            // never entered when the policy is
+                            // PackageManaged (short-circuited in
+                            // `check_update`/`update`/`check_and_update`).
+                            UpdateStatus::PackageManaged { .. } => {}
                         }
                         Ok(status)
                     }
@@ -676,6 +773,16 @@ impl TerraphimUpdater {
     /// - Rejects updates with missing signatures
     /// - Only installs verified binaries
     pub async fn update_with_verification(&self) -> Result<UpdateStatus> {
+        if let policy::UpdatePolicy::PackageManaged {
+            manager,
+            update_command,
+        } = &self.config.policy
+        {
+            return Ok(UpdateStatus::PackageManaged {
+                manager: *manager,
+                update_command: update_command.clone(),
+            });
+        }
         info!(
             "Updating {} from version {} with signature verification",
             self.config.bin_name, self.config.current_version
@@ -1182,6 +1289,16 @@ impl TerraphimUpdater {
     /// Dispatches by backend. The R2 path checks the manifest, then installs
     /// via `update_r2()` with automatic GitHub fallback on transport failure.
     pub async fn check_and_update(&self) -> Result<UpdateStatus> {
+        if let policy::UpdatePolicy::PackageManaged {
+            manager,
+            update_command,
+        } = &self.config.policy
+        {
+            return Ok(UpdateStatus::PackageManaged {
+                manager: *manager,
+                update_command: update_command.clone(),
+            });
+        }
         match self.config.backend {
             UpdateBackend::R2 => self.check_and_update_r2().await,
             UpdateBackend::GitHub => self.check_and_update_github().await,
@@ -1275,6 +1392,48 @@ pub async fn update_binary_silent(bin_name: impl Into<String>) -> Result<UpdateS
 /// };
 /// ```
 pub async fn check_for_updates_auto(bin_name: &str, current_version: &str) -> Result<UpdateStatus> {
+    check_for_updates_auto_with_policy(
+        bin_name,
+        current_version,
+        &policy::detect_update_policy_default(),
+    )
+    .await
+}
+
+/// Same as [`check_for_updates_auto`], but with an explicit, injected
+/// [`policy::UpdatePolicy`] (Gitea #247). `check_for_updates_auto` delegates
+/// here after resolving the real policy; this is the seam tests use to
+/// exercise the `PackageManaged` short-circuit -- before any
+/// `spawn_blocking`, `platform::get_binary_path` (which can create
+/// `~/.local/bin`), or self_update GitHub network call -- without touching
+/// real `/usr` state.
+///
+/// Every caller of `check_for_updates_auto` (REPL `/update check`,
+/// `terraphim-cli check-update`, [`check_for_updates_startup`], and the
+/// update scheduler's periodic check in [`start_update_scheduler`]) is
+/// covered transitively by this guard.
+pub async fn check_for_updates_auto_with_policy(
+    bin_name: &str,
+    current_version: &str,
+    policy: &policy::UpdatePolicy,
+) -> Result<UpdateStatus> {
+    if let policy::UpdatePolicy::PackageManaged {
+        manager,
+        update_command,
+    } = policy
+    {
+        info!(
+            "Package-managed install ({}); skipping update check for {} v{}",
+            manager.name(),
+            bin_name,
+            current_version
+        );
+        return Ok(UpdateStatus::PackageManaged {
+            manager: *manager,
+            update_command: update_command.clone(),
+        });
+    }
+
     info!("Checking for updates: {} v{}", bin_name, current_version);
 
     let bin_name = bin_name.to_string();
@@ -1773,6 +1932,31 @@ mod tests {
 
         let failed = UpdateStatus::Failed("test error".to_string());
         assert!(failed.to_string().contains("test error"));
+
+        let package_managed = UpdateStatus::PackageManaged {
+            manager: crate::policy::PackageManager::Pacman,
+            update_command: "sudo pacman -Syu".to_string(),
+        };
+        assert!(package_managed.to_string().contains("sudo pacman -Syu"));
+    }
+
+    #[test]
+    fn test_updater_config_default_policy_is_self_managed_in_test_env() {
+        // The test binary is not installed under any managed prefix and no
+        // real marker file exists in the test environment, so the default
+        // constructor must resolve to SelfManaged.
+        let config = UpdaterConfig::new("test-binary");
+        assert_eq!(config.policy, crate::policy::UpdatePolicy::SelfManaged);
+    }
+
+    #[test]
+    fn test_with_policy_builder_injects_package_managed() {
+        let policy = crate::policy::UpdatePolicy::PackageManaged {
+            manager: crate::policy::PackageManager::Pacman,
+            update_command: "sudo pacman -Syu".to_string(),
+        };
+        let config = UpdaterConfig::new("test-binary").with_policy(policy.clone());
+        assert_eq!(config.policy, policy);
     }
 
     #[test]

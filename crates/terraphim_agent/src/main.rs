@@ -445,7 +445,15 @@ fn main() -> Result<()> {
     let cli = Cli::parse_from(corrected_args);
     let output = resolve_output_config(cli.robot, cli.format.clone());
 
-    // Check for updates on startup (non-blocking, debug logging on failure)
+    // Check for updates on startup (non-blocking, debug logging on failure).
+    // Zero-network under a package-managed install (Gitea #247) is enforced
+    // inside `TerraphimUpdater::check_update()` itself (a stable,
+    // already-published `terraphim_update` signature), not here: this
+    // production source must keep compiling against the currently published
+    // `terraphim_update` (which predates pacman-awareness), so it cannot
+    // reference `terraphim_update::policy` to pre-empt the call -- see the
+    // packaged-install regression test in
+    // `tests/packaged_install_graph_regression.rs`.
     let rt = Runtime::new()?;
     rt.block_on(async {
         let config = UpdaterConfig::new("terraphim-agent").with_version(env!("CARGO_PKG_VERSION"));
@@ -542,6 +550,9 @@ fn main() -> Result<()> {
                 println!("listener config has no Gitea connection; discovery only");
                 return Ok(());
             }
+            // Independent of the startup-update-check Runtime above: the
+            // Listen command needs its own.
+            let rt = Runtime::new()?;
             rt.block_on(listener::run_listener(listener_config))
         }
         Some(Command::Robot { sub }) => {
@@ -756,6 +767,70 @@ async fn handle_guard_command(args: &GuardArgs<'_>) -> Result<()> {
     Ok(())
 }
 
+/// The result of running an `update` (`check_and_update`) call, decoupled
+/// from the actual `println!`/`std::process::exit` side effects so the
+/// decision is testable with an injected [`TerraphimUpdater`] and doesn't
+/// require spawning a subprocess.
+#[derive(Debug)]
+pub(crate) enum UpdateCommandOutcome {
+    /// Update completed (or determined not needed): caller should print the
+    /// status and exit 0. Current, unchanged behavior. Holds the legacy
+    /// `UpdateStatus` variants only (Gitea #247 packaged-install
+    /// regression) -- `classify_update_status` never puts a
+    /// `PackageManaged` value here.
+    Applied(terraphim_update::UpdateStatus),
+    /// A refusal: package-managed (Gitea #247, when linked against a
+    /// pacman-aware `terraphim_update`) or -- fail-closed -- any other
+    /// `UpdateStatus` this crate doesn't recognize by name. Caller should
+    /// print `message` and exit 1 -- the existing generic failure code,
+    /// reused deliberately: Gitea #181 owns the final stable exit-code
+    /// taxonomy, this does not invent a new one.
+    PackageManagedRefusal { message: String },
+    /// The update failed for a reason unrelated to package management.
+    /// Caller should print `message` and exit 1. Current, unchanged
+    /// behavior.
+    Failed { message: String },
+}
+
+/// Classify a completed `check_and_update()` status into an
+/// [`UpdateCommandOutcome`].
+///
+/// Semver-compatible by construction (Gitea #247 packaged-install
+/// regression: `cargo install terraphim_agent` resolves the currently
+/// *published* `terraphim_update`, which predates the `PackageManaged`
+/// variant and the `policy` module entirely). Only the legacy `UpdateStatus`
+/// variants (`Updated`, `UpToDate`, `Available`, `Failed`) are matched by
+/// name; everything else falls through a fail-closed `other` arm that
+/// renders guidance via `Display` instead of naming the variant. With the
+/// workspace-local, pacman-aware `terraphim_update` that arm is exactly
+/// `PackageManaged` (and its `Display` impl embeds the stable
+/// `sudo pacman -Syu` guidance); with the published `terraphim_update` the
+/// arm is simply unreachable. This keeps this file's production source
+/// compiling against the published crate while still refusing correctly at
+/// runtime once the linked updater understands pacman-managed installs.
+fn classify_update_status(status: terraphim_update::UpdateStatus) -> UpdateCommandOutcome {
+    match status {
+        terraphim_update::UpdateStatus::Updated { .. }
+        | terraphim_update::UpdateStatus::UpToDate(_)
+        | terraphim_update::UpdateStatus::Available { .. } => UpdateCommandOutcome::Applied(status),
+        terraphim_update::UpdateStatus::Failed(message) => UpdateCommandOutcome::Failed { message },
+        other => UpdateCommandOutcome::PackageManagedRefusal {
+            message: format!("terraphim-agent update was refused: {other}"),
+        },
+    }
+}
+
+/// Run `check_and_update()` on `updater` and classify the result via
+/// [`classify_update_status`].
+pub(crate) async fn classify_update_result(updater: &TerraphimUpdater) -> UpdateCommandOutcome {
+    match updater.check_and_update().await {
+        Ok(status) => classify_update_status(status),
+        Err(e) => UpdateCommandOutcome::Failed {
+            message: e.to_string(),
+        },
+    }
+}
+
 async fn handle_check_update_command() -> Result<()> {
     println!("Checking for terraphim-agent updates...");
     let config = UpdaterConfig::new("terraphim-agent").with_version(env!("CARGO_PKG_VERSION"));
@@ -776,14 +851,62 @@ async fn handle_update_command() -> Result<()> {
     println!("Updating terraphim-agent...");
     let config = UpdaterConfig::new("terraphim-agent").with_version(env!("CARGO_PKG_VERSION"));
     let updater = TerraphimUpdater::new(config);
-    match updater.check_and_update().await {
-        Ok(status) => {
+    match classify_update_result(&updater).await {
+        UpdateCommandOutcome::Applied(status) => {
             println!("{}", status);
             Ok(())
         }
-        Err(e) => {
-            eprintln!("Update failed: {}", e);
+        UpdateCommandOutcome::PackageManagedRefusal { message } => {
+            eprintln!("{}", message);
             std::process::exit(1);
+        }
+        UpdateCommandOutcome::Failed { message } => {
+            eprintln!("Update failed: {}", message);
+            std::process::exit(1);
+        }
+    }
+}
+
+#[cfg(test)]
+mod managed_mode_tests {
+    use super::*;
+    use terraphim_update::policy::{PackageManager, UpdatePolicy};
+
+    fn package_managed_updater() -> TerraphimUpdater {
+        let config = UpdaterConfig::new("terraphim-agent-managed-mode-test").with_policy(
+            UpdatePolicy::PackageManaged {
+                manager: PackageManager::Pacman,
+                update_command: "sudo pacman -Syu".to_string(),
+            },
+        );
+        TerraphimUpdater::new(config)
+    }
+
+    #[tokio::test]
+    async fn classify_update_result_refuses_when_package_managed() {
+        let updater = package_managed_updater();
+        match classify_update_result(&updater).await {
+            UpdateCommandOutcome::PackageManagedRefusal { message } => {
+                assert!(
+                    message.contains("sudo pacman -Syu"),
+                    "refusal message missing update command: {message}"
+                );
+            }
+            other => panic!("expected PackageManagedRefusal, got {other:?}"),
+        }
+    }
+
+    /// Control: the fail-closed fallback in `classify_update_status` must
+    /// not swallow the legacy, semver-stable variants -- only the unnamed
+    /// ("new-to-this-crate") ones route through the refusal arm.
+    #[test]
+    fn classify_update_status_reports_up_to_date_as_applied() {
+        let status = terraphim_update::UpdateStatus::UpToDate("1.2.3".to_string());
+        match classify_update_status(status) {
+            UpdateCommandOutcome::Applied(terraphim_update::UpdateStatus::UpToDate(version)) => {
+                assert_eq!(version, "1.2.3");
+            }
+            other => panic!("expected Applied(UpToDate), got {other:?}"),
         }
     }
 }
