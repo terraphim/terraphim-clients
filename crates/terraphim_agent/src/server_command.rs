@@ -15,10 +15,9 @@ use terraphim_types::{Layer, LogicalOperator, NormalizedTermValue, RoleName, Sea
 use terraphim_update::{TerraphimUpdater, UpdaterConfig};
 
 use crate::cli_schema::{Command, CommandOutputMode, ConfigSub, KgSub, RolesSub, SessionsSub};
+use crate::learn_command::run_learn_command;
 use crate::memory_command::run_memory_command;
-use crate::{
-    CommandOutputConfig, print_json_output, run_learn_command, session_output, truncate_snippet,
-};
+use crate::{CommandOutputConfig, print_json_output, session_output, truncate_snippet};
 
 #[cfg(feature = "server")]
 pub(crate) async fn run_server_command(
