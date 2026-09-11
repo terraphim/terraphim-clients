@@ -84,6 +84,20 @@ Gate: `--fail-under-lines 65`. Per-crate targets from the skill's table (80 perc
 
 Miri cannot execute tokio, mio, reqwest or process spawning. The `ub-gates` job therefore runs the pure-computation crates only: terraphim_negative_contribution, terraphim_command_runtime and terraphim_hooks. The hooks `discovery` tests spawn a subprocess (`posix_spawnattr_init` is unsupported by Miri) and are skipped with `-- --skip discovery`, and the 1000-iteration latency test in the same crate is skipped with `--skip latency` because wall-clock assertions are meaningless under Miri. The #252 runbook widens this list as Phase 3 establishes which other test modules are Miri-clean (session-analyzer parsing and sessions redaction are the next candidates).
 
+## Two lineages, not one repository
+
+GitHub `main` is not a mirror of Gitea `main`. At the time of writing GitHub is 17 commits ahead of and 253 behind the Gitea lineage, and the two do not merge cleanly. Consequences:
+
+1. A branch cut from Gitea `main` cannot be a GitHub pull request (it conflicts, and GitHub Actions skips conflicting PRs). The CI change therefore exists twice: `task/254-ci-pipeline` on the Gitea lineage and `task/254-ci-pipeline-gh` on the GitHub lineage, with identical CI files.
+2. The GitHub lineage carried unformatted code in terraphim-session-analyzer (43 rustfmt diffs under 1.97.1); a whitespace-only commit fixes it there.
+3. The GitHub mirror cannot resolve the private registry: the first real run failed with `failed to load source for dependency terraphim_service` because `https://git.terraphim.cloud/api/packages/terraphim/cargo/config.json` answered "Not available" to the GitHub runner. Until the 1.21.x family is on crates.io (#210) or the registry token secret is confirmed to work in pull-request runs, the GitHub `test`, `coverage` and `ub-gates` jobs cannot go green. This is a pre-existing condition that the old single-job workflow never reached because it failed at rustfmt first.
+
+## First-run observations on native-ci
+
+- `check` (fmt, clippy, cargo-deny including its install) took about 2.5 minutes; cargo-deny's `cargo install` alone was 84 seconds. A host-level install would remove that.
+- `coverage` failed on the first run because `cargo llvm-cov` aborts when a test fails (#264); `--ignore-run-fail` now separates the two concerns.
+- Gitea marked the `test` job of run 449 and the `check` job of run 451 as skipped at creation, with no runner having fetched the task (verified in the runner journal). No per-job rerun API exists on Gitea 1.26 (`jobs/{id}/rerun` and `runs/{id}/rerun` both 404), so a skipped job costs a full `workflow_dispatch`. Cause unknown; tracked with #244 and terraphim-ai#3375.
+
 ## Sync rule
 
 `native-ci.yml` is the source of truth. Any change to a `cargo` invocation in a gate is made there first and mirrored into `ci.yml` in the same commit. Allowed divergence between the two:
