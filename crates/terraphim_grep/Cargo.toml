@@ -8,6 +8,8 @@ documentation = "https://terraphim.ai"
 homepage = "https://terraphim.ai"
 readme = "README.md"
 license = "MIT"
+# Include the canonical license in Cargo package output (#246).
+license-file = "../../LICENSE-MIT"
 repository = "https://git.terraphim.cloud/terraphim/terraphim-clients"
 keywords = ["grep", "search", "knowledge-graph", "rlm"]
 categories = ["development-tools"]
