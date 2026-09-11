@@ -6,6 +6,19 @@ jobs:
   build:
     runs-on: terraphim-native
     steps:
+      # #106: the terraphim_update signed-archive tests shell out to the
+      # `zipsign` binary on the host. It is installed at /usr/local/bin/zipsign
+      # on bigbox (see "Host Tooling" in gitea-infrastructure HANDOVER.md);
+      # runners carry their own CARGO_HOME and do not all have ~/.cargo/bin on
+      # PATH, so a user-local install is invisible to them. Fail fast with a
+      # pointer to the fix rather than 21 failing test targets.
+      - name: Check host tooling (zipsign)
+        run: |
+          if ! command -v zipsign >/dev/null 2>&1; then
+            echo "::error::zipsign not found on PATH. Install on the runner host: sudo install -m 0755 ~/.cargo/bin/zipsign /usr/local/bin/zipsign (see gitea-infrastructure HANDOVER.md, 'Host Tooling'). Refs #106"
+            exit 1
+          fi
+          zipsign --version
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo build --workspace
