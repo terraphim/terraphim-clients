@@ -13,12 +13,12 @@ jobs:
       # PATH, so a user-local install is invisible to them. Fail fast with a
       # pointer to the fix rather than 21 failing test targets.
       - name: Check host tooling (zipsign)
+        # Note: the terraphim-gitea-runner command policy inspects the
+        # literal first token; `if`/`then`/`fi` shell keywords get rejected.
+        # Use `test` (the only conditional primitive on the allowlist) and
+        # `||` chaining instead. Refs #106.
         run: |
-          if ! command -v zipsign >/dev/null 2>&1; then
-            echo "::error::zipsign not found on PATH. Install on the runner host: sudo install -m 0755 ~/.cargo/bin/zipsign /usr/local/bin/zipsign (see gitea-infrastructure HANDOVER.md, 'Host Tooling'). Refs #106"
-            exit 1
-          fi
-          zipsign --version
+          test -x /usr/local/bin/zipsign && /usr/local/bin/zipsign --version || { echo "::error::zipsign not found on PATH. Install on the runner host: sudo install -m 0755 ~/.cargo/bin/zipsign /usr/local/bin/zipsign (see gitea-infrastructure HANDOVER.md, 'Host Tooling'). Refs #106"; exit 1; }
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo build --workspace
