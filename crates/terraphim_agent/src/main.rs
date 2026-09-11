@@ -45,6 +45,11 @@ use robot_dispatch::*;
 // KG-based command validation for PreToolUse hook pipeline
 mod kg_validation;
 
+// Native judge subcommand scaffolding (Refs #192): ModelFamily map and
+// generator-aware tier resolution (Refs #193). The full judge subcommand,
+// panel/escalation modes, and LLM dispatch are follow-on slices in #192.
+mod judge;
+
 #[cfg(feature = "server")]
 use terraphim_agent::client::ApiClient;
 use terraphim_agent::service::TuiService;
