@@ -341,7 +341,7 @@ impl SessionParser {
     ///
     /// Public API consumed only by cross-binary integration tests.
     /// Consumers: `tests/integration_tests.rs`.
-        #[must_use]
+    #[must_use]
     /// Public API consumed only by `tests/integration_tests.rs` (cross-binary integration test). The `tsa` binary does not call this method.
     #[allow(dead_code)]
     pub fn entry_count(&self) -> usize {
@@ -358,7 +358,7 @@ impl SessionParser {
     ///
     /// Public API consumed only by cross-binary integration tests.
     /// Consumers: `tests/integration_tests.rs`.
-        #[must_use]
+    #[must_use]
     /// Public API consumed only by `tests/integration_tests.rs` (cross-binary integration test). The `tsa` binary does not call this method.
     #[allow(dead_code)]
     pub fn entries_in_window(
@@ -385,7 +385,7 @@ impl SessionParser {
     ///
     /// Public API consumed only by cross-binary integration tests.
     /// Consumers: `tests/integration_tests.rs`.
-        #[must_use]
+    #[must_use]
     /// Public API consumed only by `tests/integration_tests.rs` (cross-binary integration test). The `tsa` binary does not call this method.
     #[allow(dead_code)]
     pub fn get_agent_types(&self) -> Vec<String> {
@@ -404,7 +404,7 @@ impl SessionParser {
     ///
     /// Public API consumed only by cross-binary integration tests.
     /// Consumers: `tests/integration_tests.rs`.
-        #[must_use]
+    #[must_use]
     /// Public API consumed only by `tests/integration_tests.rs` (cross-binary integration test). The `tsa` binary does not call this method.
     #[allow(dead_code)]
     pub fn build_timeline(&self) -> Vec<TimelineEvent> {
