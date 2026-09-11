@@ -1,8 +1,7 @@
 use std::io;
-use std::path::PathBuf;
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::Parser;
 use crossterm::{
     event::{
         self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyModifiers,
@@ -14,19 +13,26 @@ use ratatui::{
     Terminal,
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::Line,
-    widgets::{Block, Borders, List, ListItem, Paragraph},
+    widgets::{List, ListItem, Paragraph},
 };
 use serde::Serialize;
 #[cfg(feature = "repl")]
 use terraphim_agent::repl;
-use terraphim_agent::{forgiving, guard_patterns, learnings, onboarding, robot, tui_backend};
+use terraphim_agent::{guard_patterns, learnings, onboarding, robot, tui_backend};
 use terraphim_persistence::Persistable;
 use tokio::runtime::Runtime;
 
+mod cli_helpers;
+mod cli_schema;
 mod listener;
+mod robot_dispatch;
 mod shell_dispatch;
+
+use cli_helpers::*;
+use cli_schema::*;
+use robot_dispatch::*;
 
 // Robot mode and forgiving CLI - always available
 
@@ -42,104 +48,6 @@ use terraphim_types::{
     Document, Layer, LogicalOperator, NormalizedTermValue, RoleName, SearchQuery,
 };
 use terraphim_update::{TerraphimUpdater, UpdaterConfig};
-
-#[derive(clap::ValueEnum, Debug, Clone)]
-enum LogicalOperatorCli {
-    And,
-    Or,
-}
-
-/// Truncate a snippet at a UTF-8 char boundary, appending "..." when truncated.
-///
-/// Naive `&s[..max]` panics when `max` lands inside a multi-byte char (e.g. typographic
-/// quotes from email subjects). This walks char boundaries and stops at the last one
-/// whose byte index is ≤ max.
-fn truncate_snippet(s: &str, max_bytes: usize) -> String {
-    if s.len() <= max_bytes {
-        return s.to_string();
-    }
-    let cutoff = s
-        .char_indices()
-        .map(|(i, _)| i)
-        .take_while(|&i| i <= max_bytes)
-        .last()
-        .unwrap_or(0);
-    format!("{}...", &s[..cutoff])
-}
-
-#[cfg(test)]
-mod truncate_snippet_tests {
-    use super::truncate_snippet;
-
-    #[test]
-    fn short_string_unchanged() {
-        assert_eq!(truncate_snippet("hello", 120), "hello");
-    }
-
-    #[test]
-    fn ascii_truncated() {
-        let s = "a".repeat(200);
-        let out = truncate_snippet(&s, 120);
-        assert!(out.ends_with("..."));
-        assert_eq!(out.len(), 123);
-    }
-
-    #[test]
-    fn multibyte_does_not_panic() {
-        // Reproduces crates/terraphim_agent/src/main.rs:1414 panic where
-        // `&s[..120]` landed inside a typographic quote (3 bytes: e2 80 9c).
-        let s = "Includes dependencies for llama.cpp, integration with retreival, and CLI/GUI flows; the project positions itself as \u{201C}ultimate open-source RAG app\u{201D} with curated features.";
-        let out = truncate_snippet(s, 120);
-        // Must not panic and must be a valid UTF-8 string ending in "..."
-        assert!(out.ends_with("..."));
-        assert!(out.is_char_boundary(out.len()));
-    }
-
-    #[test]
-    fn cyrillic_safe() {
-        let s = "консенсус ".repeat(20);
-        let out = truncate_snippet(&s, 120);
-        assert!(out.ends_with("..."));
-    }
-}
-
-/// Format the one-line stderr explainability message emitted when the search
-/// command auto-routes (i.e. the user did not pass `--role`).
-///
-/// Exact format pinned by the design (section 5):
-///   `[auto-route] picked role "<name>" (score=<n>, candidates=<m>); to override, pass --role`
-fn format_auto_route_line(result: &terraphim_service::auto_route::AutoRouteResult) -> String {
-    format!(
-        "[auto-route] picked role \"{}\" (score={}, candidates={}); to override, pass --role",
-        result.role.as_str(),
-        result.score,
-        result.candidates.len(),
-    )
-}
-
-#[cfg(test)]
-mod format_auto_route_line_tests {
-    use super::format_auto_route_line;
-    use terraphim_service::auto_route::{AutoRouteReason, AutoRouteResult};
-    use terraphim_types::RoleName;
-
-    #[test]
-    fn pinned_exact_format() {
-        let r = AutoRouteResult {
-            role: RoleName::new("Personal Assistant"),
-            score: 42,
-            candidates: vec![
-                (RoleName::new("Personal Assistant"), 42),
-                (RoleName::new("Default"), 0),
-            ],
-            reason: AutoRouteReason::ScoredWinner,
-        };
-        assert_eq!(
-            format_auto_route_line(&r),
-            "[auto-route] picked role \"Personal Assistant\" (score=42, candidates=2); to override, pass --role"
-        );
-    }
-}
 
 /// Show helpful usage information when run without a TTY
 fn show_usage_info() {
@@ -196,110 +104,6 @@ fn ensure_tui_server_reachable(
     runtime
         .block_on(api.health())
         .map_err(|err| tui_server_requirement_error(url, &err))
-}
-
-impl From<LogicalOperatorCli> for LogicalOperator {
-    fn from(op: LogicalOperatorCli) -> Self {
-        match op {
-            LogicalOperatorCli::And => LogicalOperator::And,
-            LogicalOperatorCli::Or => LogicalOperator::Or,
-        }
-    }
-}
-
-/// Hook types for Claude Code integration
-#[derive(clap::ValueEnum, Debug, Clone)]
-pub enum HookType {
-    /// Pre-tool-use hook (intercepts tool calls)
-    PreToolUse,
-    /// Post-tool-use hook (processes tool results)
-    PostToolUse,
-    /// Pre-commit hook (validate before commit)
-    PreCommit,
-    /// Prepare-commit-msg hook (enhance commit message)
-    PrepareCommitMsg,
-}
-
-/// Boundary mode for text replacement
-#[derive(clap::ValueEnum, Debug, Clone, Default)]
-pub enum BoundaryMode {
-    /// Match anywhere (default, current behavior)
-    #[default]
-    None,
-    /// Only match at word boundaries
-    Word,
-}
-
-/// Check if a character is a word boundary character (not alphanumeric).
-fn is_word_boundary_char(c: char) -> bool {
-    !c.is_alphanumeric() && c != '_'
-}
-
-/// Check if a match position is at word boundaries in the text.
-/// Returns true if the character before start (or start of string) and
-/// the character after end (or end of string) are word boundary characters.
-fn is_at_word_boundary(text: &str, start: usize, end: usize) -> bool {
-    // Check character before start
-    let before_ok = if start == 0 {
-        true
-    } else {
-        text[..start]
-            .chars()
-            .last()
-            .map(is_word_boundary_char)
-            .unwrap_or(true)
-    };
-
-    // Check character after end
-    let after_ok = if end >= text.len() {
-        true
-    } else {
-        text[end..]
-            .chars()
-            .next()
-            .map(is_word_boundary_char)
-            .unwrap_or(true)
-    };
-
-    before_ok && after_ok
-}
-
-/// Format a replacement link from a NormalizedTerm and LinkType.
-fn format_replacement_link(
-    term: &terraphim_types::NormalizedTerm,
-    link_type: terraphim_hooks::LinkType,
-) -> String {
-    let display_text = term.display();
-    match link_type {
-        terraphim_hooks::LinkType::WikiLinks => format!("[[{}]]", display_text),
-        terraphim_hooks::LinkType::HTMLLinks => format!(
-            "<a href=\"{}\">{}</a>",
-            term.url.as_deref().unwrap_or_default(),
-            display_text
-        ),
-        terraphim_hooks::LinkType::MarkdownLinks => format!(
-            "[{}]({})",
-            display_text,
-            term.url.as_deref().unwrap_or_default()
-        ),
-        terraphim_hooks::LinkType::PlainText => display_text.to_string(),
-    }
-}
-
-/// Create a transparent style for UI elements
-fn transparent_style() -> Style {
-    Style::default().bg(Color::Reset)
-}
-
-/// Create a block with optional transparent background
-fn create_block(title: &str, transparent: bool) -> Block<'_> {
-    let block = Block::default().title(title).borders(Borders::ALL);
-
-    if transparent {
-        block.style(transparent_style())
-    } else {
-        block
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -429,77 +233,6 @@ mod tests {
     }
 
     #[test]
-    fn test_is_word_boundary_char() {
-        // Non-alphanumeric chars are boundaries
-        assert!(is_word_boundary_char(' '));
-        assert!(is_word_boundary_char('\t'));
-        assert!(is_word_boundary_char('\n'));
-        assert!(is_word_boundary_char('.'));
-        assert!(is_word_boundary_char(','));
-        assert!(is_word_boundary_char('('));
-        assert!(is_word_boundary_char(')'));
-        assert!(is_word_boundary_char('"'));
-
-        // Alphanumeric chars are NOT boundaries
-        assert!(!is_word_boundary_char('a'));
-        assert!(!is_word_boundary_char('Z'));
-        assert!(!is_word_boundary_char('0'));
-        assert!(!is_word_boundary_char('9'));
-
-        // Underscore is NOT a boundary (word char in most regex)
-        assert!(!is_word_boundary_char('_'));
-    }
-
-    #[test]
-    fn test_is_at_word_boundary_start_of_string() {
-        // At start of string, "npm" should be at boundary
-        let text = "npm install";
-        assert!(is_at_word_boundary(text, 0, 3)); // "npm" at start
-    }
-
-    #[test]
-    fn test_is_at_word_boundary_end_of_string() {
-        // At end of string, "npm" should be at boundary
-        let text = "install npm";
-        assert!(is_at_word_boundary(text, 8, 11)); // "npm" at end
-    }
-
-    #[test]
-    fn test_is_at_word_boundary_middle_with_spaces() {
-        // In middle with spaces, "npm" should be at boundary
-        let text = "run npm install";
-        assert!(is_at_word_boundary(text, 4, 7)); // "npm" surrounded by spaces
-    }
-
-    #[test]
-    fn test_is_at_word_boundary_not_at_boundary() {
-        // "npm" embedded in "anpmb" should NOT be at boundary
-        let text = "anpmb";
-        assert!(!is_at_word_boundary(text, 1, 4)); // "npm" embedded
-    }
-
-    #[test]
-    fn test_is_at_word_boundary_partial_boundary() {
-        // "npm" at start but not end: "npma"
-        let text = "npma";
-        assert!(!is_at_word_boundary(text, 0, 3)); // "npm" no boundary after
-
-        // "npm" at end but not start: "anpm"
-        let text2 = "anpm";
-        assert!(!is_at_word_boundary(text2, 1, 4)); // "npm" no boundary before
-    }
-
-    #[test]
-    fn test_is_at_word_boundary_with_punctuation() {
-        // Punctuation counts as boundary
-        let text = "(npm)";
-        assert!(is_at_word_boundary(text, 1, 4)); // "npm" between parens
-
-        let text2 = "use npm, please";
-        assert!(is_at_word_boundary(text2, 4, 7)); // "npm" followed by comma
-    }
-
-    #[test]
     fn resolve_tui_server_url_uses_explicit_then_env_then_default() {
         let explicit = resolve_tui_server_url_with_env(Some("http://explicit:9000"), None);
         assert_eq!(explicit, "http://explicit:9000");
@@ -572,33 +305,15 @@ mod tests {
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Default)]
-pub enum OutputFormat {
-    /// Human-readable output (default)
-    #[default]
-    Human,
-    /// Machine-readable JSON output
-    Json,
-    /// Compact JSON for piping
-    JsonCompact,
-}
-
-#[derive(clap::ValueEnum, Debug, Clone, Default)]
-enum RobotFormat {
+pub(crate) enum RobotFormat {
     #[default]
     Json,
     Table,
     Minimal,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum CommandOutputMode {
-    Human,
-    Json,
-    JsonCompact,
-}
-
 #[derive(Debug, Clone, Copy)]
-struct CommandOutputConfig {
+pub(crate) struct CommandOutputConfig {
     mode: CommandOutputMode,
     robot: bool,
 }
@@ -622,6 +337,16 @@ fn resolve_output_config(robot: bool, format: OutputFormat) -> CommandOutputConf
         OutputFormat::JsonCompact => CommandOutputMode::JsonCompact,
     };
     CommandOutputConfig { mode, robot }
+}
+
+/// Get the session cache file path
+#[cfg(feature = "repl-sessions")]
+fn get_session_cache_path() -> std::path::PathBuf {
+    let cache_dir = dirs::cache_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("terraphim-agent");
+    std::fs::create_dir_all(&cache_dir).ok();
+    cache_dir.join("sessions.json")
 }
 
 #[cfg(feature = "repl-sessions")]
@@ -704,1227 +429,6 @@ fn print_json_output<T: Serialize>(value: &T, mode: CommandOutputMode) -> Result
         CommandOutputMode::JsonCompact => serde_json::to_string(value)?,
     };
     println!("{}", out);
-    Ok(())
-}
-
-#[derive(Parser, Debug)]
-#[command(
-    name = "terraphim-agent",
-    version,
-    about = "Terraphim Agent: server-backed fullscreen TUI with offline-capable REPL and CLI commands",
-    after_long_help = "EXIT CODES (F1.2 contract)\n\
-        \n\
-        \x20 0  SUCCESS             Operation completed successfully\n\
-        \x20 1  ERROR_GENERAL       Unspecified or unexpected error\n\
-        \x20 2  ERROR_USAGE         Invalid arguments or unknown command\n\
-        \x20 3  ERROR_INDEX_MISSING Required index not initialised\n\
-        \x20 4  ERROR_NOT_FOUND     No results (only with --fail-on-empty)\n\
-        \x20 5  ERROR_AUTH          Authentication required or failed\n\
-        \x20 6  ERROR_NETWORK       Transport-level network error\n\
-        \x20 7  ERROR_TIMEOUT       Operation exceeded configured timeout\n"
-)]
-struct Cli {
-    /// Use server API mode instead of self-contained offline mode
-    #[arg(long, default_value_t = false)]
-    server: bool,
-    /// Server URL for API mode
-    #[arg(long, default_value = "http://localhost:8000")]
-    server_url: String,
-    /// Enable transparent background mode
-    #[arg(long, default_value_t = false)]
-    transparent: bool,
-    /// Enable robot mode for AI agent integration (JSON output, exit codes)
-    #[arg(long, default_value_t = false)]
-    robot: bool,
-    /// Output format (human, json, json-compact)
-    #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
-    format: OutputFormat,
-    /// Path to a JSON config file (overrides settings.toml and persistence)
-    #[arg(long)]
-    config: Option<String>,
-    #[command(subcommand)]
-    command: Option<Command>,
-}
-
-#[derive(Subcommand, Debug)]
-enum Command {
-    /// Search documents using the knowledge graph
-    Search {
-        /// Primary search query
-        query: String,
-        /// Additional search terms for multi-term queries
-        #[arg(long, num_args = 1.., value_delimiter = ',')]
-        terms: Option<Vec<String>>,
-        /// Logical operator for combining multiple search terms (and/or)
-        #[arg(long, value_enum)]
-        operator: Option<LogicalOperatorCli>,
-        #[arg(long)]
-        role: Option<String>,
-        #[arg(long, default_value_t = 10)]
-        limit: usize,
-        #[arg(long, default_value_t = false)]
-        fail_on_empty: bool,
-        /// Include pinned KG entries in results
-        #[arg(long, default_value_t = false)]
-        include_pinned: bool,
-        /// Minimum composite quality score (0.0-1.0). Excludes documents below this threshold.
-        #[arg(long)]
-        min_quality: Option<f64>,
-        /// Maximum estimated tokens in robot-mode output (4 chars ≈ 1 token)
-        #[arg(long)]
-        max_tokens: Option<usize>,
-        /// Maximum characters per content/preview field before truncation
-        #[arg(long)]
-        max_content_length: Option<usize>,
-        /// Output field set: full, summary, minimal, or custom:<f1>,<f2>
-        #[arg(long)]
-        fields: Option<robot::output::FieldMode>,
-    },
-    /// Manage roles (list, select)
-    Roles {
-        #[command(subcommand)]
-        sub: RolesSub,
-    },
-    /// Manage configuration (show, set, validate, reload)
-    Config {
-        #[command(subcommand)]
-        sub: ConfigSub,
-    },
-    /// Display the knowledge graph for a role
-    Graph {
-        #[arg(long)]
-        role: Option<String>,
-        #[arg(long, default_value_t = 50)]
-        top_k: usize,
-        /// Show only pinned entries
-        #[arg(long, default_value_t = false)]
-        pinned: bool,
-    },
-    /// Manage knowledge graph entries
-    Kg {
-        #[command(subcommand)]
-        sub: KgSub,
-    },
-    /// Chat with the AI using a specific role
-    #[cfg(feature = "llm")]
-    Chat {
-        #[arg(long)]
-        role: Option<String>,
-        prompt: String,
-        #[arg(long)]
-        model: Option<String>,
-    },
-    /// Extract paragraphs matching knowledge graph terms from text
-    Extract {
-        text: String,
-        #[arg(long)]
-        role: Option<String>,
-        #[arg(long, default_value_t = false)]
-        exclude_term: bool,
-    },
-    /// Replace terms in text using the knowledge graph thesaurus
-    Replace {
-        /// Text to replace (reads from stdin if not provided)
-        text: Option<String>,
-        #[arg(long)]
-        role: Option<String>,
-        /// Output format: plain (default), markdown, wiki, html
-        #[arg(long)]
-        format: Option<String>,
-        /// Boundary mode: none (match anywhere) or word (only at word boundaries)
-        #[arg(long, default_value = "none")]
-        boundary: BoundaryMode,
-        /// Output as JSON with metadata (for hook integration)
-        #[arg(long, default_value_t = false)]
-        json: bool,
-        /// Suppress errors and pass through unchanged on failure
-        #[arg(long, default_value_t = false)]
-        fail_open: bool,
-    },
-    /// Validate text against knowledge graph
-    Validate {
-        /// Text to validate (reads from stdin if not provided)
-        text: Option<String>,
-        /// Role to use for validation
-        #[arg(long)]
-        role: Option<String>,
-        /// Check if all matched terms are connected by a single path
-        #[arg(long, default_value_t = false)]
-        connectivity: bool,
-        /// Validate against a named checklist (e.g., "code_review", "security")
-        #[arg(long)]
-        checklist: Option<String>,
-        /// Output as JSON
-        #[arg(long, default_value_t = false)]
-        json: bool,
-    },
-    /// Suggest similar terms using fuzzy matching
-    Suggest {
-        /// Query to search for (reads from stdin if not provided)
-        query: Option<String>,
-        /// Role to use for suggestions
-        #[arg(long)]
-        role: Option<String>,
-        /// Enable fuzzy matching
-        #[arg(long, default_value_t = true)]
-        fuzzy: bool,
-        /// Minimum similarity threshold (0.0-1.0)
-        #[arg(long, default_value_t = 0.6)]
-        threshold: f64,
-        /// Maximum number of suggestions
-        #[arg(long, default_value_t = 10)]
-        limit: usize,
-        /// Output as JSON
-        #[arg(long, default_value_t = false)]
-        json: bool,
-    },
-    /// Unified hook handler for Claude Code integration
-    Hook {
-        /// Hook type (pre-tool-use, post-tool-use, pre-commit, etc.)
-        #[arg(long, value_enum)]
-        hook_type: HookType,
-        /// JSON input from Claude Code (reads from stdin if not provided)
-        #[arg(long)]
-        input: Option<String>,
-        /// Role to use for processing
-        #[arg(long)]
-        role: Option<String>,
-        /// Output as JSON (always true for hooks, but explicit)
-        #[arg(long, default_value_t = true)]
-        json: bool,
-        /// Include guard check for destructive commands (git reset --hard, rm -rf, etc.)
-        ///
-        /// Defaults to true for pre-tool-use; for other hooks (post-tool-use,
-        /// pre-commit, prepare-commit-msg) the default is false because they
-        /// fire after execution or on text inputs that do not need a guard.
-        #[arg(long, default_value_t = false)]
-        with_guard: bool,
-        /// Force the guard check off (overrides `--with-guard` and the per-hook-type default).
-        ///
-        /// Use this escape hatch only when you have already vetted the command and
-        /// need to bypass the safety net. Clap does not auto-derive `--no-with-guard`,
-        /// hence this explicit negation flag.
-        #[arg(long, default_value_t = false, conflicts_with = "with_guard")]
-        no_with_guard: bool,
-        /// Allow thesaurus-based command rewriting (e.g. `npm install` -> `bun add`)
-        ///
-        /// Defaults to **false**. Substitution is opt-in so a stray substring
-        /// match cannot silently mutate a destructive command. Pass `--rewrite`
-        /// to enable KG-driven rewriting.
-        #[arg(long, default_value_t = false)]
-        rewrite: bool,
-    },
-    /// Check command against safety guard patterns (blocks destructive git/fs commands)
-    Guard {
-        /// Command to check (reads from stdin if not provided)
-        command: Option<String>,
-        /// Output as JSON
-        #[arg(long, default_value_t = false)]
-        json: bool,
-        /// Suppress errors and pass through unchanged on failure
-        #[arg(long, default_value_t = false)]
-        fail_open: bool,
-        /// Path to custom destructive patterns thesaurus JSON file
-        #[arg(long)]
-        guard_thesaurus: Option<String>,
-        /// Path to custom allowlist thesaurus JSON file
-        #[arg(long)]
-        guard_allowlist: Option<String>,
-        /// Print per-stage evaluation trace (allowlist > destructive > suspicious > default)
-        /// showing which stage matched and short-circuited. Requires `--json` for structured
-        /// output; without `--json` the trace is printed to stderr in a readable form.
-        #[arg(long, default_value_t = false)]
-        explain: bool,
-    },
-    /// Start fullscreen interactive TUI mode (requires running server)
-    Interactive,
-
-    /// Start REPL (Read-Eval-Print-Loop) interface
-    #[cfg(feature = "repl")]
-    Repl {
-        /// Start in server mode
-        #[arg(long)]
-        server: bool,
-        /// Server URL for API mode
-        #[arg(long, default_value = "http://localhost:8000")]
-        server_url: String,
-    },
-
-    /// Interactive setup wizard for first-time configuration
-    Setup {
-        /// Apply a specific template directly (skip interactive wizard)
-        #[arg(long)]
-        template: Option<String>,
-        /// Path to use with the template (required for some templates like local-notes)
-        #[arg(long)]
-        path: Option<String>,
-        /// Add a new role to existing configuration (instead of replacing)
-        #[arg(long, default_value_t = false)]
-        add_role: bool,
-        /// List available templates and exit
-        #[arg(long, default_value_t = false)]
-        list_templates: bool,
-    },
-
-    /// Check for updates without installing
-    CheckUpdate,
-
-    /// Update to latest version if available
-    Update,
-
-    /// Learning capture for failed commands
-    Learn {
-        #[command(subcommand)]
-        sub: LearnSub,
-    },
-
-    /// Session management for AI coding assistant history
-    #[cfg(feature = "repl-sessions")]
-    Sessions {
-        #[command(subcommand)]
-        sub: SessionsSub,
-    },
-
-    /// Start listener mode for AI agent communication (offline-only)
-    Listen {
-        /// Agent identity/name for this listener instance
-        #[arg(long)]
-        identity: Option<String>,
-        /// Optional listener configuration JSON file
-        #[arg(long)]
-        config: Option<String>,
-        /// Start in server mode (rejected -- listen is offline-only)
-        #[arg(long)]
-        server: bool,
-    },
-
-    /// Manage the compiled thesaurus cache
-    Cache {
-        #[command(subcommand)]
-        sub: CacheSub,
-    },
-
-    /// Robot mode self-documentation commands
-    Robot {
-        #[command(subcommand)]
-        sub: RobotSub,
-    },
-
-    /// Memory lifecycle management (capture, distill, scope, provenance, retrieve,
-    /// apply, validate, retire, rubric, second-run)
-    Memory {
-        #[command(subcommand)]
-        sub: MemorySub,
-    },
-}
-
-#[derive(Subcommand, Debug)]
-enum CacheSub {
-    /// Flush (delete) compiled thesaurus cache entries
-    Flush {
-        /// Specific role to flush (if omitted, flushes all cached thesauri)
-        #[arg(long)]
-        role: Option<String>,
-    },
-}
-
-#[derive(Subcommand, Debug)]
-enum LearnSub {
-    /// Capture a failed command as a learning
-    Capture {
-        /// The command that failed
-        command: String,
-        /// The error output (stderr)
-        #[arg(long)]
-        error: String,
-        /// The exit code
-        #[arg(long, default_value_t = 1)]
-        exit_code: i32,
-        /// Enable debug output
-        #[arg(long, default_value_t = false)]
-        debug: bool,
-    },
-    /// List recent learnings
-    List {
-        /// Number of recent learnings to show
-        #[arg(long, default_value_t = 10)]
-        recent: usize,
-        /// Show global learnings instead of project
-        #[arg(long, default_value_t = false)]
-        global: bool,
-    },
-    /// Query learnings by pattern
-    Query {
-        /// Search pattern
-        pattern: String,
-        /// Use exact match instead of substring
-        #[arg(long, default_value_t = false)]
-        exact: bool,
-        /// Show global learnings instead of project
-        #[arg(long, default_value_t = false)]
-        global: bool,
-        /// Enable semantic matching via KG entities
-        #[arg(long, default_value_t = false)]
-        semantic: bool,
-    },
-    /// Add correction to an existing learning
-    Correct {
-        /// Learning ID
-        id: String,
-        /// The correction to add
-        #[arg(long)]
-        correction: String,
-    },
-    /// Record and list user corrections (tool preference, naming, workflow, etc.)
-    Correction {
-        #[command(subcommand)]
-        sub: CorrectionSub,
-    },
-    /// Process hook input from AI agents (reads JSON from stdin)
-    Hook {
-        /// AI agent format
-        #[arg(long, value_enum, default_value = "claude")]
-        format: learnings::AgentFormat,
-        /// Hook type for multi-hook pipeline
-        #[arg(long, value_enum, default_value = "post-tool-use")]
-        learn_hook_type: learnings::LearnHookType,
-    },
-    /// Install hook for AI agent
-    InstallHook {
-        /// AI agent to install hook for
-        #[arg(value_enum)]
-        agent: learnings::AgentType,
-    },
-    /// Manage captured procedures (recorded command sequences)
-    Procedure {
-        #[command(subcommand)]
-        sub: ProcedureSub,
-    },
-    /// Compile captured corrections into a thesaurus for the replace command
-    Compile {
-        /// Output path for compiled thesaurus JSON
-        #[arg(long, default_value = "compiled-corrections.json")]
-        output: PathBuf,
-        /// Optional: merge with this curated thesaurus file
-        #[arg(long)]
-        merge_with: Option<PathBuf>,
-    },
-    /// Review and approve/reject knowledge suggestions
-    #[cfg(feature = "shared-learning")]
-    Suggest {
-        #[command(subcommand)]
-        sub: SuggestSub,
-    },
-    /// Export captured corrections as reviewable KG markdown artefacts
-    ExportKg {
-        /// Output directory for KG markdown files
-        #[arg(long)]
-        output: PathBuf,
-        /// Filter by correction type: tool-preference or all (default: all)
-        #[arg(long, default_value = "all")]
-        correction_type: String,
-    },
-    /// Manage shared learnings with trust levels (L1/L2/L3)
-    #[cfg(feature = "shared-learning")]
-    Shared {
-        #[command(subcommand)]
-        sub: SharedLearningSub,
-    },
-}
-
-#[derive(Subcommand, Debug)]
-enum CorrectionSub {
-    /// Record a new user correction
-    Add {
-        /// What the agent said/did originally
-        #[arg(long)]
-        original: String,
-        /// What the user said instead
-        #[arg(long)]
-        corrected: String,
-        /// Type of correction: tool-preference, code-pattern, naming, workflow-step, fact-correction, style-preference, other
-        #[arg(long, default_value = "other")]
-        correction_type: String,
-        /// Context description (optional)
-        #[arg(long, default_value = "")]
-        context: String,
-        /// Session ID for traceability
-        #[arg(long)]
-        session_id: Option<String>,
-    },
-    /// List stored corrections
-    List {
-        /// Show at most this many corrections (default: 20)
-        #[arg(long, default_value_t = 20)]
-        recent: usize,
-        /// Filter by correction type (e.g. tool-preference, code-pattern)
-        #[arg(long)]
-        filter_type: Option<String>,
-        /// Show global corrections instead of project-local
-        #[arg(long, default_value_t = false)]
-        global: bool,
-    },
-}
-
-#[cfg(feature = "shared-learning")]
-#[derive(Subcommand, Debug)]
-enum SharedLearningSub {
-    /// List shared learnings, optionally filtered by trust level
-    List {
-        /// Filter by trust level: l1, l2, l3
-        #[arg(long)]
-        trust_level: Option<String>,
-        /// Maximum number of learnings to show
-        #[arg(long, default_value_t = 20)]
-        limit: usize,
-    },
-    /// Promote a shared learning to a higher trust level
-    Promote {
-        /// Learning ID
-        id: String,
-        /// Target trust level: l2 or l3
-        #[arg(long)]
-        to: String,
-    },
-    /// Import local captured learnings into the shared learning store at L1
-    Import,
-    /// Show shared learning statistics by trust level
-    Stats,
-    /// Sync L2/L3 learnings to Gitea wiki
-    Sync,
-    /// Inject learnings from shared directory into local store
-    #[cfg(feature = "cross-agent-injection")]
-    Inject {
-        /// Minimum trust level to inject (l1, l2, l3)
-        #[arg(long, default_value = "l2")]
-        min_trust: String,
-        /// Dry run (show what would be injected without injecting)
-        #[arg(long, default_value_t = false)]
-        dry_run: bool,
-    },
-}
-
-#[cfg(feature = "shared-learning")]
-#[derive(Subcommand, Debug)]
-enum SuggestSub {
-    /// List pending suggestions, optionally filtered by status
-    List {
-        /// Filter by status: pending, approved, rejected
-        #[arg(long)]
-        status: Option<String>,
-        #[arg(long, default_value_t = 20)]
-        limit: usize,
-    },
-    /// Show full details of a suggestion
-    Show { id: String },
-    /// Approve a suggestion (promotes to L3 and marks as approved)
-    Approve { id: String },
-    /// Reject a suggestion
-    Reject {
-        id: String,
-        #[arg(long)]
-        reason: Option<String>,
-    },
-    /// Approve all pending suggestions above a confidence threshold
-    ApproveAll {
-        #[arg(long, default_value_t = 0.8)]
-        min_confidence: f64,
-        #[arg(long, default_value_t = false)]
-        dry_run: bool,
-    },
-    /// Reject all pending suggestions below a confidence threshold
-    RejectAll {
-        #[arg(long, default_value_t = 0.3)]
-        max_confidence: f64,
-        #[arg(long, default_value_t = false)]
-        dry_run: bool,
-    },
-    /// Show suggestion approval metrics
-    Metrics,
-    /// Show session-end suggestion summary
-    SessionEnd {
-        #[arg(long)]
-        context: Option<String>,
-    },
-}
-
-#[derive(Subcommand, Debug)]
-enum ProcedureSub {
-    /// List stored procedures (most recent first)
-    List {
-        /// Number of recent procedures to show
-        #[arg(long, default_value_t = 10)]
-        recent: usize,
-    },
-    /// Show full details of a procedure
-    Show {
-        /// Procedure ID
-        id: String,
-    },
-    /// Create a new empty procedure
-    Record {
-        /// Procedure title
-        title: String,
-        /// Optional description
-        #[arg(long)]
-        description: Option<String>,
-    },
-    /// Add a step to an existing procedure
-    AddStep {
-        /// Procedure ID
-        id: String,
-        /// Command to execute in this step
-        command: String,
-        /// Precondition that must hold before this step
-        #[arg(long)]
-        precondition: Option<String>,
-        /// Postcondition that should hold after this step
-        #[arg(long)]
-        postcondition: Option<String>,
-    },
-    /// Record a successful execution of a procedure
-    Success {
-        /// Procedure ID
-        id: String,
-    },
-    /// Record a failed execution of a procedure
-    Failure {
-        /// Procedure ID
-        id: String,
-    },
-    /// Replay a stored procedure (execute its steps in order)
-    Replay {
-        /// Procedure ID
-        id: String,
-        /// Print steps without executing them
-        #[arg(long, default_value_t = false)]
-        dry_run: bool,
-    },
-    /// Show health status of all procedures (auto-disables critically failing ones)
-    Health,
-    /// Enable a previously disabled procedure
-    Enable {
-        /// Procedure ID
-        id: String,
-    },
-    /// Disable a procedure (prevents replay)
-    Disable {
-        /// Procedure ID
-        id: String,
-    },
-    /// Auto-capture a procedure from a session's Bash commands
-    #[cfg(feature = "repl-sessions")]
-    FromSession {
-        /// Session ID to extract commands from
-        session_id: String,
-        /// Optional title (auto-generated from first command if not provided)
-        #[arg(long)]
-        title: Option<String>,
-    },
-}
-
-#[derive(Subcommand, Debug)]
-enum RolesSub {
-    List,
-    Select { name: String },
-}
-
-#[derive(Subcommand, Debug)]
-enum ConfigSub {
-    /// Show current configuration as JSON
-    Show,
-    /// Set a configuration value
-    Set { key: String, value: String },
-    /// Validate configuration loading (shows what would be loaded and from where)
-    Validate,
-    /// Reload roles from JSON file specified in settings.toml role_config
-    Reload,
-}
-
-#[derive(Subcommand, Debug)]
-enum KgSub {
-    /// List knowledge graph entries
-    List {
-        #[arg(long)]
-        role: Option<String>,
-        #[arg(long, default_value_t = 50)]
-        top_k: usize,
-        /// Show only pinned entries
-        #[arg(long, default_value_t = false)]
-        pinned: bool,
-    },
-}
-
-/// Get the session cache file path
-#[cfg(feature = "repl-sessions")]
-fn get_session_cache_path() -> std::path::PathBuf {
-    let cache_dir = dirs::cache_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("terraphim-agent");
-    std::fs::create_dir_all(&cache_dir).ok();
-    cache_dir.join("sessions.json")
-}
-
-#[cfg(feature = "repl-sessions")]
-#[derive(Subcommand, Debug)]
-enum SessionsSub {
-    /// Detect available session sources (Claude Code, Cursor, etc.)
-    Sources,
-    /// List all cached sessions (auto-imports if cache is empty)
-    List {
-        /// Limit number of sessions to show
-        #[arg(long, default_value_t = 20)]
-        limit: usize,
-    },
-    /// Search sessions by query string (auto-imports if cache is empty)
-    Search {
-        /// Search query
-        query: String,
-        /// Limit number of results
-        #[arg(long, default_value_t = 10)]
-        limit: usize,
-    },
-    /// Show session statistics (auto-imports if cache is empty)
-    Stats,
-    /// Print the full body of a session by ID
-    Expand {
-        /// Session ID to expand
-        id: String,
-        /// Lines of context to show around matched content (reserved for future --query support)
-        #[arg(long, default_value_t = 5)]
-        context_lines: usize,
-    },
-}
-
-#[derive(Subcommand, Debug)]
-enum RobotSub {
-    /// Show robot capabilities
-    Capabilities {
-        /// Output format
-        #[arg(long, value_enum, default_value_t = RobotFormat::Json)]
-        format: RobotFormat,
-    },
-    /// Show command schemas
-    Schemas {
-        /// Command name to get schema for (all commands if omitted)
-        command: Option<String>,
-        /// Output format
-        #[arg(long, value_enum, default_value_t = RobotFormat::Json)]
-        format: RobotFormat,
-    },
-    /// Show command examples
-    Examples {
-        /// Command name to get examples for (all commands if omitted)
-        command: Option<String>,
-        /// Output format
-        #[arg(long, value_enum, default_value_t = RobotFormat::Table)]
-        format: RobotFormat,
-    },
-}
-
-#[derive(Subcommand, Debug)]
-enum MemorySub {
-    /// Capture a command or session event as an agentic memory item
-    /// (writes to evolution store with provenance metadata)
-    Capture {
-        /// Provenance tag for traceability (session ID, commit SHA)
-        #[arg(long)]
-        provenance_tag: Option<String>,
-    },
-    /// Distill captured learnings into thesaurus and KG entries
-    /// (routes to `learn compile` + `learn export-kg`)
-    Distill {
-        /// Output format: markdown or json
-        #[arg(long, default_value = "markdown")]
-        format: String,
-    },
-    /// Show or check role and project memory boundaries
-    Scope {
-        /// Role name to show scope for
-        #[arg(long)]
-        role: Option<String>,
-        /// Project path to show scope for
-        #[arg(long)]
-        project: Option<String>,
-        /// Check for permissioned items in public locations
-        #[arg(long, default_value_t = false)]
-        check: bool,
-    },
-    /// Search session provenance for a memory ID
-    /// (routes to `sessions search`)
-    Provenance {
-        /// Memory ID to search provenance for
-        #[arg(long)]
-        memory_id: Option<String>,
-        /// Search query
-        query: Option<String>,
-    },
-    /// Retrieve memory items by query within role scope
-    /// (routes to `search`)
-    Retrieve {
-        /// Role scope for retrieval
-        #[arg(long)]
-        role: Option<String>,
-        /// Search query
-        query: String,
-    },
-    /// Show what hooks would inject for a given prompt or diff
-    /// (routes to `terraphim_hooks` diff)
-    Apply {
-        /// Prompt text to diff hook application against
-        #[arg(long)]
-        prompt: Option<String>,
-    },
-    /// Validate memory items against the reliability rubric
-    /// (calls judge pipeline for scoring)
-    Validate {
-        /// Validate all stored memory items
-        #[arg(long, default_value_t = false)]
-        all: bool,
-        /// Validate a specific lesson by ID
-        #[arg(long)]
-        lesson_id: Option<String>,
-    },
-    /// Propose retirement of a memory item
-    /// (writes to learned-rules.md with CTO approval flag)
-    Retire {
-        /// Learning ID to retire
-        #[arg(long)]
-        lesson_id: Option<String>,
-        /// Reason for retirement
-        #[arg(long)]
-        reason: Option<String>,
-    },
-    /// Run the full Memory Reliability Rubric diagnostic on a project
-    /// (6 dimensions: faithfulness, scope, provenance, actionability, decay, risk)
-    Rubric {
-        /// Project path to run rubric against
-        #[arg(long)]
-        project: String,
-        /// Output file for markdown readout (stdout if omitted)
-        #[arg(long)]
-        output: Option<String>,
-    },
-    /// List memory items from the evolution store
-    List {
-        /// Filter by type (fact, experience, lesson, etc.)
-        #[arg(long)]
-        item_type: Option<String>,
-        /// Maximum items to show
-        #[arg(long, default_value_t = 20)]
-        limit: usize,
-    },
-    /// Show details of a specific memory item or lesson by ID
-    Show {
-        /// Memory item or lesson ID
-        id: String,
-        /// Show raw JSON output
-        #[arg(long, default_value_t = false)]
-        json: bool,
-    },
-    /// Export memory items and lessons as JSON or markdown
-    Export {
-        /// Output format: json or markdown
-        #[arg(long, default_value = "json")]
-        format: String,
-        /// Output file path (stdout if omitted)
-        #[arg(long)]
-        output: Option<String>,
-    },
-    /// Compute token delta between two ADF runs of the same Gitea issue
-    /// (second-run acceleration signal)
-    SecondRun {
-        /// Gitea issue number to compare runs for
-        #[arg(long)]
-        issue: u64,
-    },
-}
-
-fn emit_robot_error_and_exit(
-    err: &anyhow::Error,
-    code: robot::exit_codes::ExitCode,
-    robot: bool,
-    format: &OutputFormat,
-) -> ! {
-    if robot || !matches!(format, OutputFormat::Human) {
-        use robot::schema::{ResponseMeta, RobotError, RobotResponse};
-        let meta = ResponseMeta::new("unknown");
-        let robot_error = RobotError::new(format!("E{:03}", code.code()), format!("{:#}", err));
-        let response = RobotResponse::<()>::error(vec![robot_error], meta);
-        if let Ok(json) = serde_json::to_string(&response) {
-            println!("{}", json);
-        }
-    }
-    eprintln!("Error: {:#}", err);
-    std::process::exit(code.code().into())
-}
-
-fn classify_error(err: &anyhow::Error) -> robot::exit_codes::ExitCode {
-    use robot::exit_codes::ExitCode;
-
-    if err.chain().any(|e| e.is::<tokio::time::error::Elapsed>()) {
-        return ExitCode::ErrorTimeout;
-    }
-
-    #[cfg(feature = "server")]
-    if err.chain().any(|e| e.is::<reqwest::Error>()) {
-        let is_timeout = err
-            .chain()
-            .filter_map(|e| e.downcast_ref::<reqwest::Error>())
-            .any(|re| re.is_timeout());
-        if is_timeout {
-            return ExitCode::ErrorTimeout;
-        }
-        return ExitCode::ErrorNetwork;
-    }
-
-    let msg = err.to_string().to_lowercase();
-
-    if msg.contains("timed out") || msg.contains("timeout") || msg.contains("elapsed") {
-        ExitCode::ErrorTimeout
-    } else if msg.contains("connection refused")
-        || msg.contains("connection reset")
-        || msg.contains("network")
-        || msg.contains("dns")
-        || msg.contains("transport")
-        || msg.contains("connect error")
-    {
-        ExitCode::ErrorNetwork
-    } else if msg.contains("unauthori")
-        || msg.contains("unauthenticated")
-        || msg.contains("forbidden")
-        || msg.contains("authentication required")
-        || msg.contains("authentication failed")
-        || msg.contains(" 401 ")
-        || msg.contains(" 403 ")
-        || msg.ends_with(" 401")
-        || msg.ends_with(" 403")
-        || msg.contains("http 401")
-        || msg.contains("http 403")
-    {
-        ExitCode::ErrorAuth
-    } else if msg.contains("index not found")
-        || msg.contains("index missing")
-        || msg.contains("not initialised")
-        || msg.contains("not initialized")
-        || (msg.contains("not found") && msg.contains("index"))
-        || msg.contains("knowledge graph not configured")
-        || msg.contains("no local knowledge graph")
-        || (msg.contains("thesaurus")
-            && (msg.contains("not found") || msg.contains("failed to load")))
-    {
-        ExitCode::ErrorIndexMissing
-    } else {
-        ExitCode::ErrorGeneral
-    }
-}
-
-#[cfg(test)]
-mod classify_error_tests {
-    use super::*;
-    use robot::exit_codes::ExitCode;
-
-    fn err(msg: &str) -> anyhow::Error {
-        anyhow::anyhow!("{}", msg)
-    }
-
-    #[test]
-    fn general_error_maps_to_1() {
-        assert_eq!(
-            classify_error(&err("something unexpected happened")),
-            ExitCode::ErrorGeneral
-        );
-    }
-
-    #[test]
-    fn index_missing_patterns_map_to_3() {
-        assert_eq!(
-            classify_error(&err("index not found on disk")),
-            ExitCode::ErrorIndexMissing
-        );
-        assert_eq!(
-            classify_error(&err("index missing")),
-            ExitCode::ErrorIndexMissing
-        );
-        assert_eq!(
-            classify_error(&err("automata index not initialised")),
-            ExitCode::ErrorIndexMissing
-        );
-        assert_eq!(
-            classify_error(&err("Config error: knowledge graph not configured")),
-            ExitCode::ErrorIndexMissing
-        );
-        assert_eq!(
-            classify_error(&err("no local knowledge graph path available")),
-            ExitCode::ErrorIndexMissing
-        );
-        assert_eq!(
-            classify_error(&err("thesaurus not found at path")),
-            ExitCode::ErrorIndexMissing
-        );
-    }
-
-    #[test]
-    fn auth_patterns_map_to_5() {
-        assert_eq!(
-            classify_error(&err("authentication required")),
-            ExitCode::ErrorAuth
-        );
-        assert_eq!(
-            classify_error(&err("request forbidden: 403")),
-            ExitCode::ErrorAuth
-        );
-        assert_eq!(
-            classify_error(&err("401 Unauthorised")),
-            ExitCode::ErrorAuth
-        );
-        assert_eq!(
-            classify_error(&err("server returned 403 Forbidden")),
-            ExitCode::ErrorAuth
-        );
-    }
-
-    #[test]
-    fn non_auth_strings_do_not_map_to_5() {
-        assert_ne!(
-            classify_error(&err("author field missing")),
-            ExitCode::ErrorAuth
-        );
-        assert_ne!(
-            classify_error(&err("authority header")),
-            ExitCode::ErrorAuth
-        );
-        assert_ne!(
-            classify_error(&err("failed to open auth_tokens.json")),
-            ExitCode::ErrorAuth
-        );
-        assert_ne!(
-            classify_error(&err("error code 4010 unknown")),
-            ExitCode::ErrorAuth
-        );
-    }
-
-    #[test]
-    fn timeout_patterns_map_to_7() {
-        assert_eq!(
-            classify_error(&err("operation timed out")),
-            ExitCode::ErrorTimeout
-        );
-        assert_eq!(
-            classify_error(&err("deadline elapsed waiting for response")),
-            ExitCode::ErrorTimeout
-        );
-        assert_eq!(
-            classify_error(&err("request timeout after 30s")),
-            ExitCode::ErrorTimeout
-        );
-    }
-
-    #[test]
-    fn network_patterns_map_to_6() {
-        assert_eq!(
-            classify_error(&err("connection refused on port 8080")),
-            ExitCode::ErrorNetwork
-        );
-        assert_eq!(
-            classify_error(&err("dns resolution failed")),
-            ExitCode::ErrorNetwork
-        );
-        assert_eq!(
-            classify_error(&err("network error connecting to host")),
-            ExitCode::ErrorNetwork
-        );
-    }
-}
-
-/// Build a ForgivingParser with the actual CLI subcommands.
-fn build_cli_forgiving_parser() -> forgiving::ForgivingParser {
-    let mut commands = vec![
-        "search",
-        "roles",
-        "config",
-        "graph",
-        "extract",
-        "replace",
-        "validate",
-        "suggest",
-        "hook",
-        "guard",
-        "interactive",
-        "setup",
-        "check-update",
-        "update",
-        "learn",
-        "listen",
-        "cache",
-    ];
-
-    #[cfg(feature = "llm")]
-    commands.push("chat");
-
-    #[cfg(feature = "repl")]
-    commands.push("repl");
-
-    #[cfg(feature = "repl-sessions")]
-    commands.push("sessions");
-
-    let parser = forgiving::ForgivingParser::new(commands.into_iter().map(String::from).collect());
-
-    let mut aliases = forgiving::AliasRegistry::empty();
-    aliases.add("q", "search");
-    aliases.add("s", "search");
-    aliases.add("query", "search");
-    aliases.add("find", "search");
-    aliases.add("r", "roles");
-    aliases.add("role", "roles");
-    aliases.add("c", "config");
-    aliases.add("cfg", "config");
-    aliases.add("g", "graph");
-    aliases.add("kg", "graph");
-    aliases.add("i", "interactive");
-
-    parser.with_aliases(aliases)
-}
-
-/// Apply forgiving parsing to CLI arguments.
-///
-/// Intercepts the subcommand argument before clap sees it, applying:
-/// - Alias expansion (e.g. `q` -> `search`)
-/// - Auto-correction (e.g. `serach` -> `search`)
-/// - Case-insensitive matching (e.g. `SEARCH` -> `search`)
-///
-/// Prints correction notifications to stderr.
-fn apply_forgiving_parsing(args: &[String]) -> Vec<String> {
-    if args.len() < 2 {
-        return args.to_vec();
-    }
-
-    let mut subcommand_idx = None;
-    let mut skip_next = false;
-
-    for (i, arg) in args.iter().enumerate().skip(1) {
-        if skip_next {
-            skip_next = false;
-            continue;
-        }
-
-        if arg.starts_with('-') {
-            match arg.as_str() {
-                "--server-url" | "--format" | "--config" => {
-                    skip_next = true;
-                }
-                _ => {}
-            }
-            continue;
-        }
-
-        subcommand_idx = Some(i);
-        break;
-    }
-
-    let idx = match subcommand_idx {
-        Some(i) => i,
-        None => return args.to_vec(),
-    };
-
-    let input = &args[idx];
-    let parser = build_cli_forgiving_parser();
-    let result = parser.parse(input);
-
-    let corrected_cmd = match &result {
-        forgiving::ParseResult::AliasExpanded {
-            command, original, ..
-        } => {
-            if command != original {
-                eprintln!("Note: '{}' expanded to '{}'", original, command);
-            }
-            Some(command.clone())
-        }
-        forgiving::ParseResult::AutoCorrected {
-            command, original, ..
-        } => {
-            eprintln!("Note: '{}' auto-corrected to '{}'", original, command);
-            Some(command.clone())
-        }
-        forgiving::ParseResult::Exact {
-            command, original, ..
-        } => {
-            if command != original {
-                Some(command.clone())
-            } else {
-                None
-            }
-        }
-        _ => None,
-    };
-
-    if let Some(cmd) = corrected_cmd {
-        let mut corrected = args.to_vec();
-        corrected[idx] = cmd;
-        corrected
-    } else {
-        args.to_vec()
-    }
-}
-
-/// Format a value using robot mode output formatting.
-fn format_robot_output<T: Serialize>(value: &T, format: RobotFormat) -> Result<String> {
-    let robot_format = match format {
-        RobotFormat::Json => robot::output::OutputFormat::Json,
-        RobotFormat::Table => robot::output::OutputFormat::Table,
-        RobotFormat::Minimal => robot::output::OutputFormat::Minimal,
-    };
-    let config = robot::output::RobotConfig::new().with_format(robot_format);
-    let formatter = robot::output::RobotFormatter::new(config);
-    formatter
-        .format(value)
-        .map_err(|e| anyhow::anyhow!("Failed to format output: {}", e))
-}
-
-/// Handle robot mode self-documentation commands.
-fn handle_robot_command(sub: RobotSub) -> Result<()> {
-    let docs = robot::SelfDocumentation::new();
-
-    match sub {
-        RobotSub::Capabilities { format } => {
-            let caps = docs.capabilities_data();
-            let output = format_robot_output(&caps, format)?;
-            println!("{}", output);
-        }
-        RobotSub::Schemas { command, format } => {
-            if let Some(cmd) = command {
-                if let Some(schema) = docs.schema(&cmd) {
-                    let output = format_robot_output(&schema, format)?;
-                    println!("{}", output);
-                } else {
-                    return Err(anyhow::anyhow!("Unknown command: {}", cmd));
-                }
-            } else {
-                let schemas = docs.all_schemas();
-                let output = format_robot_output(&schemas, format)?;
-                println!("{}", output);
-            }
-        }
-        RobotSub::Examples { command, format } => {
-            if let Some(cmd) = command {
-                if let Some(examples) = docs.examples(&cmd) {
-                    let output = format_robot_output(&examples, format)?;
-                    println!("{}", output);
-                } else {
-                    return Err(anyhow::anyhow!("Unknown command: {}", cmd));
-                }
-            } else {
-                let all_examples: Vec<_> = docs
-                    .all_schemas()
-                    .iter()
-                    .flat_map(|s| &s.examples)
-                    .collect();
-                let output = format_robot_output(&all_examples, format)?;
-                println!("{}", output);
-            }
-        }
-    }
-
     Ok(())
 }
 
@@ -2162,6 +666,664 @@ async fn run_config_validate() -> Result<()> {
     Ok(())
 }
 
+struct GuardArgs<'a> {
+    command: &'a Option<String>,
+    json: bool,
+    fail_open: bool,
+    guard_thesaurus: &'a Option<String>,
+    guard_allowlist: &'a Option<String>,
+    explain: bool,
+}
+
+async fn handle_guard_command(args: &GuardArgs<'_>) -> Result<()> {
+    let input_command = match args.command {
+        Some(c) => c.clone(),
+        None => {
+            use std::io::Read;
+            let mut buffer = String::new();
+            std::io::stdin().read_to_string(&mut buffer)?;
+            buffer.trim().to_string()
+        }
+    };
+
+    let guard = match (args.guard_thesaurus, args.guard_allowlist) {
+        (Some(thesaurus_path), Some(allowlist_path)) => {
+            let destructive_json = std::fs::read_to_string(thesaurus_path)?;
+            let allowlist_json = std::fs::read_to_string(allowlist_path)?;
+            guard_patterns::CommandGuard::from_json(&destructive_json, &allowlist_json, None)
+                .map_err(|e| anyhow::anyhow!("Failed to load custom guard thesauruses: {}", e))?
+        }
+        (Some(thesaurus_path), None) => {
+            let destructive_json = std::fs::read_to_string(thesaurus_path)?;
+            guard_patterns::CommandGuard::from_json(
+                &destructive_json,
+                guard_patterns::CommandGuard::default_allowlist_json(),
+                None,
+            )
+            .map_err(|e| anyhow::anyhow!("Failed to load custom guard thesaurus: {}", e))?
+        }
+        (None, Some(allowlist_path)) => {
+            let allowlist_json = std::fs::read_to_string(allowlist_path)?;
+            guard_patterns::CommandGuard::from_json(
+                guard_patterns::CommandGuard::default_destructive_json(),
+                &allowlist_json,
+                None,
+            )
+            .map_err(|e| anyhow::anyhow!("Failed to load custom guard allowlist: {}", e))?
+        }
+        (None, None) => guard_patterns::CommandGuard::new(),
+    };
+    let result = guard.check(&input_command);
+
+    if args.explain {
+        // Recompute the trace so we can show the per-stage path even
+        // when the final decision came from a short-circuit. The trace
+        // shares the same matchers as `check`, so this is a second
+        // walk over the same inputs (cheap: a `Vec<4>` plus three
+        // Aho-Corasick matches).
+        let trace = guard.check_with_trace(&input_command);
+        trace.print(args.json)?;
+        // Still respect the normal exit-code semantics when --explain is on
+        // so scripts can use `--explain --fail-on-empty` style gating.
+        if trace.result.decision == guard_patterns::GuardDecision::Block && !args.fail_open {
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+
+    if args.json {
+        println!("{}", serde_json::to_string(&result)?);
+    } else if result.decision == guard_patterns::GuardDecision::Block
+        && let Some(reason) = &result.reason
+    {
+        eprintln!("BLOCKED: {}", reason);
+        if !args.fail_open {
+            std::process::exit(1);
+        }
+    }
+    // If allowed, no output in non-JSON mode (silent success)
+    Ok(())
+}
+
+async fn handle_check_update_command() -> Result<()> {
+    println!("Checking for terraphim-agent updates...");
+    let config = UpdaterConfig::new("terraphim-agent").with_version(env!("CARGO_PKG_VERSION"));
+    let updater = TerraphimUpdater::new(config);
+    match updater.check_update().await {
+        Ok(status) => {
+            println!("{}", status);
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!("Failed to check for updates: {}", e);
+            std::process::exit(1);
+        }
+    }
+}
+
+async fn handle_update_command() -> Result<()> {
+    println!("Updating terraphim-agent...");
+    let config = UpdaterConfig::new("terraphim-agent").with_version(env!("CARGO_PKG_VERSION"));
+    let updater = TerraphimUpdater::new(config);
+    match updater.check_and_update().await {
+        Ok(status) => {
+            println!("{}", status);
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!("Update failed: {}", e);
+            std::process::exit(1);
+        }
+    }
+}
+
+// Reads the configuration directly and skips the thesaurus/rolegraph build that
+// `TuiService::new` does (~63% of startup per profiling). See the comment at the
+// call site for the broader rationale (Refs #120).
+async fn handle_roles_list_command(config_path: Option<String>) -> Result<()> {
+    let config = TuiService::load_config(config_path, false).await?;
+    let selected = TuiService::selected_role_of(&config);
+    for (name, shortname) in TuiService::roles_with_info_of(&config) {
+        let marker = if name == selected.to_string() {
+            "*"
+        } else {
+            " "
+        };
+        if let Some(short) = shortname {
+            println!("{} {} ({})", marker, name, short);
+        } else {
+            println!("{} {}", marker, name);
+        }
+    }
+    Ok(())
+}
+
+struct SetupArgs {
+    template: Option<String>,
+    path: Option<String>,
+    add_role: bool,
+    list_templates: bool,
+}
+
+async fn handle_setup_command(args: SetupArgs, service: &TuiService) -> Result<()> {
+    use onboarding::{
+        SetupMode, SetupResult, apply_template, list_templates as get_templates, run_setup_wizard,
+    };
+
+    // List templates and exit if requested
+    if args.list_templates {
+        println!("Available templates:\n");
+        for template in get_templates() {
+            let path_note = if template.requires_path {
+                " (requires --path)"
+            } else if template.default_path.is_some() {
+                &format!(" (default: {})", template.default_path.as_ref().unwrap())
+            } else {
+                ""
+            };
+            println!("  {} - {}{}", template.id, template.description, path_note);
+        }
+        println!("\nUse --template <id> to apply a template directly.");
+        return Ok(());
+    }
+
+    // Apply template directly if specified
+    if let Some(template_id) = args.template {
+        println!("Applying template: {}", template_id);
+        match apply_template(&template_id, args.path.as_deref()) {
+            Ok(role) => {
+                // Save the role to config
+                if args.add_role {
+                    service.add_role(role.clone()).await?;
+                    println!("Role '{}' added to configuration.", role.name);
+                } else {
+                    service.set_role(role.clone()).await?;
+                    println!("Configuration set to role '{}'.", role.name);
+                }
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("Failed to apply template: {}", e);
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // Run interactive wizard
+    let mode = if args.add_role {
+        SetupMode::AddRole
+    } else {
+        SetupMode::FirstRun
+    };
+
+    match run_setup_wizard(mode).await {
+        Ok(SetupResult::Template {
+            template,
+            custom_path: _,
+            role,
+        }) => {
+            if args.add_role {
+                service.add_role(role.clone()).await?;
+                println!(
+                    "\nRole '{}' added from template '{}'.",
+                    role.name, template.id
+                );
+            } else {
+                service.set_role(role.clone()).await?;
+                println!(
+                    "\nConfiguration set to role '{}' from template '{}'.",
+                    role.name, template.id
+                );
+            }
+        }
+        Ok(SetupResult::Custom { role }) => {
+            if args.add_role {
+                service.add_role(role.clone()).await?;
+                println!("\nCustom role '{}' added to configuration.", role.name);
+            } else {
+                service.set_role(role.clone()).await?;
+                println!("\nConfiguration set to custom role '{}'.", role.name);
+            }
+        }
+        Ok(SetupResult::Cancelled) => {
+            println!("\nSetup cancelled.");
+        }
+        Err(onboarding::OnboardingError::NotATty) => {
+            eprintln!(
+                "Interactive mode requires a terminal. Use --template for non-interactive setup."
+            );
+            std::process::exit(1);
+        }
+        Err(e) => {
+            eprintln!("Setup failed: {}", e);
+            std::process::exit(1);
+        }
+    }
+
+    Ok(())
+}
+
+// Fuzzy suggestion arm extracted from `run_offline_command`. The Suggest arm
+// reads the query from stdin (when `--query` is not given), resolves the
+// active role, asks the thesaurus for fuzzy matches above the configured
+// threshold, and prints either a JSON payload or a human-readable listing.
+//
+// The body has no machine-readable / mode-specific branches and never inspects
+// `output`, so `output: &CommandOutputConfig` is intentionally omitted from the
+// signature. Like `handle_search_command`, the function takes `&Command` rather
+// than a dedicated `*Args` struct and re-destructures the variant internally:
+// variants are not types in Rust, so `&Command::Suggest` is not valid syntax.
+// The caller (the early-return in `run_offline_command`) has already verified
+// the variant via `if let Command::Suggest { .. }`, so the `else` branch is
+// truly unreachable.
+async fn handle_suggest_command(service: &TuiService, suggest: &Command) -> Result<()> {
+    let Command::Suggest {
+        query,
+        role,
+        fuzzy: _,
+        threshold,
+        limit,
+        json,
+    } = suggest
+    else {
+        unreachable!("handle_suggest_command called with non-Suggest command")
+    };
+
+    let input_query = match query {
+        Some(q) => q.clone(),
+        None => {
+            use std::io::Read;
+            let mut buffer = String::new();
+            std::io::stdin().read_to_string(&mut buffer)?;
+            buffer.trim().to_string()
+        }
+    };
+
+    let role_name = service.resolve_role(role.as_deref()).await?;
+
+    let suggestions = service
+        .fuzzy_suggest(&role_name, &input_query, *threshold, Some(*limit))
+        .await?;
+
+    if *json {
+        println!("{}", serde_json::to_string(&suggestions)?);
+    } else if suggestions.is_empty() {
+        println!(
+            "No suggestions found for '{}' with threshold {}",
+            input_query, threshold
+        );
+    } else {
+        println!(
+            "Suggestions for '{}' (threshold: {}):",
+            input_query, threshold
+        );
+        for s in &suggestions {
+            println!("  {} (similarity: {:.2})", s.term, s.similarity);
+        }
+    }
+
+    Ok(())
+}
+
+struct ReplaceArgs {
+    text: Option<String>,
+    role: Option<String>,
+    format: Option<String>,
+    boundary: BoundaryMode,
+    json: bool,
+    fail_open: bool,
+}
+
+// First post-TuiService match arm extracted. The Replace handler is
+// ~150 LOC of inline thesaurus-driven text replacement; pulling it out
+// makes the surrounding match block shorter and easier to review. The
+// body shape (calls `service.get_thesaurus`, runs `ReplacementService`,
+// emits JSON or plain output, returns `Ok`) is structurally similar to
+// other post-TuiService arms (`Validate`, `Hook`) that follow.
+async fn handle_replace_command(args: ReplaceArgs, service: &TuiService) -> Result<()> {
+    let input_text = match args.text {
+        Some(t) => t,
+        None => {
+            use std::io::Read;
+            let mut buffer = String::new();
+            std::io::stdin().read_to_string(&mut buffer)?;
+            buffer
+        }
+    };
+
+    let role_name = service.resolve_role(args.role.as_deref()).await?;
+
+    let link_type = match args.format.as_deref() {
+        Some("markdown") => terraphim_hooks::LinkType::MarkdownLinks,
+        Some("wiki") => terraphim_hooks::LinkType::WikiLinks,
+        Some("html") => terraphim_hooks::LinkType::HTMLLinks,
+        _ => terraphim_hooks::LinkType::PlainText,
+    };
+
+    let thesaurus = match service.get_thesaurus(&role_name).await {
+        Ok(t) => t,
+        Err(e) => {
+            if args.fail_open {
+                let hook_result =
+                    terraphim_hooks::HookResult::fail_open(input_text.clone(), e.to_string());
+                if args.json {
+                    println!("{}", serde_json::to_string(&hook_result)?);
+                } else {
+                    eprintln!("Warning: {}", e);
+                    print!("{}", input_text);
+                }
+                return Ok(());
+            } else {
+                return Err(e);
+            }
+        }
+    };
+
+    let replacement_service =
+        terraphim_hooks::ReplacementService::new(thesaurus.clone()).with_link_type(link_type);
+
+    let hook_result = match args.boundary {
+        BoundaryMode::None => {
+            // Standard replacement - match anywhere
+            if args.fail_open {
+                replacement_service.replace_fail_open(&input_text)
+            } else {
+                replacement_service.replace(&input_text)?
+            }
+        }
+        BoundaryMode::Word => {
+            // Word boundary mode - only match at word boundaries
+            let matches_result = replacement_service.find_matches(&input_text);
+            match matches_result {
+                Ok(matches) => {
+                    // Filter matches to only those at word boundaries
+                    let filtered_matches: Vec<_> = matches
+                        .into_iter()
+                        .filter(|m| {
+                            if let Some((start, end)) = m.pos {
+                                is_at_word_boundary(&input_text, start, end)
+                            } else {
+                                false
+                            }
+                        })
+                        .collect();
+
+                    if filtered_matches.is_empty() {
+                        terraphim_hooks::HookResult::pass_through(input_text.clone())
+                    } else {
+                        // Apply filtered matches in reverse order to preserve positions
+                        let mut result = input_text.clone();
+                        let mut sorted_matches = filtered_matches;
+                        #[allow(clippy::unnecessary_sort_by)]
+                        sorted_matches.sort_by(|a, b| b.pos.cmp(&a.pos));
+
+                        for m in sorted_matches {
+                            if let Some((start, end)) = m.pos {
+                                let replacement =
+                                    format_replacement_link(&m.normalized_term, link_type);
+                                result.replace_range(start..end, &replacement);
+                            }
+                        }
+
+                        terraphim_hooks::HookResult::success(input_text.clone(), result)
+                    }
+                }
+                Err(e) => {
+                    if args.fail_open {
+                        terraphim_hooks::HookResult::fail_open(input_text.clone(), e.to_string())
+                    } else {
+                        return Err(anyhow::anyhow!("Failed to find matches: {}", e));
+                    }
+                }
+            }
+        }
+    };
+
+    if args.json {
+        println!("{}", serde_json::to_string(&hook_result)?);
+    } else {
+        if let Some(ref err) = hook_result.error {
+            eprintln!("Warning: {}", err);
+        }
+        print!("{}", hook_result.result);
+    }
+
+    Ok(())
+}
+
+// Largest single extraction from `run_offline_command`. The `Search` arm is the
+// original entry point of `run_offline_command` and carries the full
+// `Command::Search` variant destructuring (eleven fields) along with the
+// machine-readable formatter path and the `fail-on-empty` exit-code path.
+//
+// Passing `&Command` rather than a dedicated `SearchArgs` struct keeps this
+// diff focused on the extraction itself. The body destructures `search`
+// internally via `let Command::Search { .. } = search else { unreachable!() }`,
+// so the caller has already verified the variant. `output` is taken by
+// reference because the body inspects `output.is_machine_readable()`,
+// `output.mode`, and `output.robot`; passing it through here means the
+// surrounding match block no longer needs to keep it in scope across arms.
+async fn handle_search_command(
+    service: &TuiService,
+    output: &CommandOutputConfig,
+    search: &Command,
+) -> Result<()> {
+    let Command::Search {
+        query,
+        terms,
+        operator,
+        role,
+        limit,
+        fail_on_empty,
+        include_pinned,
+        min_quality,
+        max_tokens,
+        max_content_length,
+        fields,
+    } = search
+    else {
+        unreachable!("handle_search_command called with non-Search command")
+    };
+
+    let (role_name, auto) = service
+        .resolve_or_auto_route(role.as_deref(), query)
+        .await?;
+    if let Some(ref ar) = auto {
+        eprintln!("{}", format_auto_route_line(ar));
+    }
+
+    let results = if let Some(additional_terms) = terms {
+        // Multi-term query with logical operators
+        let mut all_terms = vec![query.as_str().to_string()];
+        all_terms.extend(additional_terms.iter().cloned());
+
+        let op_str = match operator {
+            Some(LogicalOperatorCli::And) => "AND",
+            Some(LogicalOperatorCli::Or) | None => "OR", // Default to OR
+        };
+        if !output.is_machine_readable() {
+            println!(
+                "Multi-term search: {} terms using {} operator",
+                all_terms.len(),
+                op_str
+            );
+        }
+
+        let search_query = SearchQuery {
+            search_term: NormalizedTermValue::from(all_terms[0].as_str()),
+            search_terms: if all_terms.len() > 1 {
+                Some(
+                    all_terms[1..]
+                        .iter()
+                        .map(|t| NormalizedTermValue::from(t.as_str()))
+                        .collect(),
+                )
+            } else {
+                None
+            },
+            operator: operator.as_ref().map(|op| op.clone().into()),
+            skip: Some(0),
+            limit: Some(*limit),
+            include_pinned: *include_pinned,
+            role: Some(role_name.clone()),
+            layer: Layer::default(),
+            min_quality: *min_quality,
+        };
+
+        service.search_with_query(&search_query).await?
+    } else {
+        // Single term query
+        let search_query = SearchQuery {
+            search_term: NormalizedTermValue::from(query.as_str()),
+            search_terms: None,
+            operator: None,
+            skip: Some(0),
+            limit: Some(*limit),
+            include_pinned: *include_pinned,
+            role: Some(role_name.clone()),
+            layer: Layer::default(),
+            min_quality: *min_quality,
+        };
+        service.search_with_query(&search_query).await?
+    };
+
+    let results_count = results.len();
+    if output.is_machine_readable() {
+        use robot::schema::{SearchResultItem, SearchResultsData};
+        use robot::{ResponseMeta, RobotConfig, RobotFormatter, RobotResponse};
+        use std::time::Instant;
+
+        let start = Instant::now();
+        let robot_format = match output.mode {
+            CommandOutputMode::JsonCompact => robot::output::OutputFormat::Minimal,
+            _ => robot::output::OutputFormat::Json,
+        };
+        let mut robot_config = RobotConfig::new()
+            .with_format(robot_format)
+            .with_max_results(*limit);
+        if let Some(mt) = max_tokens {
+            robot_config = robot_config.with_max_tokens(*mt);
+        } else if output.robot {
+            robot_config = robot_config.with_max_tokens(8000);
+        }
+        if let Some(mcl) = max_content_length {
+            robot_config = robot_config.with_max_content_length(*mcl);
+        } else if output.robot {
+            robot_config = robot_config.with_max_content_length(2000);
+        }
+        if let Some(fm) = fields {
+            robot_config = robot_config.with_fields(fm.clone());
+        }
+
+        let formatter = RobotFormatter::new(robot_config.clone());
+        let max_results = robot_config.max_results.unwrap_or(*limit);
+        let truncated_results: Vec<_> = results.into_iter().take(max_results).collect();
+        let total = truncated_results.len();
+
+        let items: Vec<SearchResultItem> = truncated_results
+            .iter()
+            .enumerate()
+            .map(|(i, doc)| {
+                let preview = doc.description.as_deref().or(if doc.body.is_empty() {
+                    None
+                } else {
+                    Some(doc.body.as_str())
+                });
+                let (preview_text, preview_truncated) = match preview {
+                    Some(text) => {
+                        let (t, was_truncated) = formatter.truncate_content(text.trim());
+                        (Some(t), was_truncated)
+                    }
+                    None => (None, false),
+                };
+                SearchResultItem {
+                    rank: i + 1,
+                    id: doc.id.clone(),
+                    title: doc.title.clone(),
+                    url: if doc.url.is_empty() {
+                        None
+                    } else {
+                        Some(doc.url.clone())
+                    },
+                    score: doc.rank.unwrap_or_default() as f64,
+                    preview: preview_text,
+                    source: None,
+                    date: None,
+                    preview_truncated,
+                }
+            })
+            .collect();
+
+        let (concepts_matched, thesaurus_matched) = match service.get_thesaurus(&role_name).await {
+            Ok(thesaurus) => {
+                let concepts = terraphim_automata::compute_concepts_matched(query, &thesaurus);
+                // `thesaurus_matched` used to be a naive substring scan, so any
+                // term appearing *inside* a longer query word was reported --
+                // the two-letter term `ce` matched `con(ce)pt`. Derive it from
+                // the same boundary-aware matcher that produces `concepts`, so
+                // the two fields can never disagree.
+                let matched: std::collections::HashSet<String> =
+                    concepts.iter().map(|c| c.to_lowercase()).collect();
+                let thesaurus_terms: Vec<String> = thesaurus
+                    .keys()
+                    .filter(|key| matched.contains(&key.to_string().to_lowercase()))
+                    .map(|key| key.to_string())
+                    .collect();
+                (concepts, thesaurus_terms)
+            }
+            Err(e) => {
+                log::debug!(
+                    "get_thesaurus failed for {}: {}; concepts_matched empty",
+                    role_name,
+                    e
+                );
+                (Vec::new(), Vec::new())
+            }
+        };
+
+        let wildcard_fallback = concepts_matched.is_empty();
+        let data = SearchResultsData {
+            results: items,
+            total_matches: total,
+            concepts_matched,
+            thesaurus_matched,
+            wildcard_fallback,
+        };
+
+        let meta = ResponseMeta::new("search")
+            .with_elapsed(start.elapsed().as_millis() as u64)
+            .with_query(query)
+            .with_role(role_name.as_str());
+        let response = RobotResponse::success(data, meta);
+        let output_str = formatter.format(&response)?;
+        println!("{}", output_str);
+    } else {
+        for doc in results.iter() {
+            let snippet = doc
+                .description
+                .as_deref()
+                .or(if doc.body.is_empty() {
+                    None
+                } else {
+                    Some(doc.body.as_str())
+                })
+                .map(|s| truncate_snippet(s.trim(), 120));
+            println!("[{}] {}", doc.rank.unwrap_or_default(), doc.title);
+            if !doc.url.is_empty() {
+                println!("    {}", doc.url);
+            }
+            if let Some(snip) = snippet {
+                println!("    {}", snip);
+            }
+            println!();
+        }
+    }
+    if *fail_on_empty && results_count == 0 {
+        std::process::exit(robot::exit_codes::ExitCode::ErrorNotFound.code().into());
+    }
+    Ok(())
+}
+
 async fn run_offline_command(
     command: Command,
     output: CommandOutputConfig,
@@ -2169,7 +1331,7 @@ async fn run_offline_command(
 ) -> Result<()> {
     // Handle stateless commands that don't need TuiService first
     if let Command::Guard {
-        command,
+        command: guard_command,
         json,
         fail_open,
         guard_thesaurus,
@@ -2177,109 +1339,25 @@ async fn run_offline_command(
         explain,
     } = &command
     {
-        let input_command = match command {
-            Some(c) => c.clone(),
-            None => {
-                use std::io::Read;
-                let mut buffer = String::new();
-                std::io::stdin().read_to_string(&mut buffer)?;
-                buffer.trim().to_string()
-            }
-        };
-
-        let guard = match (guard_thesaurus, guard_allowlist) {
-            (Some(thesaurus_path), Some(allowlist_path)) => {
-                let destructive_json = std::fs::read_to_string(thesaurus_path)?;
-                let allowlist_json = std::fs::read_to_string(allowlist_path)?;
-                guard_patterns::CommandGuard::from_json(&destructive_json, &allowlist_json, None)
-                    .map_err(|e| {
-                        anyhow::anyhow!("Failed to load custom guard thesauruses: {}", e)
-                    })?
-            }
-            (Some(thesaurus_path), None) => {
-                let destructive_json = std::fs::read_to_string(thesaurus_path)?;
-                guard_patterns::CommandGuard::from_json(
-                    &destructive_json,
-                    guard_patterns::CommandGuard::default_allowlist_json(),
-                    None,
-                )
-                .map_err(|e| anyhow::anyhow!("Failed to load custom guard thesaurus: {}", e))?
-            }
-            (None, Some(allowlist_path)) => {
-                let allowlist_json = std::fs::read_to_string(allowlist_path)?;
-                guard_patterns::CommandGuard::from_json(
-                    guard_patterns::CommandGuard::default_destructive_json(),
-                    &allowlist_json,
-                    None,
-                )
-                .map_err(|e| anyhow::anyhow!("Failed to load custom guard allowlist: {}", e))?
-            }
-            (None, None) => guard_patterns::CommandGuard::new(),
-        };
-        let result = guard.check(&input_command);
-
-        if *explain {
-            // Recompute the trace so we can show the per-stage path even
-            // when the final decision came from a short-circuit. The trace
-            // shares the same matchers as `check`, so this is a second
-            // walk over the same inputs (cheap: a `Vec<4>` plus three
-            // Aho-Corasick matches).
-            let trace = guard.check_with_trace(&input_command);
-            trace.print(*json)?;
-            // Still respect the normal exit-code semantics when --explain is on
-            // so scripts can use `--explain --fail-on-empty` style gating.
-            if trace.result.decision == guard_patterns::GuardDecision::Block && !*fail_open {
-                std::process::exit(1);
-            }
-            return Ok(());
-        }
-
-        if *json {
-            println!("{}", serde_json::to_string(&result)?);
-        } else if result.decision == guard_patterns::GuardDecision::Block
-            && let Some(reason) = &result.reason
-        {
-            eprintln!("BLOCKED: {}", reason);
-            if !fail_open {
-                std::process::exit(1);
-            }
-        }
-        // If allowed, no output in non-JSON mode (silent success)
-        return Ok(());
+        return handle_guard_command(&GuardArgs {
+            command: guard_command,
+            json: *json,
+            fail_open: *fail_open,
+            guard_thesaurus,
+            guard_allowlist,
+            explain: *explain,
+        })
+        .await;
     }
 
     // CheckUpdate is stateless - handle before TuiService initialization
     if let Command::CheckUpdate = &command {
-        println!("Checking for terraphim-agent updates...");
-        let config = UpdaterConfig::new("terraphim-agent").with_version(env!("CARGO_PKG_VERSION"));
-        let updater = TerraphimUpdater::new(config);
-        match updater.check_update().await {
-            Ok(status) => {
-                println!("{}", status);
-                return Ok(());
-            }
-            Err(e) => {
-                eprintln!("Failed to check for updates: {}", e);
-                std::process::exit(1);
-            }
-        }
+        return handle_check_update_command().await;
     }
 
     // Update is stateless - handle before TuiService initialization
     if let Command::Update = &command {
-        println!("Updating terraphim-agent...");
-        let config = UpdaterConfig::new("terraphim-agent").with_version(env!("CARGO_PKG_VERSION"));
-        let updater = TerraphimUpdater::new(config);
-        match updater.check_and_update().await {
-            Ok(status) => {
-                println!("{}", status);
-                return Ok(());
-            }
-            Err(e) => {
-                eprintln!("Update failed: {}", e);
-                std::process::exit(1);
-            }
-        }
+        return handle_update_command().await;
     }
 
     // Config validate is stateless - handle before TuiService initialization
@@ -2308,21 +1386,7 @@ async fn run_offline_command(
         sub: RolesSub::List,
     } = &command
     {
-        let config = TuiService::load_config(config_path, false).await?;
-        let selected = TuiService::selected_role_of(&config);
-        for (name, shortname) in TuiService::roles_with_info_of(&config) {
-            let marker = if name == selected.to_string() {
-                "*"
-            } else {
-                " "
-            };
-            if let Some(short) = shortname {
-                println!("{} {} ({})", marker, name, short);
-            } else {
-                println!("{} {}", marker, name);
-            }
-        }
-        return Ok(());
+        return handle_roles_list_command(config_path).await;
     }
 
     // Cache is stateless - handle before TuiService initialization
@@ -2343,381 +1407,74 @@ async fn run_offline_command(
 
     let service = TuiService::new(config_path, false).await?;
 
+    // Suggest is a stateful command (needs the thesaurus / role index the
+    // `TuiService` exposes via `fuzzy_suggest`), so it lives in the same
+    // early-return tier as `Search`. Pulling it out ahead of the match keeps
+    // `run_offline_command` from growing another long body and lets the body
+    // take `&Command` (re-destructured internally) just like Search does.
+    if let Command::Suggest { .. } = &command {
+        return handle_suggest_command(&service, &command).await;
+    }
+
+    // Search is the largest single arm. Pulling it out ahead of the match
+    // block mirrors how Guard / CheckUpdate / Update / Cache / Learn / Memory
+    // are already handled -- they short-circuit before the match consumes
+    // `command` so they can pass `&command` (or move sub-fields out of it)
+    // to the dedicated handler. The remaining arms all need to consume
+    // `command` directly, so the match stays below.
+    if let Command::Search { .. } = &command {
+        return handle_search_command(&service, &output, &command).await;
+    }
+
     match command {
-        Command::Search {
-            query,
-            terms,
-            operator,
-            role,
-            limit,
-            fail_on_empty,
-            include_pinned,
-            min_quality,
-            max_tokens,
-            max_content_length,
-            fields,
-        } => {
-            let (role_name, auto) = service
-                .resolve_or_auto_route(role.as_deref(), &query)
-                .await?;
-            if let Some(ref ar) = auto {
-                eprintln!("{}", format_auto_route_line(ar));
-            }
-
-            let results = if let Some(additional_terms) = terms {
-                // Multi-term query with logical operators
-                let mut all_terms = vec![query.clone()];
-                all_terms.extend(additional_terms);
-
-                let op_str = match operator {
-                    Some(LogicalOperatorCli::And) => "AND",
-                    Some(LogicalOperatorCli::Or) | None => "OR", // Default to OR
-                };
-                if !output.is_machine_readable() {
-                    println!(
-                        "Multi-term search: {} terms using {} operator",
-                        all_terms.len(),
-                        op_str
-                    );
-                }
-
-                let search_query = SearchQuery {
-                    search_term: NormalizedTermValue::from(all_terms[0].as_str()),
-                    search_terms: if all_terms.len() > 1 {
-                        Some(
-                            all_terms[1..]
-                                .iter()
-                                .map(|t| NormalizedTermValue::from(t.as_str()))
-                                .collect(),
-                        )
-                    } else {
-                        None
-                    },
-                    operator: operator.map(|op| op.into()),
-                    skip: Some(0),
-                    limit: Some(limit),
-                    include_pinned,
-                    role: Some(role_name.clone()),
-                    layer: Layer::default(),
-                    min_quality,
-                };
-
-                service.search_with_query(&search_query).await?
-            } else {
-                // Single term query
-                let search_query = SearchQuery {
-                    search_term: NormalizedTermValue::from(query.as_str()),
-                    search_terms: None,
-                    operator: None,
-                    skip: Some(0),
-                    limit: Some(limit),
-                    include_pinned,
-                    role: Some(role_name.clone()),
-                    layer: Layer::default(),
-                    min_quality,
-                };
-                service.search_with_query(&search_query).await?
-            };
-
-            let results_count = results.len();
-            if output.is_machine_readable() {
-                use robot::schema::{SearchResultItem, SearchResultsData};
-                use robot::{ResponseMeta, RobotConfig, RobotFormatter, RobotResponse};
-                use std::time::Instant;
-
-                let start = Instant::now();
-                let robot_format = match output.mode {
-                    CommandOutputMode::JsonCompact => robot::output::OutputFormat::Minimal,
-                    _ => robot::output::OutputFormat::Json,
-                };
-                let mut robot_config = RobotConfig::new()
-                    .with_format(robot_format)
-                    .with_max_results(limit);
-                if let Some(mt) = max_tokens {
-                    robot_config = robot_config.with_max_tokens(mt);
-                } else if output.robot {
-                    robot_config = robot_config.with_max_tokens(8000);
-                }
-                if let Some(mcl) = max_content_length {
-                    robot_config = robot_config.with_max_content_length(mcl);
-                } else if output.robot {
-                    robot_config = robot_config.with_max_content_length(2000);
-                }
-                if let Some(fm) = fields {
-                    robot_config = robot_config.with_fields(fm);
-                }
-
-                let formatter = RobotFormatter::new(robot_config.clone());
-                let max_results = robot_config.max_results.unwrap_or(limit);
-                let truncated_results: Vec<_> = results.into_iter().take(max_results).collect();
-                let total = truncated_results.len();
-
-                let items: Vec<SearchResultItem> = truncated_results
-                    .iter()
-                    .enumerate()
-                    .map(|(i, doc)| {
-                        let preview = doc.description.as_deref().or(if doc.body.is_empty() {
-                            None
-                        } else {
-                            Some(doc.body.as_str())
-                        });
-                        let (preview_text, preview_truncated) = match preview {
-                            Some(text) => {
-                                let (t, was_truncated) = formatter.truncate_content(text.trim());
-                                (Some(t), was_truncated)
-                            }
-                            None => (None, false),
-                        };
-                        SearchResultItem {
-                            rank: i + 1,
-                            id: doc.id.clone(),
-                            title: doc.title.clone(),
-                            url: if doc.url.is_empty() {
-                                None
-                            } else {
-                                Some(doc.url.clone())
-                            },
-                            score: doc.rank.unwrap_or_default() as f64,
-                            preview: preview_text,
-                            source: None,
-                            date: None,
-                            preview_truncated,
-                        }
-                    })
-                    .collect();
-
-                let (concepts_matched, thesaurus_matched) =
-                    match service.get_thesaurus(&role_name).await {
-                        Ok(thesaurus) => {
-                            let concepts =
-                                terraphim_automata::compute_concepts_matched(&query, &thesaurus);
-                            // `thesaurus_matched` used to be a naive substring scan, so any
-                            // term appearing *inside* a longer query word was reported --
-                            // the two-letter term `ce` matched `con(ce)pt`. Derive it from
-                            // the same boundary-aware matcher that produces `concepts`, so
-                            // the two fields can never disagree.
-                            let matched: std::collections::HashSet<String> =
-                                concepts.iter().map(|c| c.to_lowercase()).collect();
-                            let thesaurus_terms: Vec<String> = thesaurus
-                                .keys()
-                                .filter(|key| matched.contains(&key.to_string().to_lowercase()))
-                                .map(|key| key.to_string())
-                                .collect();
-                            (concepts, thesaurus_terms)
-                        }
-                        Err(e) => {
-                            log::debug!(
-                                "get_thesaurus failed for {}: {}; concepts_matched empty",
-                                role_name,
-                                e
-                            );
-                            (Vec::new(), Vec::new())
-                        }
-                    };
-
-                let wildcard_fallback = concepts_matched.is_empty();
-                let data = SearchResultsData {
-                    results: items,
-                    total_matches: total,
-                    concepts_matched,
-                    thesaurus_matched,
-                    wildcard_fallback,
-                };
-
-                let meta = ResponseMeta::new("search")
-                    .with_elapsed(start.elapsed().as_millis() as u64)
-                    .with_query(&query)
-                    .with_role(role_name.as_str());
-                let response = RobotResponse::success(data, meta);
-                let output_str = formatter.format(&response)?;
-                println!("{}", output_str);
-            } else {
-                for doc in results.iter() {
-                    let snippet = doc
-                        .description
-                        .as_deref()
-                        .or(if doc.body.is_empty() {
-                            None
-                        } else {
-                            Some(doc.body.as_str())
-                        })
-                        .map(|s| truncate_snippet(s.trim(), 120));
-                    println!("[{}] {}", doc.rank.unwrap_or_default(), doc.title);
-                    if !doc.url.is_empty() {
-                        println!("    {}", doc.url);
-                    }
-                    if let Some(snip) = snippet {
-                        println!("    {}", snip);
-                    }
-                    println!();
-                }
-            }
-            if fail_on_empty && results_count == 0 {
-                std::process::exit(robot::exit_codes::ExitCode::ErrorNotFound.code().into());
-            }
-            Ok(())
-        }
-        Command::Roles { sub } => {
-            match sub {
-                RolesSub::List => {
-                    let roles_with_info = service.list_roles_with_info().await;
-                    let selected = service.get_selected_role().await;
-                    for (name, shortname) in roles_with_info {
-                        let marker = if name == selected.to_string() {
-                            "*"
-                        } else {
-                            " "
-                        };
-                        if let Some(short) = shortname {
-                            println!("{} {} ({})", marker, name, short);
-                        } else {
-                            println!("{} {}", marker, name);
-                        }
-                    }
-                }
-                RolesSub::Select { name } => {
-                    // Find role by name or shortname
-                    let role_name = service
-                        .find_role_by_name_or_shortname(&name)
-                        .await
-                        .ok_or_else(|| {
-                            anyhow::anyhow!(
-                                "Role '{}' not found (checked name and shortname)",
-                                name
-                            )
-                        })?;
-                    service.update_selected_role(role_name.clone()).await?;
-                    service.save_config().await?;
-                    println!("selected:{}", role_name);
-                }
-            }
-            Ok(())
-        }
-        Command::Config { sub } => {
-            match sub {
-                ConfigSub::Show => {
-                    let config = service.get_config().await;
-                    println!("{}", serde_json::to_string_pretty(&config)?);
-                }
-                ConfigSub::Set { key, value } => match key.as_str() {
-                    "selected_role" => {
-                        let role_name = RoleName::new(&value);
-                        service.update_selected_role(role_name).await?;
-                        service.save_config().await?;
-                        println!("updated selected_role to {}", value);
-                    }
-                    _ => {
-                        println!("unsupported key: {}", key);
-                    }
-                },
-                ConfigSub::Validate => {
-                    // Handled as early-return above; should not reach here
-                    unreachable!("config validate is handled before TuiService init");
-                }
-                ConfigSub::Reload => {
-                    let ds = terraphim_settings::DeviceSettings::load_from_env_and_file(None)
-                        .unwrap_or_else(|_| terraphim_settings::DeviceSettings::default_embedded());
-                    match &ds.role_config {
-                        Some(path) => match service.reload_from_json(path).await {
-                            Ok(count) => {
-                                println!(
-                                    "Reloaded {} role(s) from '{}' and saved to persistence",
-                                    count, path
-                                );
-                            }
-                            Err(e) => {
-                                eprintln!("Failed to reload from '{}': {:?}", path, e);
-                                std::process::exit(1);
-                            }
-                        },
-                        None => {
-                            eprintln!("No role_config set in settings.toml. Nothing to reload.");
-                            eprintln!(
-                                "Add role_config = \"path/to/roles.json\" to your settings.toml"
-                            );
-                            std::process::exit(1);
-                        }
-                    }
-                }
-            }
-            Ok(())
-        }
+        Command::Roles { sub } => handle_roles_command(sub, &service).await,
+        Command::Config { sub } => handle_config_command(sub, &service).await,
         Command::Graph {
             role,
             top_k,
             pinned,
         } => {
-            let role_name = service.resolve_role(role.as_deref()).await?;
-
-            if pinned {
-                let pinned_concepts = service.get_role_graph_pinned(&role_name).await?;
-                for concept in pinned_concepts {
-                    println!("{}", concept);
-                }
-            } else {
-                let concepts = service.get_role_graph_top_k(&role_name, top_k).await?;
-                for concept in concepts {
-                    println!("{}", concept);
-                }
-            }
-            Ok(())
+            handle_graph_command(
+                GraphArgs {
+                    role,
+                    top_k,
+                    pinned,
+                },
+                &service,
+            )
+            .await
         }
-        Command::Kg { sub } => match sub {
-            KgSub::List {
-                role,
-                top_k,
-                pinned,
-            } => {
-                let role_name = service.resolve_role(role.as_deref()).await?;
-
-                if pinned {
-                    let pinned_concepts = service.get_role_graph_pinned(&role_name).await?;
-                    for concept in pinned_concepts {
-                        println!("{}", concept);
-                    }
-                } else {
-                    let concepts = service.get_role_graph_top_k(&role_name, top_k).await?;
-                    for concept in concepts {
-                        println!("{}", concept);
-                    }
-                }
-                Ok(())
-            }
-        },
+        Command::Kg { sub } => handle_kg_command(sub, &service).await,
         #[cfg(feature = "llm")]
         Command::Chat {
             role,
             prompt,
             model,
         } => {
-            let role_name = service.resolve_role(role.as_deref()).await?;
-
-            let response = service.chat(&role_name, &prompt, model).await?;
-            println!("{}", response);
-            Ok(())
+            handle_chat_command(
+                ChatArgs {
+                    role,
+                    prompt,
+                    model,
+                },
+                &service,
+            )
+            .await
         }
         Command::Extract {
             text,
             role,
             exclude_term,
         } => {
-            let role_name = service.resolve_role(role.as_deref()).await?;
-
-            let results = service
-                .extract_paragraphs(&role_name, &text, exclude_term)
-                .await?;
-
-            if results.is_empty() {
-                println!("No matches found in the text.");
-            } else {
-                println!("Found {} paragraph(s):", results.len());
-                for (i, (matched_term, paragraph)) in results.iter().enumerate() {
-                    println!("\n--- Match {} (term: '{}') ---", i + 1, matched_term);
-                    println!("{}", paragraph);
-                }
-            }
-
-            Ok(())
+            handle_extract_command(
+                ExtractArgs {
+                    text,
+                    role,
+                    exclude_term,
+                },
+                &service,
+            )
+            .await
         }
         Command::Replace {
             text,
@@ -2727,119 +1484,18 @@ async fn run_offline_command(
             json,
             fail_open,
         } => {
-            let input_text = match text {
-                Some(t) => t,
-                None => {
-                    use std::io::Read;
-                    let mut buffer = String::new();
-                    std::io::stdin().read_to_string(&mut buffer)?;
-                    buffer
-                }
-            };
-
-            let role_name = service.resolve_role(role.as_deref()).await?;
-
-            let link_type = match format.as_deref() {
-                Some("markdown") => terraphim_hooks::LinkType::MarkdownLinks,
-                Some("wiki") => terraphim_hooks::LinkType::WikiLinks,
-                Some("html") => terraphim_hooks::LinkType::HTMLLinks,
-                _ => terraphim_hooks::LinkType::PlainText,
-            };
-
-            let thesaurus = match service.get_thesaurus(&role_name).await {
-                Ok(t) => t,
-                Err(e) => {
-                    if fail_open {
-                        let hook_result = terraphim_hooks::HookResult::fail_open(
-                            input_text.clone(),
-                            e.to_string(),
-                        );
-                        if json {
-                            println!("{}", serde_json::to_string(&hook_result)?);
-                        } else {
-                            eprintln!("Warning: {}", e);
-                            print!("{}", input_text);
-                        }
-                        return Ok(());
-                    } else {
-                        return Err(e);
-                    }
-                }
-            };
-
-            let replacement_service = terraphim_hooks::ReplacementService::new(thesaurus.clone())
-                .with_link_type(link_type);
-
-            let hook_result = match boundary {
-                BoundaryMode::None => {
-                    // Standard replacement - match anywhere
-                    if fail_open {
-                        replacement_service.replace_fail_open(&input_text)
-                    } else {
-                        replacement_service.replace(&input_text)?
-                    }
-                }
-                BoundaryMode::Word => {
-                    // Word boundary mode - only match at word boundaries
-                    let matches_result = replacement_service.find_matches(&input_text);
-                    match matches_result {
-                        Ok(matches) => {
-                            // Filter matches to only those at word boundaries
-                            let filtered_matches: Vec<_> = matches
-                                .into_iter()
-                                .filter(|m| {
-                                    if let Some((start, end)) = m.pos {
-                                        is_at_word_boundary(&input_text, start, end)
-                                    } else {
-                                        false
-                                    }
-                                })
-                                .collect();
-
-                            if filtered_matches.is_empty() {
-                                terraphim_hooks::HookResult::pass_through(input_text.clone())
-                            } else {
-                                // Apply filtered matches in reverse order to preserve positions
-                                let mut result = input_text.clone();
-                                let mut sorted_matches = filtered_matches;
-                                #[allow(clippy::unnecessary_sort_by)]
-                                sorted_matches.sort_by(|a, b| b.pos.cmp(&a.pos));
-
-                                for m in sorted_matches {
-                                    if let Some((start, end)) = m.pos {
-                                        let replacement =
-                                            format_replacement_link(&m.normalized_term, link_type);
-                                        result.replace_range(start..end, &replacement);
-                                    }
-                                }
-
-                                terraphim_hooks::HookResult::success(input_text.clone(), result)
-                            }
-                        }
-                        Err(e) => {
-                            if fail_open {
-                                terraphim_hooks::HookResult::fail_open(
-                                    input_text.clone(),
-                                    e.to_string(),
-                                )
-                            } else {
-                                return Err(anyhow::anyhow!("Failed to find matches: {}", e));
-                            }
-                        }
-                    }
-                }
-            };
-
-            if json {
-                println!("{}", serde_json::to_string(&hook_result)?);
-            } else {
-                if let Some(ref err) = hook_result.error {
-                    eprintln!("Warning: {}", err);
-                }
-                print!("{}", hook_result.result);
-            }
-
-            Ok(())
+            return handle_replace_command(
+                ReplaceArgs {
+                    text,
+                    role,
+                    format,
+                    boundary,
+                    json,
+                    fail_open,
+                },
+                &service,
+            )
+            .await;
         }
         Command::Validate {
             text,
@@ -2848,121 +1504,20 @@ async fn run_offline_command(
             checklist,
             json,
         } => {
-            let input_text = match text {
-                Some(t) => t,
-                None => {
-                    use std::io::Read;
-                    let mut buffer = String::new();
-                    std::io::stdin().read_to_string(&mut buffer)?;
-                    buffer.trim().to_string()
-                }
-            };
-
-            let role_name = service.resolve_role(role.as_deref()).await?;
-
-            if connectivity {
-                let result = service.check_connectivity(&role_name, &input_text).await?;
-
-                if json {
-                    println!("{}", serde_json::to_string(&result)?);
-                } else {
-                    println!("Connectivity Check for role '{}':", role_name);
-                    println!("  Connected: {}", result.connected);
-                    println!("  Matched terms: {:?}", result.matched_terms);
-                    println!("  {}", result.message);
-                }
-            } else if let Some(checklist_name) = checklist {
-                // Checklist validation mode
-                let result = service
-                    .validate_checklist(&role_name, &checklist_name, &input_text)
-                    .await?;
-
-                if json {
-                    println!("{}", serde_json::to_string(&result)?);
-                } else {
-                    println!(
-                        "Checklist '{}' Validation for role '{}':",
-                        checklist_name, role_name
-                    );
-                    println!("  Passed: {}", result.passed);
-                    println!("  Score: {}/{}", result.satisfied.len(), result.total_items);
-                    if !result.satisfied.is_empty() {
-                        println!("  Satisfied items:");
-                        for item in &result.satisfied {
-                            println!("    ✓ {}", item);
-                        }
-                    }
-                    if !result.missing.is_empty() {
-                        println!("  Missing items:");
-                        for item in &result.missing {
-                            println!("    ✗ {}", item);
-                        }
-                    }
-                }
-            } else {
-                // Default validation: find matches
-                let matches = service.find_matches(&role_name, &input_text).await?;
-
-                if json {
-                    let output = serde_json::json!({
-                        "role": role_name.to_string(),
-                        "matched_count": matches.len(),
-                        "matches": matches.iter().map(|m| m.term.clone()).collect::<Vec<_>>()
-                    });
-                    println!("{}", serde_json::to_string(&output)?);
-                } else {
-                    println!("Validation for role '{}':", role_name);
-                    println!("  Found {} matched term(s)", matches.len());
-                    for m in &matches {
-                        println!("    - {}", m.term);
-                    }
-                }
-            }
-
-            Ok(())
+            return handle_validate_command(
+                ValidateArgs {
+                    text,
+                    role,
+                    connectivity,
+                    checklist,
+                    json,
+                },
+                &service,
+            )
+            .await;
         }
-        Command::Suggest {
-            query,
-            role,
-            fuzzy: _,
-            threshold,
-            limit,
-            json,
-        } => {
-            let input_query = match query {
-                Some(q) => q,
-                None => {
-                    use std::io::Read;
-                    let mut buffer = String::new();
-                    std::io::stdin().read_to_string(&mut buffer)?;
-                    buffer.trim().to_string()
-                }
-            };
-
-            let role_name = service.resolve_role(role.as_deref()).await?;
-
-            let suggestions = service
-                .fuzzy_suggest(&role_name, &input_query, threshold, Some(limit))
-                .await?;
-
-            if json {
-                println!("{}", serde_json::to_string(&suggestions)?);
-            } else if suggestions.is_empty() {
-                println!(
-                    "No suggestions found for '{}' with threshold {}",
-                    input_query, threshold
-                );
-            } else {
-                println!(
-                    "Suggestions for '{}' (threshold: {}):",
-                    input_query, threshold
-                );
-                for s in &suggestions {
-                    println!("  {} (similarity: {:.2})", s.term, s.similarity);
-                }
-            }
-
-            Ok(())
+        Command::Suggest { .. } => {
+            unreachable!("Suggest commands are handled after TuiService initialization")
         }
         Command::Hook {
             hook_type,
@@ -2973,182 +1528,18 @@ async fn run_offline_command(
             no_with_guard,
             rewrite,
         } => {
-            // For pre-tool-use, default the guard check to ON so destructive
-            // commands are denied unless the user explicitly opts out. Other
-            // hook types (post-tool-use, pre-commit, prepare-commit-msg) fire
-            // after execution or on text inputs and do not need a guard, so
-            // they keep the user's explicit `--with-guard` setting. An
-            // explicit `--no-with-guard` overrides everything.
-            let with_guard =
-                !no_with_guard && (with_guard || matches!(hook_type, HookType::PreToolUse));
-            // Read JSON input from argument or stdin
-            let input_json = match input {
-                Some(i) => i,
-                None => {
-                    use std::io::Read;
-                    let mut buffer = String::new();
-                    std::io::stdin().read_to_string(&mut buffer)?;
-                    buffer
-                }
-            };
-
-            let role_name = service.resolve_role(role.as_deref()).await?;
-
-            // Parse input JSON
-            let input_value: serde_json::Value = serde_json::from_str(&input_json)
-                .map_err(|e| anyhow::anyhow!("Invalid JSON input: {}", e))?;
-
-            match hook_type {
-                HookType::PreToolUse => {
-                    // Extract tool_name and tool_input from the hook input
-                    let tool_name = input_value
-                        .get("tool_name")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
-
-                    // Only process Bash commands
-                    if tool_name == "Bash" {
-                        if let Some(command) = input_value
-                            .get("tool_input")
-                            .and_then(|v| v.get("command"))
-                            .and_then(|v| v.as_str())
-                        {
-                            // Guard check if --with-guard flag is set (default ON
-                            // for pre-tool-use; see the Hook args doc comment).
-                            if with_guard {
-                                let guard = guard_patterns::CommandGuard::new();
-                                let guard_result = guard.check(command);
-
-                                if guard_result.decision == guard_patterns::GuardDecision::Block {
-                                    // Output deny response for Claude Code
-                                    let output = serde_json::json!({
-                                        "hookSpecificOutput": {
-                                            "hookEventName": "PreToolUse",
-                                            "permissionDecision": "deny",
-                                            "permissionDecisionReason": format!(
-                                                "BLOCKED: {}",
-                                                guard_result.reason.unwrap_or_default()
-                                            )
-                                        }
-                                    });
-                                    println!("{}", serde_json::to_string(&output)?);
-                                    return Ok(());
-                                }
-                            }
-
-                            // Substitution is opt-in. We always probe the
-                            // replacement so we can warn the user when their
-                            // command contained KG-replaceable substrings, but
-                            // we only emit a rewritten command when `--rewrite`
-                            // is set. This prevents the previous behaviour
-                            // where any substring match could silently mutate
-                            // a destructive command (Refs #126).
-                            let thesaurus = service.get_thesaurus(&role_name).await?;
-                            let replacement_service =
-                                terraphim_hooks::ReplacementService::new(thesaurus);
-                            let hook_result = replacement_service.replace_fail_open(command);
-
-                            let kg_validation = kg_validation::validate_command_against_kg(command);
-
-                            let mut output = input_value.clone();
-                            let mut emitted_warning = false;
-
-                            if hook_result.replacements > 0 {
-                                if rewrite {
-                                    // Opt-in: actually substitute
-                                    if let Some(tool_input) = output.get_mut("tool_input")
-                                        && let Some(obj) = tool_input.as_object_mut()
-                                    {
-                                        obj.insert(
-                                            "command".to_string(),
-                                            serde_json::Value::String(hook_result.result.clone()),
-                                        );
-                                    }
-                                } else {
-                                    // Suppressed: warn the user
-                                    if let Some(obj) = output.as_object_mut() {
-                                        let warnings = obj
-                                            .entry("warnings".to_string())
-                                            .or_insert(serde_json::Value::Array(vec![]));
-                                        if let Some(arr) = warnings.as_array_mut() {
-                                            arr.push(serde_json::Value::String(format!(
-                                                "command contained {} KG-replaceable substring(s); pass --rewrite to enable substitution. Original: `{}`",
-                                                hook_result.replacements, command
-                                            )));
-                                        }
-                                    }
-                                    emitted_warning = true;
-                                }
-                            }
-
-                            if kg_validation.has_findings
-                                && let Some(obj) = output.as_object_mut()
-                            {
-                                obj.insert(
-                                    "validations".to_string(),
-                                    serde_json::to_value(&kg_validation).unwrap_or_default(),
-                                );
-                            }
-
-                            if emitted_warning
-                                || (rewrite && hook_result.replacements > 0)
-                                || kg_validation.has_findings
-                            {
-                                println!("{}", serde_json::to_string(&output)?);
-                            } else {
-                                // No changes, pass through
-                                println!("{}", input_json);
-                            }
-                        } else {
-                            // No command to process
-                            println!("{}", input_json);
-                        }
-                    } else {
-                        // Not a Bash command, pass through
-                        println!("{}", input_json);
-                    }
-                }
-                HookType::PostToolUse => {
-                    // Post-tool-use: validate output against checklist or connectivity
-                    let tool_result = input_value
-                        .get("tool_result")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
-
-                    // Check connectivity of the output
-                    let connectivity = service.check_connectivity(&role_name, tool_result).await?;
-
-                    let output = serde_json::json!({
-                        "original": input_value,
-                        "validation": {
-                            "connected": connectivity.connected,
-                            "matched_terms": connectivity.matched_terms
-                        }
-                    });
-                    println!("{}", serde_json::to_string(&output)?);
-                }
-                HookType::PreCommit | HookType::PrepareCommitMsg => {
-                    // Extract commit message or diff
-                    let content = input_value
-                        .get("message")
-                        .or_else(|| input_value.get("diff"))
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
-
-                    // Extract concepts from the content
-                    let matches = service.find_matches(&role_name, content).await?;
-                    let concepts: Vec<String> = matches.iter().map(|m| m.term.clone()).collect();
-
-                    let output = serde_json::json!({
-                        "original": input_value,
-                        "concepts": concepts,
-                        "concept_count": concepts.len()
-                    });
-                    println!("{}", serde_json::to_string(&output)?);
-                }
-            }
-
-            Ok(())
+            return handle_hook_command(
+                HookArgs {
+                    hook_type,
+                    input,
+                    role,
+                    with_guard,
+                    no_with_guard,
+                    rewrite,
+                },
+                &service,
+            )
+            .await;
         }
         Command::Guard { .. } => {
             // Handled above before TuiService initialization
@@ -3160,102 +1551,16 @@ async fn run_offline_command(
             add_role,
             list_templates,
         } => {
-            use onboarding::{
-                SetupMode, SetupResult, apply_template, list_templates as get_templates,
-                run_setup_wizard,
-            };
-
-            // List templates and exit if requested
-            if list_templates {
-                println!("Available templates:\n");
-                for template in get_templates() {
-                    let path_note = if template.requires_path {
-                        " (requires --path)"
-                    } else if template.default_path.is_some() {
-                        &format!(" (default: {})", template.default_path.as_ref().unwrap())
-                    } else {
-                        ""
-                    };
-                    println!("  {} - {}{}", template.id, template.description, path_note);
-                }
-                println!("\nUse --template <id> to apply a template directly.");
-                return Ok(());
-            }
-
-            // Apply template directly if specified
-            if let Some(template_id) = template {
-                println!("Applying template: {}", template_id);
-                match apply_template(&template_id, path.as_deref()) {
-                    Ok(role) => {
-                        // Save the role to config
-                        if add_role {
-                            service.add_role(role.clone()).await?;
-                            println!("Role '{}' added to configuration.", role.name);
-                        } else {
-                            service.set_role(role.clone()).await?;
-                            println!("Configuration set to role '{}'.", role.name);
-                        }
-                        return Ok(());
-                    }
-                    Err(e) => {
-                        eprintln!("Failed to apply template: {}", e);
-                        std::process::exit(1);
-                    }
-                }
-            }
-
-            // Run interactive wizard
-            let mode = if add_role {
-                SetupMode::AddRole
-            } else {
-                SetupMode::FirstRun
-            };
-
-            match run_setup_wizard(mode).await {
-                Ok(SetupResult::Template {
+            return handle_setup_command(
+                SetupArgs {
                     template,
-                    custom_path: _,
-                    role,
-                }) => {
-                    if add_role {
-                        service.add_role(role.clone()).await?;
-                        println!(
-                            "\nRole '{}' added from template '{}'.",
-                            role.name, template.id
-                        );
-                    } else {
-                        service.set_role(role.clone()).await?;
-                        println!(
-                            "\nConfiguration set to role '{}' from template '{}'.",
-                            role.name, template.id
-                        );
-                    }
-                }
-                Ok(SetupResult::Custom { role }) => {
-                    if add_role {
-                        service.add_role(role.clone()).await?;
-                        println!("\nCustom role '{}' added to configuration.", role.name);
-                    } else {
-                        service.set_role(role.clone()).await?;
-                        println!("\nConfiguration set to custom role '{}'.", role.name);
-                    }
-                }
-                Ok(SetupResult::Cancelled) => {
-                    println!("\nSetup cancelled.");
-                }
-                Err(onboarding::OnboardingError::NotATty) => {
-                    eprintln!(
-                        "Interactive mode requires a terminal. Use --template for non-interactive setup."
-                    );
-                    std::process::exit(1);
-                }
-                Err(e) => {
-                    eprintln!("Setup failed: {}", e);
-                    std::process::exit(1);
-                }
-            }
-
-            Ok(())
+                    path,
+                    add_role,
+                    list_templates,
+                },
+                &service,
+            )
+            .await;
         }
         Command::CheckUpdate => {
             unreachable!("CheckUpdate command should be handled before TuiService initialization")
@@ -3271,228 +1576,7 @@ async fn run_offline_command(
         }
 
         #[cfg(feature = "repl-sessions")]
-        Command::Sessions { sub } => {
-            use session_output::*;
-            use terraphim_sessions::SessionService;
-
-            let service = SessionService::new();
-
-            // Load cached sessions from disk
-            let cache_path = get_session_cache_path();
-            if cache_path.exists()
-                && let Ok(data) = std::fs::read_to_string(&cache_path)
-                && let Ok(cached) = serde_json::from_str::<Vec<terraphim_sessions::Session>>(&data)
-            {
-                service.load_sessions(cached).await;
-                if !output.is_machine_readable() {
-                    println!("Loaded sessions from cache.");
-                }
-            }
-
-            match sub {
-                SessionsSub::Sources => {
-                    let sources = service.detect_sources();
-                    if output.is_machine_readable() {
-                        let payload = SourcesOutput {
-                            count: sources.len(),
-                            sources: sources
-                                .into_iter()
-                                .map(|s| {
-                                    let available = s.is_available();
-                                    SourceEntry {
-                                        id: s.id,
-                                        name: s.name,
-                                        available,
-                                    }
-                                })
-                                .collect(),
-                        };
-                        print_json_output(&payload, output.mode)?;
-                    } else if sources.is_empty() {
-                        println!("No session sources detected.");
-                    } else {
-                        println!("Available session sources:");
-                        for source in sources {
-                            let status = if source.is_available() {
-                                "available"
-                            } else {
-                                "not found"
-                            };
-                            println!(
-                                "  - {} ({})",
-                                source.name.unwrap_or_else(|| source.id.clone()),
-                                status
-                            );
-                        }
-                    }
-                    Ok(())
-                }
-                SessionsSub::List { limit } => {
-                    let sessions = service.list_sessions().await;
-                    if output.is_machine_readable() {
-                        let session_entries: Vec<SessionEntry> = sessions
-                            .iter()
-                            .take(limit)
-                            .map(|s| SessionEntry {
-                                id: s.id.to_string(),
-                                title: s.title.clone(),
-                                message_count: s.message_count(),
-                                source: s.source.clone(),
-                            })
-                            .collect();
-                        let shown = session_entries.len();
-                        let payload = SessionListOutput {
-                            total: sessions.len(),
-                            shown,
-                            sessions: session_entries,
-                        };
-                        print_json_output(&payload, output.mode)?;
-                    } else if sessions.is_empty() {
-                        println!("No sessions found.");
-                    } else {
-                        println!("Cached sessions ({} total):", sessions.len());
-                        for session in sessions.iter().take(limit) {
-                            let msg_count = session.message_count();
-                            let title = session.title.as_deref().unwrap_or("(untitled)");
-                            println!("  - {} ({} messages)", title, msg_count);
-                        }
-                        if sessions.len() > limit {
-                            println!("  ... and {} more", sessions.len() - limit);
-                        }
-                    }
-                    Ok(())
-                }
-                SessionsSub::Search { query, limit } => {
-                    let results = service.search(&query).await;
-                    if output.is_machine_readable() {
-                        let entries: Vec<SessionSearchEntry> = results
-                            .iter()
-                            .take(limit)
-                            .map(|s| {
-                                let preview = s
-                                    .messages
-                                    .iter()
-                                    .find(|msg| {
-                                        msg.content.to_lowercase().contains(&query.to_lowercase())
-                                    })
-                                    .map(|msg| {
-                                        let p: String = msg.content.chars().take(100).collect();
-                                        p
-                                    });
-                                SessionSearchEntry {
-                                    id: s.id.to_string(),
-                                    title: s.title.clone(),
-                                    message_count: s.message_count(),
-                                    preview,
-                                }
-                            })
-                            .collect();
-                        let shown = entries.len();
-                        let payload = SessionSearchOutput {
-                            query: query.clone(),
-                            total: results.len(),
-                            shown,
-                            sessions: entries,
-                        };
-                        print_json_output(&payload, output.mode)?;
-                        if results.is_empty() {
-                            std::process::exit(
-                                robot::exit_codes::ExitCode::ErrorNotFound.code().into(),
-                            );
-                        }
-                    } else if results.is_empty() {
-                        println!("No sessions matching '{}'.", query);
-                    } else {
-                        println!("Found {} matching sessions:", results.len());
-                        for session in results.iter().take(limit) {
-                            let title = session.title.as_deref().unwrap_or("(untitled)");
-                            println!("  - {}", title);
-                            for msg in &session.messages {
-                                let content_lower = msg.content.to_lowercase();
-                                if content_lower.contains(&query.to_lowercase()) {
-                                    let preview: String = msg.content.chars().take(100).collect();
-                                    println!("    > {}", preview);
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    Ok(())
-                }
-                SessionsSub::Stats => {
-                    let stats = service.statistics().await;
-                    if output.is_machine_readable() {
-                        let payload = SessionStatsOutput {
-                            total_sessions: stats.total_sessions,
-                            total_messages: stats.total_messages,
-                            total_user_messages: stats.total_user_messages,
-                            total_assistant_messages: stats.total_assistant_messages,
-                            by_source: stats.sessions_by_source,
-                        };
-                        print_json_output(&payload, output.mode)?;
-                    } else {
-                        println!("Session Statistics:");
-                        println!("  Total sessions: {}", stats.total_sessions);
-                        println!("  Total messages: {}", stats.total_messages);
-                        println!("  User messages: {}", stats.total_user_messages);
-                        println!("  Assistant messages: {}", stats.total_assistant_messages);
-                        if !stats.sessions_by_source.is_empty() {
-                            println!("  By source:");
-                            for (source, count) in stats.sessions_by_source {
-                                println!("    - {}: {}", source, count);
-                            }
-                        }
-                    }
-                    Ok(())
-                }
-                SessionsSub::Expand {
-                    id,
-                    context_lines: _,
-                } => {
-                    let session = service.get_session(&id).await;
-                    match session {
-                        None => {
-                            if !output.is_machine_readable() {
-                                eprintln!("Session '{}' not found.", id);
-                            }
-                            std::process::exit(
-                                robot::exit_codes::ExitCode::ErrorNotFound.code().into(),
-                            );
-                        }
-                        Some(session) => {
-                            if output.is_machine_readable() {
-                                let payload = SessionExpandOutput {
-                                    id: session.id.clone(),
-                                    title: session.title.clone(),
-                                    message_count: session.message_count(),
-                                    messages: session
-                                        .messages
-                                        .iter()
-                                        .map(|msg| ExpandedMessage {
-                                            idx: msg.idx,
-                                            role: msg.role.to_string(),
-                                            content: msg.content.clone(),
-                                        })
-                                        .collect(),
-                                };
-                                print_json_output(&payload, output.mode)?;
-                            } else {
-                                let title = session.title.as_deref().unwrap_or("(untitled)");
-                                println!("Session: {} ({})", title, session.id);
-                                println!("Messages: {}", session.message_count());
-                                println!("{}", "=".repeat(80));
-                                for msg in &session.messages {
-                                    println!("[{}]", msg.role);
-                                    println!("{}", msg.content);
-                                    println!("{}", "-".repeat(40));
-                                }
-                            }
-                            Ok(())
-                        }
-                    }
-                }
-            }
-        }
+        Command::Sessions { sub } => handle_sessions_command(sub, &output).await,
 
         Command::Listen {
             identity, config, ..
@@ -3519,7 +1603,719 @@ async fn run_offline_command(
         Command::Cache { .. } => {
             unreachable!("Cache commands are handled before TuiService initialization")
         }
+        Command::Search { .. } => {
+            unreachable!("Search commands are handled after TuiService initialization")
+        }
     }
+}
+
+// Post-TuiService arm extracted (step 5.6). The Sessions arm is the largest
+// remaining inline branch (~220 LOC): it shadows the outer TuiService with
+// its own terraphim_sessions::SessionService, loads the on-disk session
+// cache, then fans out over Sources/List/Search/Stats/Expand with
+// machine-readable and human-readable renderings of each.
+//
+// The handler takes `sub: SessionsSub` by value (the match consumes
+// `command`) and `output: &CommandOutputConfig` because every sub-arm
+// branches on `output.is_machine_readable()` / `output.mode`. It does NOT
+// take `&TuiService`: session state lives in SessionService, and the arm
+// never touches the thesaurus or role index.
+async fn handle_sessions_command(sub: SessionsSub, output: &CommandOutputConfig) -> Result<()> {
+    use session_output::*;
+    use terraphim_sessions::SessionService;
+
+    let service = SessionService::new();
+
+    // Load cached sessions from disk
+    let cache_path = get_session_cache_path();
+    if cache_path.exists()
+        && let Ok(data) = std::fs::read_to_string(&cache_path)
+        && let Ok(cached) = serde_json::from_str::<Vec<terraphim_sessions::Session>>(&data)
+    {
+        service.load_sessions(cached).await;
+        if !output.is_machine_readable() {
+            println!("Loaded sessions from cache.");
+        }
+    }
+
+    match sub {
+        SessionsSub::Sources => {
+            let sources = service.detect_sources();
+            if output.is_machine_readable() {
+                let payload = SourcesOutput {
+                    count: sources.len(),
+                    sources: sources
+                        .into_iter()
+                        .map(|s| {
+                            let available = s.is_available();
+                            SourceEntry {
+                                id: s.id,
+                                name: s.name,
+                                available,
+                            }
+                        })
+                        .collect(),
+                };
+                print_json_output(&payload, output.mode)?;
+            } else if sources.is_empty() {
+                println!("No session sources detected.");
+            } else {
+                println!("Available session sources:");
+                for source in sources {
+                    let status = if source.is_available() {
+                        "available"
+                    } else {
+                        "not found"
+                    };
+                    println!(
+                        "  - {} ({})",
+                        source.name.unwrap_or_else(|| source.id.clone()),
+                        status
+                    );
+                }
+            }
+            Ok(())
+        }
+        SessionsSub::List { limit } => {
+            let sessions = service.list_sessions().await;
+            if output.is_machine_readable() {
+                let session_entries: Vec<SessionEntry> = sessions
+                    .iter()
+                    .take(limit)
+                    .map(|s| SessionEntry {
+                        id: s.id.to_string(),
+                        title: s.title.clone(),
+                        message_count: s.message_count(),
+                        source: s.source.clone(),
+                    })
+                    .collect();
+                let shown = session_entries.len();
+                let payload = SessionListOutput {
+                    total: sessions.len(),
+                    shown,
+                    sessions: session_entries,
+                };
+                print_json_output(&payload, output.mode)?;
+            } else if sessions.is_empty() {
+                println!("No sessions found.");
+            } else {
+                println!("Cached sessions ({} total):", sessions.len());
+                for session in sessions.iter().take(limit) {
+                    let msg_count = session.message_count();
+                    let title = session.title.as_deref().unwrap_or("(untitled)");
+                    println!("  - {} ({} messages)", title, msg_count);
+                }
+                if sessions.len() > limit {
+                    println!("  ... and {} more", sessions.len() - limit);
+                }
+            }
+            Ok(())
+        }
+        SessionsSub::Search { query, limit } => {
+            let results = service.search(&query).await;
+            if output.is_machine_readable() {
+                let entries: Vec<SessionSearchEntry> = results
+                    .iter()
+                    .take(limit)
+                    .map(|s| {
+                        let preview = s
+                            .messages
+                            .iter()
+                            .find(|msg| msg.content.to_lowercase().contains(&query.to_lowercase()))
+                            .map(|msg| {
+                                let p: String = msg.content.chars().take(100).collect();
+                                p
+                            });
+                        SessionSearchEntry {
+                            id: s.id.to_string(),
+                            title: s.title.clone(),
+                            message_count: s.message_count(),
+                            preview,
+                        }
+                    })
+                    .collect();
+                let shown = entries.len();
+                let payload = SessionSearchOutput {
+                    query: query.clone(),
+                    total: results.len(),
+                    shown,
+                    sessions: entries,
+                };
+                print_json_output(&payload, output.mode)?;
+                if results.is_empty() {
+                    std::process::exit(robot::exit_codes::ExitCode::ErrorNotFound.code().into());
+                }
+            } else if results.is_empty() {
+                println!("No sessions matching '{}'.", query);
+            } else {
+                println!("Found {} matching sessions:", results.len());
+                for session in results.iter().take(limit) {
+                    let title = session.title.as_deref().unwrap_or("(untitled)");
+                    println!("  - {}", title);
+                    for msg in &session.messages {
+                        let content_lower = msg.content.to_lowercase();
+                        if content_lower.contains(&query.to_lowercase()) {
+                            let preview: String = msg.content.chars().take(100).collect();
+                            println!("    > {}", preview);
+                            break;
+                        }
+                    }
+                }
+            }
+            Ok(())
+        }
+        SessionsSub::Stats => {
+            let stats = service.statistics().await;
+            if output.is_machine_readable() {
+                let payload = SessionStatsOutput {
+                    total_sessions: stats.total_sessions,
+                    total_messages: stats.total_messages,
+                    total_user_messages: stats.total_user_messages,
+                    total_assistant_messages: stats.total_assistant_messages,
+                    by_source: stats.sessions_by_source,
+                };
+                print_json_output(&payload, output.mode)?;
+            } else {
+                println!("Session Statistics:");
+                println!("  Total sessions: {}", stats.total_sessions);
+                println!("  Total messages: {}", stats.total_messages);
+                println!("  User messages: {}", stats.total_user_messages);
+                println!("  Assistant messages: {}", stats.total_assistant_messages);
+                if !stats.sessions_by_source.is_empty() {
+                    println!("  By source:");
+                    for (source, count) in stats.sessions_by_source {
+                        println!("    - {}: {}", source, count);
+                    }
+                }
+            }
+            Ok(())
+        }
+        SessionsSub::Expand {
+            id,
+            context_lines: _,
+        } => {
+            let session = service.get_session(&id).await;
+            match session {
+                None => {
+                    if !output.is_machine_readable() {
+                        eprintln!("Session '{}' not found.", id);
+                    }
+                    std::process::exit(robot::exit_codes::ExitCode::ErrorNotFound.code().into());
+                }
+                Some(session) => {
+                    if output.is_machine_readable() {
+                        let payload = SessionExpandOutput {
+                            id: session.id.clone(),
+                            title: session.title.clone(),
+                            message_count: session.message_count(),
+                            messages: session
+                                .messages
+                                .iter()
+                                .map(|msg| ExpandedMessage {
+                                    idx: msg.idx,
+                                    role: msg.role.to_string(),
+                                    content: msg.content.clone(),
+                                })
+                                .collect(),
+                        };
+                        print_json_output(&payload, output.mode)?;
+                    } else {
+                        let title = session.title.as_deref().unwrap_or("(untitled)");
+                        println!("Session: {} ({})", title, session.id);
+                        println!("Messages: {}", session.message_count());
+                        println!("{}", "=".repeat(80));
+                        for msg in &session.messages {
+                            println!("[{}]", msg.role);
+                            println!("{}", msg.content);
+                            println!("{}", "-".repeat(40));
+                        }
+                    }
+                    Ok(())
+                }
+            }
+        }
+    }
+}
+
+// Post-TuiService arm extracted (step 5.7). The Config arm fans out over
+// Show / Set / Validate / Reload. Validate is unreachable here (handled as
+// a stateless early-return before TuiService init); Reload re-reads
+// DeviceSettings and reloads roles from the configured JSON.
+//
+// The handler takes `sub: ConfigSub` by value (the match consumes
+// `command`) and `service: &TuiService` for get_config /
+// update_selected_role / save_config / reload_from_json. `output` is not
+// needed: every sub-arm prints directly and none inspects the output mode.
+async fn handle_config_command(sub: ConfigSub, service: &TuiService) -> Result<()> {
+    match sub {
+        ConfigSub::Show => {
+            let config = service.get_config().await;
+            println!("{}", serde_json::to_string_pretty(&config)?);
+        }
+        ConfigSub::Set { key, value } => match key.as_str() {
+            "selected_role" => {
+                let role_name = RoleName::new(&value);
+                service.update_selected_role(role_name).await?;
+                service.save_config().await?;
+                println!("updated selected_role to {}", value);
+            }
+            _ => {
+                println!("unsupported key: {}", key);
+            }
+        },
+        ConfigSub::Validate => {
+            // Handled as early-return above; should not reach here
+            unreachable!("config validate is handled before TuiService init");
+        }
+        ConfigSub::Reload => {
+            let ds = terraphim_settings::DeviceSettings::load_from_env_and_file(None)
+                .unwrap_or_else(|_| terraphim_settings::DeviceSettings::default_embedded());
+            match &ds.role_config {
+                Some(path) => match service.reload_from_json(path).await {
+                    Ok(count) => {
+                        println!(
+                            "Reloaded {} role(s) from '{}' and saved to persistence",
+                            count, path
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to reload from '{}': {:?}", path, e);
+                        std::process::exit(1);
+                    }
+                },
+                None => {
+                    eprintln!("No role_config set in settings.toml. Nothing to reload.");
+                    eprintln!("Add role_config = \"path/to/roles.json\" to your settings.toml");
+                    std::process::exit(1);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+// Post-TuiService arm extracted (step 5.8). The Roles arm fans out over
+// List / Select. List is unreachable here: it is caught by the
+// pre-TuiService early return (handle_roles_list_command, Refs #120) so it
+// never initialises the service. Select resolves a role by name or
+// shortname, persists it, and prints the selection.
+//
+// The handler takes `sub: RolesSub` by value (the match consumes
+// `command`) and `service: &TuiService`. The output config is not needed:
+// both sub-arms print directly and neither inspects the output mode.
+async fn handle_roles_command(sub: RolesSub, service: &TuiService) -> Result<()> {
+    match sub {
+        // Handled as a stateless early-return before TuiService init
+        // (handle_roles_list_command, Refs #120); should not reach here.
+        RolesSub::List => {
+            unreachable!("roles list is handled before TuiService init")
+        }
+        RolesSub::Select { name } => {
+            // Find role by name or shortname
+            let role_name = service
+                .find_role_by_name_or_shortname(&name)
+                .await
+                .ok_or_else(|| {
+                    anyhow::anyhow!("Role '{}' not found (checked name and shortname)", name)
+                })?;
+            service.update_selected_role(role_name.clone()).await?;
+            service.save_config().await?;
+            println!("selected:{}", role_name);
+        }
+    }
+    Ok(())
+}
+
+// Post-TuiService arm extracted (step 5.9). Graph prints a role's knowledge
+// graph -- pinned entries only, or the top-k by rank.
+struct GraphArgs {
+    role: Option<String>,
+    top_k: usize,
+    pinned: bool,
+}
+
+async fn handle_graph_command(args: GraphArgs, service: &TuiService) -> Result<()> {
+    let GraphArgs {
+        role,
+        top_k,
+        pinned,
+    } = args;
+    let role_name = service.resolve_role(role.as_deref()).await?;
+
+    if pinned {
+        let pinned_concepts = service.get_role_graph_pinned(&role_name).await?;
+        for concept in pinned_concepts {
+            println!("{}", concept);
+        }
+    } else {
+        let concepts = service.get_role_graph_top_k(&role_name, top_k).await?;
+        for concept in concepts {
+            println!("{}", concept);
+        }
+    }
+    Ok(())
+}
+
+// Post-TuiService arm extracted (step 5.9). Kg manages knowledge graph
+// entries; currently only the List subcommand exists, printing the same
+// pinned / top-k listing as Graph.
+async fn handle_kg_command(sub: KgSub, service: &TuiService) -> Result<()> {
+    match sub {
+        KgSub::List {
+            role,
+            top_k,
+            pinned,
+        } => {
+            let role_name = service.resolve_role(role.as_deref()).await?;
+
+            if pinned {
+                let pinned_concepts = service.get_role_graph_pinned(&role_name).await?;
+                for concept in pinned_concepts {
+                    println!("{}", concept);
+                }
+            } else {
+                let concepts = service.get_role_graph_top_k(&role_name, top_k).await?;
+                for concept in concepts {
+                    println!("{}", concept);
+                }
+            }
+            Ok(())
+        }
+    }
+}
+
+// Post-TuiService arm extracted (step 5.9). Chat sends a single prompt to
+// the role's configured model and prints the response. Only compiled with
+// the `llm` feature; the match arm keeps the same cfg gate.
+#[cfg(feature = "llm")]
+struct ChatArgs {
+    role: Option<String>,
+    prompt: String,
+    model: Option<String>,
+}
+
+#[cfg(feature = "llm")]
+async fn handle_chat_command(args: ChatArgs, service: &TuiService) -> Result<()> {
+    let ChatArgs {
+        role,
+        prompt,
+        model,
+    } = args;
+    let role_name = service.resolve_role(role.as_deref()).await?;
+
+    let response = service.chat(&role_name, &prompt, model).await?;
+    println!("{}", response);
+    Ok(())
+}
+
+// Post-TuiService arm extracted (step 5.9). Extract finds paragraphs in the
+// input text whose terms appear in the role's knowledge graph and prints
+// each match with its matched term.
+struct ExtractArgs {
+    text: String,
+    role: Option<String>,
+    exclude_term: bool,
+}
+
+async fn handle_extract_command(args: ExtractArgs, service: &TuiService) -> Result<()> {
+    let ExtractArgs {
+        text,
+        role,
+        exclude_term,
+    } = args;
+    let role_name = service.resolve_role(role.as_deref()).await?;
+
+    let results = service
+        .extract_paragraphs(&role_name, &text, exclude_term)
+        .await?;
+
+    if results.is_empty() {
+        println!("No matches found in the text.");
+    } else {
+        println!("Found {} paragraph(s):", results.len());
+        for (i, (matched_term, paragraph)) in results.iter().enumerate() {
+            println!("\n--- Match {} (term: '{}') ---", i + 1, matched_term);
+            println!("{}", paragraph);
+        }
+    }
+
+    Ok(())
+}
+
+struct ValidateArgs {
+    text: Option<String>,
+    role: Option<String>,
+    connectivity: bool,
+    checklist: Option<String>,
+    json: bool,
+}
+
+// Second post-TuiService match arm extracted. Validate follows the
+// same template as Replace (step 5.1). The body shape is similar:
+// calls service.validate(), formats output, returns Ok.
+async fn handle_validate_command(args: ValidateArgs, service: &TuiService) -> Result<()> {
+    let input_text = match args.text {
+        Some(t) => t,
+        None => {
+            use std::io::Read;
+            let mut buffer = String::new();
+            std::io::stdin().read_to_string(&mut buffer)?;
+            buffer.trim().to_string()
+        }
+    };
+
+    let role_name = service.resolve_role(args.role.as_deref()).await?;
+
+    if args.connectivity {
+        let result = service.check_connectivity(&role_name, &input_text).await?;
+
+        if args.json {
+            println!("{}", serde_json::to_string(&result)?);
+        } else {
+            println!("Connectivity Check for role '{}':", role_name);
+            println!("  Connected: {}", result.connected);
+            println!("  Matched terms: {:?}", result.matched_terms);
+            println!("  {}", result.message);
+        }
+    } else if let Some(checklist_name) = args.checklist {
+        // Checklist validation mode
+        let result = service
+            .validate_checklist(&role_name, &checklist_name, &input_text)
+            .await?;
+
+        if args.json {
+            println!("{}", serde_json::to_string(&result)?);
+        } else {
+            println!(
+                "Checklist '{}' Validation for role '{}':",
+                checklist_name, role_name
+            );
+            println!("  Passed: {}", result.passed);
+            println!("  Score: {}/{}", result.satisfied.len(), result.total_items);
+            if !result.satisfied.is_empty() {
+                println!("  Satisfied items:");
+                for item in &result.satisfied {
+                    println!("    ✓ {}", item);
+                }
+            }
+            if !result.missing.is_empty() {
+                println!("  Missing items:");
+                for item in &result.missing {
+                    println!("    ✗ {}", item);
+                }
+            }
+        }
+    } else {
+        // Default validation: find matches
+        let matches = service.find_matches(&role_name, &input_text).await?;
+
+        if args.json {
+            let output = serde_json::json!({
+                "role": role_name.to_string(),
+                "matched_count": matches.len(),
+                "matches": matches.iter().map(|m| m.term.clone()).collect::<Vec<_>>()
+            });
+            println!("{}", serde_json::to_string(&output)?);
+        } else {
+            println!("Validation for role '{}':", role_name);
+            println!("  Found {} matched term(s)", matches.len());
+            for m in &matches {
+                println!("    - {}", m.term);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+struct HookArgs {
+    hook_type: HookType,
+    input: Option<String>,
+    role: Option<String>,
+    with_guard: bool,
+    no_with_guard: bool,
+    rewrite: bool,
+}
+
+// Third post-TuiService match arm extracted. Hook follows the same
+// template as Replace (5.1) and Validate (5.2). The body shape is
+// similar: calls service.hook(...), formats output, returns Ok.
+async fn handle_hook_command(args: HookArgs, service: &TuiService) -> Result<()> {
+    // For pre-tool-use, default the guard check to ON so destructive
+    // commands are denied unless the user explicitly opts out. Other
+    // hook types (post-tool-use, pre-commit, prepare-commit-msg) fire
+    // after execution or on text inputs and do not need a guard, so
+    // they keep the user's explicit `--with-guard` setting. An
+    // explicit `--no-with-guard` overrides everything.
+    let with_guard =
+        !args.no_with_guard && (args.with_guard || matches!(args.hook_type, HookType::PreToolUse));
+    // Read JSON input from argument or stdin
+    let input_json = match args.input {
+        Some(i) => i,
+        None => {
+            use std::io::Read;
+            let mut buffer = String::new();
+            std::io::stdin().read_to_string(&mut buffer)?;
+            buffer
+        }
+    };
+
+    let role_name = service.resolve_role(args.role.as_deref()).await?;
+
+    // Parse input JSON
+    let input_value: serde_json::Value = serde_json::from_str(&input_json)
+        .map_err(|e| anyhow::anyhow!("Invalid JSON input: {}", e))?;
+
+    match args.hook_type {
+        HookType::PreToolUse => {
+            // Extract tool_name and tool_input from the hook input
+            let tool_name = input_value
+                .get("tool_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+
+            // Only process Bash commands
+            if tool_name == "Bash" {
+                if let Some(command) = input_value
+                    .get("tool_input")
+                    .and_then(|v| v.get("command"))
+                    .and_then(|v| v.as_str())
+                {
+                    // Guard check if --with-guard flag is set (default ON
+                    // for pre-tool-use; see the Hook args doc comment).
+                    if with_guard {
+                        let guard = guard_patterns::CommandGuard::new();
+                        let guard_result = guard.check(command);
+
+                        if guard_result.decision == guard_patterns::GuardDecision::Block {
+                            // Output deny response for Claude Code
+                            let output = serde_json::json!({
+                                "hookSpecificOutput": {
+                                    "hookEventName": "PreToolUse",
+                                    "permissionDecision": "deny",
+                                    "permissionDecisionReason": format!(
+                                        "BLOCKED: {}",
+                                        guard_result.reason.unwrap_or_default()
+                                    )
+                                }
+                            });
+                            println!("{}", serde_json::to_string(&output)?);
+                            return Ok(());
+                        }
+                    }
+
+                    // Substitution is opt-in. We always probe the
+                    // replacement so we can warn the user when their
+                    // command contained KG-replaceable substrings, but
+                    // we only emit a rewritten command when `--rewrite`
+                    // is set. This prevents the previous behaviour
+                    // where any substring match could silently mutate
+                    // a destructive command (Refs #126).
+                    let thesaurus = service.get_thesaurus(&role_name).await?;
+                    let replacement_service = terraphim_hooks::ReplacementService::new(thesaurus);
+                    let hook_result = replacement_service.replace_fail_open(command);
+
+                    let kg_validation = kg_validation::validate_command_against_kg(command);
+
+                    let mut output = input_value.clone();
+                    let mut emitted_warning = false;
+
+                    if hook_result.replacements > 0 {
+                        if args.rewrite {
+                            // Opt-in: actually substitute
+                            if let Some(tool_input) = output.get_mut("tool_input")
+                                && let Some(obj) = tool_input.as_object_mut()
+                            {
+                                obj.insert(
+                                    "command".to_string(),
+                                    serde_json::Value::String(hook_result.result.clone()),
+                                );
+                            }
+                        } else {
+                            // Suppressed: warn the user
+                            if let Some(obj) = output.as_object_mut() {
+                                let warnings = obj
+                                    .entry("warnings".to_string())
+                                    .or_insert(serde_json::Value::Array(vec![]));
+                                if let Some(arr) = warnings.as_array_mut() {
+                                    arr.push(serde_json::Value::String(format!(
+                                        "command contained {} KG-replaceable substring(s); pass --rewrite to enable substitution. Original: `{}`",
+                                        hook_result.replacements, command
+                                    )));
+                                }
+                            }
+                            emitted_warning = true;
+                        }
+                    }
+
+                    if kg_validation.has_findings
+                        && let Some(obj) = output.as_object_mut()
+                    {
+                        obj.insert(
+                            "validations".to_string(),
+                            serde_json::to_value(&kg_validation).unwrap_or_default(),
+                        );
+                    }
+
+                    if emitted_warning
+                        || (args.rewrite && hook_result.replacements > 0)
+                        || kg_validation.has_findings
+                    {
+                        println!("{}", serde_json::to_string(&output)?);
+                    } else {
+                        // No changes, pass through
+                        println!("{}", input_json);
+                    }
+                } else {
+                    // No command to process
+                    println!("{}", input_json);
+                }
+            } else {
+                // Not a Bash command, pass through
+                println!("{}", input_json);
+            }
+        }
+        HookType::PostToolUse => {
+            // Post-tool-use: validate output against checklist or connectivity
+            let tool_result = input_value
+                .get("tool_result")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+
+            // Check connectivity of the output
+            let connectivity = service.check_connectivity(&role_name, tool_result).await?;
+
+            let output = serde_json::json!({
+                "original": input_value,
+                "validation": {
+                    "connected": connectivity.connected,
+                    "matched_terms": connectivity.matched_terms
+                }
+            });
+            println!("{}", serde_json::to_string(&output)?);
+        }
+        HookType::PreCommit | HookType::PrepareCommitMsg => {
+            // Extract commit message or diff
+            let content = input_value
+                .get("message")
+                .or_else(|| input_value.get("diff"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+
+            // Extract concepts from the content
+            let matches = service.find_matches(&role_name, content).await?;
+            let concepts: Vec<String> = matches.iter().map(|m| m.term.clone()).collect();
+
+            let output = serde_json::json!({
+                "original": input_value,
+                "concepts": concepts,
+                "concept_count": concepts.len()
+            });
+            println!("{}", serde_json::to_string(&output)?);
+        }
+    }
+
+    Ok(())
 }
 
 async fn run_cache_command(sub: &CacheSub) -> Result<()> {

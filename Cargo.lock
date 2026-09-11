@@ -6315,7 +6315,7 @@ dependencies = [
 
 [[package]]
 name = "terraphim-cli"
-version = "1.21.13"
+version = "1.21.14"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -6356,7 +6356,7 @@ dependencies = [
 
 [[package]]
 name = "terraphim-session-analyzer"
-version = "1.21.13"
+version = "1.21.14"
 dependencies = [
  "aho-corasick",
  "anyhow",
@@ -6395,7 +6395,7 @@ dependencies = [
 
 [[package]]
 name = "terraphim_agent"
-version = "1.21.13"
+version = "1.21.14"
 dependencies = [
  "ahash",
  "anyhow",
@@ -6578,7 +6578,7 @@ dependencies = [
 
 [[package]]
 name = "terraphim_grep"
-version = "1.21.13"
+version = "1.21.14"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6607,7 +6607,7 @@ dependencies = [
 
 [[package]]
 name = "terraphim_hooks"
-version = "1.21.13"
+version = "1.21.14"
 dependencies = [
  "dirs 5.0.1",
  "serde",
@@ -6621,7 +6621,7 @@ dependencies = [
 
 [[package]]
 name = "terraphim_lsp"
-version = "1.21.13"
+version = "1.21.14"
 dependencies = [
  "log",
  "serde",
@@ -6711,7 +6711,7 @@ dependencies = [
 
 [[package]]
 name = "terraphim_negative_contribution"
-version = "1.21.13"
+version = "1.21.14"
 dependencies = [
  "log",
  "terraphim_automata",
@@ -6940,9 +6940,9 @@ dependencies = [
 
 [[package]]
 name = "terraphim_types"
-version = "1.21.0"
+version = "1.22.1"
 source = "sparse+https://git.terraphim.cloud/api/packages/terraphim/cargo/"
-checksum = "66bacff366f44afb8673726fb37b3f668caa45ee656f0bd8a684654bc8d1ca4a"
+checksum = "86e103e5f8960e007d3b706f99227462e9d0091593e0afc30fd123b5a9220e21"
 dependencies = [
  "ahash",
  "anyhow",
