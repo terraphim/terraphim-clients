@@ -288,10 +288,7 @@ mod tests {
 
     #[test]
     fn strip_dangerous_tags_strips_iframe() {
-        assert_eq!(
-            strip_dangerous_tags(r#"<iframe src="evil"></iframe>"#),
-            ""
-        );
+        assert_eq!(strip_dangerous_tags(r#"<iframe src="evil"></iframe>"#), "");
     }
 
     #[test]

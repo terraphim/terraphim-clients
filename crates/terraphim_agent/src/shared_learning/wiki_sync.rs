@@ -196,8 +196,7 @@ impl GiteaWikiClient {
         // subprocess invocation (page_exists included). Rejects path
         // traversal (`..`, `/`) and option-identifier injection (leading
         // `-`).
-        validation::validate_wiki_page_name(&page_name)
-            .map_err(WikiSyncError::InvalidPageName)?;
+        validation::validate_wiki_page_name(&page_name).map_err(WikiSyncError::InvalidPageName)?;
 
         // Check if page exists
         let exists = self.page_exists(&page_name).await?;
@@ -623,7 +622,10 @@ mod tests {
             ..Default::default()
         };
         let dbg = format!("{:?}", cfg);
-        assert!(!dbg.contains("secret-gitea-token"), "token leaked in Debug: {dbg}");
+        assert!(
+            !dbg.contains("secret-gitea-token"),
+            "token leaked in Debug: {dbg}"
+        );
         assert!(dbg.contains("[REDACTED]") || dbg.contains("...") || !dbg.contains(&cfg.token));
     }
 
@@ -697,17 +699,13 @@ mod tests {
             l
         };
 
-        let learnings = vec![
+        let learnings = [
             mk(
                 "L1",
                 "Body 1 with sk-proj-abcdefghijklmnopqrstuvwxyz1234567890 in it",
                 "echo AWS_KEY=AKIAIOSFODNN7EXAMPLE",
             ),
-            mk(
-                "L2",
-                "Body 2: postgresql://u:p@h/db leaked",
-                "env",
-            ),
+            mk("L2", "Body 2: postgresql://u:p@h/db leaked", "env"),
         ];
 
         // Same byte sequence `sync_all_learnings` produces per-learning

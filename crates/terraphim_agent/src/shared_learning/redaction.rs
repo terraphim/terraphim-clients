@@ -106,8 +106,7 @@ mod tests {
         // The canonical file is at `<crate>/src/learnings/redaction.rs`
         // relative to the terraphim_agent crate root.
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
-        let canonical_path = std::path::Path::new(manifest_dir)
-            .join("src/learnings/redaction.rs");
+        let canonical_path = std::path::Path::new(manifest_dir).join("src/learnings/redaction.rs");
         let canonical_src = std::fs::read_to_string(&canonical_path).unwrap_or_else(|e| {
             panic!(
                 "could not read canonical redaction.rs at {}: {}",
@@ -174,7 +173,11 @@ mod tests {
             "We use Result<T> not unwrap()",
         ];
         for input in inputs {
-            assert_eq!(redact_secrets(input), input, "benign text was modified: \"{input}\"");
+            assert_eq!(
+                redact_secrets(input),
+                input,
+                "benign text was modified: \"{input}\""
+            );
         }
     }
 

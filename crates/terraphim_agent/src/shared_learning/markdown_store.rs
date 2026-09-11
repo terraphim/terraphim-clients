@@ -137,8 +137,7 @@ impl MarkdownLearningStore {
         // (openat/RESOLVE_BENEATH) is deferred to ADR-011.
         validation::validate_source_agent(&learning.source_agent)
             .map_err(MarkdownStoreError::InvalidField)?;
-        validation::validate_learning_id(&learning.id)
-            .map_err(MarkdownStoreError::InvalidField)?;
+        validation::validate_learning_id(&learning.id).map_err(MarkdownStoreError::InvalidField)?;
 
         let agent_dir = self.agent_dir(&learning.source_agent);
         tokio::fs::create_dir_all(&agent_dir).await?;
@@ -161,8 +160,7 @@ impl MarkdownLearningStore {
         // method validates independently (no delegation), before any FS op.
         validation::validate_source_agent(&learning.source_agent)
             .map_err(MarkdownStoreError::InvalidField)?;
-        validation::validate_learning_id(&learning.id)
-            .map_err(MarkdownStoreError::InvalidField)?;
+        validation::validate_learning_id(&learning.id).map_err(MarkdownStoreError::InvalidField)?;
 
         let shared_dir = self.shared_dir();
         tokio::fs::create_dir_all(&shared_dir).await?;
@@ -705,7 +703,7 @@ This is content from an old learning.
     /// before writing the markdown file to disk.
     #[tokio::test]
     async fn save_redacts_secrets_in_all_user_fields() {
-        use crate::shared_learning::types::{LearningSource, TrustLevel};
+        use crate::shared_learning::types::LearningSource;
 
         let temp_dir = TempDir::new().unwrap();
         let config = MarkdownStoreConfig {
@@ -728,25 +726,42 @@ This is content from an old learning.
         store.save(&learning).await.unwrap();
 
         let saved = std::fs::read_to_string(
-            store.agent_dir("agent-redact-test").join(format!("{}.md", learning.id)),
+            store
+                .agent_dir("agent-redact-test")
+                .join(format!("{}.md", learning.id)),
         )
         .unwrap();
 
-        assert!(saved.contains("[AWS_KEY_REDACTED]"), "title not redacted: {saved}");
-        assert!(saved.contains("[REDACTED]@"), "body connection string not redacted: {saved}");
-        assert!(saved.contains("[OPENAI_KEY_REDACTED]"), "error_context not redacted: {saved}");
-        assert!(saved.contains("[ENV_REDACTED]"), "original_command env var not redacted: {saved}");
+        assert!(
+            saved.contains("[AWS_KEY_REDACTED]"),
+            "title not redacted: {saved}"
+        );
+        assert!(
+            saved.contains("[REDACTED]@"),
+            "body connection string not redacted: {saved}"
+        );
+        assert!(
+            saved.contains("[OPENAI_KEY_REDACTED]"),
+            "error_context not redacted: {saved}"
+        );
+        assert!(
+            saved.contains("[ENV_REDACTED]"),
+            "original_command env var not redacted: {saved}"
+        );
         assert!(
             !saved.contains("AKIAIOSFODNN7EXAMPLE"),
             "AWS key leaked through to disk: {saved}"
         );
-        assert!(!saved.contains("postgres://u:p@h"), "connection string leaked: {saved}");
+        assert!(
+            !saved.contains("postgres://u:p@h"),
+            "connection string leaked: {saved}"
+        );
     }
 
     /// Refs #178: same redaction applies on `save_to_shared()`.
     #[tokio::test]
     async fn save_to_shared_redacts_secrets() {
-        use crate::shared_learning::types::{LearningSource, TrustLevel};
+        use crate::shared_learning::types::LearningSource;
 
         let temp_dir = TempDir::new().unwrap();
         let config = MarkdownStoreConfig {
@@ -755,7 +770,7 @@ This is content from an old learning.
         };
         let store = MarkdownLearningStore::with_config(config);
 
-        let mut learning = SharedLearning::new(
+        let learning = SharedLearning::new(
             "Benign title".to_string(),
             "AWS_KEY=AKIAIOSFODNN7EXAMPLE leaked".to_string(),
             LearningSource::BashHook,
@@ -771,8 +786,14 @@ This is content from an old learning.
         )
         .unwrap();
 
-        assert!(saved.contains("[AWS_KEY_REDACTED]"), "shared body not redacted: {saved}");
-        assert!(!saved.contains("AKIAIOSFODNN7EXAMPLE"), "AWS key leaked in shared: {saved}");
+        assert!(
+            saved.contains("[AWS_KEY_REDACTED]"),
+            "shared body not redacted: {saved}"
+        );
+        assert!(
+            !saved.contains("AKIAIOSFODNN7EXAMPLE"),
+            "AWS key leaked in shared: {saved}"
+        );
     }
 
     /// Refs #178 logging hygiene: pre-redaction body is never logged.
@@ -835,7 +856,9 @@ This is content from an old learning.
         store.save(&learning).await.unwrap();
 
         let saved = std::fs::read_to_string(
-            store.agent_dir("agent-benign").join(format!("{}.md", learning.id)),
+            store
+                .agent_dir("agent-benign")
+                .join(format!("{}.md", learning.id)),
         )
         .unwrap();
 
