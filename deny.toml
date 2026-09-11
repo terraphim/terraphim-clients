@@ -1,0 +1,101 @@
+# cargo-deny configuration (Refs #254).
+#
+# Policy: advisories and yanked crates block the pipeline; unmaintained and
+# notice-level advisories warn. Every `ignore` entry below carries the reason
+# and the issue that owns its removal. Ignores are temporary by construction:
+# remove the entry as soon as the named fix lands.
+
+[graph]
+all-features = true
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+]
+
+[advisories]
+version = 2
+db-urls = ["https://github.com/rustsec/advisory-db"]
+# TEMPORARY: warn until the Cargo.lock bump lands (spin 0.9.8 is yanked and is
+# fixed by `cargo update -p spin`). Flip back to "deny" in that commit.
+yanked = "warn"
+ignore = [
+    # --- Lockfile bumps pending (semver-compatible, `cargo update -p <crate>`).
+    # Held back until the UB audit #252 finishes its Phase 3 dynamic runs, so
+    # Miri/TSan results are attributed to one dependency set. Remove all six
+    # entries in the same commit as the Cargo.lock bump.
+    { id = "RUSTSEC-2026-0204", reason = "crossbeam-epoch 0.9.18 -> 0.9.21 via cargo update; blocked on #252 Phase 3" },
+    { id = "RUSTSEC-2026-0258", reason = "h2 0.4.15 -> 0.4.19 via cargo update; blocked on #252 Phase 3" },
+    { id = "RUSTSEC-2026-0190", reason = "anyhow 1.0.102 -> 1.0.104 via cargo update; blocked on #252 Phase 3" },
+    # The same Cargo.lock bump also clears the yanked spin 0.9.8 (cargo update -p spin).
+    # Unsound-class advisories cargo-audit reports for event-listener, lru, memmap2 and
+    # git2 (RUSTSEC-2026-0221/0253/0186/0183/0184) are informational in cargo-deny and
+    # are not encountered by this config; the first three are fixed by the same bump,
+    # git2 needs fff-search to move to a patched release (child issue of #254).
+    # --- quick-xml: two lockfile copies, both below the fixed 0.41.
+    { id = "RUSTSEC-2026-0195", reason = "quick-xml 0.37 (self_update via terraphim_update 1.20.2 registry) and 0.38 (opendal 0.54); fix is upstream in self_update and opendal. Child issue of #254" },
+    { id = "RUSTSEC-2026-0194", reason = "same crate and chain as RUSTSEC-2026-0195" },
+    # --- Requires an upstream or major-version change.
+    { id = "RUSTSEC-2026-0189", reason = "rmcp 0.9.1 -> >=1.4.0 is a major upgrade of terraphim_mcp_server's transport; DNS-rebinding affects the streamable HTTP server only. Tracked as a child of #254" },
+    # --- Unmaintained (warn-level; listed so the reason is recorded).
+    { id = "RUSTSEC-2025-0141", reason = "bincode 1.x via transitive deps; no maintained drop-in" },
+    { id = "RUSTSEC-2025-0119", reason = "number_prefix via indicatif" },
+    { id = "RUSTSEC-2024-0436", reason = "paste proc-macro; compile-time only" },
+    { id = "RUSTSEC-2024-0370", reason = "proc-macro-error; compile-time only" },
+]
+
+[licenses]
+version = 2
+confidence-threshold = 0.9
+allow = [
+    "MIT",
+    "MIT-0",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "0BSD",
+    "Unlicense",
+    "CC0-1.0",
+    "BSL-1.0",
+    "Unicode-3.0",
+    "CDLA-Permissive-2.0",
+    "MPL-2.0",
+    "bzip2-1.0.6",
+]
+# LGPL appears only as one option of a tri-licensed crate (r-efi: MIT OR
+# Apache-2.0 OR LGPL-2.1-or-later); cargo-deny picks an allowed option, so
+# no exception is needed.
+
+[[licenses.exceptions]]
+# html2md is GPL-3.0+ and reaches terraphim_agent and terraphim-cli
+# (both Apache-2.0) through terraphim_middleware (terraphim-ai registry).
+# This is an upstream licence-compatibility problem, not a local one: the
+# fix is for terraphim_middleware to replace html2md or gate it behind a
+# non-default feature. Recorded here so the gate stays green while the
+# upstream issue is open; remove when terraphim_middleware drops html2md.
+allow = ["GPL-3.0-or-later", "GPL-3.0"]
+name = "html2md"
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "all"
+deny = [
+    { name = "openssl-sys", reason = "workspace policy is rustls everywhere; native TLS breaks the static release-binaries matrix" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = [
+    "https://github.com/rust-lang/crates.io-index",
+    "sparse+https://git.terraphim.cloud/api/packages/terraphim/cargo/",
+]
+allow-git = [
+    "https://github.com/rustls/webpki",
+]

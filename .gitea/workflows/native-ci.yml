@@ -1,9 +1,29 @@
 name: native-ci
+# V-model gate order (Refs #254): fast checks -> tests -> coverage/security ->
+# nightly UB gates. Kept in sync with .github/workflows/ci.yml; see
+# docs/ci-gap-analysis.md "Sync rule". Every step's first token must be on the
+# terraphim-gitea-runner allowlist (cargo, rustup, bash, test, ...); curl and
+# python are denied, so tools are provisioned with `cargo install`.
 on:
   push:
   workflow_dispatch:
 jobs:
-  build:
+  # Stage 1: fast checks (fmt, clippy, deny). Fails in seconds, not minutes.
+  check:
+    runs-on: terraphim-native
+    steps:
+      - run: rustup show active-toolchain
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      # #2171: enrichment feature is not covered by default-features clippy.
+      - run: cargo clippy -p terraphim_sessions --features enrichment -- -D warnings
+      # Supply chain: advisories, licences, bans, sources per deny.toml.
+      # cargo-deny is present on runner-5 only, so install idempotently.
+      - run: cargo install cargo-deny --locked --version 0.20.2
+      - run: cargo deny check
+  # Stage 2: build + full test gate against a real terraphim_server.
+  test:
+    needs: check
     runs-on: terraphim-native
     steps:
       # #106: the terraphim_update signed-archive tests shell out to the
@@ -19,8 +39,6 @@ jobs:
         # `||` chaining instead. Refs #106.
         run: |
           test -x /usr/local/bin/zipsign && /usr/local/bin/zipsign --version || { echo "::error::zipsign not found on PATH. Install on the runner host: sudo install -m 0755 ~/.cargo/bin/zipsign /usr/local/bin/zipsign (see gitea-infrastructure HANDOVER.md, 'Host Tooling'). Refs #106"; exit 1; }
-      - run: cargo fmt --all -- --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo build --workspace
       # #113: build terraphim_server from terraphim-ai so the
       # server-binary-dependent integration tests have a real binary.
@@ -43,39 +61,42 @@ jobs:
       # requirements (1.20.2) match both 1.20.2 and 1.21.0 in the registry
       # and cargo aborts with "patch resolved to more than one candidate".
       - run: cargo install --locked --git https://git.terraphim.cloud/terraphim/terraphim-ai --tag v1.21.3 --root /tmp/terraphim_server_install --config 'registries.terraphim.index="sparse+https://git.terraphim.cloud/api/packages/terraphim/cargo/"' --config 'registry.global-credential-providers=["cargo:token"]' --bin terraphim_server terraphim_server
-      # Refs terraphim/terraphim-agents#91: --all-targets exercises binaries,
-      # examples, and the integration suite in tests/*.rs. --lib silently
-      # excluded those, hiding the 2026-07-31 family of regressions. This step
-      # runs after the install above so TERRAPHIM_SERVER_BIN can be exported
-      # here too: server_mode_tests, cross_mode_consistency_test,
-      # integration_tests and kg_ranking_integration_test all fail without it.
-      # Binaries built by this workspace (terraphim-agent, terraphim_mcp_server)
-      # are resolved by the tests via CARGO_BIN_EXE_*, so they need no env.
-      - run: TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo test --workspace --all-targets --no-fail-fast
-      # #113: focused re-runs of the integration tests that require a real
-      # terraphim_server binary (also covered by --all-targets above; kept for
-      # fast failure attribution). ensure_server_binary() (in
-      # cross_mode_consistency_test.rs / kg_ranking_integration_test.rs)
-      # and server_binary_path() (in integration_tests.rs) both resolve
-      # TERRAPHIM_SERVER_BIN first, so pointing the env var at the
-      # install root is enough.
-      - run: TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo test -p terraphim_agent --test cross_mode_consistency_test -- --nocapture
-      - run: TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo test -p terraphim_agent --test integration_tests -- --nocapture
-      - run: TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo test -p terraphim_agent --test kg_ranking_integration_test -- --nocapture
-      # #2171: enrichment feature clippy + test invocations (feature-gated,
-      # not covered by --all-targets with default features).
-      - run: cargo clippy -p terraphim_sessions --features enrichment -- -D warnings
-      - run: cargo test -p terraphim_sessions --features enrichment --lib --no-fail-fast
-      # Refs terraphim-clients#150: cass-parity suite gates (cursor/codex/extras
-      # connectors and the search-index score module are invisible to the
-      # default-features and enrichment-only lanes above).
-      - run: cargo test -p terraphim_sessions --all-features --no-fail-fast
-      # #95: isolated packaged install-graph regression (covered by --all-targets
-      # above but kept as a focused gate for faster failure attribution).
-      - run: cargo test -p terraphim_agent --test packaged_install_graph_regression -- --nocapture
-      # #118: repo guards -- duplicate-crate detection and the publish gate's own
-      # tests. Rust tests, not shell steps: the runner allowlist rejects any
-      # program that is not cargo ("policy rejected command: ... not on the
-      # allowlist"), which is what took CI down from #112 until now. Also
-      # covered by --all-targets above; kept for fast failure attribution.
-      - run: cargo test -p terraphim_agent --test ci_guards -- --nocapture
+      # nextest: one binary per target, parallel scheduling, JUnit output
+      # (.config/nextest.toml profile ci). --all-targets keeps the
+      # terraphim-agents#91 coverage: binaries, examples and tests/*.rs.
+      - run: cargo install cargo-nextest --locked
+      - run: TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo nextest run --workspace --all-targets --profile ci
+      # nextest does not run doctests.
+      - run: cargo test --workspace --doc --no-fail-fast
+      # #113: focused re-runs of the server-backed integration tests (also in
+      # the run above; kept for fast failure attribution).
+      - run: TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo nextest run -p terraphim_agent --test cross_mode_consistency_test --test integration_tests --test kg_ranking_integration_test --profile ci
+      # #2171 / terraphim-clients#150: feature lanes invisible to default features.
+      - run: cargo nextest run -p terraphim_sessions --features enrichment --lib --profile ci
+      - run: cargo nextest run -p terraphim_sessions --all-features --profile ci
+      # #95 / #118: focused regression and repo guards (Rust tests, not shell
+      # steps: the runner allowlist rejects non-cargo programs).
+      - run: cargo nextest run -p terraphim_agent --test packaged_install_graph_regression --test ci_guards --profile ci
+  # Stage 3: coverage gate. Threshold only ever goes up (docs/ci-gap-analysis.md).
+  coverage:
+    needs: check
+    runs-on: terraphim-native
+    steps:
+      - run: rustup component add llvm-tools
+      - run: cargo install cargo-llvm-cov --locked
+      - run: cargo llvm-cov --workspace --lib --lcov --output-path lcov.info
+      - run: cargo llvm-cov report --fail-under-lines 65
+  # Stage 4: UB gates on nightly (from the #252 UB_RUNBOOK). Miri covers the
+  # pure-computation crates only; tokio/reqwest paths are unsupported by Miri.
+  # terraphim_hooks' discovery tests spawn a process (posix_spawn), which Miri
+  # cannot emulate, and validation::tests::test_validate_latency runs 1000
+  # timed iterations that are meaningless (and very slow) under Miri, hence
+  # --skip discovery --skip latency.
+  ub-gates:
+    needs: check
+    runs-on: terraphim-native
+    steps:
+      - run: rustup toolchain install nightly --profile minimal -c miri -c rust-src
+      - run: cargo +nightly miri setup
+      - run: MIRIFLAGS="-Zmiri-disable-isolation" cargo +nightly miri test -p terraphim_negative_contribution -p terraphim_command_runtime -p terraphim_hooks --lib -- --skip discovery --skip latency
+      - run: MIRIFLAGS="-Zmiri-disable-isolation -Zmiri-tree-borrows" cargo +nightly miri test -p terraphim_negative_contribution -p terraphim_command_runtime -p terraphim_hooks --lib -- --skip discovery --skip latency
