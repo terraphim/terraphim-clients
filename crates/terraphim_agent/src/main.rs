@@ -1438,79 +1438,19 @@ async fn run_offline_command(
             role,
             top_k,
             pinned,
-        } => {
-            let role_name = service.resolve_role(role.as_deref()).await?;
-
-            if pinned {
-                let pinned_concepts = service.get_role_graph_pinned(&role_name).await?;
-                for concept in pinned_concepts {
-                    println!("{}", concept);
-                }
-            } else {
-                let concepts = service.get_role_graph_top_k(&role_name, top_k).await?;
-                for concept in concepts {
-                    println!("{}", concept);
-                }
-            }
-            Ok(())
-        }
-        Command::Kg { sub } => match sub {
-            KgSub::List {
-                role,
-                top_k,
-                pinned,
-            } => {
-                let role_name = service.resolve_role(role.as_deref()).await?;
-
-                if pinned {
-                    let pinned_concepts = service.get_role_graph_pinned(&role_name).await?;
-                    for concept in pinned_concepts {
-                        println!("{}", concept);
-                    }
-                } else {
-                    let concepts = service.get_role_graph_top_k(&role_name, top_k).await?;
-                    for concept in concepts {
-                        println!("{}", concept);
-                    }
-                }
-                Ok(())
-            }
-        },
+        } => handle_graph_command(GraphArgs { role, top_k, pinned }, &service).await,
+        Command::Kg { sub } => handle_kg_command(sub, &service).await,
         #[cfg(feature = "llm")]
         Command::Chat {
             role,
             prompt,
             model,
-        } => {
-            let role_name = service.resolve_role(role.as_deref()).await?;
-
-            let response = service.chat(&role_name, &prompt, model).await?;
-            println!("{}", response);
-            Ok(())
-        }
+        } => handle_chat_command(ChatArgs { role, prompt, model }, &service).await,
         Command::Extract {
             text,
             role,
             exclude_term,
-        } => {
-            let role_name = service.resolve_role(role.as_deref()).await?;
-
-            let results = service
-                .extract_paragraphs(&role_name, &text, exclude_term)
-                .await?;
-
-            if results.is_empty() {
-                println!("No matches found in the text.");
-            } else {
-                println!("Found {} paragraph(s):", results.len());
-                for (i, (matched_term, paragraph)) in results.iter().enumerate() {
-                    println!("\n--- Match {} (term: '{}') ---", i + 1, matched_term);
-                    println!("{}", paragraph);
-                }
-            }
-
-            Ok(())
-        }
+        } => handle_extract_command(ExtractArgs { text, role, exclude_term }, &service).await,
         Command::Replace {
             text,
             role,
@@ -1969,6 +1909,110 @@ async fn handle_roles_command(sub: RolesSub, service: &TuiService) -> Result<()>
             println!("selected:{}", role_name);
         }
     }
+    Ok(())
+}
+
+// Post-TuiService arm extracted (step 5.9). Graph prints a role's knowledge
+// graph -- pinned entries only, or the top-k by rank.
+struct GraphArgs {
+    role: Option<String>,
+    top_k: usize,
+    pinned: bool,
+}
+
+async fn handle_graph_command(args: GraphArgs, service: &TuiService) -> Result<()> {
+    let GraphArgs { role, top_k, pinned } = args;
+    let role_name = service.resolve_role(role.as_deref()).await?;
+
+    if pinned {
+        let pinned_concepts = service.get_role_graph_pinned(&role_name).await?;
+        for concept in pinned_concepts {
+            println!("{}", concept);
+        }
+    } else {
+        let concepts = service.get_role_graph_top_k(&role_name, top_k).await?;
+        for concept in concepts {
+            println!("{}", concept);
+        }
+    }
+    Ok(())
+}
+
+// Post-TuiService arm extracted (step 5.9). Kg manages knowledge graph
+// entries; currently only the List subcommand exists, printing the same
+// pinned / top-k listing as Graph.
+async fn handle_kg_command(sub: KgSub, service: &TuiService) -> Result<()> {
+    match sub {
+        KgSub::List {
+            role,
+            top_k,
+            pinned,
+        } => {
+            let role_name = service.resolve_role(role.as_deref()).await?;
+
+            if pinned {
+                let pinned_concepts = service.get_role_graph_pinned(&role_name).await?;
+                for concept in pinned_concepts {
+                    println!("{}", concept);
+                }
+            } else {
+                let concepts = service.get_role_graph_top_k(&role_name, top_k).await?;
+                for concept in concepts {
+                    println!("{}", concept);
+                }
+            }
+            Ok(())
+        }
+    }
+}
+
+// Post-TuiService arm extracted (step 5.9). Chat sends a single prompt to
+// the role's configured model and prints the response. Only compiled with
+// the `llm` feature; the match arm keeps the same cfg gate.
+#[cfg(feature = "llm")]
+struct ChatArgs {
+    role: Option<String>,
+    prompt: String,
+    model: Option<String>,
+}
+
+#[cfg(feature = "llm")]
+async fn handle_chat_command(args: ChatArgs, service: &TuiService) -> Result<()> {
+    let ChatArgs { role, prompt, model } = args;
+    let role_name = service.resolve_role(role.as_deref()).await?;
+
+    let response = service.chat(&role_name, &prompt, model).await?;
+    println!("{}", response);
+    Ok(())
+}
+
+// Post-TuiService arm extracted (step 5.9). Extract finds paragraphs in the
+// input text whose terms appear in the role's knowledge graph and prints
+// each match with its matched term.
+struct ExtractArgs {
+    text: String,
+    role: Option<String>,
+    exclude_term: bool,
+}
+
+async fn handle_extract_command(args: ExtractArgs, service: &TuiService) -> Result<()> {
+    let ExtractArgs { text, role, exclude_term } = args;
+    let role_name = service.resolve_role(role.as_deref()).await?;
+
+    let results = service
+        .extract_paragraphs(&role_name, &text, exclude_term)
+        .await?;
+
+    if results.is_empty() {
+        println!("No matches found in the text.");
+    } else {
+        println!("Found {} paragraph(s):", results.len());
+        for (i, (matched_term, paragraph)) in results.iter().enumerate() {
+            println!("\n--- Match {} (term: '{}') ---", i + 1, matched_term);
+            println!("{}", paragraph);
+        }
+    }
+
     Ok(())
 }
 
