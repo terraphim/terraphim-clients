@@ -10,14 +10,16 @@ CI and small enough to be read line by line.
 
 | File | Records | Shape |
 |------|---------|-------|
-| `corpus.jsonl` | 60 | one `terraphim_agent_evolution::MemoryItem` per line, serde JSON |
+| `corpus.jsonl` | 61 | one `terraphim_agent_evolution::MemoryItem` per line, serde JSON |
 | `queries.jsonl` | 50 | one `{"query": "...", "expected_ids": ["..."]}` per line |
 
-corpus.jsonl SHA-256: ea9057b2a807adf8d7602a6dc13104d83bbfff5c94eca45036745730d699214e
+corpus.jsonl SHA-256: 777669266bf7e82e73d77cf58d9229d6d4132d9de23d0869fc65bd7239f3b42b
 
 `tests/memory_fixture_integrity.rs` asserts that hash, that every corpus line
 parses as `MemoryItem`, that ids are unique, that every `expected_id` exists,
-and that no unredacted host, path or credential shape remains.
+and that no unredacted host, URL host, path or credential shape remains: the
+only hosts allowed in free text are `[HOST]`, `[IP]`, `127.0.0.1` and
+`0.0.0.0`.
 
 ## Provenance
 
@@ -27,8 +29,11 @@ Built on 2026-09-12 from the private learnings directory captured by
 in the fixture was written by hand; the build is:
 
 ```
-scripts/build_memory_fixture.sh [learnings_dir] [out_dir]
+scripts/build_memory_fixture.sh <learnings_dir> [out_dir]
 ```
+
+The learnings directory has no default (or set `TERRAPHIM_LEARNINGS_DIR`)
+because the capture directory is private.
 
 which runs `crates/terraphim_agent/examples/build_memory_fixture.rs`
 (`cargo run -p terraphim_agent --example build_memory_fixture`) and prints the
@@ -45,7 +50,7 @@ SHA-256 above. Two consecutive builds produce byte-identical files.
    command or error output refer to the `zestic-ai/` client tree are left out
    by that path prefix (120 of 1,029).
 3. Learnings are grouped by their redacted, whitespace-normalised command. A
-   command captured more than once is a repeated-failure cluster (57 clusters
+   command captured more than once is a repeated-failure cluster (58 clusters
    from 909 learnings). The earliest capture of each cluster, by capture time
    then id, becomes the corpus item of type `Experience`; `access_count`
    records the cluster size. The command is a query whose expected id is that
@@ -58,7 +63,7 @@ SHA-256 above. Two consecutive builds produce byte-identical files.
    descending, then earliest capture), ordered by expected id. Clusters beyond
    the 50-query cap stay in the corpus as distractors without a query.
 
-Caps: at most 200 items (60 used), 20 to 50 queries (50 used). Error output in
+Caps: at most 200 items (61 used), 20 to 50 queries (50 used). Error output in
 `content` is cut at 2,000 characters with a `[truncated]` marker (18 items).
 Every item has `importance: Medium`, `last_accessed: null` and a single
 association `origin: learning|correction`, matching what `memory capture`
@@ -75,13 +80,12 @@ Every text field passes through, in order:
    `[HOST]`.
 4. IPv4 addresses become `[IP]`; `127.0.0.1` and `0.0.0.0` are kept.
 5. `ssh` and `scp` targets after their options become `[HOST]`.
-6. Fully qualified host names whose top-level domain is one of `cloud`, `ai`,
-   `com`, `io`, `net`, `org`, `dev`, `engineer`, `local`, `lan`, `internal`,
-   `localhost` become `[HOST]`, except a short allowlist of public developer
-   domains (`github.com`, `crates.io`, `docs.rs`, `rust-lang.org`,
-   `cloudflare.com`, `npmjs.com`, `pypi.org`, `docker.io`, `ghcr.io` and a few
-   others listed in the example). Source-file extensions are not treated as
-   domains.
+6. Every fully qualified host name whose top-level domain is one of `cloud`,
+   `ai`, `com`, `io`, `net`, `org`, `dev`, `engineer`, `local`, `lan`,
+   `internal`, `localhost` becomes `[HOST]`, public or not, including hosts
+   inside URLs (`https://[HOST]/...`); the bare word `localhost` becomes
+   `[HOST]` as well. There is no allowlist. Source-file extensions (`.rs`,
+   `.sh`, `.lock`, `.yml`) are not treated as domains, so file names survive.
 7. 1Password references become `op://[REDACTED]`; `worker:`, `host:` and
    `hostname:` labels lose their value; `Bearer <token>` and any
    `token|secret|password|passwd|api_key` followed by a value of eight or more

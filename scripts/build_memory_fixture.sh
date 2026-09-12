@@ -6,8 +6,10 @@
 # Usage:
 #   scripts/build_memory_fixture.sh [learnings_dir] [out_dir]
 #
-#   learnings_dir  directory holding learning-*.md and correction-*.md files
-#                  (default: ~/projects/personal/private_agents_settings/terraphim/data/learnings)
+#   learnings_dir  directory holding learning-*.md and correction-*.md files;
+#                  required as $1 or via TERRAPHIM_LEARNINGS_DIR (no default:
+#                  the capture directory is private and must be named
+#                  explicitly)
 #   out_dir        where corpus.jsonl and queries.jsonl are written
 #                  (default: crates/terraphim_agent/tests/fixtures/memory_bench)
 #
@@ -20,9 +22,14 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-learnings_dir="${1:-$HOME/projects/personal/private_agents_settings/terraphim/data/learnings}"
+learnings_dir="${1:-${TERRAPHIM_LEARNINGS_DIR:-}}"
 out_dir="${2:-$repo_root/crates/terraphim_agent/tests/fixtures/memory_bench}"
 
+if [ -z "$learnings_dir" ]; then
+    echo "usage: scripts/build_memory_fixture.sh <learnings_dir> [out_dir]" >&2
+    echo "       (or set TERRAPHIM_LEARNINGS_DIR)" >&2
+    exit 2
+fi
 if [ ! -d "$learnings_dir" ]; then
     echo "learnings directory not found: $learnings_dir" >&2
     exit 1
