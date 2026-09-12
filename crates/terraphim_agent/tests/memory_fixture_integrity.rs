@@ -263,6 +263,40 @@ fn fixture_carries_no_unredacted_hosts_paths_or_credentials() {
         );
     }
 
+    // Project paths: after a home directory, `~`, or a deployment root the
+    // only permitted tail is `/[PROJECT]`, optionally followed by one generic
+    // file name (a shell dotfile or a config/log extension).
+    fn is_generic_file_name(name: &str) -> bool {
+        const DOTFILES: &[&str] = &[".profile", ".bashrc", ".zshrc", ".gitconfig", ".env"];
+        const EXTENSIONS: &[&str] = &[
+            "toml", "lock", "json", "yml", "yaml", "ini", "conf", "cfg", "log", "md", "txt", "db",
+        ];
+        DOTFILES.contains(&name)
+            || name
+                .rsplit_once('.')
+                .is_some_and(|(stem, ext)| !stem.is_empty() && EXTENSIONS.contains(&ext))
+    }
+    let project = Regex::new(
+        r#"(/Users/\[USER\]|/home/\[USER\]|~|/opt|/srv|/data|/var/lib)(/[^\s"'`:;|()\[\],<>*\\#]+)?"#,
+    )
+    .unwrap();
+    for c in project.captures_iter(&text) {
+        let Some(tail) = c.get(2) else { continue };
+        let parts: Vec<&str> = tail.as_str().trim_start_matches('/').split('/').collect();
+        let ok = match parts.as_slice() {
+            ["[PROJECT]"] => true,
+            ["[PROJECT]", name] => is_generic_file_name(name),
+            [name] => is_generic_file_name(name),
+            _ => false,
+        };
+        assert!(
+            ok,
+            "unredacted project path {}{} in fixture",
+            &c[1],
+            tail.as_str()
+        );
+    }
+
     // IPv4 other than loopback and the unspecified address.
     let ipv4 = Regex::new(r"\b(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\b").unwrap();
     for m in ipv4.find_iter(&text) {
