@@ -1,0 +1,68 @@
+=== Terraphim Grep Results ===
+
+Chunks returned: 20
+KG hits: 0
+Sufficiency: SearchOnly
+  Found 20 chunks but KG confidence 0.00 < 0.50, diversity 1 < 2; returning search results only (pass --answer or --force-rlm to synthesise).
+
+=== Retrieved Chunks ===
+1. RELOCATED.md:92
+   (`../../../terraphim-service/crates/haystack_jmap`). That relative path
+
+2. RELOCATED.md:111
+   **Known outstanding**: `haystack_jmap` is still a path dep in the extracted
+
+3. RELOCATED.md:112
+   repo (`../terraphim-service/crates/haystack_jmap`) because it is not published;
+
+4. RELOCATED.md:113
+   publishing it requires publishing `haystack_core` first, both of which live in
+
+5. linear_haystack/Cargo.toml:2
+   name        = "linear_haystack"
+
+6. linear_haystack/Cargo.toml:7
+   description = "Linear (graphQL) haystack provider for Terraphim AI"
+
+7. linear_haystack/Cargo.toml:11
+   keywords = ["ai", "linear", "haystack", "integration"]
+
+8. linear_haystack/Cargo.toml:16
+   haystack_core           = { version = "1.20.3", registry = "terraphim" }
+
+9. linear_haystack/src/client.rs:1
+   //! Linear HTTP client + GraphQL query for the haystack integration.
+
+10. linear_haystack/src/client.rs:16
+   /// haystack crate doesn't depend on the CLI binary (which is in a sibling
+
+11. linear_haystack/src/client.rs:72
+               .user_agent(concat!("linear_haystack/", env!("CARGO_PKG_VERSION")))
+
+12. linear_haystack/src/error.rs:1
+   //! Error types for the linear_haystack crate.
+
+13. linear_haystack/src/lib.rs:1
+   //! `linear_haystack` — a haystack provider for Terraphim that searches
+
+14. linear_haystack/src/lib.rs:4
+   //! Implements [`haystack_core::HaystackProvider`] over [`LinearHaystack`].
+
+15. linear_haystack/src/lib.rs:10
+   //! - `.docs/research-linear-haystack-and-tinyclaw-events.md` (Phase 1)
+
+16. linear_haystack/src/lib.rs:12
+   //! - `.docs/design-linear-haystack-and-tinyclaw-events.md` (Phase 2)
+
+17. linear_haystack/src/lib.rs:22
+   use haystack_core::HaystackProvider;
+
+18. linear_haystack/src/lib.rs:25
+   /// Haystack adapter for Linear. Wraps a [`LinearClient`] and translates
+
+19. linear_haystack/src/lib.rs:28
+   pub struct LinearHaystack {
+
+20. linear_haystack/src/lib.rs:32
+   impl LinearHaystack {
+

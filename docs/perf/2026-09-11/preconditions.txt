@@ -1,0 +1,7 @@
+date=2026-09-12 10:06 BST
+sha=1120180
+host=Apple M3 Pro ncpu=11 mem=36GB macOS=26.6.2
+load_before=load averages: 4.75 10.83 13.91
+tmux=miri-sa 
+profile=release opt-level=3 codegen-units=1 lto=false CARGO_PROFILE_RELEASE_DEBUG=line-tables-only
+load_after=load averages: 4.49 10.57 13.79

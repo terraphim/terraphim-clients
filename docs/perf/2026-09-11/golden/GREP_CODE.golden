@@ -1,0 +1,92 @@
+=== Terraphim Grep Results ===
+
+Chunks returned: 28
+KG hits: 0
+Sufficiency: SearchOnly
+  Found 28 chunks but KG confidence 0.00 < 0.50, diversity 1 < 2; returning search results only (pass --answer or --force-rlm to synthesise).
+
+=== Retrieved Chunks ===
+1. terraphim_agent/src/main.rs:442
+   fn main() -> Result<()> {
+
+2. terraphim_grep/src/main.rs:478
+   async fn main() -> Result<()> {
+
+3. terraphim-session-analyzer/src/patterns/knowledge_graph.rs:18
+   //! # fn main() -> anyhow::Result<()> {
+
+4. terraphim-session-analyzer/src/main.rs:184
+   fn main() -> Result<()> {
+
+5. terraphim-session-analyzer/src/lib.rs:21
+   //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+
+6. terraphim-session-analyzer/src/kg/mod.rs:18
+   //! # fn main() -> anyhow::Result<()> {
+
+7. terraphim-session-analyzer/src/patterns/mod.rs:18
+   //! # fn main() -> anyhow::Result<()> {
+
+8. terraphim-session-analyzer/tests/test_data/file_operations.jsonl:2
+   {"parentUuid":"read-msg-001","isSidechain":false,"userType":"external","cwd":"/home/alex/projects/test-project","sessionId":"file-ops-session","version":"1.0.111","gitBranch":"","message":{"role":"tool_result","content":[{"tool_use_id":"read_001","type":"text","content":"fn main() {\n    println!(\"Hello, world!\");\n}"}]},"type":"tool_result","uuid":"read-result-001","timestamp":"2025-10-01T12:00:01.000Z"}
+
+9. terraphim-session-analyzer/tests/test_data/file_operations.jsonl:5
+   {"parentUuid":"write-result-001","isSidechain":false,"userType":"external","cwd":"/home/alex/projects/test-project","sessionId":"file-ops-session","version":"1.0.111","gitBranch":"","message":{"role":"assistant","content":[{"type":"tool_use","id":"edit_001","name":"Edit","input":{"file_path":"/home/alex/projects/test-project/src/main.rs","old_string":"fn main() {\n    println!(\"Hello, world!\");\n}","new_string":"use test_project::add;\n\nfn main() {\n    let result = add(5, 3);\n    println!(\"5 + 3 = {}\
+
+10. terraphim_cli/src/main.rs:352
+   async fn main() -> Result<()> {
+
+11. terraphim_grep/README.md:52
+   async fn main() -> terraphim_grep::Result<()> {
+
+12. terraphim_grep/src/signatures.rs:189
+     "citations": [{"source": "src/main.rs", "line": 1, "excerpt": "fn main()"}],
+
+13. terraphim_grep/src/signatures.rs:244
+   fn main() {}
+
+14. terraphim_grep/src/signatures.rs:262
+               {"path": "src/main.rs", "line": 42, "context": ["fn main()", "test"]},
+
+15. terraphim_negative_contribution/src/scanner.rs:260
+           let findings = scanner().scan_file("examples/demo.rs", "fn main() {\n    todo!()\n}\n");
+
+16. terraphim_negative_contribution/src/scanner.rs:266
+           let findings = scanner().scan_file("build.rs", "fn main() {\n    todo!()\n}\n");
+
+17. terraphim_negative_contribution/src/scanner.rs:320
+               ("src/b.rs".to_string(), "fn main() {}".to_string()),
+
+18. terraphim_negative_contribution/src/scanner.rs:329
+           let output = scanner().scan_to_output(&[("src/lib.rs".into(), "fn main() {}".into())]);
+
+19. terraphim_sessions/src/lib.rs:19
+   //! async fn main() -> anyhow::Result<()> {
+
+20. terraphim_mcp_server/src/main.rs:150
+   async fn main() -> Result<()> {
+
+21. terraphim_agent/REPL_EXTRACTION_PLAN.md:200
+   async fn main() -> Result<()> {
+
+22. terraphim_agent/build.rs:3
+   fn main() {
+
+23. terraphim_lsp/src/bin/terraphim-lsp.rs:5
+   async fn main() {
+
+24. terraphim_negative_contribution/src/exclusion.rs:105
+           let content = "fn main() { println!(\"hello\"); }\n";
+
+25. terraphim_negative_contribution/src/exclusion.rs:111
+           assert!(is_non_production("tests/foo.rs", "fn main() {}"));
+
+26. terraphim_negative_contribution/src/exclusion.rs:124
+           assert!(!is_non_production("src/lib.rs", "fn main() {}"));
+
+27. terraphim_update/README.md:168
+   fn main() -> Result<()> {
+
+28. terraphim_update/test_debug.rs:3
+   fn main() {
+
