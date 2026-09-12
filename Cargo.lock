@@ -6405,6 +6405,7 @@ dependencies = [
  "clap",
  "colored 3.1.1",
  "comfy-table",
+ "criterion",
  "crossterm",
  "dialoguer",
  "directories 5.0.1",
