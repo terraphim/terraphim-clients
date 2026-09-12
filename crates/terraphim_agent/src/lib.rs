@@ -6,6 +6,8 @@
 #[cfg(feature = "server")]
 pub mod client;
 pub mod logging;
+/// Judge-free retrieval quality benchmark (recall@k, MRR) over a fixture.
+pub mod memory_bench;
 /// Knowledge-graph retrieval over the agent evolution memory store.
 pub mod memory_retrieve;
 pub mod onboarding;
