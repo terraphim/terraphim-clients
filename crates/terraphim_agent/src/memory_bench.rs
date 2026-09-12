@@ -54,6 +54,9 @@ pub struct Fixture {
     /// SHA-256 of the raw bytes of `corpus.jsonl`, so reports name the corpus
     /// they ran on.
     pub corpus_sha256: String,
+    /// SHA-256 of the raw bytes of `queries.jsonl`, so the relevance labels
+    /// are part of the provenance as well as the corpus.
+    pub queries_sha256: String,
 }
 
 /// Judge-free retrieval quality over a fixture.
@@ -65,6 +68,7 @@ pub struct RetrievalQualityReport {
     pub recall_at_5: f64,
     pub mrr: f64,
     pub corpus_sha256: String,
+    pub queries_sha256: String,
     /// SHA-256 of the thesaurus file, taken from `Thesaurus::source_hash`.
     /// Empty when the thesaurus was not loaded through [`load_thesaurus`].
     pub thesaurus_sha256: String,
@@ -129,7 +133,7 @@ pub fn load_fixture(dir: &Path) -> Result<Fixture, BenchError> {
     if items.is_empty() {
         return Err(BenchError::Empty("items"));
     }
-    let (queries, _): (Vec<Query>, _) = read_jsonl(dir, QUERIES_FILE)?;
+    let (queries, queries_bytes): (Vec<Query>, _) = read_jsonl(dir, QUERIES_FILE)?;
     if queries.is_empty() {
         return Err(BenchError::Empty("queries"));
     }
@@ -140,6 +144,7 @@ pub fn load_fixture(dir: &Path) -> Result<Fixture, BenchError> {
         items,
         queries,
         corpus_sha256: sha256_hex(&corpus_bytes),
+        queries_sha256: sha256_hex(&queries_bytes),
     })
 }
 
@@ -227,6 +232,7 @@ pub fn evaluate(
         recall_at_5: r5 / n,
         mrr: rr / n,
         corpus_sha256: fixture.corpus_sha256.clone(),
+        queries_sha256: fixture.queries_sha256.clone(),
         thesaurus_sha256,
         terraphim_agent_version: env!("CARGO_PKG_VERSION").to_string(),
     })
@@ -423,6 +429,9 @@ mod tests {
         let bytes = fs::read(dir.path().join(CORPUS_FILE)).expect("read corpus");
         assert_eq!(fixture.corpus_sha256, sha256_hex(&bytes));
         assert_eq!(fixture.corpus_sha256.len(), 64);
+        let query_bytes = fs::read(dir.path().join(QUERIES_FILE)).expect("read queries");
+        assert_eq!(fixture.queries_sha256, sha256_hex(&query_bytes));
+        assert_ne!(fixture.queries_sha256, fixture.corpus_sha256);
         assert_eq!(fixture.items.len(), 1);
         assert_eq!(fixture.queries.len(), 1);
     }
@@ -448,6 +457,7 @@ mod tests {
             items,
             queries,
             corpus_sha256: "deadbeef".to_string(),
+            queries_sha256: "cafebabe".to_string(),
         };
 
         let report = evaluate(&fixture, &role(), four_concepts()).expect("evaluate");
@@ -458,6 +468,7 @@ mod tests {
         assert_eq!(report.corpus_size, 3);
         assert_eq!(report.query_count, 3);
         assert_eq!(report.corpus_sha256, "deadbeef");
+        assert_eq!(report.queries_sha256, "cafebabe");
         assert_eq!(report.terraphim_agent_version, env!("CARGO_PKG_VERSION"));
     }
 
@@ -480,6 +491,7 @@ mod tests {
             items,
             queries,
             corpus_sha256: String::new(),
+            queries_sha256: String::new(),
         };
 
         let report = evaluate(&fixture, &role(), four_concepts()).expect("evaluate");
@@ -511,6 +523,7 @@ mod tests {
             items,
             queries,
             corpus_sha256: String::new(),
+            queries_sha256: String::new(),
         };
 
         let first = evaluate(&fixture, &role(), four_concepts()).expect("evaluate");
@@ -526,6 +539,7 @@ mod tests {
             items: vec![memory("a", "bun install")],
             queries: Vec::new(),
             corpus_sha256: String::new(),
+            queries_sha256: String::new(),
         };
         let err = evaluate(&fixture, &role(), four_concepts()).expect_err("no queries");
         assert!(matches!(err, BenchError::Empty("queries")), "{err:?}");
@@ -553,6 +567,7 @@ mod tests {
                     expected_ids: vec!["a".to_string()],
                 }],
                 corpus_sha256: String::new(),
+                queries_sha256: String::new(),
             },
             &role(),
             loaded,
@@ -665,7 +680,7 @@ mod tests {
             items in fixture_items(12),
             queries in fixture_queries(6),
         ) {
-            let fixture = Fixture { items, queries, corpus_sha256: String::new() };
+            let fixture = Fixture { items, queries, corpus_sha256: String::new(), queries_sha256: String::new() };
             if let Ok(r) = evaluate(&fixture, &role(), four_concepts()) {
                 prop_assert!((0.0..=1.0).contains(&r.recall_at_1), "{r:?}");
                 prop_assert!((0.0..=1.0).contains(&r.recall_at_5), "{r:?}");

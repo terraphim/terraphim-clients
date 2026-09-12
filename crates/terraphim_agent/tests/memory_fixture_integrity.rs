@@ -218,6 +218,85 @@ fn fixture_carries_no_unredacted_hosts_paths_or_credentials() {
         );
     }
 
+    // Host names: every dotted label run ending in a host TLD must be gone,
+    // and every URL host must be a redacted placeholder. Source-file names
+    // (`lib.rs`, `build.sh`, `Cargo.lock`) end in extensions, not TLDs.
+    const HOST_TLDS: &[&str] = &[
+        "cloud",
+        "ai",
+        "com",
+        "io",
+        "net",
+        "org",
+        "dev",
+        "engineer",
+        "local",
+        "lan",
+        "internal",
+        "localhost",
+    ];
+    let dotted = Regex::new(r"\b[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\b").unwrap();
+    for m in dotted.find_iter(&text) {
+        let lower = m.as_str().to_ascii_lowercase();
+        let labels: Vec<&str> = lower.split('.').collect();
+        let tld = labels.last().copied().unwrap_or_default();
+        let numeric = labels.iter().all(|l| l.chars().all(|c| c.is_ascii_digit()));
+        assert!(
+            numeric || !HOST_TLDS.contains(&tld),
+            "unredacted host name {} in fixture",
+            m.as_str()
+        );
+    }
+    assert!(
+        !Regex::new(r"\blocalhost\b").unwrap().is_match(&text),
+        "bare localhost in fixture"
+    );
+    let url_host = Regex::new(r#"://([^/\s"'`:]+)"#).unwrap();
+    for c in url_host.captures_iter(&text) {
+        let host = &c[1];
+        assert!(
+            matches!(
+                host,
+                "[HOST]" | "[USER]@[HOST]" | "[IP]" | "[REDACTED]" | "127.0.0.1" | "0.0.0.0"
+            ),
+            "unredacted URL host {host} in fixture"
+        );
+    }
+
+    // Project paths: after a home directory, `~`, or a deployment root the
+    // only permitted tail is `/[PROJECT]`, optionally followed by one generic
+    // file name (a shell dotfile or a config/log extension).
+    fn is_generic_file_name(name: &str) -> bool {
+        const DOTFILES: &[&str] = &[".profile", ".bashrc", ".zshrc", ".gitconfig", ".env"];
+        const EXTENSIONS: &[&str] = &[
+            "toml", "lock", "json", "yml", "yaml", "ini", "conf", "cfg", "log", "md", "txt", "db",
+        ];
+        DOTFILES.contains(&name)
+            || name
+                .rsplit_once('.')
+                .is_some_and(|(stem, ext)| !stem.is_empty() && EXTENSIONS.contains(&ext))
+    }
+    let project = Regex::new(
+        r#"(/Users/\[USER\]|/home/\[USER\]|~|/opt|/srv|/data|/var/lib)(/[^\s"'`:;|()\[\],<>*\\#]+)?"#,
+    )
+    .unwrap();
+    for c in project.captures_iter(&text) {
+        let Some(tail) = c.get(2) else { continue };
+        let parts: Vec<&str> = tail.as_str().trim_start_matches('/').split('/').collect();
+        let ok = match parts.as_slice() {
+            ["[PROJECT]"] => true,
+            ["[PROJECT]", name] => is_generic_file_name(name),
+            [name] => is_generic_file_name(name),
+            _ => false,
+        };
+        assert!(
+            ok,
+            "unredacted project path {}{} in fixture",
+            &c[1],
+            tail.as_str()
+        );
+    }
+
     // IPv4 other than loopback and the unspecified address.
     let ipv4 = Regex::new(r"\b(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\b").unwrap();
     for m in ipv4.find_iter(&text) {
