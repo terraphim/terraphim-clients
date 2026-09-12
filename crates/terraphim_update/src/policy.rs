@@ -1,63 +1,67 @@
 //! Runtime detection of whether the current binary is managed by a system
-//! package manager (e.g. pacman), as opposed to Terraphim's own self-update
-//! mechanism (Gitea #247).
+//! package manager, as opposed to Terraphim's own self-update mechanism.
 //!
-//! Detection is deterministic and requires **both**:
-//! 1. A marker file at a known path containing exactly one supported
-//!    manager's name.
-//! 2. The canonicalized current executable path being a path-component-wise
-//!    descendant of that manager's canonical install prefix.
-//!
-//! Marker alone or prefix alone never claims package-managed ownership, and
-//! any ambiguity or I/O error (missing/unreadable marker, a path that fails
-//! to canonicalize) resolves to [`UpdatePolicy::SelfManaged`] -- detection
-//! never panics and always fails safe toward preserving today's self-update
-//! behavior.
+//! Detection is per binary: a canonical executable at
+//! `<prefix>/bin/<binary-name>` is managed only when the matching receipt at
+//! `<prefix>/share/terraphim/package-manager.d/<binary-name>` contains one
+//! supported manager value. Missing, malformed, mismatched, receipt-only,
+//! layout-only, or unrelated receipts resolve to [`UpdatePolicy::SelfManaged`].
 //!
 //! This module is plain data + pure functions: no `cfg!`, no Cargo feature.
-//! [`detect_update_policy`] takes every filesystem input as a parameter, so
-//! tests can exercise it against `tempfile::TempDir`-rooted stand-ins
-//! without touching the real `/usr` tree or process environment.
+//! [`detect_update_policy`] takes an executable path as a parameter, so tests
+//! can exercise it against `tempfile::TempDir`-rooted stand-ins without
+//! touching the real `/usr` tree or process environment.
 //! [`detect_update_policy_default`] is the only function that touches real
 //! process state.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// A supported system package manager.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PackageManager {
     Pacman,
-    // Extensible: future supported managers add a variant + a
-    // `MANAGED_PREFIXES` table entry (see module docs).
+    Dpkg,
+    Rpm,
+    Homebrew,
 }
 
 impl PackageManager {
-    /// The exact marker-file value (case-sensitive) that identifies this
+    /// The exact receipt-file value (case-sensitive) that identifies this
     /// manager. Also used as the manager's human-readable name.
     pub fn name(&self) -> &'static str {
         match self {
             PackageManager::Pacman => "pacman",
+            PackageManager::Dpkg => "dpkg",
+            PackageManager::Rpm => "rpm",
+            PackageManager::Homebrew => "homebrew",
         }
     }
 
-    /// The operator-facing update command for this manager.
-    pub fn update_command(&self) -> &'static str {
+    /// The operator-facing update command for this manager and binary.
+    pub fn update_command(&self, bin_name: &str) -> String {
         match self {
-            PackageManager::Pacman => "sudo pacman -Syu",
+            PackageManager::Pacman => "sudo pacman -Syu".to_string(),
+            PackageManager::Dpkg => "sudo apt update && sudo apt upgrade".to_string(),
+            PackageManager::Rpm => "sudo dnf upgrade".to_string(),
+            PackageManager::Homebrew => format!("brew upgrade {bin_name}"),
         }
     }
 
-    /// Parse a trimmed marker-file value into a supported manager. Returns
-    /// `None` for anything that isn't an exact match (unsupported name,
-    /// wrong case, or content with embedded whitespace/newlines).
-    fn from_marker_value(value: &str) -> Option<Self> {
+    /// Parse an exact receipt-file value into a supported manager. Returns
+    /// `None` for anything that isn't an exact byte match: unsupported name,
+    /// wrong case, leading/trailing whitespace, embedded whitespace, invalid
+    /// UTF-8, extra line endings, or trailing bytes.
+    fn from_marker_value(value: &[u8]) -> Option<Self> {
         match value {
-            "pacman" => Some(PackageManager::Pacman),
+            b"pacman" | b"pacman\n" | b"pacman\r\n" => Some(PackageManager::Pacman),
+            b"dpkg" | b"dpkg\n" | b"dpkg\r\n" => Some(PackageManager::Dpkg),
+            b"rpm" | b"rpm\n" | b"rpm\r\n" => Some(PackageManager::Rpm),
+            b"homebrew" | b"homebrew\n" | b"homebrew\r\n" => Some(PackageManager::Homebrew),
             _ => None,
         }
     }
-    // NOTE: `name()` (above) doubles as `marker_value` -- the marker file's
+    // NOTE: `name()` (above) doubles as `receipt_value` -- the receipt file's
     // accepted content is defined to be exactly the manager's display name.
 }
 
@@ -78,78 +82,67 @@ pub enum UpdatePolicy {
     },
 }
 
-/// Real path to the package-manager marker file. O4's packaging is
-/// responsible for installing this file; this crate never writes it.
-pub const MARKER_PATH: &str = "/usr/share/terraphim/package-manager";
-
-/// Table of (manager, managed prefix) pairs used by
-/// [`detect_update_policy_default`]. Only `pacman` -> `/usr/bin` is wired up
-/// today; more managers can be added here later without changing the
-/// detection contract's shape.
-pub const MANAGED_PREFIXES: &[(PackageManager, &str)] = &[(PackageManager::Pacman, "/usr/bin")];
-
-/// Read and validate the marker file, returning the supported manager it
+/// Read and validate the receipt file, returning the supported manager it
 /// names, or `None` if the file is missing/unreadable or its contents don't
-/// exactly match one supported manager (after trimming surrounding
-/// whitespace, which permits a single trailing newline).
-fn read_marker(marker_path: &Path) -> Option<PackageManager> {
-    let contents = fs::read_to_string(marker_path).ok()?;
-    PackageManager::from_marker_value(contents.trim())
+/// exactly match one supported manager with no line ending, one LF, or one
+/// CRLF.
+fn read_receipt(receipt_path: &Path) -> Option<PackageManager> {
+    let contents = fs::read(receipt_path).ok()?;
+    PackageManager::from_marker_value(&contents)
 }
 
-/// Pure detection: takes every filesystem input as a parameter. No global
-/// state, no env var reads, no hardcoded paths. Safe to call with temp-dir
-/// stand-ins for the executable path, marker path, and prefix table.
+/// Infer the install prefix from `<prefix>/bin/<actual-executable-name>`.
+pub fn inferred_prefix(current_exe: &Path) -> Option<PathBuf> {
+    actual_executable_basename(current_exe)?;
+    let bin_dir = current_exe.parent()?;
+    if bin_dir.file_name()?.to_str()? != "bin" {
+        return None;
+    }
+    bin_dir.parent().map(Path::to_path_buf)
+}
+
+fn actual_executable_basename(current_exe: &Path) -> Option<&str> {
+    current_exe.file_name()?.to_str()
+}
+
+fn receipt_path(prefix: &Path, bin_name: &str) -> PathBuf {
+    prefix
+        .join("share/terraphim/package-manager.d")
+        .join(bin_name)
+}
+
+/// Pure detection: takes the executable path as a parameter. No env var
+/// reads, no hardcoded `/usr` paths. Safe to call with temp-dir stand-ins.
 ///
 /// Never panics: any I/O error resolves to [`UpdatePolicy::SelfManaged`].
-pub fn detect_update_policy(
-    current_exe: &Path,
-    marker_path: &Path,
-    managed_prefixes: &[(PackageManager, &Path)],
-) -> UpdatePolicy {
-    let Some(manager) = read_marker(marker_path) else {
-        return UpdatePolicy::SelfManaged;
-    };
-
+pub fn detect_update_policy(current_exe: &Path) -> UpdatePolicy {
     let Ok(canonical_exe) = fs::canonicalize(current_exe) else {
         return UpdatePolicy::SelfManaged;
     };
 
-    for (candidate_manager, prefix) in managed_prefixes {
-        if *candidate_manager != manager {
-            continue;
-        }
-        let Ok(canonical_prefix) = fs::canonicalize(prefix) else {
-            continue;
-        };
-        // `Path::starts_with` compares whole path components, not raw
-        // strings, so a sibling directory like `/usr/bin-evil` can never
-        // spoof `/usr/bin` here.
-        if canonical_exe.starts_with(&canonical_prefix) {
-            return UpdatePolicy::PackageManaged {
-                manager,
-                update_command: manager.update_command().to_string(),
-            };
-        }
-    }
+    let Some(actual_bin_name) = actual_executable_basename(&canonical_exe) else {
+        return UpdatePolicy::SelfManaged;
+    };
+    let Some(prefix) = inferred_prefix(&canonical_exe) else {
+        return UpdatePolicy::SelfManaged;
+    };
+    let Some(manager) = read_receipt(&receipt_path(&prefix, actual_bin_name)) else {
+        return UpdatePolicy::SelfManaged;
+    };
 
-    UpdatePolicy::SelfManaged
+    UpdatePolicy::PackageManaged {
+        manager,
+        update_command: manager.update_command(actual_bin_name),
+    }
 }
 
 /// The only function that touches real process state: resolves
-/// `std::env::current_exe()`, the real marker path ([`MARKER_PATH`]), and
-/// the real prefix table ([`MANAGED_PREFIXES`]), then delegates to
-/// [`detect_update_policy`]. Called once, at startup / `UpdaterConfig`
-/// construction.
+/// `std::env::current_exe()`, then delegates to [`detect_update_policy`].
 pub fn detect_update_policy_default() -> UpdatePolicy {
     let Ok(current_exe) = std::env::current_exe() else {
         return UpdatePolicy::SelfManaged;
     };
-    let prefixes: Vec<(PackageManager, &Path)> = MANAGED_PREFIXES
-        .iter()
-        .map(|(manager, prefix)| (*manager, Path::new(*prefix)))
-        .collect();
-    detect_update_policy(&current_exe, Path::new(MARKER_PATH), &prefixes)
+    detect_update_policy(&current_exe)
 }
 
 /// Stable operator-facing guidance for a `PackageManaged` policy. Returns an
