@@ -13,7 +13,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
-use terraphim_agent::memory_bench::{evaluate, load_fixture, load_thesaurus, sha256_hex};
+use terraphim_agent::memory_bench::{
+    CORPUS_FILE, QUERIES_FILE, evaluate, load_fixture, load_thesaurus, sha256_hex,
+};
 use terraphim_config::Role;
 
 const ROLE_NAME: &str = "Terraphim Engineer";
@@ -76,6 +78,17 @@ fn retrieval_quality_meets_floor() {
     assert_eq!(report.corpus_size, fixture.items.len());
     assert_eq!(report.query_count, fixture.queries.len());
     assert_eq!(report.corpus_sha256, fixture.corpus_sha256);
+    assert_eq!(
+        report.corpus_sha256,
+        sha256_hex(&fs::read(dir.join(CORPUS_FILE)).expect("read corpus")),
+        "report must name the committed corpus by hash"
+    );
+    assert_eq!(report.queries_sha256, fixture.queries_sha256);
+    assert_eq!(
+        report.queries_sha256,
+        sha256_hex(&fs::read(dir.join(QUERIES_FILE)).expect("read queries")),
+        "report must name the committed queries by hash"
+    );
     assert_eq!(
         report.thesaurus_sha256, thesaurus_sha256,
         "report must name the committed thesaurus by hash"

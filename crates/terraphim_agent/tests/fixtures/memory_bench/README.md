@@ -10,14 +10,17 @@ CI and small enough to be read line by line.
 
 | File | Records | Shape |
 |------|---------|-------|
-| `corpus.jsonl` | 60 | one `terraphim_agent_evolution::MemoryItem` per line, serde JSON |
+| `corpus.jsonl` | 56 | one `terraphim_agent_evolution::MemoryItem` per line, serde JSON |
 | `queries.jsonl` | 50 | one `{"query": "...", "expected_ids": ["..."]}` per line |
 
-corpus.jsonl SHA-256: ea9057b2a807adf8d7602a6dc13104d83bbfff5c94eca45036745730d699214e
+corpus.jsonl SHA-256: eb3f804bc7a523311c1f3a9bafff63bc243df4236224f0da958deb088e012774
 
 `tests/memory_fixture_integrity.rs` asserts that hash, that every corpus line
 parses as `MemoryItem`, that ids are unique, that every `expected_id` exists,
-and that no unredacted host, path or credential shape remains.
+and that no unredacted host, URL host, project path or credential shape
+remains: the only hosts allowed in free text are `[HOST]`, `[IP]`,
+`127.0.0.1` and `0.0.0.0`, and the only tail allowed after a home or
+deployment prefix is `/[PROJECT]` plus an optional generic file name.
 
 ## Provenance
 
@@ -27,8 +30,11 @@ Built on 2026-09-12 from the private learnings directory captured by
 in the fixture was written by hand; the build is:
 
 ```
-scripts/build_memory_fixture.sh [learnings_dir] [out_dir]
+scripts/build_memory_fixture.sh <learnings_dir> [out_dir]
 ```
+
+The learnings directory has no default (or set `TERRAPHIM_LEARNINGS_DIR`)
+because the capture directory is private.
 
 which runs `crates/terraphim_agent/examples/build_memory_fixture.rs`
 (`cargo run -p terraphim_agent --example build_memory_fixture`) and prints the
@@ -45,7 +51,7 @@ SHA-256 above. Two consecutive builds produce byte-identical files.
    command or error output refer to the `zestic-ai/` client tree are left out
    by that path prefix (120 of 1,029).
 3. Learnings are grouped by their redacted, whitespace-normalised command. A
-   command captured more than once is a repeated-failure cluster (57 clusters
+   command captured more than once is a repeated-failure cluster (53 clusters
    from 909 learnings). The earliest capture of each cluster, by capture time
    then id, becomes the corpus item of type `Experience`; `access_count`
    records the cluster size. The command is a query whose expected id is that
@@ -58,7 +64,7 @@ SHA-256 above. Two consecutive builds produce byte-identical files.
    descending, then earliest capture), ordered by expected id. Clusters beyond
    the 50-query cap stay in the corpus as distractors without a query.
 
-Caps: at most 200 items (60 used), 20 to 50 queries (50 used). Error output in
+Caps: at most 200 items (56 used), 20 to 50 queries (50 used). Error output in
 `content` is cut at 2,000 characters with a `[truncated]` marker (18 items).
 Every item has `importance: Medium`, `last_accessed: null` and a single
 association `origin: learning|correction`, matching what `memory capture`
@@ -75,20 +81,27 @@ Every text field passes through, in order:
    `[HOST]`.
 4. IPv4 addresses become `[IP]`; `127.0.0.1` and `0.0.0.0` are kept.
 5. `ssh` and `scp` targets after their options become `[HOST]`.
-6. Fully qualified host names whose top-level domain is one of `cloud`, `ai`,
-   `com`, `io`, `net`, `org`, `dev`, `engineer`, `local`, `lan`, `internal`,
-   `localhost` become `[HOST]`, except a short allowlist of public developer
-   domains (`github.com`, `crates.io`, `docs.rs`, `rust-lang.org`,
-   `cloudflare.com`, `npmjs.com`, `pypi.org`, `docker.io`, `ghcr.io` and a few
-   others listed in the example). Source-file extensions are not treated as
-   domains.
+6. Every fully qualified host name whose top-level domain is one of `cloud`,
+   `ai`, `com`, `io`, `net`, `org`, `dev`, `engineer`, `local`, `lan`,
+   `internal`, `localhost` becomes `[HOST]`, public or not, including hosts
+   inside URLs (`https://[HOST]/...`); the bare word `localhost` becomes
+   `[HOST]` as well. There is no allowlist. Source-file extensions (`.rs`,
+   `.sh`, `.lock`, `.yml`) are not treated as domains, so file names survive.
 7. 1Password references become `op://[REDACTED]`; `worker:`, `host:` and
    `hostname:` labels lose their value; `Bearer <token>` and any
    `token|secret|password|passwd|api_key` followed by a value of eight or more
    characters lose the value; runs of 32 or more hexadecimal characters become
    `[HEX_REDACTED]`.
 8. `/Users/<name>` and `/home/<name>` become `/Users/[USER]` and
-   `/home/[USER]`; `zestic-ai/<dir>` becomes `zestic-ai/[CLIENT]`.
+   `/home/[USER]`; `zestic-ai/<dir>` becomes `zestic-ai/[CLIENT]`. Then every
+   path tail after `/Users/[USER]`, `/home/[USER]`, `~`, `/opt`, `/srv`,
+   `/data` or `/var/lib` becomes `/[PROJECT]`; the final file name is kept
+   only when it is a shell dotfile (`.profile`, `.bashrc`, `.zshrc`,
+   `.gitconfig`, `.env`) or has a configuration or log extension (`toml`,
+   `lock`, `json`, `yml`, `yaml`, `ini`, `conf`, `cfg`, `log`, `md`, `txt`,
+   `db`), for example `/var/lib/[PROJECT]/gitea.log`. `/tmp`, `/etc`, `/usr`
+   and other system paths, and relative paths inside a project (`crates/...`,
+   `src/lib.rs`), are kept.
 9. Finally the capture module's own `terraphim_agent::learnings::redact_secrets`
    (AWS, OpenAI, Slack and GitHub key shapes, connection strings, and
    `TOKEN=`, `PASSWORD=`, `API_KEY=` style environment assignments).
@@ -120,6 +133,15 @@ a hand judgement of relevance.
   segment.
 * `git push` is the largest cluster (41 captures) and its error output is the
   single word `rejected`.
+* Commands that differed only by project path now share one cluster
+  (for example every `cd <project>` becomes `cd ~/[PROJECT]` or
+  `cd /Users/[USER]/[PROJECT]`), so a cluster's `access_count` can combine
+  captures from several projects and its representative is the earliest of
+  them.
+* Relative project paths (`crates/terraphim_dsm/src/metrics.rs`,
+  `fcctl-web/src/auth/mod.rs`) and the `-ai/crates/...` fragments left behind
+  by the capture-time `[AWS_SECRET_REDACTED]` pattern are kept: they name
+  Terraphim's own public repositories.
 * `[USER]@[HOST]` also replaced two non-address shapes: a systemd unit
   `postgresql@14-main.service` and an `@adf:` mention preceded by `\n`.
 
@@ -155,6 +177,12 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 ```
+
+The report written by `tests/memory_retrieval_quality.rs` names all three
+inputs by hash: `corpus_sha256` (`corpus.jsonl`), `queries_sha256`
+(`queries.jsonl`, so the relevance labels are part of the provenance, not
+only the corpus) and `thesaurus_sha256` (`thesaurus.json`). Rebuilding the
+fixture changes the first two; regenerating the thesaurus changes the third.
 
 `floor.json` records recall@5 from the first run of
 `tests/memory_retrieval_quality.rs` on this corpus and thesaurus; the test
