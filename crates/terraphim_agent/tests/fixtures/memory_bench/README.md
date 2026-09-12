@@ -156,6 +156,12 @@ async fn main() -> anyhow::Result<()> {
 }
 ```
 
+The report written by `tests/memory_retrieval_quality.rs` names all three
+inputs by hash: `corpus_sha256` (`corpus.jsonl`), `queries_sha256`
+(`queries.jsonl`, so the relevance labels are part of the provenance, not
+only the corpus) and `thesaurus_sha256` (`thesaurus.json`). Rebuilding the
+fixture changes the first two; regenerating the thesaurus changes the third.
+
 `floor.json` records recall@5 from the first run of
 `tests/memory_retrieval_quality.rs` on this corpus and thesaurus; the test
 fails if a later run scores below it. The floor is written by hand from a real
