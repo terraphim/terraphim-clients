@@ -205,6 +205,7 @@ impl UpdaterConfig {
             }
             _ => manifest::ManifestConfig::new(&bin),
         };
+        let policy = policy::detect_update_policy_default();
         Self {
             bin_name: bin,
             repo_owner: "terraphim".to_string(),
@@ -219,7 +220,7 @@ impl UpdaterConfig {
                 .ok()
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty()),
-            policy: policy::detect_update_policy_default(),
+            policy,
         }
     }
 
@@ -280,6 +281,34 @@ impl TerraphimUpdater {
         Self { config }
     }
 
+    fn managed_status(&self) -> Option<UpdateStatus> {
+        Self::managed_status_with_detector(
+            &self.config.policy,
+            policy::detect_update_policy_default,
+        )
+    }
+
+    fn managed_status_with_detector(
+        configured_policy: &policy::UpdatePolicy,
+        detect_policy: impl FnOnce() -> policy::UpdatePolicy,
+    ) -> Option<UpdateStatus> {
+        let resolved_policy = match configured_policy {
+            policy::UpdatePolicy::PackageManaged { .. } => configured_policy.clone(),
+            policy::UpdatePolicy::SelfManaged => detect_policy(),
+        };
+
+        match resolved_policy {
+            policy::UpdatePolicy::PackageManaged {
+                manager,
+                update_command,
+            } => Some(UpdateStatus::PackageManaged {
+                manager,
+                update_command,
+            }),
+            policy::UpdatePolicy::SelfManaged => None,
+        }
+    }
+
     /// Check if an update is available without installing.
     ///
     /// Dispatches to the configured [`UpdateBackend`]: R2 (manifest) by
@@ -287,15 +316,8 @@ impl TerraphimUpdater {
     /// failure does **not** fall back here — callers that want fallback
     /// behaviour should use [`Self::check_and_update`].
     pub async fn check_update(&self) -> Result<UpdateStatus> {
-        if let policy::UpdatePolicy::PackageManaged {
-            manager,
-            update_command,
-        } = &self.config.policy
-        {
-            return Ok(UpdateStatus::PackageManaged {
-                manager: *manager,
-                update_command: update_command.clone(),
-            });
+        if let Some(status) = self.managed_status() {
+            return Ok(status);
         }
         info!(
             "Checking for updates: {} v{} (backend: {:?})",
@@ -313,15 +335,8 @@ impl TerraphimUpdater {
     /// against the current version using semver. No secrets, no per-IP rate
     /// limit.
     pub async fn check_update_r2(&self) -> Result<UpdateStatus> {
-        if let policy::UpdatePolicy::PackageManaged {
-            manager,
-            update_command,
-        } = &self.config.policy
-        {
-            return Ok(UpdateStatus::PackageManaged {
-                manager: *manager,
-                update_command: update_command.clone(),
-            });
+        if let Some(status) = self.managed_status() {
+            return Ok(status);
         }
         let cfg = self.config.manifest.clone();
         let current_version = self.config.current_version.clone();
@@ -366,15 +381,8 @@ impl TerraphimUpdater {
     /// - `Err` — transport/manifest failure (network, parse). Caller SHOULD
     ///   fall back to the GitHub backend.
     pub async fn update_r2(&self) -> Result<UpdateStatus> {
-        if let policy::UpdatePolicy::PackageManaged {
-            manager,
-            update_command,
-        } = &self.config.policy
-        {
-            return Ok(UpdateStatus::PackageManaged {
-                manager: *manager,
-                update_command: update_command.clone(),
-            });
+        if let Some(status) = self.managed_status() {
+            return Ok(status);
         }
         let cfg = self.config.manifest.clone();
         let current_version = self.config.current_version.clone();
@@ -456,6 +464,16 @@ impl TerraphimUpdater {
             }
 
             // 6. Install (extract + chmod + atomic rename) to current_exe().parent().
+            if let policy::UpdatePolicy::PackageManaged {
+                manager,
+                update_command,
+            } = policy::detect_update_policy_default()
+            {
+                return Ok(UpdateStatus::PackageManaged {
+                    manager,
+                    update_command,
+                });
+            }
             if let Err(e) = Self::install_verified_archive(&archive_path, &bin_name) {
                 return Err(anyhow!("install failed: {e}"));
             }
@@ -474,6 +492,9 @@ impl TerraphimUpdater {
 
     /// Check for an update via the GitHub Releases backend (fallback).
     async fn check_update_github(&self) -> Result<UpdateStatus> {
+        if let Some(status) = self.managed_status() {
+            return Ok(status);
+        }
         info!(
             "Checking for updates via GitHub: {}/{}",
             self.config.repo_owner, self.config.repo_name
@@ -602,15 +623,8 @@ impl TerraphimUpdater {
     /// (`Err`) transparently falls back to the GitHub backend; a definitive
     /// failure (`Ok(Failed)`, e.g. signature rejection) does **not** fall back.
     pub async fn update(&self) -> Result<UpdateStatus> {
-        if let policy::UpdatePolicy::PackageManaged {
-            manager,
-            update_command,
-        } = &self.config.policy
-        {
-            return Ok(UpdateStatus::PackageManaged {
-                manager: *manager,
-                update_command: update_command.clone(),
-            });
+        if let Some(status) = self.managed_status() {
+            return Ok(status);
         }
         match self.config.backend {
             UpdateBackend::R2 => match self.update_r2().await {
@@ -626,6 +640,9 @@ impl TerraphimUpdater {
 
     /// Update the binary via the GitHub Releases backend.
     async fn update_github(&self) -> Result<UpdateStatus> {
+        if let Some(status) = self.managed_status() {
+            return Ok(status);
+        }
         info!(
             "Updating {} from version {} via GitHub",
             self.config.bin_name, self.config.current_version
@@ -773,15 +790,8 @@ impl TerraphimUpdater {
     /// - Rejects updates with missing signatures
     /// - Only installs verified binaries
     pub async fn update_with_verification(&self) -> Result<UpdateStatus> {
-        if let policy::UpdatePolicy::PackageManaged {
-            manager,
-            update_command,
-        } = &self.config.policy
-        {
-            return Ok(UpdateStatus::PackageManaged {
-                manager: *manager,
-                update_command: update_command.clone(),
-            });
+        if let Some(status) = self.managed_status() {
+            return Ok(status);
         }
         info!(
             "Updating {} from version {} with signature verification",
@@ -914,6 +924,16 @@ impl TerraphimUpdater {
         }
 
         // Step 4: Install the verified archive
+        if let policy::UpdatePolicy::PackageManaged {
+            manager,
+            update_command,
+        } = policy::detect_update_policy_default()
+        {
+            return Ok(UpdateStatus::PackageManaged {
+                manager,
+                update_command,
+            });
+        }
         match Self::install_verified_archive(&archive_path, bin_name) {
             Ok(_) => {
                 info!("Successfully installed verified update");
@@ -1123,6 +1143,15 @@ impl TerraphimUpdater {
 
         // Get current executable path
         let current_exe = std::env::current_exe()?;
+        if matches!(
+            policy::detect_update_policy(&current_exe),
+            policy::UpdatePolicy::PackageManaged { .. }
+        ) {
+            return Err(anyhow!(
+                "{} is managed by a system package manager; refusing self-update install",
+                bin_name
+            ));
+        }
         let install_dir = current_exe
             .parent()
             .ok_or_else(|| anyhow!("Cannot determine install directory"))?;
@@ -1289,15 +1318,8 @@ impl TerraphimUpdater {
     /// Dispatches by backend. The R2 path checks the manifest, then installs
     /// via `update_r2()` with automatic GitHub fallback on transport failure.
     pub async fn check_and_update(&self) -> Result<UpdateStatus> {
-        if let policy::UpdatePolicy::PackageManaged {
-            manager,
-            update_command,
-        } = &self.config.policy
-        {
-            return Ok(UpdateStatus::PackageManaged {
-                manager: *manager,
-                update_command: update_command.clone(),
-            });
+        if let Some(status) = self.managed_status() {
+            return Ok(status);
         }
         match self.config.backend {
             UpdateBackend::R2 => self.check_and_update_r2().await,
@@ -1417,6 +1439,24 @@ pub async fn check_for_updates_auto_with_policy(
     current_version: &str,
     policy: &policy::UpdatePolicy,
 ) -> Result<UpdateStatus> {
+    check_for_updates_auto_with_policy_and_detector(
+        bin_name,
+        current_version,
+        policy,
+        policy::detect_update_policy_default,
+    )
+    .await
+}
+
+async fn check_for_updates_auto_with_policy_and_detector<D>(
+    bin_name: &str,
+    current_version: &str,
+    policy: &policy::UpdatePolicy,
+    detect_policy: D,
+) -> Result<UpdateStatus>
+where
+    D: FnOnce() -> policy::UpdatePolicy,
+{
     if let policy::UpdatePolicy::PackageManaged {
         manager,
         update_command,
@@ -1431,6 +1471,23 @@ pub async fn check_for_updates_auto_with_policy(
         return Ok(UpdateStatus::PackageManaged {
             manager: *manager,
             update_command: update_command.clone(),
+        });
+    }
+
+    if let policy::UpdatePolicy::PackageManaged {
+        manager,
+        update_command,
+    } = detect_policy()
+    {
+        info!(
+            "Package-managed install ({}); skipping update check for {} v{}",
+            manager.name(),
+            bin_name,
+            current_version
+        );
+        return Ok(UpdateStatus::PackageManaged {
+            manager,
+            update_command,
         });
     }
 
@@ -1942,9 +1999,9 @@ mod tests {
 
     #[test]
     fn test_updater_config_default_policy_is_self_managed_in_test_env() {
-        // The test binary is not installed under any managed prefix and no
-        // real marker file exists in the test environment, so the default
-        // constructor must resolve to SelfManaged.
+        // The test binary does not have a matching per-binary receipt under
+        // its canonical prefix, so the default constructor must resolve to
+        // SelfManaged.
         let config = UpdaterConfig::new("test-binary");
         assert_eq!(config.policy, crate::policy::UpdatePolicy::SelfManaged);
     }
@@ -1957,6 +2014,125 @@ mod tests {
         };
         let config = UpdaterConfig::new("test-binary").with_policy(policy.clone());
         assert_eq!(config.policy, policy);
+    }
+
+    #[tokio::test]
+    async fn update_r2_honors_configured_managed_policy_before_manifest_fetch() {
+        let config = UpdaterConfig::new("terraphim-agent")
+            .with_policy(crate::policy::UpdatePolicy::PackageManaged {
+                manager: crate::policy::PackageManager::Pacman,
+                update_command: "sudo pacman -Syu".to_string(),
+            })
+            .with_manifest_base_url("http://127.0.0.1:9");
+        let updater = TerraphimUpdater::new(config);
+
+        let status = updater.update_r2().await.expect("update_r2");
+
+        assert!(
+            matches!(status, UpdateStatus::PackageManaged { .. }),
+            "expected PackageManaged before manifest fetch, got {status:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn check_for_updates_auto_with_self_managed_hint_redetects_before_dispatch() {
+        let status = check_for_updates_auto_with_policy_and_detector(
+            "terraphim-agent",
+            "0.0.1",
+            &crate::policy::UpdatePolicy::SelfManaged,
+            || crate::policy::UpdatePolicy::PackageManaged {
+                manager: crate::policy::PackageManager::Pacman,
+                update_command: "sudo pacman -Syu".to_string(),
+            },
+        )
+        .await
+        .expect("check should short-circuit");
+
+        assert!(
+            matches!(status, UpdateStatus::PackageManaged { .. }),
+            "expected live PackageManaged detection before update dispatch, got {status:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn check_for_updates_auto_with_package_managed_hint_does_not_redetect() {
+        let status = check_for_updates_auto_with_policy_and_detector(
+            "terraphim-agent",
+            "0.0.1",
+            &crate::policy::UpdatePolicy::PackageManaged {
+                manager: crate::policy::PackageManager::Pacman,
+                update_command: "sudo pacman -Syu".to_string(),
+            },
+            || panic!("detector must not run for an injected PackageManaged policy"),
+        )
+        .await
+        .expect("check should short-circuit");
+
+        assert!(
+            matches!(status, UpdateStatus::PackageManaged { .. }),
+            "expected injected PackageManaged status, got {status:?}"
+        );
+    }
+
+    #[test]
+    fn managed_status_injects_detector_without_global_test_state() {
+        let status = TerraphimUpdater::managed_status_with_detector(
+            &crate::policy::UpdatePolicy::SelfManaged,
+            || crate::policy::UpdatePolicy::PackageManaged {
+                manager: crate::policy::PackageManager::Pacman,
+                update_command: "sudo pacman -Syu".to_string(),
+            },
+        );
+
+        assert!(
+            matches!(status, Some(UpdateStatus::PackageManaged { .. })),
+            "expected injected PackageManaged status, got {status:?}"
+        );
+    }
+
+    #[test]
+    fn managed_status_does_not_call_detector_for_configured_managed_policy() {
+        let status = TerraphimUpdater::managed_status_with_detector(
+            &crate::policy::UpdatePolicy::PackageManaged {
+                manager: crate::policy::PackageManager::Pacman,
+                update_command: "sudo pacman -Syu".to_string(),
+            },
+            || panic!("detector must not run for configured PackageManaged policy"),
+        );
+
+        assert!(
+            matches!(status, Some(UpdateStatus::PackageManaged { .. })),
+            "expected configured PackageManaged status, got {status:?}"
+        );
+    }
+
+    #[test]
+    fn managed_status_returns_none_when_detector_is_self_managed() {
+        let status = TerraphimUpdater::managed_status_with_detector(
+            &crate::policy::UpdatePolicy::SelfManaged,
+            || crate::policy::UpdatePolicy::SelfManaged,
+        );
+
+        assert!(
+            status.is_none(),
+            "expected no managed status for SelfManaged detector result, got {status:?}"
+        );
+    }
+
+    #[test]
+    fn managed_status_uses_detector_result_before_dispatch() {
+        let status = TerraphimUpdater::managed_status_with_detector(
+            &crate::policy::UpdatePolicy::SelfManaged,
+            || crate::policy::UpdatePolicy::PackageManaged {
+                manager: crate::policy::PackageManager::Pacman,
+                update_command: "sudo pacman -Syu".to_string(),
+            },
+        );
+
+        assert!(
+            matches!(status, Some(UpdateStatus::PackageManaged { .. })),
+            "expected PackageManaged, got {status:?}"
+        );
     }
 
     #[test]

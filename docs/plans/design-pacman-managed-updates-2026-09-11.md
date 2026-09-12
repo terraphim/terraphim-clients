@@ -52,10 +52,10 @@ them.
 - Both binaries construct `UpdaterConfig` using `CARGO_PKG_VERSION` — the
   version plumbing is shared/parallel between the two crates, not routed
   through one shared call.
-- No marker-file detection code exists anywhere in the repository today —
-  `crates/terraphim_update` has no notion of an install-time policy; §3
-  introduces this fresh, threaded through `UpdaterConfig`/`TerraphimUpdater`
-  rather than gated by a Cargo feature.
+- At the time of the original research, no install-time policy detection
+  code existed in the repository; §3 introduces it freshly, threaded
+  through `UpdaterConfig`/`TerraphimUpdater` rather than gated by a Cargo
+  feature.
 
 Exact line numbers, call-site count, and the deeper choke point this design
 relies on are confirmed in §2.1 below.
@@ -99,28 +99,42 @@ pub enum UpdatePolicy {
 constructed once, at `UpdaterConfig` build time (or explicitly injected; see
 §3.3), and carried as data through `UpdaterConfig` → `TerraphimUpdater`.
 
-### 3.2 Detection contract (deterministic, both conditions required)
+### 3.2 Detection contract (deterministic, issue #315 supersedes original marker design)
+
+The earlier contract in this note used one global
+`/usr/share/terraphim/package-manager` marker plus a hardcoded
+`MANAGED_PREFIXES` table. That history explains the original shape of the
+work, but it is **superseded by terraphim-clients issue #315** and is not
+the current integration contract.
 
 A running binary is considered package-managed **only if both** of the
-following hold; **marker alone or prefix alone must never claim managed
+following hold; **receipt alone or layout alone must never claim managed
 ownership**:
 
-1. **Marker**: the file at `/usr/share/terraphim/package-manager` exists,
-   is readable, and its trimmed contents are *exactly* one entry from the
-   supported-manager table (currently just `pacman`) — no trailing
-   garbage, no multiple lines, no partial/prefix match.
-2. **Prefix**: the *canonicalized* path of the current executable
+1. **Canonical executable layout**: the *canonicalized* path of the current executable
    (`std::env::current_exe()`, then `fs::canonicalize` to resolve symlinks
-   and `..`/`.` components) is a **path-component-wise descendant** of the
-   managed prefix associated with that manager in the table (`pacman` →
-   `/usr/bin`). Comparison is done on canonical `Path` components, never on
-   raw string prefixes, specifically so `/usr/bin2/...` or
-   `/usr/bin-evil/...` cannot spoof `/usr/bin`.
+   and `..`/`.` components) has the canonical shape
+   `<canonical-prefix>/bin/<actual-executable-basename>`. The immediate
+   parent directory must be the path component `bin`; no hardcoded prefix
+   table is consulted.
+2. **Per-binary receipt**: the file at
+   `<canonical-prefix>/share/terraphim/package-manager.d/<actual-executable-basename>`
+   exists, is readable, and its bytes are exactly one supported receipt value:
+   `pacman`, `dpkg`, `rpm`, or `homebrew`, optionally followed by exactly one
+   LF or CRLF. There is no leading/trailing whitespace, trailing garbage,
+   multiple-line payload, partial/prefix match, invalid UTF-8 byte sequence, or
+   case-insensitive match.
 
-If either check fails — marker missing/unreadable/unsupported content, or
-the executable resolves outside the matching prefix, or `current_exe()`/
-canonicalization itself errors — detection resolves to `UpdatePolicy::
-SelfManaged`. Detection never panics and never falls back to "managed" on
+Detection derives the receipt filename and the package-manager guidance from
+the canonical executable basename. Caller spelling is not part of ownership:
+for example, `UpdaterConfig::new("terraphim_agent")` cannot bypass a receipt
+for an actual canonical executable named `terraphim-agent`.
+
+If either check fails — receipt missing/unreadable/unsupported content, the
+executable is not directly under a canonical `bin` directory, or
+`current_exe()`/canonicalization itself errors — detection resolves to
+`UpdatePolicy::SelfManaged`. Detection never panics and never falls back to
+"managed" on
 ambiguity; the fail-safe direction is always toward preserving today's
 self-update behavior.
 
@@ -130,32 +144,26 @@ The detection logic is split so it is fully testable without touching real
 `/usr` paths or process environment:
 
 ```rust
-/// Pure: takes every filesystem input as a parameter. No global state,
+/// Pure: takes the executable path as a parameter. No global state,
 /// no env var reads, no hardcoded paths. Safe to call with temp-dir
-/// stand-ins for the executable path, marker path, and prefix table.
-pub fn detect_update_policy(
-    current_exe: &Path,
-    marker_path: &Path,
-    managed_prefixes: &[(PackageManager, &Path)],
-) -> UpdatePolicy { ... }
+/// stand-ins for the canonical executable layout and per-binary receipt.
+pub fn detect_update_policy(current_exe: &Path) -> UpdatePolicy { ... }
 
 /// The only function that touches real process state: resolves
-/// `std::env::current_exe()`, the real marker path
-/// (`/usr/share/terraphim/package-manager`), and the real prefix table,
-/// then delegates to `detect_update_policy`. Called exactly once, at
-/// startup / `UpdaterConfig` construction.
+/// `std::env::current_exe()`, then delegates to `detect_update_policy`.
+/// Called at `UpdaterConfig` construction and re-run at public updater
+/// network/write boundaries when a supplied or previously cached policy is
+/// still `SelfManaged`.
 pub fn detect_update_policy_default() -> UpdatePolicy { ... }
-
-pub const MARKER_PATH: &str = "/usr/share/terraphim/package-manager";
-pub const MANAGED_PREFIXES: &[(PackageManager, &str)] =
-    &[(PackageManager::Pacman, "/usr/bin")];
 
 /// Stable operator-facing guidance for a `PackageManaged` policy.
 pub fn guidance(policy: &UpdatePolicy, bin_name: &str) -> String { ... }
 ```
 
 Tests call `detect_update_policy` directly with `tempfile::TempDir`-rooted
-paths standing in for `/usr/share/terraphim/package-manager` and `/usr/bin`
+paths standing in for `<canonical-prefix>/bin/<actual-executable-basename>`
+and
+`<canonical-prefix>/share/terraphim/package-manager.d/<actual-executable-basename>`
 ("fake-root" tests, §5) — they never write to, read from, or otherwise
 mutate the real filesystem root or process environment.
 
@@ -170,21 +178,27 @@ mutate the real filesystem root or process environment.
   real `/usr` state.
 - `TerraphimUpdater::check_update`, `::update`, `::check_and_update` each
   gain, as their **first statement**, before touching `self.config.backend`
-  or anything else:
+  or anything else, a managed-status guard that preserves injected
+  `PackageManaged` policies and re-runs `detect_update_policy_default()` when
+  the cached/configured policy is still `SelfManaged`:
   ```rust
-  if let UpdatePolicy::PackageManaged { manager, update_command } = &self.config.policy {
-      return Ok(UpdateStatus::PackageManaged {
-          manager: manager.clone(),
-          update_command: update_command.clone(),
-      });
+  if let Some(status) = self.managed_status() {
+      return Ok(status);
   }
   ```
-  This is a single check per method (3 call sites inside the *library*, not
-  4+ inside the *binaries*), and it returns before any `UpdateBackend`
-  dispatch, before `platform::get_binary_path`, before any
+  This returns before any `UpdateBackend` dispatch, before
+  `platform::get_binary_path`, before any
   download/fetch-manifest/install/destination-fallback logic — so R2 and
   GitHub backends, and all of `platform`'s destination resolution, are
-  equally and totally unreachable when the policy is package-managed.
+  equally and totally unreachable when the live policy is package-managed.
+- Public helper paths use the same rule: an explicitly supplied
+  `PackageManaged` policy short-circuits immediately, while a supplied
+  `SelfManaged` hint is only a hint. `check_for_updates_auto_with_policy`
+  re-runs `detect_update_policy_default()` before spawning blocking work,
+  constructing `self_update`, calling `platform::get_binary_path`, or making a
+  GitHub request. The final install boundary also re-detects immediately
+  before archive installation, so a package receipt created after an earlier
+  check still prevents self-update writes.
 - New `UpdateStatus` variant: `UpdateStatus::PackageManaged { manager,
   update_command }`, with a `Display` impl analogous to the existing
   variants, producing the same stable guidance text as `policy::guidance`.
@@ -222,13 +236,13 @@ mutate the real filesystem root or process environment.
 There is no `package-managed` Cargo feature anywhere in this design. No
 `Cargo.toml` in `terraphim_update`, `terraphim_agent`, or `terraphim_grep`
 gains a new `[features]` entry. Every built binary contains both code paths;
-the marker file plus executable-location check (§3.2), evaluated at
+the per-binary receipt plus canonical executable-layout check (§3.2), evaluated at
 runtime, is the only thing that selects between them. O4's PKGBUILD does
 **not** need a special `cargo build --features ...` invocation — see §12.
 
 ## 4. Exact CLI Behavior and Exit-Code Contract
 
-| Command / call site | `SelfManaged` (default — no marker, or marker without matching prefix) | `PackageManaged` |
+| Command / call site | `SelfManaged` (default - no matching per-binary receipt, or receipt without canonical bin layout) | `PackageManaged` |
 |---|---|---|
 | startup check — `main.rs:448-456` | performs network check as today (unchanged) | skipped entirely per §3.5: no `Runtime::new()`, no network call, no output beyond an optional log line |
 | `check-update` — agent offline (`main.rs:759-773`), agent server (`server_command.rs:485-500`), grep (`main.rs:164-167`) | network check via `check_update()`, prints `UpdateStatus` via `Display`, exit 0 on `Ok`, exit 1 on `Err` (current behavior, unchanged) | `check_update()` returns `Ok(UpdateStatus::PackageManaged { .. })` with zero network calls and zero writes; the existing `Ok(status) => { println!("{status}"); Ok(()) }` arm already prints the stable guidance and exits **0**. This is a stable, documented success: reporting "here's how to update" is a correct, successful answer for a read-only query command. |
@@ -263,30 +277,32 @@ root-owned and not writable by the test user anyway).
 
 - **`crates/terraphim_update/tests/policy.rs`** (new, plain unit/integration
   tests, no special build flags) — "fake-root" tests: each builds a
-  `tempfile::TempDir` containing a stand-in marker file and a stand-in
-  `bin/` directory, and calls `detect_update_policy` directly with paths
+  `tempfile::TempDir` containing a stand-in
+  `<canonical-prefix>/bin/<actual-executable-basename>` plus the matching
+  `<canonical-prefix>/share/terraphim/package-manager.d/<actual-executable-basename>`
+  receipt, and calls `detect_update_policy` directly with paths
   rooted in that tempdir:
-  1. **Valid marker + matching prefix** → `PackageManaged { manager:
-     Pacman, .. }`. Marker file contains exactly `pacman`; stand-in
-     executable path is a descendant of the stand-in `/usr/bin`-equivalent
-     directory in the prefix table passed to the call.
-  2. **Marker-only** (valid marker content, executable path *outside* the
-     matching prefix, e.g. under a stand-in `~/.local/bin`-equivalent) →
+  1. **Valid per-binary receipt + canonical bin layout** →
+     `PackageManaged { manager: Pacman, .. }`. Receipt file contains
+     exactly `pacman`; stand-in executable path canonicalizes to
+     `<prefix>/bin/<actual-executable-basename>`.
+  2. **Receipt-only** (valid receipt content, executable path not directly
+     under a canonical `bin` directory) →
      `SelfManaged`.
-  3. **Prefix-only** (executable under the matching prefix, marker file
-     absent or empty) → `SelfManaged`.
-  4. **Invalid marker content** (unsupported manager name, multiple lines,
+  3. **Layout-only** (executable under the canonical `bin` layout, receipt
+     file absent or empty) → `SelfManaged`.
+  4. **Invalid receipt content** (unsupported manager name, multiple lines,
      trailing garbage, wrong case) → `SelfManaged`.
   5. **Traversal / symlink / canonicalization**: executable path expressed
      via `..`-traversal or a symlink that resolves (after
-     `fs::canonicalize`) into the matching prefix → still detected as
+     `fs::canonicalize`) into the canonical bin layout → still detected as
      managed (canonicalization must run before the component comparison);
-     conversely, a symlink or traversal that resolves *outside* the prefix,
-     or a sibling directory whose name merely string-prefixes the managed
-     prefix (e.g. `/usr/bin-evil`), must resolve to `SelfManaged` — this
+     conversely, a symlink or traversal that resolves outside that layout,
+     or a sibling directory whose name only looks like `bin`, must resolve
+     to `SelfManaged` — this
      pins that comparison is component-wise, not a raw string
      `starts_with`.
-  6. **Detection never panics** on a missing/unreadable marker file or an
+  6. **Detection never panics** on a missing/unreadable receipt file or an
      executable path that fails to canonicalize (e.g. dangling symlink) —
      asserts `SelfManaged`, not a panic or `Result::Err` bubbling out.
 - **`crates/terraphim_update/tests/managed_mode.rs`** (new, plain
@@ -334,14 +350,14 @@ root-owned and not writable by the test user anyway).
   (`crates/terraphim_update/tests/integration_test.rs`,
   `tests/r2_update.rs`) continue to pass unmodified — they exercise the
   default `UpdaterConfig` (policy resolves to `SelfManaged` because nothing
-  in the test environment matches the marker/prefix contract), proving §6's
+  in the test environment matches the receipt/layout contract), proving §6's
   "unmanaged builds/installs preserve current self-update behavior"
   requirement.
 
 ## 6. Scope / Non-Goals
 
 **In scope:**
-- `UpdatePolicy`/`PackageManager` types, marker-file + executable-prefix
+- `UpdatePolicy`/`PackageManager` types, per-binary receipt + canonical-layout
   detection contract (§3.2), the pure/injectable detection API (§3.3).
 - Threading `policy` through `UpdaterConfig` and the `TerraphimUpdater`
   short-circuit (§3.4).
@@ -354,32 +370,32 @@ root-owned and not writable by the test user anyway).
 
 **Non-goals:**
 - Writing/maintaining the actual Omarchy PKGBUILD (O4's responsibility —
-  this design only guarantees the marker-file contract O4 must satisfy and
+  this design only guarantees the per-binary receipt contract O4 must satisfy and
   documents exactly what it must install; see §12).
 - Any change to the self-managed/default update flow's actual network or
   install logic.
+- Adding new package-manager families beyond the currently supported receipt
+  values/managers: `pacman`, `dpkg`, `rpm`, and `homebrew`. Earlier pacman-only
+  wording in this design is historical Omarchy/O4 context and is superseded by
+  the current multi-manager receipt table in §3.2/§3.3.
 - Supporting partial/mixed states (e.g. one binary package-managed, the
   other not) within a single install beyond what naturally falls out of
-  each binary independently evaluating the same marker file and its own
+  each binary independently evaluating its own per-binary receipt and
   `current_exe()` — no cross-binary coordination is added.
 - Final, stable typed exit codes across all `update`/`check-update`
   outcomes — that is Gitea **#181**'s scope; this design deliberately
   reuses the existing generic `1` for the package-managed `update` refusal
   and does not invent a new code (see §4).
-- Supporting package managers other than `pacman` in this change — the
-  detection table (§3.2/§3.3) is structured to add more (`apt`, `dnf`,
-  etc.) later without changing the contract shape, but only `pacman` is
-  wired up now, matching the O4/Omarchy PKGBUILD need.
 
 ## 7. Exact File Plan
 
 | File | Change |
 |---|---|
-| `crates/terraphim_update/src/policy.rs` (new) | `UpdatePolicy`, `PackageManager`, `MARKER_PATH`, `MANAGED_PREFIXES`, `detect_update_policy` (pure), `detect_update_policy_default` (wrapper), `guidance(...)` |
+| `crates/terraphim_update/src/policy.rs` (new) | `UpdatePolicy`, `PackageManager`, `detect_update_policy(current_exe)`, `detect_update_policy_default()`, `guidance(...)`; derives `<canonical-prefix>/bin/<actual-executable-basename>` and reads `<canonical-prefix>/share/terraphim/package-manager.d/<actual-executable-basename>` |
 | `crates/terraphim_update/src/lib.rs:6-14` | add `pub mod policy;`; add `UpdateStatus::PackageManaged { manager, update_command }` variant + `Display`/`log_status` arms (near `:32-113`) |
 | `crates/terraphim_update/src/lib.rs` (`UpdaterConfig`) | add `policy: UpdatePolicy` field, resolved via `policy::detect_update_policy_default()` in the default constructor; add `with_policy(UpdatePolicy)` builder for injection |
 | `crates/terraphim_update/src/lib.rs:242-251` (`check_update`), `:522-533` (`update`), `:1184-1189` (`check_and_update`) | insert the policy short-circuit (§3.4) as the first statement of each, before any backend/`platform::get_binary_path`/download/install logic |
-| `crates/terraphim_update/tests/policy.rs` (new) | fake-root pure-function tests (§5): valid marker+prefix, marker-only, prefix-only, invalid marker, traversal/symlink, canonicalization-failure/no-panic |
+| `crates/terraphim_update/tests/policy.rs` (new) | fake-root pure-function tests (§5): valid receipt+layout, receipt-only, layout-only, invalid receipt, traversal/symlink, canonicalization-failure/no-panic |
 | `crates/terraphim_update/tests/managed_mode.rs` (new) | real local HTTP server request-counting test, zero-write test, message-contract test, all via `UpdaterConfig::with_policy` injection |
 | `crates/terraphim_agent/src/main.rs:448-456` | call `policy::detect_update_policy_default()` before constructing the startup `Runtime`; skip the whole block when `PackageManaged` |
 | `crates/terraphim_agent/src/main.rs:775-789` (`handle_update_command`) | match on `UpdateStatus::PackageManaged` and `std::process::exit(1)` (documented generic/compat code, §4) instead of falling into the existing `Ok(status) => { println!(..); Ok(()) }` arm |
@@ -403,7 +419,7 @@ of these steps require a special `--features` flag — every test runs
 against the default build.
 
 1. **RED**: add `crates/terraphim_update/src/policy.rs` fake-root tests —
-   valid marker+prefix, marker-only, prefix-only, invalid marker,
+   valid receipt+layout, receipt-only, layout-only, invalid receipt,
    traversal/symlink, no-panic-on-error (§5.1). Fails: module doesn't
    exist → compile error.
    **GREEN**: add `policy.rs` (`UpdatePolicy`, `PackageManager`,
@@ -469,8 +485,8 @@ against the default build.
    **GREEN**: call `policy::detect_update_policy_default()` before
    constructing the startup `Runtime`, and skip the block entirely when the
    result is `PackageManaged`.
-10. **RED**: full regression — both self-managed (no marker present /
-    executable outside any managed prefix in the test environment) and
+10. **RED**: full regression — both self-managed (no receipt present /
+    executable outside the canonical bin layout in the test environment) and
     package-managed (fake-root inputs) behavior exercised end-to-end for
     both binaries: self-managed must be byte-for-byte unchanged (network
     call happens, `update` performs a real install attempt, startup check
@@ -522,8 +538,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 | `check-update`/`update` return deterministic package-manager guidance, both agent call paths (offline + server) + grep | Steps 6, 7, 8 |
 | Never call network/download/install code when package-managed | Step 3 (structural short-circuit before backend dispatch, exercised against a real request-counting local HTTP server) |
 | Never write `/usr/bin`, `/usr/local/bin`, `~/.local/bin`, or cache/history state when package-managed | Step 4 (fake-root/temp-dir harness) — a direct consequence of step 3's guard, pinned explicitly |
-| Marker alone or prefix alone never claims managed ownership | Step 1 (marker-only / prefix-only fake-root cases) |
-| Traversal/symlink/canonicalization cannot spoof the managed prefix | Step 1 |
+| Receipt alone or canonical layout alone never claims managed ownership | Step 1 (receipt-only / layout-only fake-root cases) |
+| Traversal/symlink/canonicalization cannot spoof the canonical executable layout | Step 1 |
 | Self-managed installs preserve current self-update behavior unchanged | Steps 5, 10 |
 
 ## 11. Risks / Rollback
@@ -549,14 +565,14 @@ cargo clippy --workspace --all-targets -- -D warnings
   implementation confirms that, they're out of scope for this change but
   should get the same guard for consistency, noted as a follow-up if not
   folded into step 1-3's diff.
-- **Risk**: marker/prefix detection false-positive or false-negative.
+- **Risk**: receipt/layout detection false-positive or false-negative.
   A false positive (a self-managed install wrongly detected as
   package-managed) would silently disable self-update for a user who
   didn't install via pacman; a false negative (a real pacman install not
   detected) would let a package-managed binary attempt to write into a
   pacman-owned `/usr/bin`. Mitigation: §3.2's both-conditions-required rule
   plus the fail-safe-to-`SelfManaged` behavior on any ambiguity/error, and
-  the dedicated marker-only/prefix-only/traversal/symlink test matrix in
+  the dedicated receipt-only/layout-only/traversal/symlink test matrix in
   §5/§8 step 1, are the primary defenses; no other mitigation (e.g.
   querying `pacman -Qo`) is added, since shelling out to the package
   manager itself would introduce a new runtime dependency and failure mode
@@ -584,20 +600,26 @@ cargo clippy --workspace --all-targets -- -D warnings
   as today — **no special `cargo build` flags, no `--features` argument**.
   Detection is runtime-only (§3.2/§3.6); there is nothing to opt into at
   build time.
-- O4's PKGBUILD **must install the marker file** as part of the package's
-  install step (e.g. a `post_install`/packaged data file, per pacman
-  packaging conventions): write `/usr/share/terraphim/package-manager`
+- O4's PKGBUILD **must install one per-binary receipt file** as part of the
+  package's install step (e.g. packaged data files, per pacman packaging
+  conventions): for each installed binary at
+  `<canonical-prefix>/bin/<actual-executable-basename>`, write
+  `<canonical-prefix>/share/terraphim/package-manager.d/<actual-executable-basename>`
   containing exactly the single line `pacman` (no trailing content beyond
-  a single trailing newline, which detection trims). This, combined with
-  the binaries already living under `/usr/bin` as pacman installs them, is
-  what makes detection resolve to `PackageManaged` — both conditions in
-  §3.2 are satisfied by a normal pacman package layout without any further
-  PKGBUILD changes to the binaries themselves.
+  a single trailing newline, which detection trims). Other package-manager
+  integrations use the same path contract with one of the supported receipt
+  values: `pacman`, `dpkg`, `rpm`, or `homebrew`.
+- With pacman, binaries installed under `/usr/bin` therefore use receipts
+  such as `/usr/share/terraphim/package-manager.d/terraphim-agent` and
+  `/usr/share/terraphim/package-manager.d/terraphim-grep`. The same rule
+  applies to any canonical prefix: the receipt is always under that
+  canonical prefix, not under a global marker location.
 - O4 should NOT add any runtime flag/env-var workaround for this; if a
   runtime toggle is later desired (e.g. to let a user on a pacman install
   still opt into manual self-update for testing), that is a separate,
   explicitly-scoped follow-up, not part of this design.
 - O4 does not need to do anything else to satisfy "no self-update" — once
-  the marker file is present and the binaries are installed under
-  `/usr/bin`, they refuse to touch the network or filesystem update paths
-  on their own, with no other install-time step required.
+  the per-binary receipts are present and the binaries canonicalize to
+  `<canonical-prefix>/bin/<actual-executable-basename>`, they refuse to
+  touch the network or filesystem update paths on their own, with no other
+  install-time step required.
