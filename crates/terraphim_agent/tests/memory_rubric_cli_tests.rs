@@ -363,3 +363,78 @@ fn critical_item_is_visible_to_rubric_validate_export_list_and_show() {
         "show must not report the Critical item as missing.\nstdout: {stdout}"
     );
 }
+
+#[test]
+fn list_default_limit_still_shows_critical_item_behind_many_short_term_items() {
+    let home = tempfile::tempdir().expect("temp home");
+    // Default `--limit` is 20; fill short_term past it so a short-term-first
+    // order would push every long-term item off the end.
+    for _ in 0..25 {
+        capture_medium_item(home.path());
+    }
+    let store = find_store(home.path()).expect("capture must create cli-agent.json under HOME");
+    let critical_id = "critical-behind-the-limit";
+    add_critical_item(&store, critical_id);
+
+    let (stdout, stderr, ok) = run(home.path(), &["--format", "json", "memory", "list"]);
+    assert!(
+        ok,
+        "memory list failed.\nstdout: {stdout}\nstderr: {stderr}"
+    );
+    let list: serde_json::Value = serde_json::from_str(stdout.trim()).expect("list JSON");
+    assert_eq!(list["count"], 20, "default limit is 20: {list}");
+    let ids: Vec<&str> = list["items"]
+        .as_array()
+        .expect("items array")
+        .iter()
+        .filter_map(|i| i["id"].as_str())
+        .collect();
+    assert_eq!(
+        ids.first().copied(),
+        Some(critical_id),
+        "Critical item must be listed first (importance descending): {ids:?}"
+    );
+}
+
+#[test]
+fn validate_json_is_machine_readable_when_nothing_matches() {
+    let home = tempfile::tempdir().expect("temp home");
+
+    // Empty store.
+    let (stdout, stderr, ok) = run(
+        home.path(),
+        &["--format", "json", "memory", "validate", "--all"],
+    );
+    assert!(
+        ok,
+        "memory validate failed.\nstdout: {stdout}\nstderr: {stderr}"
+    );
+    let value: serde_json::Value = serde_json::from_str(stdout.trim())
+        .unwrap_or_else(|e| panic!("validate must emit JSON when empty: {e}\nstdout: {stdout}"));
+    assert_eq!(value["status"], "ok");
+    assert_eq!(value["action"], "validate");
+    assert_eq!(value["scorer"], "heuristic-v1");
+    assert_eq!(value["scores"], serde_json::json!([]));
+
+    // Missing --lesson-id on a non-empty store.
+    capture_medium_item(home.path());
+    let (stdout, stderr, ok) = run(
+        home.path(),
+        &[
+            "--format",
+            "json",
+            "memory",
+            "validate",
+            "--lesson-id",
+            "does-not-exist",
+        ],
+    );
+    assert!(
+        ok,
+        "memory validate failed.\nstdout: {stdout}\nstderr: {stderr}"
+    );
+    let value: serde_json::Value = serde_json::from_str(stdout.trim())
+        .unwrap_or_else(|e| panic!("validate must emit JSON on no match: {e}\nstdout: {stdout}"));
+    assert_eq!(value["scorer"], "heuristic-v1");
+    assert_eq!(value["scores"], serde_json::json!([]));
+}
