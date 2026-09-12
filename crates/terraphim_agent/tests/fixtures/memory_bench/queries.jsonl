@@ -1,0 +1,50 @@
+{"query":"ssh [HOST] \"python3 -c 'import tomllib","expected_ids":["08685b7013b44efc8937829dee122698-1776888729774"]}
+{"query":"redis-server --daemonize yes","expected_ids":["18ae5f94cd70403c8dd72789d57849f5-1777493284186"]}
+{"query":"git pull --rebase","expected_ids":["1a160dd4dc2042a2943383900879175b-1776874951531"]}
+{"query":"cd scripts/adf-setup","expected_ids":["1b0023b6cdba446385f7acc051bee916-1776425180440"]}
+{"query":"gws calendar +agenda (fails with 403 ACCESS_TOKEN_SCOPE_INSUFFICIENT)","expected_ids":["27dfce542436432fa77a6c9a00ecfff3-1776413106931"]}
+{"query":"ssh [USER]@[HOST] \"cd /data/projects/terraphim/terraphim-ai","expected_ids":["39c3d4eb0933473c9b502ec12276f6c5-1777541481155"]}
+{"query":"cd ~/.config/terraphim","expected_ids":["3e6eb954cce14ce89aae22b12b0781d1-1776364591394"]}
+{"query":"ssh [USER]@[HOST] \"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 [USER]@[HOST] 'tail -30 /var/lib/gitea/log/gitea.log'\"","expected_ids":["3f45ec6085ea4f2bb70c66a679e6a19b-1777629110773"]}
+{"query":"Using unquoted heredoc delimiter <<EOF in bash commands, causing variable expansion, quote mangling, and shell interpretation of special characters ($, backticks, braces, pipes)","expected_ids":["42dbd243d3cc42948a5aede235b0c0cd-1774911700045"]}
+{"query":"git stash","expected_ids":["5022110c1c1b4f07bf8ce63cc5b6da9d-1777374452449"]}
+{"query":"source ~/.profile","expected_ids":["5082903bda4546b38f6cb98b87bf88cb-1776290457012"]}
+{"query":"rch exec -- cargo test -p terraphim_orchestrator pr_validation","expected_ids":["585b17c92f3c482cb067f53d22172efa-1777537174807"]}
+{"query":"git push github main","expected_ids":["5bb3da36c9e847ebb08d01989086aecf-1776966721925"]}
+{"query":"rch exec -- cargo test -p terraphim_orchestrator","expected_ids":["70b5d1248a1e424b8de3c46361690616-1777537522292"]}
+{"query":"cd /tmp/terraphim-gitea-robot","expected_ids":["72d99e7f875f4e8a8dc3b043fd198c4f-1777192986490"]}
+{"query":"export LINEAR_API_KEY=[ENV_REDACTED] read \"op://[REDACTED]","expected_ids":["73f7e756a66c4421948a7dee18f80a32-1777553899192"]}
+{"query":"cargo check -p terraphim_agent","expected_ids":["79aaa9334cc645ca92e9501948f3bd76-1777215254597"]}
+{"query":"npm install react","expected_ids":["7b269c9f49564db1b5bae5bc34a09e2b-1771415029999"]}
+{"query":"ssh [HOST] \"journalctl -u adf-orchestrator --since '1 minute ago' -n 5\" 2>&1","expected_ids":["83936f65be8a474282190e7faf14e8f0-1776885752281"]}
+{"query":"cat ~/.config/opencode/plugin/terraphim-hooks.js","expected_ids":["8592758484934051a9dadf5fd8460500-1776334098446"]}
+{"query":"ssh [HOST] \"cd /home/[USER]/terraphim-ai","expected_ids":["88be9727a7694e75b160978c48c0590c-1777468275495"]}
+{"query":"cd /Users/[USER]/.agents/skills/dev-browser","expected_ids":["8d9c2913887146dca1049b15b9ffe329-1777198186359"]}
+{"query":"print('YAML valid')\"","expected_ids":["9f2b94d722614b1c905b3048ecdca131-1777713399001"]}
+{"query":"cd /Users/[USER]/cto-executive-system/scripts/adf-setup","expected_ids":["a4a66806f70a44d3a08d0b059b2a08a7-1776363988383"]}
+{"query":"cd ~/projects/terraphim/terraphim-ai","expected_ids":["a84b0dd4755d4a00a7323d7c21683b8b-1777561611682"]}
+{"query":"cd ~/projects/terraphim/terraphim-ai/crates/terraphim_dsm","expected_ids":["aa7be878a00649dc84d904f223bb649e-1777642845500"]}
+{"query":"nonexistent-final-learning-test","expected_ids":["ae408d1c779f48769d680369672883c0-1776292568200"]}
+{"query":"ssh [HOST] \"cd /opt/ai-dark-factory","expected_ids":["b0cdc6d431c742b28b12dea400c6c8a6-1777481500206"]}
+{"query":"source ~/.my_cloudflare.sh","expected_ids":["b3c831b56f73462ea8042a6754fc270c-1777200137095"]}
+{"query":"ssh [HOST] \"cd /home/[USER]/projects/terraphim/terraphim-ai","expected_ids":["b42ca4587c774f6dbb9d099609151629-1777495266421"]}
+{"query":"ssh [HOST] \"python3 - <<'PY' from pathlib import Path for f in ['/tmp/adf-impl.log','/tmp/adf-plan2.log']: p=Path(f)","expected_ids":["b8340b69e332451898773a40979a7b73-1777494089112"]}
+{"query":"fake-cmd","expected_ids":["b85c1b245af84821913cd947680ba96f-1772781307619"]}
+{"query":"python3 -c \"import tomllib","expected_ids":["b93b80706fb64464b5eb1ccdc3b4a776-1776886469625"]}
+{"query":"ssh [HOST] 'UNIQUE_CMD=\"npm-install-unique-test-$(date +%s)\"","expected_ids":["c0e609c858ad4542844674dc25161543-1776364218604"]}
+{"query":"ssh [USER]@[HOST] \"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 [USER]@[HOST] 'su - gitea -c \\\"/usr/local/bin/gitea doctor check --config /etc/gitea/app.ini 2>&1\\\"'\"","expected_ids":["c2666b7ea8194a91ad73e3bd775f0ee9-1777627996583"]}
+{"query":"ssh [HOST] 'cd ~/projects/terraphim/terraphim-ai","expected_ids":["ca1e71dab8dd43ffa52bd9bacceb4a68-1776362011882"]}
+{"query":"ssh [HOST] \"export GITEA_TOKEN=[ENV_REDACTED]","expected_ids":["ceafcf4ba6d54a3a90e3f033229b099c-1777660111061"]}
+{"query":"ssh [USER]@[HOST] ' VM_IP=\"[IP]\" echo \"=== Test connectivity ===\" ping -c 2 $VM_IP echo \"\" echo \"=== Check all services ===\" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\ -i /home/[USER]/.ssh/id_ed25519 \\ gitea@$VM_IP \"bash -s\" << \"REMOTESCRIPT\" echo \"=== System boot status ===\" systemctl is-system-running 2>&1","expected_ids":["cf7d7a2a6ed44e68bb1ad211e6d1dc77-1777479426977"]}
+{"query":"ssh [USER]@[HOST] \"cd /home/[USER]/projects/terraphim/gitea-vm-image","expected_ids":["d18a9d3597ea4c1e886a17d4cd263071-1777456342429"]}
+{"query":"/Users/[USER]/.cargo/bin/terraphim-agent learn query \"prove-test-claude-hook-direct\" 2>&1","expected_ids":["d6979929ca7845c097e03d1fce4870a3-1776293032801"]}
+{"query":"cd /Users/[USER]/projects/terraphim/terraphim-ai","expected_ids":["e2bd4beca1d346eb84c1bb2c8b280643-1776339375057"]}
+{"query":"ssh [HOST] \"source ~/.profile","expected_ids":["e3d9791c442b4570b4292bddd1f25922-1776425326970"]}
+{"query":"cargo llvm-cov -p terraphim_orchestrator --summary-only","expected_ids":["e8040be068b8446ca3311571808819be-1777537772405"]}
+{"query":"git push","expected_ids":["e887620471244a5ca3252f9197930ce3-1771532636259"]}
+{"query":"ssh [HOST] \"sudo systemctl restart adf-orchestrator\" 2>&1","expected_ids":["ed2cab56178740359f412c5af3d46949-1776885728019"]}
+{"query":"git fetch origin","expected_ids":["ed86fabeedb643dca8a38585c8e4573c-1776966764458"]}
+{"query":"cargo check -p terraphim_automata","expected_ids":["f8e03bb383854113b9e0dbfa04a63320-1777214343575"]}
+{"query":"prove-test-claude-hook-direct","expected_ids":["f9ecfbda13f642b7b48f30fb38917fc2-1776293044279"]}
+{"query":"cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -30","expected_ids":["fb5634590fad43c590d90fc837850194-1777373897715"]}
+{"query":"cd /Users/[USER]/projects/terraphim/firecracker-rust-github/fcctl-web","expected_ids":["fe237de0e4c6469388195b43de058297-1777490283319"]}
