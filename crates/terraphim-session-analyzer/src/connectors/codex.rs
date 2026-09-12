@@ -47,9 +47,12 @@ struct GitInfo {
 }
 
 /// Response item entry
+///
+/// Codex payloads carry both a `type` (entry kind, e.g. `"message"`) and a
+/// `role` (author, e.g. `"user"`/`"assistant"`). The author comes from `role`;
+/// `type` is intentionally ignored.
 #[derive(Debug, Clone, Deserialize)]
 struct ResponseItem {
-    #[serde(rename = "type")]
     role: String,
     #[serde(default)]
     content: Vec<ContentBlock>,
