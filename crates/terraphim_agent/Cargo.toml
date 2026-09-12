@@ -109,6 +109,8 @@ reqwest = { workspace = true }
 tokio = { workspace = true }
 tempfile = { workspace = true }
 wiremock = "0.6"
+# Memory benchmark fixture: SHA-256 of corpus.jsonl (#259)
+sha2 = "0.10"
 
 terraphim_test_utils = { version = "1.20.3", registry = "terraphim" }
 insta = { version = "1.41", features = ["yaml", "redactions"] }
