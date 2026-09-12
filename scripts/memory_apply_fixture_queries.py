@@ -10,7 +10,8 @@ pointed at `crates/terraphim_agent/docs/src/kg`, the directory the committed
 `tests/fixtures/memory_bench/thesaurus.json` was built from, so the binary
 ranks with the same concepts as the retrieval quality test and the latency
 bench. The store is created through the real `memory capture` and then seeded
-with the 60 fixture items (all Medium importance, so all in `short_term`).
+with the committed fixture items (all Medium importance, so all in
+`short_term`).
 
 Usage:
     cargo build -p terraphim_agent --bin terraphim-agent
