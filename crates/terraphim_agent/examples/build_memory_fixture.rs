@@ -21,7 +21,7 @@
 //!
 //! Every text field is passed through the capture module's
 //! [`redact_secrets`] and through a structural pass that removes user@host
-//! pairs, IPv4 addresses, ssh targets, fully qualified host names, home
+//! pairs, IPv4 addresses, ssh targets, every fully qualified host name, home
 //! directories, 1Password references, bearer tokens, credential-shaped
 //! values and long hexadecimal runs. The rules are structural on purpose:
 //! this file is committed to a repository that is mirrored publicly, so it
@@ -46,26 +46,6 @@ const MIN_QUERIES: usize = 20;
 const MAX_QUERIES: usize = 50;
 /// Error output is capped so every corpus line stays reviewable.
 const ERROR_OUTPUT_CAP_CHARS: usize = 2000;
-
-/// Public developer domains that carry no private information and are kept.
-const PUBLIC_HOST_ALLOWLIST: &[&str] = &[
-    "github.com",
-    "githubusercontent.com",
-    "crates.io",
-    "docs.rs",
-    "rust-lang.org",
-    "rustup.rs",
-    "npmjs.com",
-    "npmjs.org",
-    "pypi.org",
-    "python.org",
-    "docker.io",
-    "docker.com",
-    "ghcr.io",
-    "cloudflare.com",
-    "example.com",
-    "localhost",
-];
 
 /// Top-level domains treated as host names when they end a dotted label run.
 /// Source-file extensions (`rs`, `sh`, `go`, `py`, `md`, ...) are deliberately
@@ -99,6 +79,7 @@ struct Redactor {
     linux_home: Regex,
     org_client_dir: Regex,
     ansi_escape: Regex,
+    localhost: Regex,
     host_label: Regex,
     syslog_host: Regex,
     url_credentials: Regex,
@@ -126,6 +107,7 @@ impl Redactor {
             linux_home: Regex::new(r"/home/[A-Za-z0-9._-]+").unwrap(),
             org_client_dir: Regex::new(r"zestic-ai/[A-Za-z0-9._-]+").unwrap(),
             ansi_escape: Regex::new(r"\x1b\[[0-9;?]*[ -/]*[@-~]").unwrap(),
+            localhost: Regex::new(r"\blocalhost\b").unwrap(),
             host_label: Regex::new(r"(?i)\b(worker|host|hostname)(\s*[:=]\s*)[A-Za-z0-9][A-Za-z0-9._-]*")
                 .unwrap(),
             // "Apr 22 21:22:16 <host> proc[pid]:" syslog and journalctl lines.
@@ -168,7 +150,7 @@ impl Redactor {
             .dotted
             .replace_all(&s, |c: &regex::Captures| {
                 let whole = &c[0];
-                if is_private_host(whole) {
+                if is_host(whole) {
                     "[HOST]".to_string()
                 } else {
                     whole.to_string()
@@ -180,6 +162,7 @@ impl Redactor {
             .replace_all(&s, "${1}op://[REDACTED]${2}")
             .to_string();
         s = self.op_ref.replace_all(&s, "op://[REDACTED]").to_string();
+        s = self.localhost.replace_all(&s, "[HOST]").to_string();
         s = self
             .host_label
             .replace_all(&s, "${1}${2}[HOST]")
@@ -200,9 +183,10 @@ impl Redactor {
     }
 }
 
-/// A dotted label run is a private host name when its last label is a known
-/// TLD, it is not a bare version number, and its apex is not allowlisted.
-fn is_private_host(candidate: &str) -> bool {
+/// A dotted label run is a host name when its last label is a known TLD and
+/// it is not a bare version number. Every such host is redacted, public or
+/// not: there is no allowlist.
+fn is_host(candidate: &str) -> bool {
     let lower = candidate.to_ascii_lowercase();
     let labels: Vec<&str> = lower.split('.').collect();
     let Some(tld) = labels.last() else {
@@ -211,15 +195,7 @@ fn is_private_host(candidate: &str) -> bool {
     if !HOST_TLDS.contains(tld) {
         return false;
     }
-    if labels.iter().all(|l| l.chars().all(|c| c.is_ascii_digit())) {
-        return false;
-    }
-    let apex = if labels.len() >= 2 {
-        format!("{}.{}", labels[labels.len() - 2], labels[labels.len() - 1])
-    } else {
-        lower.clone()
-    };
-    !(PUBLIC_HOST_ALLOWLIST.contains(&apex.as_str()) || PUBLIC_HOST_ALLOWLIST.contains(tld))
+    !labels.iter().all(|l| l.chars().all(|c| c.is_ascii_digit()))
 }
 
 fn normalise_whitespace(text: &str) -> String {

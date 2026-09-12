@@ -5,7 +5,6 @@
 {"query":"gws calendar +agenda (fails with 403 ACCESS_TOKEN_SCOPE_INSUFFICIENT)","expected_ids":["27dfce542436432fa77a6c9a00ecfff3-1776413106931"]}
 {"query":"ssh [USER]@[HOST] \"cd /data/projects/terraphim/terraphim-ai","expected_ids":["39c3d4eb0933473c9b502ec12276f6c5-1777541481155"]}
 {"query":"cd ~/.config/terraphim","expected_ids":["3e6eb954cce14ce89aae22b12b0781d1-1776364591394"]}
-{"query":"ssh [USER]@[HOST] \"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 [USER]@[HOST] 'tail -30 /var/lib/gitea/log/gitea.log'\"","expected_ids":["3f45ec6085ea4f2bb70c66a679e6a19b-1777629110773"]}
 {"query":"Using unquoted heredoc delimiter <<EOF in bash commands, causing variable expansion, quote mangling, and shell interpretation of special characters ($, backticks, braces, pipes)","expected_ids":["42dbd243d3cc42948a5aede235b0c0cd-1774911700045"]}
 {"query":"git stash","expected_ids":["5022110c1c1b4f07bf8ce63cc5b6da9d-1777374452449"]}
 {"query":"source ~/.profile","expected_ids":["5082903bda4546b38f6cb98b87bf88cb-1776290457012"]}
@@ -33,6 +32,7 @@
 {"query":"python3 -c \"import tomllib","expected_ids":["b93b80706fb64464b5eb1ccdc3b4a776-1776886469625"]}
 {"query":"ssh [HOST] 'UNIQUE_CMD=\"npm-install-unique-test-$(date +%s)\"","expected_ids":["c0e609c858ad4542844674dc25161543-1776364218604"]}
 {"query":"ssh [USER]@[HOST] \"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 [USER]@[HOST] 'su - gitea -c \\\"/usr/local/bin/gitea doctor check --config /etc/gitea/app.ini 2>&1\\\"'\"","expected_ids":["c2666b7ea8194a91ad73e3bd775f0ee9-1777627996583"]}
+{"query":"curl -sL \"https://[HOST]/gitea/tea/releases/download/v0.12.0/tea_0.12.0_linux_amd64\" -o ~/bin/tea","expected_ids":["c921d703d0cf4e1d8b1cee338554a302-1776670743770"]}
 {"query":"ssh [HOST] 'cd ~/projects/terraphim/terraphim-ai","expected_ids":["ca1e71dab8dd43ffa52bd9bacceb4a68-1776362011882"]}
 {"query":"ssh [HOST] \"export GITEA_TOKEN=[ENV_REDACTED]","expected_ids":["ceafcf4ba6d54a3a90e3f033229b099c-1777660111061"]}
 {"query":"ssh [USER]@[HOST] ' VM_IP=\"[IP]\" echo \"=== Test connectivity ===\" ping -c 2 $VM_IP echo \"\" echo \"=== Check all services ===\" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\ -i /home/[USER]/.ssh/id_ed25519 \\ gitea@$VM_IP \"bash -s\" << \"REMOTESCRIPT\" echo \"=== System boot status ===\" systemctl is-system-running 2>&1","expected_ids":["cf7d7a2a6ed44e68bb1ad211e6d1dc77-1777479426977"]}
