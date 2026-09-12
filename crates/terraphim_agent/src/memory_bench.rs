@@ -232,6 +232,67 @@ pub fn evaluate(
     })
 }
 
+/// Size of what the memory hook would add to a prompt, in bytes and in an
+/// estimated token count.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InjectedSize {
+    /// Bytes the hook would inject: the length of [`hook_output`] minus the
+    /// length of the prompt itself. Zero when no items are injected.
+    pub bytes: u64,
+    /// Estimate only: `bytes` divided by four, rounded up. Four bytes per
+    /// token is a rule of thumb for English text under common tokenisers;
+    /// nothing here runs a tokeniser.
+    pub estimated_tokens: u64,
+}
+
+/// Header line the memory hook writes above the injected items.
+pub const INJECTED_HEADER: &str = "## Relevant memory";
+
+/// Exact text the memory hook would submit for `prompt` with `items`
+/// injected: the prompt unchanged, then (only when there are items) a blank
+/// line, [`INJECTED_HEADER`], and one line per item carrying its id, type and
+/// content. With no items the output is the prompt, byte for byte.
+///
+/// This is the single definition of the injection payload. `memory apply`
+/// measures it; [`injected_size`] subtracts the prompt from it.
+pub fn hook_output(prompt: &str, items: &[MemoryItem]) -> String {
+    let mut out = String::from(prompt);
+    if items.is_empty() {
+        return out;
+    }
+    out.push_str("\n\n");
+    out.push_str(INJECTED_HEADER);
+    out.push('\n');
+    for item in items {
+        out.push_str(&format!(
+            "- [{}] {:?}: {}\n",
+            item.id, item.item_type, item.content
+        ));
+    }
+    out
+}
+
+/// Tokens estimated for `bytes`: `bytes / 4` rounded up. An estimate, not a
+/// tokeniser result; see [`InjectedSize::estimated_tokens`].
+pub fn estimate_tokens(bytes: u64) -> u64 {
+    bytes.div_ceil(4)
+}
+
+/// Bytes the memory hook would inject for `prompt` given the retrieved
+/// `items`, plus the labelled four-bytes-per-token estimate.
+///
+/// The prompt's own bytes are not counted: `bytes` is the length of
+/// [`hook_output`] minus the length of `prompt`, so an empty `items` gives
+/// `bytes == 0` and `estimated_tokens == 0`.
+pub fn injected_size(prompt: &str, items: &[MemoryItem]) -> InjectedSize {
+    let output = hook_output(prompt, items);
+    let bytes = (output.len() - prompt.len()) as u64;
+    InjectedSize {
+        bytes,
+        estimated_tokens: estimate_tokens(bytes),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -550,6 +611,50 @@ mod tests {
                 })
                 .collect()
         })
+    }
+
+    #[test]
+    fn injected_size_estimates_tokens_as_bytes_over_four() {
+        // The token estimate is bytes / 4 rounded up.
+        assert_eq!(estimate_tokens(0), 0);
+        assert_eq!(estimate_tokens(1), 1);
+        assert_eq!(estimate_tokens(4), 1);
+        assert_eq!(estimate_tokens(5), 2);
+        assert_eq!(estimate_tokens(8), 2);
+        assert_eq!(estimate_tokens(9), 3);
+
+        // No items: nothing injected, 0 bytes, 0 tokens, and the hook output
+        // is the prompt byte for byte.
+        let prompt = "why did bun install fail";
+        assert_eq!(hook_output(prompt, &[]), prompt);
+        assert_eq!(
+            injected_size(prompt, &[]),
+            InjectedSize {
+                bytes: 0,
+                estimated_tokens: 0
+            }
+        );
+
+        // With items: bytes is exactly the hook output minus the prompt, and
+        // the token count is that byte count over four, rounded up.
+        let items = vec![memory("a", "bun install"), memory("b", "cargo clippy")];
+        let output = hook_output(prompt, &items);
+        assert!(output.starts_with(prompt), "prompt is kept unchanged");
+        assert!(output.contains(INJECTED_HEADER));
+        assert!(output.contains("- [a] LessonLearned: bun install\n"));
+        assert!(output.contains("- [b] LessonLearned: cargo clippy\n"));
+        let size = injected_size(prompt, &items);
+        assert_eq!(size.bytes, (output.len() - prompt.len()) as u64);
+        assert!(size.bytes > 0);
+        assert_eq!(size.estimated_tokens, size.bytes.div_ceil(4));
+        assert_eq!(size.estimated_tokens, estimate_tokens(size.bytes));
+
+        // The injected bytes do not depend on the prompt, only on the items.
+        assert_eq!(injected_size("", &items).bytes, size.bytes);
+        assert_eq!(
+            injected_size("a much longer prompt text here", &items).bytes,
+            size.bytes
+        );
     }
 
     proptest! {

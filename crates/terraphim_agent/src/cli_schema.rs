@@ -843,7 +843,10 @@ pub(crate) enum MemorySub {
     /// Runs the role's thesaurus over the input with the same
     /// `ReplacementService::find_matches` the hook pipeline uses, and lists
     /// every term that would be rewritten (with its normalised form and
-    /// position). Reads from stdin when no prompt is given.
+    /// position). Also retrieves the memory items the hook would inject for
+    /// the prompt and reports their size as `injected_bytes` and
+    /// `estimated_tokens` (bytes divided by four, rounded up; an estimate).
+    /// Reads from stdin when no prompt is given.
     Apply {
         /// Role scope for the hook preview (defaults to the selected role)
         #[arg(long)]

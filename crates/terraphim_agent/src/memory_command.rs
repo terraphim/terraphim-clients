@@ -278,6 +278,9 @@ pub(crate) async fn run_memory_command(
             Ok(())
         }
         MemorySub::Apply { role, prompt } => {
+            use terraphim_agent::memory_bench::{RETRIEVAL_LIMIT, injected_size};
+            use terraphim_agent::memory_retrieve::{collect_memory_items, retrieve};
+
             // Real hook preview, not a scaffold: run the role's thesaurus
             // over the input with the same find_matches the hook pipeline
             // uses, and list every term that would be rewritten. Refs #237.
@@ -303,8 +306,27 @@ pub(crate) async fn run_memory_command(
                 )
             })?;
 
-            let replacement_service = terraphim_hooks::ReplacementService::new(thesaurus);
+            let replacement_service = terraphim_hooks::ReplacementService::new(thesaurus.clone());
             let matches = replacement_service.find_matches(&input)?;
+
+            // Injected size (#261): retrieve the memory items the hook would
+            // inject for this prompt, through the unchanged `retrieve` with
+            // the benchmark's limit, and measure the exact injection text.
+            let evolution = load_evolution();
+            let store_items = collect_memory_items(&evolution.memory.current_state);
+            let injected_items: Vec<terraphim_agent_evolution::MemoryItem> = retrieve(
+                &role_name,
+                thesaurus,
+                &store_items,
+                &input,
+                None,
+                Some(RETRIEVAL_LIMIT),
+            )?
+            .hits
+            .into_iter()
+            .map(|h| h.item)
+            .collect();
+            let injected = injected_size(&input, &injected_items);
 
             if output.is_machine_readable() {
                 let json_matches: Vec<serde_json::Value> = matches
@@ -326,6 +348,9 @@ pub(crate) async fn run_memory_command(
                         "role": role_name.to_string(),
                         "count": json_matches.len(),
                         "matches": json_matches,
+                        "retrieved_items": injected_items.len(),
+                        "injected_bytes": injected.bytes,
+                        "estimated_tokens": injected.estimated_tokens,
                     })
                 );
             } else if matches.is_empty() {
@@ -333,6 +358,7 @@ pub(crate) async fn run_memory_command(
                     "No hook injections for the given input (role: {}).",
                     role_name
                 );
+                print_injected_size(injected_items.len(), injected);
             } else {
                 println!(
                     "Hooks would inject {} replacement(s) (role: {}):",
@@ -348,6 +374,7 @@ pub(crate) async fn run_memory_command(
                         None => println!("  - '{}' -> {}", m.term, m.normalized_term.value),
                     }
                 }
+                print_injected_size(injected_items.len(), injected);
             }
             Ok(())
         }
@@ -962,6 +989,14 @@ impl RubricScore {
             + 0.10 * self.decay
             + 0.10 * (1.0 - self.risk)
     }
+}
+
+/// Text-mode line for the injected size reported by `memory apply` (#261).
+fn print_injected_size(retrieved: usize, size: terraphim_agent::memory_bench::InjectedSize) {
+    println!(
+        "Memory items retrieved for the prompt: {} ({} bytes injected, about {} tokens, estimated as bytes/4)",
+        retrieved, size.bytes, size.estimated_tokens
+    );
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
