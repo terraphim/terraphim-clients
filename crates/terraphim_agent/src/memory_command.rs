@@ -375,7 +375,14 @@ pub(crate) async fn run_memory_command(
             };
 
             if items.is_empty() {
-                println!("No memory items found to validate.");
+                if output.is_machine_readable() {
+                    println!(
+                        "{}",
+                        serde_json::json!({ "status": "ok", "action": "validate", "scorer": RUBRIC_SCORER, "scores": [] })
+                    );
+                } else {
+                    println!("No memory items found to validate.");
+                }
                 return Ok(());
             }
 
@@ -659,7 +666,17 @@ pub(crate) async fn run_memory_command(
             let evolution = load_evolution();
             let state = &evolution.memory.current_state;
             // TODO(#208): replace with MemoryState::iter_all()
-            let all_items = terraphim_agent::memory_retrieve::collect_memory_items(state);
+            let mut all_items = terraphim_agent::memory_retrieve::collect_memory_items(state);
+            // Explicit all-bucket order before the limit is applied: importance
+            // descending, then newest first. Without this the union is
+            // short-term-first, so once short_term holds `limit` items every
+            // long-term High/Critical item is cut off by `take(limit)`.
+            all_items.sort_by(|a, b| {
+                b.importance
+                    .partial_cmp(&a.importance)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then_with(|| b.created_at.cmp(&a.created_at))
+            });
 
             let items = if let Some(ref t) = item_type {
                 let filter = t.to_lowercase();
