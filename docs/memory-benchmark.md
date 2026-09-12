@@ -35,7 +35,7 @@ metrics are reported separately, each with the inputs that produced it.
 | recall@k | per query, the number of expected ids among the top k hits divided by the number of expected ids, mean over queries; k = 1 and 5 | `memory_bench::evaluate` through the unchanged `memory_retrieve::retrieve` with `limit = 5` |
 | MRR | per query, `1 / rank` of the first expected id in the top five, else 0; mean over queries | same |
 | latency p50, p95 | nearest-rank percentiles over 35 timed `retrieve` calls (7 queries x 5 calls) per corpus size; Criterion mean alongside | `benches/memory_retrieve.rs` |
-| injected bytes, estimated tokens | bytes of the text the memory hook would inject for a prompt (top five hits, prompt excluded); tokens = bytes / 4 rounded up, an estimate not a tokeniser result | `memory apply --format json`, via `memory_bench::injected_size` |
+| injected bytes, estimated tokens | bytes of `memory_bench::hook_output` (the prompt, then a `## Relevant memory` block with one line per hit: id, type, content) minus the prompt, for the top five hits; tokens = bytes / 4 rounded up, an estimate not a tokeniser result. This payload format is defined by PR #282 (#261) for measurement; it is not the output of an existing hook | `terraphim-agent --format json memory apply --prompt "<text>"` (`--format` is a global flag, `apply` has none of its own), via `memory_bench::injected_size` |
 
 Ranking was not changed by any of the steps that produced these numbers.
 
@@ -50,7 +50,7 @@ Ranking was not changed by any of the steps that produced these numbers.
 | terraphim-agent | 1.21.14 (`terraphim-agent --version`; workspace version in `Cargo.toml`) |
 | Source | branch `task/263-benchmark-doc`: `task/261-latency-bench` at `a176a1c` (which contains `task/260-memory-bench` at `02c31d5` and `task/259-memory-fixture` at `5c62133`) with `task/262-rubric-scorer` at `f3cbbdf` merged in |
 | Build profile, quality test and apply run | `test` and `dev` profiles (unoptimised, debuginfo) |
-| Build profile, latency bench | `bench` profile, which inherits `[profile.release]`: `opt-level = 3`, `lto = false`, `codegen-units = 1`, `panic = "unwind"` |
+| Build profile, latency bench | the default `cargo bench` profile (no `[profile.bench]` in the workspace, so it inherits `[profile.release]`: `opt-level = 3`, `lto = false`, `codegen-units = 1`, `panic = "unwind"`); not a #253 profile |
 | Date | 2026-09-12 |
 
 ## Inputs
@@ -155,7 +155,8 @@ Corpus: the 60 committed items tiled to 100, 1,000 and 10,000 items with
 unique id suffixes and unchanged content. Queries: the 7 fixture queries that
 name at least one thesaurus concept. One measurement is one `retrieve` call
 with `limit = 5`. The custom summary reports nearest-rank p50 and p95 over 35
-calls per size (7 queries x 5 calls); Criterion's own estimate follows it.
+calls per size (7 queries x 5 calls) because Criterion 0.8 prints no
+percentiles; Criterion's own mean estimate follows it.
 Criterion runs 100 samples at 100 items and 10 samples (its minimum) at 1,000
 and 10,000 items, with a 20 s measurement window at 10,000 items only,
 because every `retrieve` rebuilds a `RoleGraph` over all items.
@@ -170,10 +171,11 @@ above with other cargo builds running in parallel on the host.
 | 10,000 | 127.916 ms | 199.739 ms | 199.796 ms | 128.90 ms (128.13 to 129.65 ms) | under 1 s | yes |
 
 **Numbers vary between runs.** A run a minute earlier on the same build gave
-p50/p95 of 0.614/0.742 ms, 3.585/4.129 ms and 130.663/197.164 ms; PR #282
-recorded 0.609/0.640 ms, 3.611/4.564 ms and 134.5/202.4 ms on the quietest
-of three runs, and p95 at 10,000 items of 430 ms to 578 ms under a host load
-of 15 to 19. Both design targets were met in every run. The two slowest of the
+p50/p95 of 0.614/0.742 ms, 3.585/4.129 ms and 130.663/197.164 ms; the #261
+author's run (PR #282 body, same machine) recorded 0.609/0.640 ms,
+3.611/4.564 ms and 134.5/202.4 ms on the quietest of three runs, and p95 at
+10,000 items of 430 ms to 578 ms under a host load of 15 to 19. The run
+recorded in this document is the one in the table above. Both design targets were met in every run. The two slowest of the
 35 calls at 10,000 items were near 200 ms against a p50 of 128 ms; the cause
 was not investigated. Other cargo builds were running on the host during
 this run.
@@ -198,6 +200,15 @@ environment (`tests/support/cli_test_env.rs`) points the knowledge graph at
 with the benchmark thesaurus was checked by comparing all 7 concept-matching
 queries against the bench's own injected-size summary: the same 5 queries
 inject 11,056 bytes and the same 2 inject 0 in both.
+
+What is being measured: `injected_bytes` is the length of
+`memory_bench::hook_output(prompt, hits)` minus the length of the prompt,
+where `hook_output` is the prompt followed by a blank line, the header
+`## Relevant memory` and one line per hit (`- [<id>] <type>: <content>`). That
+payload format was introduced by PR #282 (#261) as the single definition of
+the injection text so it could be measured; the figures describe that format,
+not the output of a hook that already existed. With no hits the payload is
+the prompt byte for byte and the figure is 0.
 
 | Population | Queries | Mean bytes | Max bytes | Mean estimated tokens | Max estimated tokens |
 |---|---|---|---|---|---|
