@@ -5,7 +5,8 @@ fixture: retrieval quality (recall@1, recall@5, MRR), retrieval latency at
 100, 1,000 and 10,000 items, and the bytes the memory hook would inject per
 query. Every number below was produced by the commands quoted next to it, on
 the machine and inputs named in the "Environment" and "Inputs" sections, with
-no language model anywhere on the path. Step 5 of terraphim-clients#255
+no language model anywhere on the path, except the concept-match histogram,
+which is quoted from PR #279. Step 5 of terraphim-clients#255
 (issue #263); the pipeline is steps 1 to 4 (PRs #277, #279, #282, #273).
 
 ## Read this first
@@ -15,9 +16,10 @@ Dakera, memU) score **LLM-judged question answering over multi-session chat**
 (LoCoMo, LongMemEval, BEAM). `terraphim-agent memory` stores failed commands,
 corrections and lessons and ranks them by knowledge-graph concept overlap with
 no LLM in the loop. The two are **not commensurable**. Nothing in this
-document is a LoCoMo, LongMemEval or BEAM score, and the comparison table
-below keeps the peer figures and the Terraphim figures in separate columns so
-they cannot be read against each other. Treat every LoCoMo figure as
+document is a LoCoMo, LongMemEval or BEAM score: in the comparison table
+below the Terraphim row's LoCoMo, LongMemEval and BEAM cells are "not
+applicable" and its retrieval quality is stated in the last column, so it
+cannot be read as a leaderboard score. Treat every LoCoMo figure as
 contested: the same system (Zep) has been reported at 84, 58.44 and 75.14
 depending on who ran it, and Penfield Labs' April 2026 audit found 6.4 percent
 of the LoCoMo answer key wrong and a gpt-4o-mini judge accepting 62.81 percent
@@ -74,8 +76,8 @@ shasum -a 256 tests/fixtures/memory_bench/corpus.jsonl \
 ```
 
 The corpus hash is asserted by `tests/memory_fixture_integrity.rs`; the
-corpus and thesaurus hashes are also asserted against this document by
-`tests/memory_benchmark_doc.rs`. The corpus is built mechanically from private
+corpus, queries and thesaurus hashes are also asserted against this document
+by `tests/memory_benchmark_doc.rs`. The corpus is built mechanically from private
 capture files by `scripts/build_memory_fixture.sh` and redacted structurally;
 ground truth is mechanical (a correction's original text maps to that
 correction; a repeated command maps to its earliest capture). Nothing was
@@ -154,9 +156,9 @@ unique id suffixes and unchanged content. Queries: the 7 fixture queries that
 name at least one thesaurus concept. One measurement is one `retrieve` call
 with `limit = 5`. The custom summary reports nearest-rank p50 and p95 over 35
 calls per size (7 queries x 5 calls); Criterion's own estimate follows it.
-Criterion runs 100 samples at 100 items and 10 samples (its minimum) with a
-20 s measurement window at 1,000 and 10,000 items, because every `retrieve`
-rebuilds a `RoleGraph` over all items.
+Criterion runs 100 samples at 100 items and 10 samples (its minimum) at 1,000
+and 10,000 items, with a 20 s measurement window at 10,000 items only,
+because every `retrieve` rebuilds a `RoleGraph` over all items.
 
 Run quoted here: load average 9.20 (1 min) before, 5.56 after, on the machine
 above with other cargo builds running in parallel on the host.
@@ -171,9 +173,10 @@ above with other cargo builds running in parallel on the host.
 p50/p95 of 0.614/0.742 ms, 3.585/4.129 ms and 130.663/197.164 ms; PR #282
 recorded 0.609/0.640 ms, 3.611/4.564 ms and 134.5/202.4 ms on the quietest
 of three runs, and p95 at 10,000 items of 430 ms to 578 ms under a host load
-of 15 to 19. Both design targets were met in every run. The 10,000-item p95
-sits well above the Criterion mean because the 35-call sample includes the
-cold first calls per query; Criterion warms up for 3 s first.
+of 15 to 19. Both design targets were met in every run. The two slowest of the
+35 calls at 10,000 items were near 200 ms against a p50 of 128 ms; the cause
+was not investigated. Other cargo builds were running on the host during
+this run.
 
 ## Injected bytes and estimated tokens per query
 
