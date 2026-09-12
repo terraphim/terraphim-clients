@@ -126,9 +126,40 @@ a hand judgement of relevance.
 ## Thesaurus used
 
 No thesaurus is consumed at build time: selection and ground truth are
-mechanical and do not rank anything. The reference thesaurus for retrieval
-(proposed: the Terraphim Engineer role, pinned by hash) is an open decision on
-#255 and is recorded by step 2 when `memory_bench::evaluate` first runs.
+mechanical and do not rank anything.
+
+The reference thesaurus for retrieval (step 2, issue #260) is committed next
+to the corpus as `thesaurus.json` (name `Terraphim Engineer`, 42 entries,
+15 concepts). It is generated with the real
+`terraphim_automata::builder::Logseq` builder from the repository's own
+knowledge graph at `crates/terraphim_agent/docs/src/kg`, the haystack the
+committed Terraphim Engineer test config (`tests/fixtures/terraphim_engineer_config.json`)
+points at. Nothing outside the repository feeds it.
+
+| Input | SHA-256 |
+|-------|---------|
+| `thesaurus.json` | 4009a027a880322504498785e6b588046f8c1fbf815211699662b602f8f7a8fe |
+| KG source (`shasum -a 256` of each `docs/src/kg/**/*.md`, sorted by path, output hashed again) | 8233465025c9bf9d6469c526ec464fe18e3f65aa7d6c51cb578256a06d5586d8 |
+
+Regenerate with a throwaway example (not committed):
+
+```rust
+use terraphim_automata::builder::{Logseq, ThesaurusBuilder};
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let t = Logseq::default()
+        .build("Terraphim Engineer".to_string(), "crates/terraphim_agent/docs/src/kg")
+        .await?;
+    std::fs::write("crates/terraphim_agent/tests/fixtures/memory_bench/thesaurus.json",
+        serde_json::to_string_pretty(&t)?)?;
+    Ok(())
+}
+```
+
+`floor.json` records recall@5 from the first run of
+`tests/memory_retrieval_quality.rs` on this corpus and thesaurus; the test
+fails if a later run scores below it. The floor is written by hand from a real
+run, never by the test.
 
 ## Rebuilding
 
