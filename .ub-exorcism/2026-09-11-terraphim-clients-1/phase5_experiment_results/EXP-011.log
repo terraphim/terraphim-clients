@@ -1,0 +1,134 @@
+=== EXP-011 run 3 (dedup arm driven from outside the runtime) start 2026-09-12T10:32:49+0100 rustc 1.98.0-nightly (bd08c9e71 2026-06-25)
+warning: patch `rustls-webpki v0.103.12 (https://github.com/rustls/webpki.git?tag=v%2F0.103.12#27131d47)` was not used in the crate graph
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+   Compiling exp011_nan_comparators v0.0.0 (/Users/alex/projects/terraphim/terraphim-clients/.ub-exorcism/2026-09-11-terraphim-clients-1/experiments/EXP-011)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.13s
+     Running `/private/tmp/claude-501/ubx-exp-target/debug/exp011_nan_comparators`
+EXP-011 rustc=see log header
+--- arm 1: grep comparator (boost_chunks_with_kg / fuse_and_rank idiom)
+n=5      nan=every-7th    -> returned 5 chunks (no panic)
+n=5      nan=first        -> returned 5 chunks (no panic)
+n=5      nan=last         -> returned 5 chunks (no panic)
+n=5      nan=middle       -> returned 5 chunks (no panic)
+n=5      nan=half-random  -> returned 5 chunks (no panic)
+n=10     nan=every-7th    -> returned 10 chunks (no panic)
+n=10     nan=first        -> returned 10 chunks (no panic)
+n=10     nan=last         -> returned 10 chunks (no panic)
+n=10     nan=middle       -> returned 10 chunks (no panic)
+n=10     nan=half-random  -> returned 10 chunks (no panic)
+n=20     nan=every-7th    -> returned 20 chunks (no panic)
+n=20     nan=first        -> returned 20 chunks (no panic)
+n=20     nan=last         -> returned 20 chunks (no panic)
+n=20     nan=middle       -> returned 20 chunks (no panic)
+n=20     nan=half-random  -> returned 20 chunks (no panic)
+
+thread 'main' (29462998) panicked at /rustc/bd08c9e71874a81670fe3938dbf85148e42c2b96/library/core/src/slice/sort/shared/smallsort.rs:854:5:
+user-provided comparison function does not correctly implement a total order
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+n=21     nan=every-7th    -> PANIC: user-provided comparison function does not correctly implement a total order
+n=21     nan=first        -> returned 21 chunks (no panic)
+n=21     nan=last         -> returned 21 chunks (no panic)
+
+thread 'main' (29462998) panicked at /rustc/bd08c9e71874a81670fe3938dbf85148e42c2b96/library/core/src/slice/sort/shared/smallsort.rs:854:5:
+user-provided comparison function does not correctly implement a total order
+n=21     nan=middle       -> PANIC: user-provided comparison function does not correctly implement a total order
+
+thread 'main' (29462998) panicked at /rustc/bd08c9e71874a81670fe3938dbf85148e42c2b96/library/core/src/slice/sort/shared/smallsort.rs:854:5:
+user-provided comparison function does not correctly implement a total order
+n=21     nan=half-random  -> PANIC: user-provided comparison function does not correctly implement a total order
+
+thread 'main' (29462998) panicked at /rustc/bd08c9e71874a81670fe3938dbf85148e42c2b96/library/core/src/slice/sort/shared/smallsort.rs:854:5:
+user-provided comparison function does not correctly implement a total order
+n=32     nan=every-7th    -> PANIC: user-provided comparison function does not correctly implement a total order
+n=32     nan=first        -> returned 32 chunks (no panic)
+n=32     nan=last         -> returned 32 chunks (no panic)
+
+thread 'main' (29462998) panicked at /rustc/bd08c9e71874a81670fe3938dbf85148e42c2b96/library/core/src/slice/sort/shared/smallsort.rs:854:5:
+user-provided comparison function does not correctly implement a total order
+n=32     nan=middle       -> PANIC: user-provided comparison function does not correctly implement a total order
+
+thread 'main' (29462998) panicked at /rustc/bd08c9e71874a81670fe3938dbf85148e42c2b96/library/core/src/slice/sort/shared/smallsort.rs:854:5:
+user-provided comparison function does not correctly implement a total order
+n=32     nan=half-random  -> PANIC: user-provided comparison function does not correctly implement a total order
+
+thread 'main' (29462998) panicked at /rustc/bd08c9e71874a81670fe3938dbf85148e42c2b96/library/core/src/slice/sort/shared/smallsort.rs:854:5:
+user-provided comparison function does not correctly implement a total order
+n=50     nan=every-7th    -> PANIC: user-provided comparison function does not correctly implement a total order
+n=50     nan=first        -> returned 50 chunks (no panic)
+n=50     nan=last         -> returned 50 chunks (no panic)
+
+thread 'main' (29462998) panicked at /rustc/bd08c9e71874a81670fe3938dbf85148e42c2b96/library/core/src/slice/sort/shared/smallsort.rs:854:5:
+user-provided comparison function does not correctly implement a total order
+n=50     nan=middle       -> PANIC: user-provided comparison function does not correctly implement a total order
+
+thread 'main' (29462998) panicked at /rustc/bd08c9e71874a81670fe3938dbf85148e42c2b96/library/core/src/slice/sort/shared/smallsort.rs:854:5:
+user-provided comparison function does not correctly implement a total order
+n=50     nan=half-random  -> PANIC: user-provided comparison function does not correctly implement a total order
+
+thread 'main' (29462998) panicked at /rustc/bd08c9e71874a81670fe3938dbf85148e42c2b96/library/core/src/slice/sort/shared/smallsort.rs:854:5:
+user-provided comparison function does not correctly implement a total order
+n=64     nan=every-7th    -> PANIC: user-provided comparison function does not correctly implement a total order
+n=64     nan=first        -> returned 64 chunks (no panic)
+n=64     nan=last         -> returned 64 chunks (no panic)
+n=64     nan=middle       -> returned 64 chunks (no panic)
+
+thread 'main' (29462998) panicked at /rustc/bd08c9e71874a81670fe3938dbf85148e42c2b96/library/core/src/slice/sort/shared/smallsort.rs:854:5:
+user-provided comparison function does not correctly implement a total order
+n=64     nan=half-random  -> PANIC: user-provided comparison function does not correctly implement a total order
+n=100    nan=every-7th    -> returned 100 chunks (no panic)
+n=100    nan=first        -> returned 100 chunks (no panic)
+n=100    nan=last         -> returned 100 chunks (no panic)
+
+thread 'main' (29462998) panicked at /rustc/bd08c9e71874a81670fe3938dbf85148e42c2b96/library/core/src/slice/sort/shared/smallsort.rs:854:5:
+user-provided comparison function does not correctly implement a total order
+n=100    nan=middle       -> PANIC: user-provided comparison function does not correctly implement a total order
+n=100    nan=half-random  -> returned 100 chunks (no panic)
+n=200    nan=every-7th    -> returned 200 chunks (no panic)
+n=200    nan=first        -> returned 200 chunks (no panic)
+n=200    nan=last         -> returned 200 chunks (no panic)
+n=200    nan=middle       -> returned 200 chunks (no panic)
+n=200    nan=half-random  -> returned 200 chunks (no panic)
+n=500    nan=every-7th    -> returned 500 chunks (no panic)
+n=500    nan=first        -> returned 500 chunks (no panic)
+n=500    nan=last         -> returned 500 chunks (no panic)
+n=500    nan=middle       -> returned 500 chunks (no panic)
+n=500    nan=half-random  -> returned 500 chunks (no panic)
+n=1000   nan=every-7th    -> returned 1000 chunks (no panic)
+n=1000   nan=first        -> returned 1000 chunks (no panic)
+n=1000   nan=last         -> returned 1000 chunks (no panic)
+
+thread 'main' (29462998) panicked at /rustc/bd08c9e71874a81670fe3938dbf85148e42c2b96/library/core/src/slice/sort/shared/smallsort.rs:854:5:
+user-provided comparison function does not correctly implement a total order
+n=1000   nan=middle       -> PANIC: user-provided comparison function does not correctly implement a total order
+n=1000   nan=half-random  -> returned 1000 chunks (no panic)
+n=5000   nan=every-7th    -> returned 5000 chunks (no panic)
+n=5000   nan=first        -> returned 5000 chunks (no panic)
+n=5000   nan=last         -> returned 5000 chunks (no panic)
+n=5000   nan=middle       -> returned 5000 chunks (no panic)
+n=5000   nan=half-random  -> returned 5000 chunks (no panic)
+n=20000  nan=every-7th    -> returned 20000 chunks (no panic)
+n=20000  nan=first        -> returned 20000 chunks (no panic)
+n=20000  nan=last         -> returned 20000 chunks (no panic)
+n=20000  nan=middle       -> returned 20000 chunks (no panic)
+n=20000  nan=half-random  -> returned 20000 chunks (no panic)
+--- arm 2: markdown importance_total NaN through list_all_entries
+n=3    -> 3 entries returned (no panic)
+
+thread 'main' (29462998) panicked at /rustc/bd08c9e71874a81670fe3938dbf85148e42c2b96/library/core/src/slice/sort/shared/smallsort.rs:854:5:
+user-provided comparison function does not correctly implement a total order
+n=30   -> PANIC: user-provided comparison function does not correctly implement a total order
+n=300  -> 300 entries returned (no panic)
+--- arm 3: store_with_dedup partial_cmp().unwrap() with NaN BM25 scores
+
+thread 'main' (29462998) panicked at /Users/alex/projects/terraphim/terraphim-clients/crates/terraphim_agent/src/shared_learning/store.rs:242:54:
+called `Option::unwrap()` on a `None` value
+store_with_dedup -> PANIC: called `Option::unwrap()` on a `None` value
+--- arm 4: NaN KgConcept.score masking in score_kg_boost
+nan-only    boost=0 finite=true
+nan+finite  boost=1 finite=true
+EXP-011 RESULT: grep_panic=true markdown_panic=true dedup_panic=true
+EXP-011 PANIC CONFIRMED (safe-Rust panic, not UB)
+=== exit=0

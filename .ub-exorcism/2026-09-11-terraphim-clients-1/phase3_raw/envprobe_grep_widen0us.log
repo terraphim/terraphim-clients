@@ -1,0 +1,660 @@
+=== ITER 1 widen=0 00:03:49
+
+running 57 tests
+test hybrid_searcher::tests::kg_boost_does_not_match_concept_embedded_in_larger_word ... ok
+test hybrid_searcher::tests::kg_boost_no_concepts_is_a_noop ... ok
+test hybrid_searcher::tests::test_grep_options_default ... ok
+test hybrid_searcher::tests::kg_boost_keeps_author_only_chunk_below_real_auth_chunk ... ok
+test hybrid_searcher::tests::test_hybrid_results_empty ... ok
+test hybrid_searcher::tests::kg_boost_matches_concept_at_identifier_boundary ... ok
+test hybrid_searcher::tests::test_hybrid_results_to_chunks ... ok
+test kg_curation::tests::test_persist_concepts_empty_is_noop ... ok
+test kg_curation::tests::test_persist_concepts_skips_existing_files ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_expands_shared_normalised_term ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_uses_automata_not_substring_expansion ... ok
+test kg_curation::tests::test_persist_concepts_writes_markdown_files ... ok
+test hybrid_searcher::tests::kg_boost_promotes_matching_chunks_to_top ... ok
+test hybrid_searcher::tests::kg_boost_stacks_when_multiple_concepts_match ... ok
+test rlm_context::tests::test_build_prompt ... ok
+test rlm_context::tests::test_rlm_context_new ... ok
+test rlm_context::tests::test_rlm_context_with_chunks ... ok
+test openrouter_client::tests::test_openrouter_client_timeout_is_120_seconds ... ok
+test openrouter_client::tests::test_openrouter_client_base_url_resolution ... ok
+test rlm_context::tests::test_rlm_context_with_concepts ... ok
+test openrouter_client::tests::test_into_llm_client_returns_trait_object ... ok
+test openrouter_client::tests::test_openrouter_client_new_validates_inputs ... ok
+test rlm_context::tests::test_truncate ... ok
+test signatures::tests::test_answer_signature_parse ... ok
+test signatures::tests::test_answer_signature_parse_markdown_wrapped ... ok
+test signatures::tests::test_concept_extraction_signature_parse ... ok
+test signatures::tests::test_extract_json_finds_array_in_prose ... ok
+test signatures::tests::test_extract_json_finds_bare_json_in_prose ... ok
+test signatures::tests::test_extract_json_handles_unterminated_fence ... ok
+test signatures::tests::test_extract_json_prefers_json_fence_over_other_language ... ok
+test signatures::tests::test_extract_json_strips_generic_markdown_fence ... ok
+test signatures::tests::test_extract_json_strips_markdown_fences ... ok
+test signatures::tests::test_search_result_signature_invalid ... ok
+test signatures::tests::test_search_result_signature_parse ... ok
+test signatures::tests::test_signature_instructions ... ok
+test sufficiency_judge::tests::test_coverage_calculation ... ok
+test sufficiency_judge::tests::test_empty_results_insufficient ... ok
+test sufficiency_judge::tests::test_diversity_calculation ... ok
+test sufficiency_judge::tests::test_high_coverage_sufficient ... ok
+test sufficiency_judge::tests::test_judge_delegates_to_judge_with_metrics ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_empty_results ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_reports_measurements ... ok
+test sufficiency_judge::tests::test_kg_confidence_calculation ... ok
+test sufficiency_judge::tests::test_low_results_insufficient ... ok
+test hybrid_searcher::tests::default_build_greps_populated_directory ... ok
+test tests::grep_result_serialises_sufficiency_explanation ... ok
+test tests::rlm_requested_only_for_explicit_flags ... ok
+test tests::test_answer_prompt_includes_json_instructions ... ok
+test tests::test_grep_options_default ... ok
+test tests::test_list_prompt_excludes_json_instructions ... ok
+test tests::insufficient_path_propagates_chunk_count ... ok
+test hybrid_searcher::tests::multiple_search_paths_merge_results ... ok
+test tests::search_without_thesaurus_uses_fff_mode ... ok
+test tests::search_without_llm_degrades_to_search_only ... ok
+test tests::needs_synthesis_without_answer_skips_llm ... ok
+test tests::needs_synthesis_with_answer_invokes_llm ... ok
+test tests::force_rlm_without_answer_invokes_llm ... ok
+
+test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s
+
+
+[envprobe] summary: setenv=1 unsetenv=2 getenv=223 getenv_on_other_thread_after_first_write=101 strict_overlaps=0 widen_us=0
+=== ITER 1 exit=0
+=== ITER 2 widen=0 00:03:52
+
+running 57 tests
+test hybrid_searcher::tests::kg_boost_does_not_match_concept_embedded_in_larger_word ... ok
+test hybrid_searcher::tests::kg_boost_keeps_author_only_chunk_below_real_auth_chunk ... ok
+test hybrid_searcher::tests::kg_boost_no_concepts_is_a_noop ... ok
+test hybrid_searcher::tests::kg_boost_matches_concept_at_identifier_boundary ... ok
+test hybrid_searcher::tests::test_grep_options_default ... ok
+test hybrid_searcher::tests::test_hybrid_results_empty ... ok
+test hybrid_searcher::tests::test_hybrid_results_to_chunks ... ok
+test kg_curation::tests::test_persist_concepts_empty_is_noop ... ok
+test kg_curation::tests::test_persist_concepts_skips_existing_files ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_uses_automata_not_substring_expansion ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_expands_shared_normalised_term ... ok
+test kg_curation::tests::test_persist_concepts_writes_markdown_files ... ok
+test hybrid_searcher::tests::kg_boost_promotes_matching_chunks_to_top ... ok
+test rlm_context::tests::test_build_prompt ... ok
+test rlm_context::tests::test_rlm_context_new ... ok
+test hybrid_searcher::tests::kg_boost_stacks_when_multiple_concepts_match ... ok
+test rlm_context::tests::test_rlm_context_with_chunks ... ok
+test rlm_context::tests::test_rlm_context_with_concepts ... ok
+test rlm_context::tests::test_truncate ... ok
+test openrouter_client::tests::test_openrouter_client_timeout_is_120_seconds ... ok
+test openrouter_client::tests::test_into_llm_client_returns_trait_object ... ok
+test openrouter_client::tests::test_openrouter_client_base_url_resolution ... ok
+test openrouter_client::tests::test_openrouter_client_new_validates_inputs ... ok
+test signatures::tests::test_answer_signature_parse_markdown_wrapped ... ok
+test signatures::tests::test_concept_extraction_signature_parse ... ok
+test signatures::tests::test_answer_signature_parse ... ok
+test signatures::tests::test_extract_json_finds_array_in_prose ... ok
+test signatures::tests::test_extract_json_finds_bare_json_in_prose ... ok
+test signatures::tests::test_extract_json_handles_unterminated_fence ... ok
+test signatures::tests::test_extract_json_prefers_json_fence_over_other_language ... ok
+test signatures::tests::test_extract_json_strips_generic_markdown_fence ... ok
+test signatures::tests::test_extract_json_strips_markdown_fences ... ok
+test signatures::tests::test_search_result_signature_invalid ... ok
+test signatures::tests::test_search_result_signature_parse ... ok
+test signatures::tests::test_signature_instructions ... ok
+test sufficiency_judge::tests::test_coverage_calculation ... ok
+test sufficiency_judge::tests::test_diversity_calculation ... ok
+test sufficiency_judge::tests::test_empty_results_insufficient ... ok
+test sufficiency_judge::tests::test_high_coverage_sufficient ... ok
+test sufficiency_judge::tests::test_judge_delegates_to_judge_with_metrics ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_empty_results ... ok
+test sufficiency_judge::tests::test_kg_confidence_calculation ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_reports_measurements ... ok
+test sufficiency_judge::tests::test_low_results_insufficient ... ok
+test tests::grep_result_serialises_sufficiency_explanation ... ok
+test tests::rlm_requested_only_for_explicit_flags ... ok
+test tests::test_answer_prompt_includes_json_instructions ... ok
+test tests::test_grep_options_default ... ok
+test hybrid_searcher::tests::default_build_greps_populated_directory ... ok
+test tests::test_list_prompt_excludes_json_instructions ... ok
+test tests::search_without_thesaurus_uses_fff_mode ... ok
+test tests::search_without_llm_degrades_to_search_only ... ok
+test tests::needs_synthesis_without_answer_skips_llm ... ok
+test tests::insufficient_path_propagates_chunk_count ... ok
+test tests::force_rlm_without_answer_invokes_llm ... ok
+test hybrid_searcher::tests::multiple_search_paths_merge_results ... ok
+test tests::needs_synthesis_with_answer_invokes_llm ... ok
+
+test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+
+
+[envprobe] summary: setenv=1 unsetenv=2 getenv=223 getenv_on_other_thread_after_first_write=113 strict_overlaps=0 widen_us=0
+=== ITER 2 exit=0
+=== ITER 3 widen=0 00:03:55
+
+running 57 tests
+test hybrid_searcher::tests::kg_boost_no_concepts_is_a_noop ... ok
+test hybrid_searcher::tests::kg_boost_matches_concept_at_identifier_boundary ... ok
+test hybrid_searcher::tests::kg_boost_does_not_match_concept_embedded_in_larger_word ... ok
+test hybrid_searcher::tests::kg_boost_keeps_author_only_chunk_below_real_auth_chunk ... ok
+test hybrid_searcher::tests::test_grep_options_default ... ok
+test hybrid_searcher::tests::kg_boost_promotes_matching_chunks_to_top ... ok
+test hybrid_searcher::tests::test_hybrid_results_empty ... ok
+test hybrid_searcher::tests::test_hybrid_results_to_chunks ... ok
+test hybrid_searcher::tests::kg_boost_stacks_when_multiple_concepts_match ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_expands_shared_normalised_term ... ok
+test kg_curation::tests::test_persist_concepts_empty_is_noop ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_uses_automata_not_substring_expansion ... ok
+test kg_curation::tests::test_persist_concepts_skips_existing_files ... ok
+test kg_curation::tests::test_persist_concepts_writes_markdown_files ... ok
+test rlm_context::tests::test_build_prompt ... ok
+test rlm_context::tests::test_rlm_context_new ... ok
+test rlm_context::tests::test_rlm_context_with_chunks ... ok
+test rlm_context::tests::test_rlm_context_with_concepts ... ok
+test rlm_context::tests::test_truncate ... ok
+test hybrid_searcher::tests::default_build_greps_populated_directory ... ok
+test signatures::tests::test_answer_signature_parse ... ok
+test openrouter_client::tests::test_openrouter_client_timeout_is_120_seconds ... ok
+test openrouter_client::tests::test_into_llm_client_returns_trait_object ... ok
+test openrouter_client::tests::test_openrouter_client_base_url_resolution ... ok
+test signatures::tests::test_answer_signature_parse_markdown_wrapped ... ok
+test openrouter_client::tests::test_openrouter_client_new_validates_inputs ... ok
+test signatures::tests::test_concept_extraction_signature_parse ... ok
+test signatures::tests::test_extract_json_finds_array_in_prose ... ok
+test signatures::tests::test_extract_json_finds_bare_json_in_prose ... ok
+test signatures::tests::test_extract_json_handles_unterminated_fence ... ok
+test signatures::tests::test_extract_json_prefers_json_fence_over_other_language ... ok
+test signatures::tests::test_extract_json_strips_generic_markdown_fence ... ok
+test signatures::tests::test_extract_json_strips_markdown_fences ... ok
+test signatures::tests::test_search_result_signature_invalid ... ok
+test hybrid_searcher::tests::multiple_search_paths_merge_results ... ok
+test signatures::tests::test_search_result_signature_parse ... ok
+test signatures::tests::test_signature_instructions ... ok
+test sufficiency_judge::tests::test_coverage_calculation ... ok
+test sufficiency_judge::tests::test_diversity_calculation ... ok
+test sufficiency_judge::tests::test_empty_results_insufficient ... ok
+test sufficiency_judge::tests::test_high_coverage_sufficient ... ok
+test sufficiency_judge::tests::test_judge_delegates_to_judge_with_metrics ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_empty_results ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_reports_measurements ... ok
+test sufficiency_judge::tests::test_kg_confidence_calculation ... ok
+test sufficiency_judge::tests::test_low_results_insufficient ... ok
+test tests::grep_result_serialises_sufficiency_explanation ... ok
+test tests::rlm_requested_only_for_explicit_flags ... ok
+test tests::test_answer_prompt_includes_json_instructions ... ok
+test tests::test_grep_options_default ... ok
+test tests::test_list_prompt_excludes_json_instructions ... ok
+test tests::insufficient_path_propagates_chunk_count ... ok
+test tests::search_without_llm_degrades_to_search_only ... ok
+test tests::search_without_thesaurus_uses_fff_mode ... ok
+test tests::force_rlm_without_answer_invokes_llm ... ok
+test tests::needs_synthesis_with_answer_invokes_llm ... ok
+test tests::needs_synthesis_without_answer_skips_llm ... ok
+
+test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.39s
+
+
+[envprobe] summary: setenv=1 unsetenv=2 getenv=223 getenv_on_other_thread_after_first_write=91 strict_overlaps=0 widen_us=0
+=== ITER 3 exit=0
+=== ITER 4 widen=0 00:03:58
+
+running 57 tests
+test hybrid_searcher::tests::kg_boost_does_not_match_concept_embedded_in_larger_word ... ok
+test hybrid_searcher::tests::kg_boost_no_concepts_is_a_noop ... ok
+test hybrid_searcher::tests::kg_boost_matches_concept_at_identifier_boundary ... ok
+test hybrid_searcher::tests::kg_boost_keeps_author_only_chunk_below_real_auth_chunk ... ok
+test hybrid_searcher::tests::test_grep_options_default ... ok
+test hybrid_searcher::tests::kg_boost_promotes_matching_chunks_to_top ... ok
+test hybrid_searcher::tests::test_hybrid_results_empty ... ok
+test hybrid_searcher::tests::test_hybrid_results_to_chunks ... ok
+test hybrid_searcher::tests::kg_boost_stacks_when_multiple_concepts_match ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_expands_shared_normalised_term ... ok
+test kg_curation::tests::test_persist_concepts_empty_is_noop ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_uses_automata_not_substring_expansion ... ok
+test kg_curation::tests::test_persist_concepts_skips_existing_files ... ok
+test kg_curation::tests::test_persist_concepts_writes_markdown_files ... ok
+test rlm_context::tests::test_build_prompt ... ok
+test rlm_context::tests::test_rlm_context_new ... ok
+test rlm_context::tests::test_rlm_context_with_chunks ... ok
+test rlm_context::tests::test_rlm_context_with_concepts ... ok
+test openrouter_client::tests::test_openrouter_client_timeout_is_120_seconds ... ok
+test openrouter_client::tests::test_into_llm_client_returns_trait_object ... ok
+test rlm_context::tests::test_truncate ... ok
+test openrouter_client::tests::test_openrouter_client_new_validates_inputs ... ok
+test openrouter_client::tests::test_openrouter_client_base_url_resolution ... ok
+test hybrid_searcher::tests::default_build_greps_populated_directory ... ok
+test signatures::tests::test_answer_signature_parse ... ok
+test signatures::tests::test_answer_signature_parse_markdown_wrapped ... ok
+test signatures::tests::test_concept_extraction_signature_parse ... ok
+test signatures::tests::test_extract_json_finds_array_in_prose ... ok
+test signatures::tests::test_extract_json_finds_bare_json_in_prose ... ok
+test signatures::tests::test_extract_json_handles_unterminated_fence ... ok
+test signatures::tests::test_extract_json_prefers_json_fence_over_other_language ... ok
+test hybrid_searcher::tests::multiple_search_paths_merge_results ... ok
+test signatures::tests::test_extract_json_strips_generic_markdown_fence ... ok
+test signatures::tests::test_extract_json_strips_markdown_fences ... ok
+test signatures::tests::test_search_result_signature_invalid ... ok
+test signatures::tests::test_search_result_signature_parse ... ok
+test signatures::tests::test_signature_instructions ... ok
+test sufficiency_judge::tests::test_coverage_calculation ... ok
+test sufficiency_judge::tests::test_diversity_calculation ... ok
+test sufficiency_judge::tests::test_empty_results_insufficient ... ok
+test sufficiency_judge::tests::test_high_coverage_sufficient ... ok
+test sufficiency_judge::tests::test_judge_delegates_to_judge_with_metrics ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_empty_results ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_reports_measurements ... ok
+test sufficiency_judge::tests::test_kg_confidence_calculation ... ok
+test sufficiency_judge::tests::test_low_results_insufficient ... ok
+test tests::grep_result_serialises_sufficiency_explanation ... ok
+test tests::rlm_requested_only_for_explicit_flags ... ok
+test tests::test_answer_prompt_includes_json_instructions ... ok
+test tests::test_grep_options_default ... ok
+test tests::test_list_prompt_excludes_json_instructions ... ok
+test tests::insufficient_path_propagates_chunk_count ... ok
+test tests::search_without_thesaurus_uses_fff_mode ... ok
+test tests::search_without_llm_degrades_to_search_only ... ok
+test tests::force_rlm_without_answer_invokes_llm ... ok
+test tests::needs_synthesis_with_answer_invokes_llm ... ok
+test tests::needs_synthesis_without_answer_skips_llm ... ok
+
+test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.51s
+
+
+[envprobe] summary: setenv=1 unsetenv=2 getenv=223 getenv_on_other_thread_after_first_write=100 strict_overlaps=0 widen_us=0
+=== ITER 4 exit=0
+=== ITER 5 widen=0 00:04:01
+
+running 57 tests
+test hybrid_searcher::tests::kg_boost_does_not_match_concept_embedded_in_larger_word ... ok
+test hybrid_searcher::tests::kg_boost_matches_concept_at_identifier_boundary ... ok
+test hybrid_searcher::tests::kg_boost_keeps_author_only_chunk_below_real_auth_chunk ... ok
+test hybrid_searcher::tests::kg_boost_no_concepts_is_a_noop ... ok
+test hybrid_searcher::tests::kg_boost_promotes_matching_chunks_to_top ... ok
+test hybrid_searcher::tests::test_grep_options_default ... ok
+test hybrid_searcher::tests::kg_boost_stacks_when_multiple_concepts_match ... ok
+test hybrid_searcher::tests::test_hybrid_results_empty ... ok
+test hybrid_searcher::tests::test_hybrid_results_to_chunks ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_expands_shared_normalised_term ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_uses_automata_not_substring_expansion ... ok
+test kg_curation::tests::test_persist_concepts_empty_is_noop ... ok
+test kg_curation::tests::test_persist_concepts_writes_markdown_files ... ok
+test kg_curation::tests::test_persist_concepts_skips_existing_files ... ok
+test openrouter_client::tests::test_into_llm_client_returns_trait_object ... ok
+test openrouter_client::tests::test_openrouter_client_new_validates_inputs ... ok
+test openrouter_client::tests::test_openrouter_client_timeout_is_120_seconds ... ok
+test rlm_context::tests::test_rlm_context_new ... ok
+test rlm_context::tests::test_build_prompt ... ok
+test openrouter_client::tests::test_openrouter_client_base_url_resolution ... ok
+test rlm_context::tests::test_rlm_context_with_chunks ... ok
+test rlm_context::tests::test_rlm_context_with_concepts ... ok
+test rlm_context::tests::test_truncate ... ok
+test signatures::tests::test_answer_signature_parse ... ok
+test signatures::tests::test_answer_signature_parse_markdown_wrapped ... ok
+test signatures::tests::test_concept_extraction_signature_parse ... ok
+test hybrid_searcher::tests::default_build_greps_populated_directory ... ok
+test signatures::tests::test_extract_json_finds_array_in_prose ... ok
+test signatures::tests::test_extract_json_finds_bare_json_in_prose ... ok
+test signatures::tests::test_extract_json_handles_unterminated_fence ... ok
+test signatures::tests::test_extract_json_prefers_json_fence_over_other_language ... ok
+test signatures::tests::test_extract_json_strips_generic_markdown_fence ... ok
+test signatures::tests::test_extract_json_strips_markdown_fences ... ok
+test signatures::tests::test_search_result_signature_invalid ... ok
+test signatures::tests::test_search_result_signature_parse ... ok
+test signatures::tests::test_signature_instructions ... ok
+test hybrid_searcher::tests::multiple_search_paths_merge_results ... ok
+test sufficiency_judge::tests::test_coverage_calculation ... ok
+test sufficiency_judge::tests::test_diversity_calculation ... ok
+test sufficiency_judge::tests::test_empty_results_insufficient ... ok
+test sufficiency_judge::tests::test_high_coverage_sufficient ... ok
+test sufficiency_judge::tests::test_judge_delegates_to_judge_with_metrics ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_empty_results ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_reports_measurements ... ok
+test sufficiency_judge::tests::test_kg_confidence_calculation ... ok
+test sufficiency_judge::tests::test_low_results_insufficient ... ok
+test tests::grep_result_serialises_sufficiency_explanation ... ok
+test tests::rlm_requested_only_for_explicit_flags ... ok
+test tests::insufficient_path_propagates_chunk_count ... ok
+test tests::test_answer_prompt_includes_json_instructions ... ok
+test tests::test_grep_options_default ... ok
+test tests::test_list_prompt_excludes_json_instructions ... ok
+test tests::search_without_thesaurus_uses_fff_mode ... ok
+test tests::search_without_llm_degrades_to_search_only ... ok
+test tests::needs_synthesis_with_answer_invokes_llm ... ok
+test tests::force_rlm_without_answer_invokes_llm ... ok
+test tests::needs_synthesis_without_answer_skips_llm ... ok
+
+test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.41s
+
+
+[envprobe] summary: setenv=1 unsetenv=2 getenv=223 getenv_on_other_thread_after_first_write=93 strict_overlaps=0 widen_us=0
+=== ITER 5 exit=0
+=== ITER 6 widen=0 00:04:04
+
+running 57 tests
+test hybrid_searcher::tests::kg_boost_does_not_match_concept_embedded_in_larger_word ... ok
+test hybrid_searcher::tests::kg_boost_keeps_author_only_chunk_below_real_auth_chunk ... ok
+test hybrid_searcher::tests::kg_boost_matches_concept_at_identifier_boundary ... ok
+test hybrid_searcher::tests::kg_boost_no_concepts_is_a_noop ... ok
+test hybrid_searcher::tests::kg_boost_promotes_matching_chunks_to_top ... ok
+test hybrid_searcher::tests::test_grep_options_default ... ok
+test hybrid_searcher::tests::kg_boost_stacks_when_multiple_concepts_match ... ok
+test hybrid_searcher::tests::test_hybrid_results_empty ... ok
+test hybrid_searcher::tests::test_hybrid_results_to_chunks ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_expands_shared_normalised_term ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_uses_automata_not_substring_expansion ... ok
+test kg_curation::tests::test_persist_concepts_empty_is_noop ... ok
+test kg_curation::tests::test_persist_concepts_skips_existing_files ... ok
+test kg_curation::tests::test_persist_concepts_writes_markdown_files ... ok
+test rlm_context::tests::test_build_prompt ... ok
+test rlm_context::tests::test_rlm_context_new ... ok
+test rlm_context::tests::test_rlm_context_with_chunks ... ok
+test hybrid_searcher::tests::default_build_greps_populated_directory ... ok
+test rlm_context::tests::test_rlm_context_with_concepts ... ok
+test rlm_context::tests::test_truncate ... ok
+test signatures::tests::test_answer_signature_parse ... ok
+test signatures::tests::test_answer_signature_parse_markdown_wrapped ... ok
+test openrouter_client::tests::test_openrouter_client_new_validates_inputs ... ok
+test signatures::tests::test_concept_extraction_signature_parse ... ok
+test openrouter_client::tests::test_openrouter_client_base_url_resolution ... ok
+test openrouter_client::tests::test_into_llm_client_returns_trait_object ... ok
+test openrouter_client::tests::test_openrouter_client_timeout_is_120_seconds ... ok
+test signatures::tests::test_extract_json_finds_array_in_prose ... ok
+test signatures::tests::test_extract_json_finds_bare_json_in_prose ... ok
+test signatures::tests::test_extract_json_handles_unterminated_fence ... ok
+test signatures::tests::test_extract_json_prefers_json_fence_over_other_language ... ok
+test signatures::tests::test_extract_json_strips_generic_markdown_fence ... ok
+test signatures::tests::test_extract_json_strips_markdown_fences ... ok
+test signatures::tests::test_search_result_signature_invalid ... ok
+test signatures::tests::test_signature_instructions ... ok
+test signatures::tests::test_search_result_signature_parse ... ok
+test sufficiency_judge::tests::test_coverage_calculation ... ok
+test sufficiency_judge::tests::test_diversity_calculation ... ok
+test sufficiency_judge::tests::test_empty_results_insufficient ... ok
+test sufficiency_judge::tests::test_judge_delegates_to_judge_with_metrics ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_empty_results ... ok
+test sufficiency_judge::tests::test_high_coverage_sufficient ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_reports_measurements ... ok
+test sufficiency_judge::tests::test_kg_confidence_calculation ... ok
+test sufficiency_judge::tests::test_low_results_insufficient ... ok
+test tests::grep_result_serialises_sufficiency_explanation ... ok
+test hybrid_searcher::tests::multiple_search_paths_merge_results ... ok
+test tests::rlm_requested_only_for_explicit_flags ... ok
+test tests::test_answer_prompt_includes_json_instructions ... ok
+test tests::test_grep_options_default ... ok
+test tests::test_list_prompt_excludes_json_instructions ... ok
+test tests::search_without_thesaurus_uses_fff_mode ... ok
+test tests::insufficient_path_propagates_chunk_count ... ok
+test tests::search_without_llm_degrades_to_search_only ... ok
+test tests::force_rlm_without_answer_invokes_llm ... ok
+test tests::needs_synthesis_with_answer_invokes_llm ... ok
+test tests::needs_synthesis_without_answer_skips_llm ... ok
+
+test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.36s
+
+
+[envprobe] summary: setenv=1 unsetenv=2 getenv=223 getenv_on_other_thread_after_first_write=91 strict_overlaps=0 widen_us=0
+=== ITER 6 exit=0
+=== ITER 7 widen=0 00:04:06
+
+running 57 tests
+test hybrid_searcher::tests::kg_boost_no_concepts_is_a_noop ... ok
+test hybrid_searcher::tests::test_grep_options_default ... ok
+test hybrid_searcher::tests::kg_boost_does_not_match_concept_embedded_in_larger_word ... ok
+test hybrid_searcher::tests::kg_boost_matches_concept_at_identifier_boundary ... ok
+test hybrid_searcher::tests::test_hybrid_results_empty ... ok
+test hybrid_searcher::tests::test_hybrid_results_to_chunks ... ok
+test hybrid_searcher::tests::kg_boost_promotes_matching_chunks_to_top ... ok
+test hybrid_searcher::tests::kg_boost_keeps_author_only_chunk_below_real_auth_chunk ... ok
+test hybrid_searcher::tests::kg_boost_stacks_when_multiple_concepts_match ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_expands_shared_normalised_term ... ok
+test kg_curation::tests::test_persist_concepts_empty_is_noop ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_uses_automata_not_substring_expansion ... ok
+test kg_curation::tests::test_persist_concepts_skips_existing_files ... ok
+test kg_curation::tests::test_persist_concepts_writes_markdown_files ... ok
+test rlm_context::tests::test_build_prompt ... ok
+test rlm_context::tests::test_rlm_context_new ... ok
+test rlm_context::tests::test_rlm_context_with_chunks ... ok
+test rlm_context::tests::test_rlm_context_with_concepts ... ok
+test rlm_context::tests::test_truncate ... ok
+test signatures::tests::test_answer_signature_parse ... ok
+test signatures::tests::test_answer_signature_parse_markdown_wrapped ... ok
+test signatures::tests::test_concept_extraction_signature_parse ... ok
+test signatures::tests::test_extract_json_finds_array_in_prose ... ok
+test signatures::tests::test_extract_json_finds_bare_json_in_prose ... ok
+test signatures::tests::test_extract_json_handles_unterminated_fence ... ok
+test signatures::tests::test_extract_json_prefers_json_fence_over_other_language ... ok
+test signatures::tests::test_extract_json_strips_generic_markdown_fence ... ok
+test signatures::tests::test_extract_json_strips_markdown_fences ... ok
+test signatures::tests::test_search_result_signature_invalid ... ok
+test signatures::tests::test_search_result_signature_parse ... ok
+test signatures::tests::test_signature_instructions ... ok
+test sufficiency_judge::tests::test_coverage_calculation ... ok
+test openrouter_client::tests::test_openrouter_client_new_validates_inputs ... ok
+test openrouter_client::tests::test_openrouter_client_timeout_is_120_seconds ... ok
+test openrouter_client::tests::test_openrouter_client_base_url_resolution ... ok
+test sufficiency_judge::tests::test_diversity_calculation ... ok
+test openrouter_client::tests::test_into_llm_client_returns_trait_object ... ok
+test sufficiency_judge::tests::test_empty_results_insufficient ... ok
+test sufficiency_judge::tests::test_high_coverage_sufficient ... ok
+test sufficiency_judge::tests::test_judge_delegates_to_judge_with_metrics ... ok
+test hybrid_searcher::tests::default_build_greps_populated_directory ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_empty_results ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_reports_measurements ... ok
+test sufficiency_judge::tests::test_kg_confidence_calculation ... ok
+test sufficiency_judge::tests::test_low_results_insufficient ... ok
+test tests::grep_result_serialises_sufficiency_explanation ... ok
+test hybrid_searcher::tests::multiple_search_paths_merge_results ... ok
+test tests::rlm_requested_only_for_explicit_flags ... ok
+test tests::test_answer_prompt_includes_json_instructions ... ok
+test tests::test_grep_options_default ... ok
+test tests::test_list_prompt_excludes_json_instructions ... ok
+test tests::insufficient_path_propagates_chunk_count ... ok
+test tests::search_without_thesaurus_uses_fff_mode ... ok
+test tests::search_without_llm_degrades_to_search_only ... ok
+test tests::needs_synthesis_without_answer_skips_llm ... ok
+test tests::force_rlm_without_answer_invokes_llm ... ok
+test tests::needs_synthesis_with_answer_invokes_llm ... ok
+
+test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.28s
+
+
+[envprobe] summary: setenv=1 unsetenv=2 getenv=223 getenv_on_other_thread_after_first_write=113 strict_overlaps=0 widen_us=0
+=== ITER 7 exit=0
+=== ITER 8 widen=0 00:04:09
+
+running 57 tests
+test hybrid_searcher::tests::kg_boost_no_concepts_is_a_noop ... ok
+test hybrid_searcher::tests::kg_boost_matches_concept_at_identifier_boundary ... ok
+test hybrid_searcher::tests::kg_boost_keeps_author_only_chunk_below_real_auth_chunk ... ok
+test hybrid_searcher::tests::test_grep_options_default ... ok
+test hybrid_searcher::tests::kg_boost_does_not_match_concept_embedded_in_larger_word ... ok
+test hybrid_searcher::tests::kg_boost_promotes_matching_chunks_to_top ... ok
+test hybrid_searcher::tests::test_hybrid_results_empty ... ok
+test hybrid_searcher::tests::kg_boost_stacks_when_multiple_concepts_match ... ok
+test hybrid_searcher::tests::test_hybrid_results_to_chunks ... ok
+test kg_curation::tests::test_persist_concepts_empty_is_noop ... ok
+test kg_curation::tests::test_persist_concepts_skips_existing_files ... ok
+test kg_curation::tests::test_persist_concepts_writes_markdown_files ... ok
+test rlm_context::tests::test_build_prompt ... ok
+test rlm_context::tests::test_rlm_context_new ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_expands_shared_normalised_term ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_uses_automata_not_substring_expansion ... ok
+test rlm_context::tests::test_rlm_context_with_chunks ... ok
+test rlm_context::tests::test_rlm_context_with_concepts ... ok
+test rlm_context::tests::test_truncate ... ok
+test openrouter_client::tests::test_into_llm_client_returns_trait_object ... ok
+test openrouter_client::tests::test_openrouter_client_base_url_resolution ... ok
+test openrouter_client::tests::test_openrouter_client_timeout_is_120_seconds ... ok
+test openrouter_client::tests::test_openrouter_client_new_validates_inputs ... ok
+test signatures::tests::test_answer_signature_parse ... ok
+test signatures::tests::test_concept_extraction_signature_parse ... ok
+test signatures::tests::test_answer_signature_parse_markdown_wrapped ... ok
+test signatures::tests::test_extract_json_finds_array_in_prose ... ok
+test signatures::tests::test_extract_json_finds_bare_json_in_prose ... ok
+test signatures::tests::test_extract_json_handles_unterminated_fence ... ok
+test signatures::tests::test_extract_json_prefers_json_fence_over_other_language ... ok
+test signatures::tests::test_extract_json_strips_generic_markdown_fence ... ok
+test signatures::tests::test_extract_json_strips_markdown_fences ... ok
+test signatures::tests::test_search_result_signature_invalid ... ok
+test signatures::tests::test_search_result_signature_parse ... ok
+test signatures::tests::test_signature_instructions ... ok
+test sufficiency_judge::tests::test_coverage_calculation ... ok
+test sufficiency_judge::tests::test_diversity_calculation ... ok
+test sufficiency_judge::tests::test_empty_results_insufficient ... ok
+test sufficiency_judge::tests::test_high_coverage_sufficient ... ok
+test sufficiency_judge::tests::test_judge_delegates_to_judge_with_metrics ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_empty_results ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_reports_measurements ... ok
+test sufficiency_judge::tests::test_kg_confidence_calculation ... ok
+test sufficiency_judge::tests::test_low_results_insufficient ... ok
+test tests::grep_result_serialises_sufficiency_explanation ... ok
+test tests::rlm_requested_only_for_explicit_flags ... ok
+test tests::test_answer_prompt_includes_json_instructions ... ok
+test tests::test_grep_options_default ... ok
+test tests::test_list_prompt_excludes_json_instructions ... ok
+test hybrid_searcher::tests::default_build_greps_populated_directory ... ok
+test hybrid_searcher::tests::multiple_search_paths_merge_results ... ok
+test tests::search_without_thesaurus_uses_fff_mode ... ok
+test tests::search_without_llm_degrades_to_search_only ... ok
+test tests::insufficient_path_propagates_chunk_count ... ok
+test tests::needs_synthesis_with_answer_invokes_llm ... ok
+test tests::force_rlm_without_answer_invokes_llm ... ok
+test tests::needs_synthesis_without_answer_skips_llm ... ok
+
+test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s
+
+
+[envprobe] summary: setenv=1 unsetenv=2 getenv=223 getenv_on_other_thread_after_first_write=107 strict_overlaps=0 widen_us=0
+=== ITER 8 exit=0
+=== ITER 9 widen=0 00:04:12
+
+running 57 tests
+test hybrid_searcher::tests::kg_boost_does_not_match_concept_embedded_in_larger_word ... ok
+test hybrid_searcher::tests::kg_boost_matches_concept_at_identifier_boundary ... ok
+test hybrid_searcher::tests::kg_boost_no_concepts_is_a_noop ... ok
+test hybrid_searcher::tests::kg_boost_keeps_author_only_chunk_below_real_auth_chunk ... ok
+test hybrid_searcher::tests::test_grep_options_default ... ok
+test hybrid_searcher::tests::test_hybrid_results_empty ... ok
+test hybrid_searcher::tests::test_hybrid_results_to_chunks ... ok
+test hybrid_searcher::tests::kg_boost_promotes_matching_chunks_to_top ... ok
+test kg_curation::tests::test_persist_concepts_empty_is_noop ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_expands_shared_normalised_term ... ok
+test kg_curation::tests::test_persist_concepts_skips_existing_files ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_uses_automata_not_substring_expansion ... ok
+test kg_curation::tests::test_persist_concepts_writes_markdown_files ... ok
+test hybrid_searcher::tests::kg_boost_stacks_when_multiple_concepts_match ... ok
+test rlm_context::tests::test_build_prompt ... ok
+test rlm_context::tests::test_rlm_context_new ... ok
+test rlm_context::tests::test_rlm_context_with_chunks ... ok
+test rlm_context::tests::test_rlm_context_with_concepts ... ok
+test rlm_context::tests::test_truncate ... ok
+test hybrid_searcher::tests::default_build_greps_populated_directory ... ok
+test signatures::tests::test_answer_signature_parse ... ok
+test signatures::tests::test_answer_signature_parse_markdown_wrapped ... ok
+test openrouter_client::tests::test_openrouter_client_timeout_is_120_seconds ... ok
+test openrouter_client::tests::test_openrouter_client_new_validates_inputs ... ok
+test openrouter_client::tests::test_into_llm_client_returns_trait_object ... ok
+test signatures::tests::test_concept_extraction_signature_parse ... ok
+test openrouter_client::tests::test_openrouter_client_base_url_resolution ... ok
+test signatures::tests::test_extract_json_finds_array_in_prose ... ok
+test signatures::tests::test_extract_json_finds_bare_json_in_prose ... ok
+test signatures::tests::test_extract_json_handles_unterminated_fence ... ok
+test signatures::tests::test_extract_json_prefers_json_fence_over_other_language ... ok
+test hybrid_searcher::tests::multiple_search_paths_merge_results ... ok
+test signatures::tests::test_extract_json_strips_generic_markdown_fence ... ok
+test signatures::tests::test_extract_json_strips_markdown_fences ... ok
+test signatures::tests::test_search_result_signature_invalid ... ok
+test signatures::tests::test_search_result_signature_parse ... ok
+test signatures::tests::test_signature_instructions ... ok
+test sufficiency_judge::tests::test_coverage_calculation ... ok
+test sufficiency_judge::tests::test_diversity_calculation ... ok
+test sufficiency_judge::tests::test_empty_results_insufficient ... ok
+test sufficiency_judge::tests::test_high_coverage_sufficient ... ok
+test sufficiency_judge::tests::test_judge_delegates_to_judge_with_metrics ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_empty_results ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_reports_measurements ... ok
+test sufficiency_judge::tests::test_kg_confidence_calculation ... ok
+test sufficiency_judge::tests::test_low_results_insufficient ... ok
+test tests::grep_result_serialises_sufficiency_explanation ... ok
+test tests::rlm_requested_only_for_explicit_flags ... ok
+test tests::test_grep_options_default ... ok
+test tests::test_answer_prompt_includes_json_instructions ... ok
+test tests::test_list_prompt_excludes_json_instructions ... ok
+test tests::insufficient_path_propagates_chunk_count ... ok
+test tests::search_without_thesaurus_uses_fff_mode ... ok
+test tests::search_without_llm_degrades_to_search_only ... ok
+test tests::force_rlm_without_answer_invokes_llm ... ok
+test tests::needs_synthesis_with_answer_invokes_llm ... ok
+test tests::needs_synthesis_without_answer_skips_llm ... ok
+
+test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.44s
+
+
+[envprobe] summary: setenv=1 unsetenv=2 getenv=223 getenv_on_other_thread_after_first_write=103 strict_overlaps=0 widen_us=0
+=== ITER 9 exit=0
+=== ITER 10 widen=0 00:04:15
+
+running 57 tests
+test hybrid_searcher::tests::kg_boost_no_concepts_is_a_noop ... ok
+test hybrid_searcher::tests::kg_boost_matches_concept_at_identifier_boundary ... ok
+test hybrid_searcher::tests::test_grep_options_default ... ok
+test hybrid_searcher::tests::kg_boost_does_not_match_concept_embedded_in_larger_word ... ok
+test hybrid_searcher::tests::test_hybrid_results_empty ... ok
+test hybrid_searcher::tests::test_hybrid_results_to_chunks ... ok
+test hybrid_searcher::tests::kg_boost_promotes_matching_chunks_to_top ... ok
+test hybrid_searcher::tests::kg_boost_keeps_author_only_chunk_below_real_auth_chunk ... ok
+test kg_curation::tests::test_persist_concepts_empty_is_noop ... ok
+test kg_curation::tests::test_persist_concepts_skips_existing_files ... ok
+test kg_curation::tests::test_persist_concepts_writes_markdown_files ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_expands_shared_normalised_term ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_uses_automata_not_substring_expansion ... ok
+test rlm_context::tests::test_build_prompt ... ok
+test rlm_context::tests::test_rlm_context_new ... ok
+test rlm_context::tests::test_rlm_context_with_chunks ... ok
+test rlm_context::tests::test_rlm_context_with_concepts ... ok
+test rlm_context::tests::test_truncate ... ok
+test signatures::tests::test_answer_signature_parse ... ok
+test signatures::tests::test_answer_signature_parse_markdown_wrapped ... ok
+test signatures::tests::test_concept_extraction_signature_parse ... ok
+test signatures::tests::test_extract_json_finds_array_in_prose ... ok
+test signatures::tests::test_extract_json_finds_bare_json_in_prose ... ok
+test signatures::tests::test_extract_json_handles_unterminated_fence ... ok
+test signatures::tests::test_extract_json_prefers_json_fence_over_other_language ... ok
+test signatures::tests::test_extract_json_strips_generic_markdown_fence ... ok
+test hybrid_searcher::tests::kg_boost_stacks_when_multiple_concepts_match ... ok
+test signatures::tests::test_extract_json_strips_markdown_fences ... ok
+test signatures::tests::test_search_result_signature_invalid ... ok
+test signatures::tests::test_search_result_signature_parse ... ok
+test signatures::tests::test_signature_instructions ... ok
+test sufficiency_judge::tests::test_coverage_calculation ... ok
+test sufficiency_judge::tests::test_diversity_calculation ... ok
+test sufficiency_judge::tests::test_empty_results_insufficient ... ok
+test sufficiency_judge::tests::test_high_coverage_sufficient ... ok
+test sufficiency_judge::tests::test_judge_delegates_to_judge_with_metrics ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_empty_results ... ok
+test sufficiency_judge::tests::test_kg_confidence_calculation ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_reports_measurements ... ok
+test sufficiency_judge::tests::test_low_results_insufficient ... ok
+test tests::grep_result_serialises_sufficiency_explanation ... ok
+test openrouter_client::tests::test_openrouter_client_timeout_is_120_seconds ... ok
+test openrouter_client::tests::test_openrouter_client_new_validates_inputs ... ok
+test openrouter_client::tests::test_into_llm_client_returns_trait_object ... ok
+test openrouter_client::tests::test_openrouter_client_base_url_resolution ... ok
+test tests::rlm_requested_only_for_explicit_flags ... ok
+test tests::test_answer_prompt_includes_json_instructions ... ok
+test tests::test_grep_options_default ... ok
+test tests::test_list_prompt_excludes_json_instructions ... ok
+test hybrid_searcher::tests::default_build_greps_populated_directory ... ok
+test tests::search_without_thesaurus_uses_fff_mode ... ok
+test tests::search_without_llm_degrades_to_search_only ... ok
+test tests::insufficient_path_propagates_chunk_count ... ok
+test tests::needs_synthesis_with_answer_invokes_llm ... ok
+test hybrid_searcher::tests::multiple_search_paths_merge_results ... ok
+test tests::needs_synthesis_without_answer_skips_llm ... ok
+test tests::force_rlm_without_answer_invokes_llm ... ok
+
+test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.18s
+
+
+[envprobe] summary: setenv=1 unsetenv=2 getenv=224 getenv_on_other_thread_after_first_write=96 strict_overlaps=0 widen_us=0
+=== ITER 10 exit=0

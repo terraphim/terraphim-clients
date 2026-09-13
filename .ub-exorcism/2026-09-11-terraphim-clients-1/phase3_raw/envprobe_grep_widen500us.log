@@ -1,0 +1,1008 @@
+=== ITER 1 widen=500 00:04:17
+
+running 57 tests
+test hybrid_searcher::tests::kg_boost_no_concepts_is_a_noop ... ok
+test hybrid_searcher::tests::kg_boost_matches_concept_at_identifier_boundary ... ok
+test hybrid_searcher::tests::kg_boost_does_not_match_concept_embedded_in_larger_word ... ok
+test hybrid_searcher::tests::test_grep_options_default ... ok
+test hybrid_searcher::tests::test_hybrid_results_empty ... ok
+test hybrid_searcher::tests::kg_boost_keeps_author_only_chunk_below_real_auth_chunk ... ok
+test hybrid_searcher::tests::kg_boost_promotes_matching_chunks_to_top ... ok
+test hybrid_searcher::tests::test_hybrid_results_to_chunks ... ok
+test hybrid_searcher::tests::kg_boost_stacks_when_multiple_concepts_match ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_expands_shared_normalised_term ... ok
+test kg_curation::tests::test_persist_concepts_empty_is_noop ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_uses_automata_not_substring_expansion ... ok
+test kg_curation::tests::test_persist_concepts_skips_existing_files ... ok
+test kg_curation::tests::test_persist_concepts_writes_markdown_files ... ok
+test rlm_context::tests::test_build_prompt ... ok
+test rlm_context::tests::test_rlm_context_new ... ok
+test rlm_context::tests::test_rlm_context_with_chunks ... ok
+test rlm_context::tests::test_rlm_context_with_concepts ... ok
+test rlm_context::tests::test_truncate ... ok
+test signatures::tests::test_answer_signature_parse ... ok
+test signatures::tests::test_answer_signature_parse_markdown_wrapped ... ok
+test signatures::tests::test_concept_extraction_signature_parse ... ok
+test signatures::tests::test_extract_json_finds_array_in_prose ... ok
+test signatures::tests::test_extract_json_finds_bare_json_in_prose ... ok
+test openrouter_client::tests::test_openrouter_client_new_validates_inputs ... ok
+test signatures::tests::test_extract_json_handles_unterminated_fence ... ok
+test signatures::tests::test_extract_json_prefers_json_fence_over_other_language ... ok
+test signatures::tests::test_extract_json_strips_generic_markdown_fence ... ok
+test openrouter_client::tests::test_into_llm_client_returns_trait_object ... ok
+test signatures::tests::test_extract_json_strips_markdown_fences ... ok
+test openrouter_client::tests::test_openrouter_client_timeout_is_120_seconds ... ok
+test signatures::tests::test_search_result_signature_invalid ... ok
+test signatures::tests::test_signature_instructions ... ok
+test signatures::tests::test_search_result_signature_parse ... ok
+test sufficiency_judge::tests::test_coverage_calculation ... ok
+test openrouter_client::tests::test_openrouter_client_base_url_resolution ... ok
+test sufficiency_judge::tests::test_diversity_calculation ... ok
+test sufficiency_judge::tests::test_empty_results_insufficient ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_empty_results ... ok
+test sufficiency_judge::tests::test_judge_delegates_to_judge_with_metrics ... ok
+test sufficiency_judge::tests::test_high_coverage_sufficient ... ok
+test sufficiency_judge::tests::test_kg_confidence_calculation ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_reports_measurements ... ok
+test sufficiency_judge::tests::test_low_results_insufficient ... ok
+test tests::grep_result_serialises_sufficiency_explanation ... ok
+test tests::rlm_requested_only_for_explicit_flags ... ok
+test tests::test_answer_prompt_includes_json_instructions ... ok
+test tests::test_grep_options_default ... ok
+test tests::test_list_prompt_excludes_json_instructions ... ok
+test tests::insufficient_path_propagates_chunk_count ... ok
+test tests::search_without_thesaurus_uses_fff_mode ... ok
+test tests::search_without_llm_degrades_to_search_only ... ok
+test hybrid_searcher::tests::default_build_greps_populated_directory ... ok
+test tests::needs_synthesis_without_answer_skips_llm ... ok
+test tests::needs_synthesis_with_answer_invokes_llm ... ok
+test hybrid_searcher::tests::multiple_search_paths_merge_results ... ok
+test tests::force_rlm_without_answer_invokes_llm ... ok
+
+test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.25s
+
+
+[envprobe] summary: setenv=1 unsetenv=2 getenv=223 getenv_on_other_thread_after_first_write=103 strict_overlaps=0 widen_us=500
+=== ITER 1 exit=0
+=== ITER 2 widen=500 00:04:20
+
+running 57 tests
+test hybrid_searcher::tests::kg_boost_no_concepts_is_a_noop ... ok
+test hybrid_searcher::tests::kg_boost_matches_concept_at_identifier_boundary ... ok
+test hybrid_searcher::tests::kg_boost_does_not_match_concept_embedded_in_larger_word ... ok
+test hybrid_searcher::tests::kg_boost_keeps_author_only_chunk_below_real_auth_chunk ... ok
+test hybrid_searcher::tests::kg_boost_promotes_matching_chunks_to_top ... ok
+test hybrid_searcher::tests::test_grep_options_default ... ok
+test hybrid_searcher::tests::test_hybrid_results_empty ... ok
+test hybrid_searcher::tests::test_hybrid_results_to_chunks ... ok
+
+[envprobe] OVERLAP: getenv("OSLogRateLimit") on thread 24875480 while writer active on thread 24875481
+0   libenvprobe.dylib                   0x0000000104398880 my_getenv + 192
+test hybrid_searcher::tests::thesaurus_query_concepts_uses_automata_not_substring_expansion ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_expands_shared_normalised_term ... ok
+test hybrid_searcher::tests::kg_boost_stacks_when_multiple_concepts_match ... ok
+test kg_curation::tests::test_persist_concepts_empty_is_noop ... ok
+1   libsystem_trace.dylib               0x00000001870d3384 _os_trace_metadata_init + 172
+test kg_curation::tests::test_persist_concepts_skips_existing_files ... ok
+test kg_curation::tests::test_persist_concepts_writes_markdown_files ... ok
+2   libdispatch.dylib                   0x000000018721c02c _firehose_task_buffer_init + 212
+3   libdispatch.dylib                   0x000000018720d4b0 _dispatch_client_callout + 16
+4   libdispatch.dylib                   0x00000001871f6630 _dispatch_once_callout + 32
+test rlm_context::tests::test_build_prompt ... ok
+test rlm_context::tests::test_rlm_context_new ... ok
+test rlm_context::tests::test_rlm_context_with_chunks ... ok
+5   libdispatch.dylib                   0x000000018721ab94 voucher_activity_get_metadata_buffer + 108
+6   libsystem_trace.dylib               0x00000001870d2e28 _os_trace_init_slow + 260
+test rlm_context::tests::test_rlm_context_with_concepts ... ok
+7   librustc-nightly_rt.tsan.dylib      0x0000000104a43908 wrap_dispatch_once + 256
+8   librustc-nightly_rt.tsan.dylib      0x0000000104a439bc wrap_dispatch_once_f + 156
+9   libsystem_trace.dylib               0x00000001870dab60 os_state_add_handler + 348
+test rlm_context::tests::test_truncate ... ok
+test signatures::tests::test_answer_signature_parse ... ok
+test signatures::tests::test_answer_signature_parse_markdown_wrapped ... ok
+test signatures::tests::test_concept_extraction_signature_parse ... ok
+test signatures::tests::test_extract_json_finds_array_in_prose ... ok
+test signatures::tests::test_extract_json_finds_bare_json_in_prose ... ok
+test signatures::tests::test_extract_json_handles_unterminated_fence ... ok
+10  SystemConfiguration                 0x00000001888d7428 ____SCDynamicStoreInitialize_block_invoke + 116
+11  librustc-nightly_rt.tsan.dylib      0x0000000104a43908 wrap_dispatch_once + 256
+12  SystemConfiguration                 0x00000001888d5040 __SCDynamicStoreCreateInternal + 544
+test signatures::tests::test_extract_json_prefers_json_fence_over_other_language ... ok
+13  SystemConfiguration                 0x00000001888d5d44 SCDynamicStoreCreateWithOptions + 68
+test signatures::tests::test_extract_json_strips_generic_markdown_fence ... ok
+test signatures::tests::test_extract_json_strips_markdown_fences ... ok
+test signatures::tests::test_search_result_signature_invalid ... ok
+test signatures::tests::test_search_result_signature_parse ... ok
+test hybrid_searcher::tests::default_build_greps_populated_directory ... ok
+test signatures::tests::test_signature_instructions ... ok
+test sufficiency_judge::tests::test_coverage_calculation ... ok
+test sufficiency_judge::tests::test_diversity_calculation ... ok
+test sufficiency_judge::tests::test_empty_results_insufficient ... ok
+test sufficiency_judge::tests::test_high_coverage_sufficient ... ok
+test sufficiency_judge::tests::test_judge_delegates_to_judge_with_metrics ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_empty_results ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_reports_measurements ... ok
+test sufficiency_judge::tests::test_kg_confidence_calculation ... ok
+test sufficiency_judge::tests::test_low_results_insufficient ... ok
+test tests::grep_result_serialises_sufficiency_explanation ... ok
+test tests::rlm_requested_only_for_explicit_flags ... ok
+test hybrid_searcher::tests::multiple_search_paths_merge_results ... ok
+test tests::test_answer_prompt_includes_json_instructions ... ok
+test tests::test_grep_options_default ... ok
+test tests::test_list_prompt_excludes_json_instructions ... ok
+test tests::insufficient_path_propagates_chunk_count ... ok
+14  terraphim_grep-c20f6268f6f81f63     0x00000001008d95f4 _RNvMs0_NtCs8cL68D4V6fR_20system_configuration13dynamic_storeNtB5_14SCDynamicStore6create + 196
+15  terraphim_grep-c20f6268f6f81f63     0x00000001008ce4e0 _RNvMs_NtCs8cL68D4V6fR_20system_configuration13dynamic_storeINtB4_21SCDynamicStoreBuilderuE5buildCsdiKaSvCGoMj_10hyper_util + 336
+16  terraphim_grep-c20f6268f6f81f63     0x00000001008a371c _RNvNtNtNtNtCsdiKaSvCGoMj_10hyper_util6client5proxy7matcher3mac11with_system + 156
+17  terraphim_grep-c20f6268f6f81f63     0x00000001008b9f74 _RNvMs2_NtNtNtCsdiKaSvCGoMj_10hyper_util6client5proxy7matcherNtB5_7Builder11from_system + 48
+test tests::search_without_thesaurus_uses_fff_mode ... ok
+18  terraphim_grep-c20f6268f6f81f63     0x00000001008b9960 _RNvMNtNtNtCsdiKaSvCGoMj_10hyper_util6client5proxy7matcherNtB2_7Matcher11from_system + 36
+19  terraphim_grep-c20f6268f6f81f63     0x0000000100417eb0 _RNvMs2_NtCs1U6CEVISJ0l_7reqwest5proxyNtB5_7Matcher6system + 40
+20  terraphim_grep-c20f6268f6f81f63     0x0000000100418324 _RNvMs2_NtNtCs1U6CEVISJ0l_7reqwest10async_impl6clientNtB5_13ClientBuilder5build + 512
+21  terraphim_grep-c20f6268f6f81f63     0x00000001000b2a64 _RNvMNtCsdCZj06SHlo3_14terraphim_grep17openrouter_clientNtB2_16OpenRouterClient3new + 548
+22  terraphim_grep-c20f6268f6f81f63     0x0000000100090890 _RNvNtNtCsdCZj06SHlo3_14terraphim_grep17openrouter_client5testss_41test_into_llm_client_returns_trait_object + 68
+23  terraphim_grep-c20f6268f6f81f63     0x00000001000dd840 _RNCNvNtNtCsdCZj06SHlo3_14terraphim_grep17openrouter_client5tests41test_into_llm_client_returns_trait_object0B7_ + 52
+24  terraphim_grep-c20f6268f6f81f63     0x00000001000c9204 _RNvYNCNvNtNtCsdCZj06SHlo3_14terraphim_grep17openrouter_client5tests41test_into_llm_client_returns_trait_object0INtNtNtCs2Nm7W9hpCY5_4core3ops8function6FnOnceuE9call_onceBa_ + 40
+25  terraphim_grep-c20f6268f6f81f63     0x000000010013b8f8 _RNvYFEINtNtCs2Nm7W9hpCY5_4core6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEINtNtNtB9_3ops8function6FnOnceuE9call_onceCs2e6vFH1gWe2_4test + 56
+26  terraphim_grep-c20f6268f6f81f63     0x0000000100210dd4 _RINvCs2e6vFH1gWe2_4test28___rust_begin_short_backtraceINtNtCs2Nm7W9hpCY5_4core6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEFEBQ_EB2_ + 60
+27  terraphim_grep-c20f6268f6f81f63     0x00000001001bda18 _RNvMs2_NtCs2e6vFH1gWe2_4test5typesNtB5_12RunnableTest3run + 136
+28  terraphim_grep-c20f6268f6f81f63     0x0000000100217854 _RNCNvCs2e6vFH1gWe2_4test19run_test_in_process0B3_ + 76
+29  terraphim_grep-c20f6268f6f81f63     0x0000000100169350 _RNvXsn_NtNtCs2Nm7W9hpCY5_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNvCs2e6vFH1gWe2_4test19run_test_in_process0EINtNtNtB9_3ops8function6FnOnceuE9call_onceB1d_ + 76
+30  terraphim_grep-c20f6268f6f81f63     0x00000001001a1e4c _RINvNvNtCs6IkSv4vjECX_3std9panicking12catch_unwind7do_callINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNvCs2e6vFH1gWe2_4test19run_test_in_process0EINtNtB11_6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEEB1Z_ + 152
+31  terraphim_grep-c20f6268f6f81f63     0x00000001001ac5a4 __rust_try + 56
+test tests::search_without_llm_degrades_to_search_only ... ok
+32  terraphim_grep-c20f6268f6f81f63     0x00000001001a11dc _RINvNtCs6IkSv4vjECX_3std9panicking12catch_unwindINtNtCs2Nm7W9hpCY5_4core6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEINtNtNtBP_5panic11unwind_safe16AssertUnwindSafeNCNvCs2e6vFH1gWe2_4test19run_test_in_process0EEB2P_ + 180
+33  terraphim_grep-c20f6268f6f81f63     0x000000010022289c _RINvNtCs6IkSv4vjECX_3std5panic12catch_unwindINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNvCs2e6vFH1gWe2_4test19run_test_in_process0EINtNtBN_6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEEB1L_ + 76
+34  terraphim_grep-c20f6268f6f81f63     0x0000000100219988 _RNvCs2e6vFH1gWe2_4test19run_test_in_process + 456
+35  terraphim_grep-c20f6268f6f81f63     0x000000010021846c _RNCNvCs2e6vFH1gWe2_4test8run_test0B3_ + 448
+36  terraphim_grep-c20f6268f6f81f63     0x0000000100218844 _RNCNvCs2e6vFH1gWe2_4test8run_tests_0B3_ + 608
+37  terraphim_grep-c20f6268f6f81f63     0x0000000100180ba4 _RINvNtNtCs6IkSv4vjECX_3std3sys9backtrace28___rust_begin_short_backtraceNCNvCs2e6vFH1gWe2_4test8run_tests_0uEB1b_ + 52
+38  terraphim_grep-c20f6268f6f81f63     0x0000000100134fb4 _RNCNCINvNtNtCs6IkSv4vjECX_3std6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00B14_ + 140
+39  terraphim_grep-c20f6268f6f81f63     0x00000001001692e0 _RNvXsn_NtNtCs2Nm7W9hpCY5_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCs6IkSv4vjECX_3std6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2e_ + 68
+40  terraphim_grep-c20f6268f6f81f63     0x00000001001a1d34 _RINvNvNtCs6IkSv4vjECX_3std9panicking12catch_unwind7do_callINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00EuEB2L_ + 148
+41  terraphim_grep-c20f6268f6f81f63     0x00000001001ac5a4 __rust_try + 56
+42  terraphim_grep-c20f6268f6f81f63     0x00000001001a13c8 _RINvNtCs6IkSv4vjECX_3std9panicking12catch_unwinduINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB4_6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00EEB2C_ + 176
+43  terraphim_grep-c20f6268f6f81f63     0x000000010022281c _RINvNtCs6IkSv4vjECX_3std5panic12catch_unwindINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB4_6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00EuEB2x_ + 68
+44  terraphim_grep-c20f6268f6f81f63     0x0000000100134a00 _RNCINvNtNtCs6IkSv4vjECX_3std6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_0B12_ + 200
+45  terraphim_grep-c20f6268f6f81f63     0x0000000100136084 _RNSNvYNCINvNtNtCs6IkSv4vjECX_3std6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_0INtNtNtCs2Nm7W9hpCY5_4core3ops8function6FnOnceuE9call_once6vtableB17_ + 52
+46  terraphim_grep-c20f6268f6f81f63     0x00000001016fbf80 _RNvXst_NtCskvfJcxttRmW_5alloc5boxedINtB5_3BoxDINtNtNtCs2Nm7W9hpCY5_4core3ops8function6FnOnceuEp6OutputuNtNtBP_6marker4SendEL_EIBJ_uE9call_onceCs6IkSv4vjECX_3std + 156
+test tests::force_rlm_without_answer_invokes_llm ... ok
+47  terraphim_grep-c20f6268f6f81f63     0x0000000101612d4c _RNvNvMs0_NtNtNtCs6IkSv4vjECX_3std3sys6thread4unixNtB7_6Thread3new12thread_start + 268
+test openrouter_client::tests::test_openrouter_client_new_validates_inputs ... ok
+test openrouter_client::tests::test_into_llm_client_returns_trait_object ... ok
+test openrouter_client::tests::test_openrouter_client_base_url_resolution ... ok
+test openrouter_client::tests::test_openrouter_client_timeout_is_120_seconds ... ok
+test tests::needs_synthesis_with_answer_invokes_llm ... ok
+test tests::needs_synthesis_without_answer_skips_llm ... ok
+
+test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.38s
+
+
+[envprobe] summary: setenv=1 unsetenv=2 getenv=223 getenv_on_other_thread_after_first_write=112 strict_overlaps=1 widen_us=500
+=== ITER 2 exit=0
+=== ITER 3 widen=500 00:04:23
+
+running 57 tests
+test hybrid_searcher::tests::kg_boost_does_not_match_concept_embedded_in_larger_word ... ok
+test hybrid_searcher::tests::kg_boost_keeps_author_only_chunk_below_real_auth_chunk ... ok
+test hybrid_searcher::tests::kg_boost_matches_concept_at_identifier_boundary ... ok
+test hybrid_searcher::tests::kg_boost_no_concepts_is_a_noop ... ok
+test hybrid_searcher::tests::test_grep_options_default ... ok
+test hybrid_searcher::tests::kg_boost_promotes_matching_chunks_to_top ... ok
+test hybrid_searcher::tests::test_hybrid_results_empty ... ok
+test hybrid_searcher::tests::test_hybrid_results_to_chunks ... ok
+test kg_curation::tests::test_persist_concepts_empty_is_noop ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_uses_automata_not_substring_expansion ... ok
+test kg_curation::tests::test_persist_concepts_skips_existing_files ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_expands_shared_normalised_term ... ok
+test kg_curation::tests::test_persist_concepts_writes_markdown_files ... ok
+test hybrid_searcher::tests::kg_boost_stacks_when_multiple_concepts_match ... ok
+test rlm_context::tests::test_build_prompt ... ok
+test rlm_context::tests::test_rlm_context_new ... ok
+test rlm_context::tests::test_rlm_context_with_chunks ... ok
+test rlm_context::tests::test_rlm_context_with_concepts ... ok
+test rlm_context::tests::test_truncate ... ok
+test signatures::tests::test_answer_signature_parse ... ok
+test signatures::tests::test_answer_signature_parse_markdown_wrapped ... ok
+test signatures::tests::test_extract_json_finds_array_in_prose ... ok
+test signatures::tests::test_concept_extraction_signature_parse ... ok
+test signatures::tests::test_extract_json_finds_bare_json_in_prose ... ok
+test signatures::tests::test_extract_json_handles_unterminated_fence ... ok
+test signatures::tests::test_extract_json_prefers_json_fence_over_other_language ... ok
+test signatures::tests::test_extract_json_strips_generic_markdown_fence ... ok
+test signatures::tests::test_extract_json_strips_markdown_fences ... ok
+test signatures::tests::test_search_result_signature_invalid ... ok
+test openrouter_client::tests::test_openrouter_client_new_validates_inputs ... ok
+test openrouter_client::tests::test_into_llm_client_returns_trait_object ... ok
+test signatures::tests::test_search_result_signature_parse ... ok
+test openrouter_client::tests::test_openrouter_client_timeout_is_120_seconds ... ok
+test openrouter_client::tests::test_openrouter_client_base_url_resolution ... ok
+test signatures::tests::test_signature_instructions ... ok
+test sufficiency_judge::tests::test_coverage_calculation ... ok
+test sufficiency_judge::tests::test_diversity_calculation ... ok
+test sufficiency_judge::tests::test_empty_results_insufficient ... ok
+test sufficiency_judge::tests::test_high_coverage_sufficient ... ok
+test sufficiency_judge::tests::test_judge_delegates_to_judge_with_metrics ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_empty_results ... ok
+test hybrid_searcher::tests::default_build_greps_populated_directory ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_reports_measurements ... ok
+test sufficiency_judge::tests::test_kg_confidence_calculation ... ok
+test sufficiency_judge::tests::test_low_results_insufficient ... ok
+test hybrid_searcher::tests::multiple_search_paths_merge_results ... ok
+test tests::grep_result_serialises_sufficiency_explanation ... ok
+test tests::rlm_requested_only_for_explicit_flags ... ok
+test tests::insufficient_path_propagates_chunk_count ... ok
+test tests::test_answer_prompt_includes_json_instructions ... ok
+test tests::test_grep_options_default ... ok
+test tests::test_list_prompt_excludes_json_instructions ... ok
+test tests::search_without_thesaurus_uses_fff_mode ... ok
+test tests::needs_synthesis_with_answer_invokes_llm ... ok
+test tests::search_without_llm_degrades_to_search_only ... ok
+test tests::force_rlm_without_answer_invokes_llm ... ok
+test tests::needs_synthesis_without_answer_skips_llm ... ok
+
+test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.36s
+
+
+[envprobe] summary: setenv=1 unsetenv=2 getenv=223 getenv_on_other_thread_after_first_write=100 strict_overlaps=0 widen_us=500
+=== ITER 3 exit=0
+=== ITER 4 widen=500 00:04:26
+
+running 57 tests
+test hybrid_searcher::tests::kg_boost_no_concepts_is_a_noop ... ok
+test hybrid_searcher::tests::test_grep_options_default ... ok
+test hybrid_searcher::tests::kg_boost_matches_concept_at_identifier_boundary ... ok
+test hybrid_searcher::tests::kg_boost_does_not_match_concept_embedded_in_larger_word ... ok
+test hybrid_searcher::tests::test_hybrid_results_empty ... ok
+test hybrid_searcher::tests::test_hybrid_results_to_chunks ... ok
+test kg_curation::tests::test_persist_concepts_empty_is_noop ... ok
+test hybrid_searcher::tests::kg_boost_keeps_author_only_chunk_below_real_auth_chunk ... ok
+test kg_curation::tests::test_persist_concepts_skips_existing_files ... ok
+test kg_curation::tests::test_persist_concepts_writes_markdown_files ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_expands_shared_normalised_term ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_uses_automata_not_substring_expansion ... ok
+test rlm_context::tests::test_build_prompt ... ok
+test hybrid_searcher::tests::kg_boost_promotes_matching_chunks_to_top ... ok
+test hybrid_searcher::tests::kg_boost_stacks_when_multiple_concepts_match ... ok
+test rlm_context::tests::test_rlm_context_new ... ok
+test rlm_context::tests::test_rlm_context_with_chunks ... ok
+test openrouter_client::tests::test_openrouter_client_new_validates_inputs ... ok
+test openrouter_client::tests::test_into_llm_client_returns_trait_object ... ok
+test rlm_context::tests::test_rlm_context_with_concepts ... ok
+test openrouter_client::tests::test_openrouter_client_timeout_is_120_seconds ... ok
+test rlm_context::tests::test_truncate ... ok
+test openrouter_client::tests::test_openrouter_client_base_url_resolution ... ok
+test signatures::tests::test_answer_signature_parse ... ok
+test signatures::tests::test_answer_signature_parse_markdown_wrapped ... ok
+test signatures::tests::test_extract_json_finds_array_in_prose ... ok
+test signatures::tests::test_concept_extraction_signature_parse ... ok
+test signatures::tests::test_extract_json_finds_bare_json_in_prose ... ok
+test signatures::tests::test_extract_json_handles_unterminated_fence ... ok
+test signatures::tests::test_extract_json_prefers_json_fence_over_other_language ... ok
+test signatures::tests::test_extract_json_strips_generic_markdown_fence ... ok
+test signatures::tests::test_extract_json_strips_markdown_fences ... ok
+test signatures::tests::test_search_result_signature_invalid ... ok
+test signatures::tests::test_search_result_signature_parse ... ok
+test signatures::tests::test_signature_instructions ... ok
+test sufficiency_judge::tests::test_diversity_calculation ... ok
+test sufficiency_judge::tests::test_coverage_calculation ... ok
+test sufficiency_judge::tests::test_empty_results_insufficient ... ok
+test sufficiency_judge::tests::test_high_coverage_sufficient ... ok
+test sufficiency_judge::tests::test_judge_delegates_to_judge_with_metrics ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_empty_results ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_reports_measurements ... ok
+test sufficiency_judge::tests::test_kg_confidence_calculation ... ok
+test sufficiency_judge::tests::test_low_results_insufficient ... ok
+test tests::grep_result_serialises_sufficiency_explanation ... ok
+test hybrid_searcher::tests::default_build_greps_populated_directory ... ok
+test tests::rlm_requested_only_for_explicit_flags ... ok
+test tests::test_answer_prompt_includes_json_instructions ... ok
+test tests::test_grep_options_default ... ok
+test tests::test_list_prompt_excludes_json_instructions ... ok
+test tests::insufficient_path_propagates_chunk_count ... ok
+test tests::search_without_llm_degrades_to_search_only ... ok
+test tests::search_without_thesaurus_uses_fff_mode ... ok
+test hybrid_searcher::tests::multiple_search_paths_merge_results ... ok
+test tests::force_rlm_without_answer_invokes_llm ... ok
+test tests::needs_synthesis_with_answer_invokes_llm ... ok
+test tests::needs_synthesis_without_answer_skips_llm ... ok
+
+test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.36s
+
+
+[envprobe] summary: setenv=1 unsetenv=2 getenv=223 getenv_on_other_thread_after_first_write=103 strict_overlaps=0 widen_us=500
+=== ITER 4 exit=0
+=== ITER 5 widen=500 00:04:28
+
+running 57 tests
+test hybrid_searcher::tests::kg_boost_does_not_match_concept_embedded_in_larger_word ... ok
+test hybrid_searcher::tests::kg_boost_matches_concept_at_identifier_boundary ... ok
+test hybrid_searcher::tests::kg_boost_keeps_author_only_chunk_below_real_auth_chunk ... ok
+test hybrid_searcher::tests::kg_boost_no_concepts_is_a_noop ... ok
+test hybrid_searcher::tests::kg_boost_promotes_matching_chunks_to_top ... ok
+test hybrid_searcher::tests::kg_boost_stacks_when_multiple_concepts_match ... ok
+test hybrid_searcher::tests::test_grep_options_default ... ok
+
+[envprobe] OVERLAP: getenv("OSLogRateLimit") on thread 24883730 while writer active on thread 24883762
+0   libenvprobe.dylib                   0x0000000106ec0880 my_getenv + 192
+1   libsystem_trace.dylib               0x00000001870d3384 _os_trace_metadata_init + 172
+2   libdispatch.dylib                   0x000000018721c02c _firehose_task_buffer_init + 212
+3   libdispatch.dylib                   0x000000018720d4b0 _dispatch_client_callout + 16
+4   libdispatch.dylib                   0x00000001871f6630 _dispatch_once_callout + 32
+5   libdispatch.dylib                   0x000000018721ab94 voucher_activity_get_metadata_buffer + 108
+6   libsystem_trace.dylib               0x00000001870d2e28 _os_trace_init_slow + 260
+7   librustc-nightly_rt.tsan.dylib      0x00000001075e7908 wrap_dispatch_once + 256
+8   librustc-nightly_rt.tsan.dylib      0x00000001075e79bc wrap_dispatch_once_f + 156
+9   libsystem_trace.dylib               0x00000001870dab60 os_state_add_handler + 348
+10  SystemConfiguration                 0x00000001888d7428 ____SCDynamicStoreInitialize_block_invoke + 116
+11  librustc-nightly_rt.tsan.dylib      0x00000001075e7908 wrap_dispatch_once + 256
+12  SystemConfiguration                 0x00000001888d5040 __SCDynamicStoreCreateInternal + 544
+13  SystemConfiguration                 0x00000001888d5d44 SCDynamicStoreCreateWithOptions + 68
+14  terraphim_grep-c20f6268f6f81f63     0x00000001034015f4 _RNvMs0_NtCs8cL68D4V6fR_20system_configuration13dynamic_storeNtB5_14SCDynamicStore6create + 196
+15  terraphim_grep-c20f6268f6f81f63     0x00000001033f64e0 _RNvMs_NtCs8cL68D4V6fR_20system_configuration13dynamic_storeINtB4_21SCDynamicStoreBuilderuE5buildCsdiKaSvCGoMj_10hyper_util + 336
+16  terraphim_grep-c20f6268f6f81f63     0x00000001033cb71c _RNvNtNtNtNtCsdiKaSvCGoMj_10hyper_util6client5proxy7matcher3mac11with_system + 156
+17  terraphim_grep-c20f6268f6f81f63     0x00000001033e1f74 _RNvMs2_NtNtNtCsdiKaSvCGoMj_10hyper_util6client5proxy7matcherNtB5_7Builder11from_system + 48
+18  terraphim_grep-c20f6268f6f81f63     0x00000001033e1960 _RNvMNtNtNtCsdiKaSvCGoMj_10hyper_util6client5proxy7matcherNtB2_7Matcher11from_system + 36
+19  terraphim_grep-c20f6268f6f81f63     0x0000000102f3feb0 _RNvMs2_NtCs1U6CEVISJ0l_7reqwest5proxyNtB5_7Matcher6system + 40
+20  terraphim_grep-c20f6268f6f81f63     0x0000000102f40324 _RNvMs2_NtNtCs1U6CEVISJ0l_7reqwest10async_impl6clientNtB5_13ClientBuilder5build + 512
+21  terraphim_grep-c20f6268f6f81f63     0x0000000102bdaa64 _RNvMNtCsdCZj06SHlo3_14terraphim_grep17openrouter_clientNtB2_16OpenRouterClient3new + 548
+22  terraphim_grep-c20f6268f6f81f63     0x0000000102bb8890 _RNvNtNtCsdCZj06SHlo3_14terraphim_grep17openrouter_client5testss_41test_into_llm_client_returns_trait_object + 68
+23  terraphim_grep-c20f6268f6f81f63     0x0000000102c05840 _RNCNvNtNtCsdCZj06SHlo3_14terraphim_grep17openrouter_client5tests41test_into_llm_client_returns_trait_object0B7_ + 52
+24  terraphim_grep-c20f6268f6f81f63     0x0000000102bf1204 _RNvYNCNvNtNtCsdCZj06SHlo3_14terraphim_grep17openrouter_client5tests41test_into_llm_client_returns_trait_object0INtNtNtCs2Nm7W9hpCY5_4core3ops8function6FnOnceuE9call_onceBa_ + 40
+25  terraphim_grep-c20f6268f6f81f63     0x0000000102c638f8 _RNvYFEINtNtCs2Nm7W9hpCY5_4core6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEINtNtNtB9_3ops8function6FnOnceuE9call_onceCs2e6vFH1gWe2_4test + 56
+26  terraphim_grep-c20f6268f6f81f63     0x0000000102d38dd4 _RINvCs2e6vFH1gWe2_4test28___rust_begin_short_backtraceINtNtCs2Nm7W9hpCY5_4core6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEFEBQ_EB2_ + 60
+27  terraphim_grep-c20f6268f6f81f63     0x0000000102ce5a18 _RNvMs2_NtCs2e6vFH1gWe2_4test5typesNtB5_12RunnableTest3run + 136
+28  terraphim_grep-c20f6268f6f81f63     0x0000000102d3f854 _RNCNvCs2e6vFH1gWe2_4test19run_test_in_process0B3_ + 76
+29  terraphim_grep-c20f6268f6f81f63     0x0000000102c91350 _RNvXsn_NtNtCs2Nm7W9hpCY5_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNvCs2e6vFH1gWe2_4test19run_test_in_process0EINtNtNtB9_3ops8function6FnOnceuE9call_onceB1d_ + 76
+30  terraphim_grep-c20f6268f6f81f63     0x0000000102cc9e4c _RINvNvNtCs6IkSv4vjECX_3std9panicking12catch_unwind7do_callINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNvCs2e6vFH1gWe2_4test19run_test_in_process0EINtNtB11_6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEEB1Z_ + 152
+31  terraphim_grep-c20f6268f6f81f63     0x0000000102cd45a4 __rust_try + 56
+32  terraphim_grep-c20f6268f6f81f63     0x0000000102cc91dc _RINvNtCs6IkSv4vjECX_3std9panicking12catch_unwindINtNtCs2Nm7W9hpCY5_4core6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEINtNtNtBP_5panic11unwind_safe16AssertUnwindSafeNCNvCs2e6vFH1gWe2_4test19run_test_in_process0EEB2P_ + 180
+33  terraphim_grep-c20f6268f6f81f63     0x0000000102d4a89c _RINvNtCs6IkSv4vjECX_3std5panic12catch_unwindINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNvCs2e6vFH1gWe2_4test19run_test_in_process0EINtNtBN_6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEEB1L_ + 76
+34  terraphim_grep-c20f6268f6f81f63     0x0000000102d41988 _RNvCs2e6vFH1gWe2_4test19run_test_in_process + 456
+35  terraphim_grep-c20f6268f6f81f63     0x0000000102d4046c _RNCNvCs2e6vFH1gWe2_4test8run_test0B3_ + 448
+36  terraphim_grep-c20f6268f6f81f63     0x0000000102d40844 _RNCNvCs2e6vFH1gWe2_4test8run_tests_0B3_ + 608
+test hybrid_searcher::tests::test_hybrid_results_empty ... ok
+37  terraphim_grep-c20f6268f6f81f63     0x0000000102ca8ba4 _RINvNtNtCs6IkSv4vjECX_3std3sys9backtrace28___rust_begin_short_backtraceNCNvCs2e6vFH1gWe2_4test8run_tests_0uEB1b_ + 52
+38  terraphim_grep-c20f6268f6f81f63     0x0000000102c5cfb4 _RNCNCINvNtNtCs6IkSv4vjECX_3std6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00B14_ + 140
+39  terraphim_grep-c20f6268f6f81f63     0x0000000102c912e0 _RNvXsn_NtNtCs2Nm7W9hpCY5_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCs6IkSv4vjECX_3std6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2e_ + 68
+40  terraphim_grep-c20f6268f6f81f63     0x0000000102cc9d34 _RINvNvNtCs6IkSv4vjECX_3std9panicking12catch_unwind7do_callINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00EuEB2L_ + 148
+41  terraphim_grep-c20f6268f6f81f63     0x0000000102cd45a4 __rust_try + 56
+42  terraphim_grep-c20f6268f6f81f63     0x0000000102cc93c8 _RINvNtCs6IkSv4vjECX_3std9panicking12catch_unwinduINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB4_6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00EEB2C_ + 176
+43  terraphim_grep-c20f6268f6f81f63     0x0000000102d4a81c _RINvNtCs6IkSv4vjECX_3std5panic12catch_unwindINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB4_6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00EuEB2x_ + 68
+44  terraphim_grep-c20f6268f6f81f63     0x0000000102c5ca00 _RNCINvNtNtCs6IkSv4vjECX_3std6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_0B12_ + 200
+45  terraphim_grep-c20f6268f6f81f63     0x0000000102c5e084 _RNSNvYNCINvNtNtCs6IkSv4vjECX_3std6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_0INtNtNtCs2Nm7W9hpCY5_4core3ops8function6FnOnceuE9call_once6vtableB17_ + 52
+46  terraphim_grep-c20f6268f6f81f63     0x0000000104223f80 _RNvXst_NtCskvfJcxttRmW_5alloc5boxedINtB5_3BoxDINtNtNtCs2Nm7W9hpCY5_4core3ops8function6FnOnceuEp6OutputuNtNtBP_6marker4SendEL_EIBJ_uE9call_onceCs6IkSv4vjECX_3std + 156
+47  terraphim_grep-c20f6268f6f81f63     0x000000010413ad4c _RNvNvMs0_NtNtNtCs6IkSv4vjECX_3std3sys6thread4unixNtB7_6Thread3new12thread_start + 268
+test hybrid_searcher::tests::test_hybrid_results_to_chunks ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_expands_shared_normalised_term ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_uses_automata_not_substring_expansion ... ok
+test kg_curation::tests::test_persist_concepts_empty_is_noop ... ok
+test kg_curation::tests::test_persist_concepts_skips_existing_files ... ok
+test kg_curation::tests::test_persist_concepts_writes_markdown_files ... ok
+test rlm_context::tests::test_build_prompt ... ok
+test openrouter_client::tests::test_into_llm_client_returns_trait_object ... ok
+test openrouter_client::tests::test_openrouter_client_new_validates_inputs ... ok
+test openrouter_client::tests::test_openrouter_client_timeout_is_120_seconds ... ok
+test rlm_context::tests::test_rlm_context_new ... ok
+test openrouter_client::tests::test_openrouter_client_base_url_resolution ... ok
+test rlm_context::tests::test_rlm_context_with_chunks ... ok
+test rlm_context::tests::test_rlm_context_with_concepts ... ok
+test rlm_context::tests::test_truncate ... ok
+test signatures::tests::test_answer_signature_parse ... ok
+test signatures::tests::test_answer_signature_parse_markdown_wrapped ... ok
+test signatures::tests::test_concept_extraction_signature_parse ... ok
+test hybrid_searcher::tests::default_build_greps_populated_directory ... ok
+test signatures::tests::test_extract_json_finds_array_in_prose ... ok
+test signatures::tests::test_extract_json_finds_bare_json_in_prose ... ok
+test signatures::tests::test_extract_json_handles_unterminated_fence ... ok
+test signatures::tests::test_extract_json_prefers_json_fence_over_other_language ... ok
+test signatures::tests::test_extract_json_strips_generic_markdown_fence ... ok
+test signatures::tests::test_extract_json_strips_markdown_fences ... ok
+test signatures::tests::test_search_result_signature_invalid ... ok
+test signatures::tests::test_signature_instructions ... ok
+test signatures::tests::test_search_result_signature_parse ... ok
+test sufficiency_judge::tests::test_empty_results_insufficient ... ok
+test sufficiency_judge::tests::test_diversity_calculation ... ok
+test sufficiency_judge::tests::test_coverage_calculation ... ok
+test sufficiency_judge::tests::test_high_coverage_sufficient ... ok
+test sufficiency_judge::tests::test_judge_delegates_to_judge_with_metrics ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_empty_results ... ok
+test sufficiency_judge::tests::test_kg_confidence_calculation ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_reports_measurements ... ok
+test sufficiency_judge::tests::test_low_results_insufficient ... ok
+test tests::grep_result_serialises_sufficiency_explanation ... ok
+test tests::rlm_requested_only_for_explicit_flags ... ok
+test tests::test_answer_prompt_includes_json_instructions ... ok
+test tests::test_grep_options_default ... ok
+test hybrid_searcher::tests::multiple_search_paths_merge_results ... ok
+test tests::test_list_prompt_excludes_json_instructions ... ok
+test tests::insufficient_path_propagates_chunk_count ... ok
+test tests::search_without_llm_degrades_to_search_only ... ok
+test tests::search_without_thesaurus_uses_fff_mode ... ok
+test tests::force_rlm_without_answer_invokes_llm ... ok
+test tests::needs_synthesis_with_answer_invokes_llm ... ok
+test tests::needs_synthesis_without_answer_skips_llm ... ok
+
+test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.64s
+
+
+[envprobe] summary: setenv=1 unsetenv=2 getenv=223 getenv_on_other_thread_after_first_write=102 strict_overlaps=1 widen_us=500
+=== ITER 5 exit=0
+=== ITER 6 widen=500 00:04:32
+
+running 57 tests
+test hybrid_searcher::tests::kg_boost_no_concepts_is_a_noop ... ok
+test hybrid_searcher::tests::kg_boost_does_not_match_concept_embedded_in_larger_word ... ok
+test hybrid_searcher::tests::kg_boost_matches_concept_at_identifier_boundary ... ok
+test hybrid_searcher::tests::kg_boost_keeps_author_only_chunk_below_real_auth_chunk ... ok
+test hybrid_searcher::tests::kg_boost_promotes_matching_chunks_to_top ... ok
+test hybrid_searcher::tests::test_grep_options_default ... ok
+test hybrid_searcher::tests::kg_boost_stacks_when_multiple_concepts_match ... ok
+test hybrid_searcher::tests::test_hybrid_results_empty ... ok
+
+[envprobe] OVERLAP: getenv("ACTIVITY_LOG_STDERR") on thread 24886892 while writer active on thread 24886893
+0   libenvprobe.dylib                   0x0000000104bd8880 my_getenv + 192
+1   libsystem_trace.dylib               0x00000001870d30b4 _os_trace_init_slow + 912
+2   librustc-nightly_rt.tsan.dylib      0x000000010521f908 wrap_dispatch_once + 256
+3   librustc-nightly_rt.tsan.dylib      0x000000010521f9bc wrap_dispatch_once_f + 156
+4   libsystem_trace.dylib               0x00000001870dab60 os_state_add_handler + 348
+5   SystemConfiguration                 0x00000001888d7428 ____SCDynamicStoreInitialize_block_invoke + 116
+6   librustc-nightly_rt.tsan.dylib      0x000000010521f908 wrap_dispatch_once + 256
+7   SystemConfiguration                 0x00000001888d5040 __SCDynamicStoreCreateInternal + 544
+8   SystemConfiguration                 0x00000001888d5d44 SCDynamicStoreCreateWithOptions + 68
+9   terraphim_grep-c20f6268f6f81f63     0x00000001011195f4 _RNvMs0_NtCs8cL68D4V6fR_20system_configuration13dynamic_storeNtB5_14SCDynamicStore6create + 196
+10  terraphim_grep-c20f6268f6f81f63     0x000000010110e4e0 _RNvMs_NtCs8cL68D4V6fR_20system_configuration13dynamic_storeINtB4_21SCDynamicStoreBuilderuE5buildCsdiKaSvCGoMj_10hyper_util + 336
+test hybrid_searcher::tests::test_hybrid_results_to_chunks ... 11  terraphim_grep-c20f6268f6f81f63     0x00000001010e371c _RNvNtNtNtNtCsdiKaSvCGoMj_10hyper_util6client5proxy7matcher3mac11with_system + 156
+12  terraphim_grep-c20f6268f6f81f63     0x00000001010f9f74 _RNvMs2_NtNtNtCsdiKaSvCGoMj_10hyper_util6client5proxy7matcherNtB5_7Builder11from_system + 48
+13  terraphim_grep-c20f6268f6f81f63     0x00000001010f9960 _RNvMNtNtNtCsdiKaSvCGoMj_10hyper_util6client5proxy7matcherNtB2_7Matcher11from_system + 36
+14  terraphim_grep-c20f6268f6f81f63     0x0000000100c57eb0 _RNvMs2_NtCs1U6CEVISJ0l_7reqwest5proxyNtB5_7Matcher6system + 40
+15  terraphim_grep-c20f6268f6f81f63     0x0000000100c58324 _RNvMs2_NtNtCs1U6CEVISJ0l_7reqwest10async_impl6clientNtB5_13ClientBuilder5build + 512
+16  terraphim_grep-c20f6268f6f81f63     0x00000001008f2a64 _RNvMNtCsdCZj06SHlo3_14terraphim_grep17openrouter_clientNtB2_16OpenRouterClient3new + 548
+17  terraphim_grep-c20f6268f6f81f63     0x00000001008d0890 _RNvNtNtCsdCZj06SHlo3_14terraphim_grep17openrouter_client5testss_41test_into_llm_client_returns_trait_object + 68
+18  terraphim_grep-c20f6268f6f81f63     0x000000010091d840 _RNCNvNtNtCsdCZj06SHlo3_14terraphim_grep17openrouter_client5tests41test_into_llm_client_returns_trait_object0B7_ + 52
+19  terraphim_grep-c20f6268f6f81f63     0x0000000100909204 _RNvYNCNvNtNtCsdCZj06SHlo3_14terraphim_grep17openrouter_client5tests41test_into_llm_client_returns_trait_object0INtNtNtCs2Nm7W9hpCY5_4core3ops8function6FnOnceuE9call_onceBa_ + 40
+20  terraphim_grep-c20f6268f6f81f63     0x000000010097b8f8 _RNvYFEINtNtCs2Nm7W9hpCY5_4core6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEINtNtNtB9_3ops8function6FnOnceuE9call_onceCs2e6vFH1gWe2_4test + 56
+21  terraphim_grep-c20f6268f6f81f63     0x0000000100a50dd4 _RINvCs2e6vFH1gWe2_4test28___rust_begin_short_backtraceINtNtCs2Nm7W9hpCY5_4core6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEFEBQ_EB2_ + 60
+22  terraphim_grep-c20f6268f6f81f63     0x00000001009fda18 _RNvMs2_NtCs2e6vFH1gWe2_4test5typesNtB5_12RunnableTest3run + 136
+23  terraphim_grep-c20f6268f6f81f63     0x0000000100a57854 _RNCNvCs2e6vFH1gWe2_4test19run_test_in_process0B3_ + 76
+24  terraphim_grep-c20f6268f6f81f63     0x00000001009a9350 _RNvXsn_NtNtCs2Nm7W9hpCY5_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNvCs2e6vFH1gWe2_4test19run_test_in_process0EINtNtNtB9_3ops8function6FnOnceuE9call_onceB1d_ + 76
+25  terraphim_grep-c20f6268f6f81f63     0x00000001009e1e4c _RINvNvNtCs6IkSv4vjECX_3std9panicking12catch_unwind7do_callINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNvCs2e6vFH1gWe2_4test19run_test_in_process0EINtNtB11_6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEEB1Z_ + 152
+26  terraphim_grep-c20f6268f6f81f63     0x00000001009ec5a4 __rust_try + 56
+ok27  terraphim_grep-c20f6268f6f81f63     0x00000001009e11dc _RINvNtCs6IkSv4vjECX_3std9panicking12catch_unwindINtNtCs2Nm7W9hpCY5_4core6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEINtNtNtBP_5panic11unwind_safe16AssertUnwindSafeNCNvCs2e6vFH1gWe2_4test19run_test_in_process0EEB2P_ + 180
+
+28  terraphim_grep-c20f6268f6f81f63     0x0000000100a6289c _RINvNtCs6IkSv4vjECX_3std5panic12catch_unwindINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNvCs2e6vFH1gWe2_4test19run_test_in_process0EINtNtBN_6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEEB1L_ + 76
+29  terraphim_grep-c20f6268f6f81f63     0x0000000100a59988 _RNvCs2e6vFH1gWe2_4test19run_test_in_process + 456
+30  terraphim_grep-c20f6268f6f81f63     0x0000000100a5846c _RNCNvCs2e6vFH1gWe2_4test8run_test0B3_ + 448
+31  terraphim_grep-c20f6268f6f81f63     0x0000000100a58844 _RNCNvCs2e6vFH1gWe2_4test8run_tests_0B3_ + 608
+32  terraphim_grep-c20f6268f6f81f63     0x00000001009c0ba4 _RINvNtNtCs6IkSv4vjECX_3std3sys9backtrace28___rust_begin_short_backtraceNCNvCs2e6vFH1gWe2_4test8run_tests_0uEB1b_ + 52
+33  terraphim_grep-c20f6268f6f81f63     0x0000000100974fb4 _RNCNCINvNtNtCs6IkSv4vjECX_3std6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00B14_ + 140
+34  terraphim_grep-c20f6268f6f81f63     0x00000001009a92e0 _RNvXsn_NtNtCs2Nm7W9hpCY5_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCs6IkSv4vjECX_3std6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2e_ + 68
+35  terraphim_grep-c20f6268f6f81f63     0x00000001009e1d34 _RINvNvNtCs6IkSv4vjECX_3std9panicking12catch_unwind7do_callINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00EuEB2L_ + 148
+36  terraphim_grep-c20f6268f6f81f63     0x00000001009ec5a4 __rust_try + 56
+37  terraphim_grep-c20f6268f6f81f63     0x00000001009e13c8 _RINvNtCs6IkSv4vjECX_3std9panicking12catch_unwinduINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB4_6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00EEB2C_ + 176
+38  terraphim_grep-c20f6268f6f81f63     0x0000000100a6281c _RINvNtCs6IkSv4vjECX_3std5panic12catch_unwindINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB4_6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00EuEB2x_ + 68
+39  terraphim_grep-c20f6268f6f81f63     0x0000000100974a00 _RNCINvNtNtCs6IkSv4vjECX_3std6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_0B12_ + 200
+40  terraphim_grep-c20f6268f6f81f63     0x0000000100976084 _RNSNvYNCINvNtNtCs6IkSv4vjECX_3std6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_0INtNtNtCs2Nm7W9hpCY5_4core3ops8function6FnOnceuE9call_once6vtableB17_ + 52
+41  terraphim_grep-c20f6268f6f81f63     0x0000000101f3bf80 _RNvXst_NtCskvfJcxttRmW_5alloc5boxedINtB5_3BoxDINtNtNtCs2Nm7W9hpCY5_4core3ops8function6FnOnceuEp6OutputuNtNtBP_6marker4SendEL_EIBJ_uE9call_onceCs6IkSv4vjECX_3std + 156
+42  terraphim_grep-c20f6268f6f81f63     0x0000000101e52d4c _RNvNvMs0_NtNtNtCs6IkSv4vjECX_3std3sys6thread4unixNtB7_6Thread3new12thread_start + 268
+43  librustc-nightly_rt.tsan.dylib      0x00000001051ca524 __tsan_thread_start_func + 140
+44  libsystem_pthread.dylib             0x00000001873afc58 _pthread_start + 136
+45  libsystem_pthread.dylib             0x00000001873aac1c thread_start + 8
+test kg_curation::tests::test_persist_concepts_empty_is_noop ... ok
+test kg_curation::tests::test_persist_concepts_skips_existing_files ... ok
+test kg_curation::tests::test_persist_concepts_writes_markdown_files ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_expands_shared_normalised_term ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_uses_automata_not_substring_expansion ... ok
+test openrouter_client::tests::test_openrouter_client_new_validates_inputs ... ok
+test openrouter_client::tests::test_into_llm_client_returns_trait_object ... ok
+test openrouter_client::tests::test_openrouter_client_timeout_is_120_seconds ... ok
+test openrouter_client::tests::test_openrouter_client_base_url_resolution ... ok
+test hybrid_searcher::tests::default_build_greps_populated_directory ... ok
+test rlm_context::tests::test_build_prompt ... ok
+test rlm_context::tests::test_rlm_context_new ... ok
+test hybrid_searcher::tests::multiple_search_paths_merge_results ... ok
+test rlm_context::tests::test_rlm_context_with_chunks ... ok
+test rlm_context::tests::test_rlm_context_with_concepts ... ok
+test rlm_context::tests::test_truncate ... ok
+test signatures::tests::test_answer_signature_parse ... ok
+test signatures::tests::test_answer_signature_parse_markdown_wrapped ... ok
+test signatures::tests::test_concept_extraction_signature_parse ... ok
+test signatures::tests::test_extract_json_finds_array_in_prose ... ok
+test signatures::tests::test_extract_json_finds_bare_json_in_prose ... ok
+test signatures::tests::test_extract_json_handles_unterminated_fence ... ok
+test signatures::tests::test_extract_json_prefers_json_fence_over_other_language ... ok
+test signatures::tests::test_extract_json_strips_generic_markdown_fence ... ok
+test signatures::tests::test_extract_json_strips_markdown_fences ... ok
+test signatures::tests::test_search_result_signature_invalid ... ok
+test signatures::tests::test_search_result_signature_parse ... ok
+test signatures::tests::test_signature_instructions ... ok
+test sufficiency_judge::tests::test_diversity_calculation ... ok
+test sufficiency_judge::tests::test_coverage_calculation ... ok
+test sufficiency_judge::tests::test_empty_results_insufficient ... ok
+test sufficiency_judge::tests::test_high_coverage_sufficient ... ok
+test sufficiency_judge::tests::test_judge_delegates_to_judge_with_metrics ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_empty_results ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_reports_measurements ... ok
+test sufficiency_judge::tests::test_kg_confidence_calculation ... ok
+test sufficiency_judge::tests::test_low_results_insufficient ... ok
+test tests::grep_result_serialises_sufficiency_explanation ... ok
+test tests::rlm_requested_only_for_explicit_flags ... ok
+test tests::test_answer_prompt_includes_json_instructions ... ok
+test tests::test_grep_options_default ... ok
+test tests::insufficient_path_propagates_chunk_count ... ok
+test tests::test_list_prompt_excludes_json_instructions ... ok
+test tests::search_without_llm_degrades_to_search_only ... ok
+test tests::needs_synthesis_with_answer_invokes_llm ... ok
+test tests::search_without_thesaurus_uses_fff_mode ... ok
+test tests::force_rlm_without_answer_invokes_llm ... ok
+test tests::needs_synthesis_without_answer_skips_llm ... ok
+
+test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.60s
+
+
+[envprobe] summary: setenv=1 unsetenv=2 getenv=223 getenv_on_other_thread_after_first_write=108 strict_overlaps=1 widen_us=500
+=== ITER 6 exit=0
+=== ITER 7 widen=500 00:04:35
+
+running 57 tests
+test hybrid_searcher::tests::kg_boost_does_not_match_concept_embedded_in_larger_word ... ok
+test hybrid_searcher::tests::kg_boost_matches_concept_at_identifier_boundary ... ok
+test hybrid_searcher::tests::kg_boost_keeps_author_only_chunk_below_real_auth_chunk ... ok
+test hybrid_searcher::tests::kg_boost_no_concepts_is_a_noop ... ok
+test hybrid_searcher::tests::kg_boost_promotes_matching_chunks_to_top ... ok
+test hybrid_searcher::tests::test_grep_options_default ... ok
+test hybrid_searcher::tests::test_hybrid_results_empty ... ok
+
+[envprobe] OVERLAP: getenv("OSLogRateLimit") on thread 24889644 while writer active on thread 24889647
+0   libenvprobe.dylib                   0x00000001045fc880 my_getenv + 192
+1   libsystem_trace.dylib               0x00000001870d3384 _os_trace_metadata_init + 172
+2   libdispatch.dylib                   0x000000018721c02c _firehose_task_buffer_init + 212
+3   libdispatch.dylib                   0x000000018720d4b0 _dispatch_client_callout + 16
+4   libdispatch.dylib                   0x00000001871f6630 _dispatch_once_callout + 32
+5   libdispatch.dylib                   0x000000018721ab94 voucher_activity_get_metadata_buffer + 108
+6   libsystem_trace.dylib               0x00000001870d2e28 _os_trace_init_slow + 260
+7   librustc-nightly_rt.tsan.dylib      0x0000000104baf908 wrap_dispatch_once + 256
+8   librustc-nightly_rt.tsan.dylib      0x0000000104baf9bc wrap_dispatch_once_f + 156
+9   libsystem_trace.dylib               0x00000001870dab60 os_state_add_handler + 348
+10  SystemConfiguration                 0x00000001888d7428 ____SCDynamicStoreInitialize_block_invoke + 116
+11  librustc-nightly_rt.tsan.dylib      0x0000000104baf908 wrap_dispatch_once + 256
+12  SystemConfiguration                 0x00000001888d5040 __SCDynamicStoreCreateInternal + 544
+13  SystemConfiguration                 0x00000001888d5d44 SCDynamicStoreCreateWithOptions + 68
+test hybrid_searcher::tests::test_hybrid_results_to_chunks ... ok
+test hybrid_searcher::tests::kg_boost_stacks_when_multiple_concepts_match ... ok
+14  terraphim_grep-c20f6268f6f81f63     0x0000000100b3d5f4 _RNvMs0_NtCs8cL68D4V6fR_20system_configuration13dynamic_storeNtB5_14SCDynamicStore6create + 196
+15  terraphim_grep-c20f6268f6f81f63     0x0000000100b324e0 _RNvMs_NtCs8cL68D4V6fR_20system_configuration13dynamic_storeINtB4_21SCDynamicStoreBuilderuE5buildCsdiKaSvCGoMj_10hyper_util + 336
+16  terraphim_grep-c20f6268f6f81f63     0x0000000100b0771c _RNvNtNtNtNtCsdiKaSvCGoMj_10hyper_util6client5proxy7matcher3mac11with_system + 156
+test kg_curation::tests::test_persist_concepts_empty_is_noop ... 17  terraphim_grep-c20f6268f6f81f63     0x0000000100b1df74 _RNvMs2_NtNtNtCsdiKaSvCGoMj_10hyper_util6client5proxy7matcherNtB5_7Builder11from_system + 48
+ok
+test hybrid_searcher::tests::thesaurus_query_concepts_expands_shared_normalised_term ... ok
+18  terraphim_grep-c20f6268f6f81f63     0x0000000100b1d960 _RNvMNtNtNtCsdiKaSvCGoMj_10hyper_util6client5proxy7matcherNtB2_7Matcher11from_system + 36
+test kg_curation::tests::test_persist_concepts_skips_existing_files ... ok
+19  terraphim_grep-c20f6268f6f81f63     0x000000010067beb0 _RNvMs2_NtCs1U6CEVISJ0l_7reqwest5proxyNtB5_7Matcher6system + 40
+test hybrid_searcher::tests::thesaurus_query_concepts_uses_automata_not_substring_expansion ... ok
+20  terraphim_grep-c20f6268f6f81f63     0x000000010067c324 _RNvMs2_NtNtCs1U6CEVISJ0l_7reqwest10async_impl6clientNtB5_13ClientBuilder5build + 512
+test kg_curation::tests::test_persist_concepts_writes_markdown_files ... ok
+21  terraphim_grep-c20f6268f6f81f63     0x0000000100316a64 _RNvMNtCsdCZj06SHlo3_14terraphim_grep17openrouter_clientNtB2_16OpenRouterClient3new + 548
+22  terraphim_grep-c20f6268f6f81f63     0x00000001002f4890 _RNvNtNtCsdCZj06SHlo3_14terraphim_grep17openrouter_client5testss_41test_into_llm_client_returns_trait_object + 68
+test rlm_context::tests::test_build_prompt ... ok
+23  terraphim_grep-c20f6268f6f81f63     0x0000000100341840 _RNCNvNtNtCsdCZj06SHlo3_14terraphim_grep17openrouter_client5tests41test_into_llm_client_returns_trait_object0B7_ + 52
+test rlm_context::tests::test_rlm_context_new ... ok
+24  terraphim_grep-c20f6268f6f81f63     0x000000010032d204 _RNvYNCNvNtNtCsdCZj06SHlo3_14terraphim_grep17openrouter_client5tests41test_into_llm_client_returns_trait_object0INtNtNtCs2Nm7W9hpCY5_4core3ops8function6FnOnceuE9call_onceBa_ + 40
+25  terraphim_grep-c20f6268f6f81f63     0x000000010039f8f8 _RNvYFEINtNtCs2Nm7W9hpCY5_4core6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEINtNtNtB9_3ops8function6FnOnceuE9call_onceCs2e6vFH1gWe2_4test + 56
+test rlm_context::tests::test_rlm_context_with_chunks ... ok
+26  terraphim_grep-c20f6268f6f81f63     0x0000000100474dd4 _RINvCs2e6vFH1gWe2_4test28___rust_begin_short_backtraceINtNtCs2Nm7W9hpCY5_4core6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEFEBQ_EB2_ + 60
+27  terraphim_grep-c20f6268f6f81f63     0x0000000100421a18 _RNvMs2_NtCs2e6vFH1gWe2_4test5typesNtB5_12RunnableTest3run + 136
+test rlm_context::tests::test_rlm_context_with_concepts ... ok
+28  terraphim_grep-c20f6268f6f81f63     0x000000010047b854 _RNCNvCs2e6vFH1gWe2_4test19run_test_in_process0B3_ + 76
+29  terraphim_grep-c20f6268f6f81f63     0x00000001003cd350 _RNvXsn_NtNtCs2Nm7W9hpCY5_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNvCs2e6vFH1gWe2_4test19run_test_in_process0EINtNtNtB9_3ops8function6FnOnceuE9call_onceB1d_ + 76
+test rlm_context::tests::test_truncate ... ok
+30  terraphim_grep-c20f6268f6f81f63     0x0000000100405e4c _RINvNvNtCs6IkSv4vjECX_3std9panicking12catch_unwind7do_callINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNvCs2e6vFH1gWe2_4test19run_test_in_process0EINtNtB11_6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEEB1Z_ + 152
+31  terraphim_grep-c20f6268f6f81f63     0x00000001004105a4 __rust_try + 56
+32  terraphim_grep-c20f6268f6f81f63     0x00000001004051dc _RINvNtCs6IkSv4vjECX_3std9panicking12catch_unwindINtNtCs2Nm7W9hpCY5_4core6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEINtNtNtBP_5panic11unwind_safe16AssertUnwindSafeNCNvCs2e6vFH1gWe2_4test19run_test_in_process0EEB2P_ + 180
+33  terraphim_grep-c20f6268f6f81f63     0x000000010048689c _RINvNtCs6IkSv4vjECX_3std5panic12catch_unwindINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNvCs2e6vFH1gWe2_4test19run_test_in_process0EINtNtBN_6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEEB1L_ + 76
+test signatures::tests::test_answer_signature_parse ... ok
+34  terraphim_grep-c20f6268f6f81f63     0x000000010047d988 _RNvCs2e6vFH1gWe2_4test19run_test_in_process + 456
+test signatures::tests::test_answer_signature_parse_markdown_wrapped ... ok
+35  terraphim_grep-c20f6268f6f81f63     0x000000010047c46c _RNCNvCs2e6vFH1gWe2_4test8run_test0B3_ + 448
+test signatures::tests::test_concept_extraction_signature_parse ... ok
+36  terraphim_grep-c20f6268f6f81f63     0x000000010047c844 _RNCNvCs2e6vFH1gWe2_4test8run_tests_0B3_ + 608
+37  terraphim_grep-c20f6268f6f81f63     0x00000001003e4ba4 _RINvNtNtCs6IkSv4vjECX_3std3sys9backtrace28___rust_begin_short_backtraceNCNvCs2e6vFH1gWe2_4test8run_tests_0uEB1b_ + 52
+38  terraphim_grep-c20f6268f6f81f63     0x0000000100398fb4 _RNCNCINvNtNtCs6IkSv4vjECX_3std6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00B14_ + 140
+39  terraphim_grep-c20f6268f6f81f63     0x00000001003cd2e0 _RNvXsn_NtNtCs2Nm7W9hpCY5_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCs6IkSv4vjECX_3std6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2e_ + 68
+40  terraphim_grep-c20f6268f6f81f63     0x0000000100405d34 _RINvNvNtCs6IkSv4vjECX_3std9panicking12catch_unwind7do_callINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00EuEB2L_ + 148
+41  terraphim_grep-c20f6268f6f81f63     0x00000001004105a4 __rust_try + 56
+42  terraphim_grep-c20f6268f6f81f63     0x00000001004053c8 _RINvNtCs6IkSv4vjECX_3std9panicking12catch_unwinduINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB4_6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00EEB2C_ + 176
+43  terraphim_grep-c20f6268f6f81f63     0x000000010048681c _RINvNtCs6IkSv4vjECX_3std5panic12catch_unwindINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB4_6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00EuEB2x_ + 68
+44  terraphim_grep-c20f6268f6f81f63     0x0000000100398a00 _RNCINvNtNtCs6IkSv4vjECX_3std6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_0B12_ + 200
+45  terraphim_grep-c20f6268f6f81f63     0x000000010039a084 _RNSNvYNCINvNtNtCs6IkSv4vjECX_3std6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_0INtNtNtCs2Nm7W9hpCY5_4core3ops8function6FnOnceuE9call_once6vtableB17_ + 52
+46  terraphim_grep-c20f6268f6f81f63     0x000000010195ff80 _RNvXst_NtCskvfJcxttRmW_5alloc5boxedINtB5_3BoxDINtNtNtCs2Nm7W9hpCY5_4core3ops8function6FnOnceuEp6OutputuNtNtBP_6marker4SendEL_EIBJ_uE9call_onceCs6IkSv4vjECX_3std + 156
+47  terraphim_grep-c20f6268f6f81f63     0x0000000101876d4c _RNvNvMs0_NtNtNtCs6IkSv4vjECX_3std3sys6thread4unixNtB7_6Thread3new12thread_start + 268
+test signatures::tests::test_extract_json_finds_array_in_prose ... ok
+test signatures::tests::test_extract_json_finds_bare_json_in_prose ... ok
+test signatures::tests::test_extract_json_handles_unterminated_fence ... ok
+test signatures::tests::test_extract_json_prefers_json_fence_over_other_language ... ok
+test signatures::tests::test_extract_json_strips_generic_markdown_fence ... ok
+test signatures::tests::test_extract_json_strips_markdown_fences ... ok
+test signatures::tests::test_search_result_signature_invalid ... ok
+test signatures::tests::test_search_result_signature_parse ... ok
+test signatures::tests::test_signature_instructions ... ok
+test sufficiency_judge::tests::test_diversity_calculation ... ok
+test sufficiency_judge::tests::test_coverage_calculation ... ok
+test sufficiency_judge::tests::test_empty_results_insufficient ... ok
+test sufficiency_judge::tests::test_high_coverage_sufficient ... ok
+test sufficiency_judge::tests::test_judge_delegates_to_judge_with_metrics ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_empty_results ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_reports_measurements ... ok
+test sufficiency_judge::tests::test_kg_confidence_calculation ... ok
+test sufficiency_judge::tests::test_low_results_insufficient ... ok
+test tests::grep_result_serialises_sufficiency_explanation ... ok
+test hybrid_searcher::tests::default_build_greps_populated_directory ... ok
+test openrouter_client::tests::test_openrouter_client_timeout_is_120_seconds ... ok
+test openrouter_client::tests::test_openrouter_client_new_validates_inputs ... ok
+test openrouter_client::tests::test_openrouter_client_base_url_resolution ... ok
+test openrouter_client::tests::test_into_llm_client_returns_trait_object ... ok
+test tests::rlm_requested_only_for_explicit_flags ... ok
+test tests::test_answer_prompt_includes_json_instructions ... ok
+test tests::test_grep_options_default ... ok
+test tests::test_list_prompt_excludes_json_instructions ... ok
+test tests::insufficient_path_propagates_chunk_count ... ok
+test hybrid_searcher::tests::multiple_search_paths_merge_results ... ok
+test tests::search_without_thesaurus_uses_fff_mode ... ok
+test tests::search_without_llm_degrades_to_search_only ... ok
+test tests::force_rlm_without_answer_invokes_llm ... ok
+test tests::needs_synthesis_with_answer_invokes_llm ... ok
+test tests::needs_synthesis_without_answer_skips_llm ... ok
+
+test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.54s
+
+
+[envprobe] summary: setenv=1 unsetenv=2 getenv=223 getenv_on_other_thread_after_first_write=112 strict_overlaps=1 widen_us=500
+=== ITER 7 exit=0
+=== ITER 8 widen=500 00:04:38
+
+running 57 tests
+test hybrid_searcher::tests::kg_boost_no_concepts_is_a_noop ... ok
+test hybrid_searcher::tests::kg_boost_matches_concept_at_identifier_boundary ... ok
+test hybrid_searcher::tests::kg_boost_keeps_author_only_chunk_below_real_auth_chunk ... ok
+test hybrid_searcher::tests::kg_boost_does_not_match_concept_embedded_in_larger_word ... ok
+test hybrid_searcher::tests::test_grep_options_default ... ok
+test hybrid_searcher::tests::test_hybrid_results_empty ... ok
+test hybrid_searcher::tests::kg_boost_promotes_matching_chunks_to_top ... ok
+
+[envprobe] OVERLAP: getenv("OSLogRateLimit") on thread 24892955 while writer active on thread 24892956
+0   libenvprobe.dylib                   0x0000000106448880 my_getenv + 192
+1   libsystem_trace.dylib               0x00000001870d3384 _os_trace_metadata_init + 172
+2   libdispatch.dylib                   0x000000018721c02c _firehose_task_buffer_init + 212
+3   libdispatch.dylib                   0x000000018720d4b0 _dispatch_client_callout + 16
+4   libdispatch.dylib                   0x00000001871f6630 _dispatch_once_callout + 32
+5   libdispatch.dylib                   0x000000018721ab94 voucher_activity_get_metadata_buffer + 108
+6   libsystem_trace.dylib               0x00000001870d2e28 _os_trace_init_slow + 260
+test hybrid_searcher::tests::test_hybrid_results_to_chunks ... ok
+7   librustc-nightly_rt.tsan.dylib      0x000000010693b908 wrap_dispatch_once + 256
+8   librustc-nightly_rt.tsan.dylib      0x000000010693b9bc wrap_dispatch_once_f + 156
+9   libsystem_trace.dylib               0x00000001870dab60 os_state_add_handler + 348
+10  SystemConfiguration                 0x00000001888d7428 ____SCDynamicStoreInitialize_block_invoke + 116
+11  librustc-nightly_rt.tsan.dylib      0x000000010693b908 wrap_dispatch_once + 256
+12  SystemConfiguration                 0x00000001888d5040 __SCDynamicStoreCreateInternal + 544
+13  SystemConfiguration                 0x00000001888d5d44 SCDynamicStoreCreateWithOptions + 68
+test kg_curation::tests::test_persist_concepts_empty_is_noop ... ok
+test hybrid_searcher::tests::kg_boost_stacks_when_multiple_concepts_match ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_uses_automata_not_substring_expansion ... ok
+14  terraphim_grep-c20f6268f6f81f63     0x00000001029895f4 _RNvMs0_NtCs8cL68D4V6fR_20system_configuration13dynamic_storeNtB5_14SCDynamicStore6create + 196
+test hybrid_searcher::tests::thesaurus_query_concepts_expands_shared_normalised_term ... ok
+test kg_curation::tests::test_persist_concepts_skips_existing_files ... ok
+15  terraphim_grep-c20f6268f6f81f63     0x000000010297e4e0 _RNvMs_NtCs8cL68D4V6fR_20system_configuration13dynamic_storeINtB4_21SCDynamicStoreBuilderuE5buildCsdiKaSvCGoMj_10hyper_util + 336
+16  terraphim_grep-c20f6268f6f81f63     0x000000010295371c _RNvNtNtNtNtCsdiKaSvCGoMj_10hyper_util6client5proxy7matcher3mac11with_system + 156
+17  terraphim_grep-c20f6268f6f81f63     0x0000000102969f74 _RNvMs2_NtNtNtCsdiKaSvCGoMj_10hyper_util6client5proxy7matcherNtB5_7Builder11from_system + 48
+18  terraphim_grep-c20f6268f6f81f63     0x0000000102969960 _RNvMNtNtNtCsdiKaSvCGoMj_10hyper_util6client5proxy7matcherNtB2_7Matcher11from_system + 36
+19  terraphim_grep-c20f6268f6f81f63     0x00000001024c7eb0 _RNvMs2_NtCs1U6CEVISJ0l_7reqwest5proxyNtB5_7Matcher6system + 40
+20  terraphim_grep-c20f6268f6f81f63     0x00000001024c8324 _RNvMs2_NtNtCs1U6CEVISJ0l_7reqwest10async_impl6clientNtB5_13ClientBuilder5build + 512
+21  terraphim_grep-c20f6268f6f81f63     0x0000000102162a64 _RNvMNtCsdCZj06SHlo3_14terraphim_grep17openrouter_clientNtB2_16OpenRouterClient3new + 548
+22  terraphim_grep-c20f6268f6f81f63     0x0000000102140890 _RNvNtNtCsdCZj06SHlo3_14terraphim_grep17openrouter_client5testss_41test_into_llm_client_returns_trait_object + 68
+test kg_curation::tests::test_persist_concepts_writes_markdown_files ... ok
+23  terraphim_grep-c20f6268f6f81f63     0x000000010218d840 _RNCNvNtNtCsdCZj06SHlo3_14terraphim_grep17openrouter_client5tests41test_into_llm_client_returns_trait_object0B7_ + 52
+24  terraphim_grep-c20f6268f6f81f63     0x0000000102179204 _RNvYNCNvNtNtCsdCZj06SHlo3_14terraphim_grep17openrouter_client5tests41test_into_llm_client_returns_trait_object0INtNtNtCs2Nm7W9hpCY5_4core3ops8function6FnOnceuE9call_onceBa_ + 40
+25  terraphim_grep-c20f6268f6f81f63     0x00000001021eb8f8 _RNvYFEINtNtCs2Nm7W9hpCY5_4core6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEINtNtNtB9_3ops8function6FnOnceuE9call_onceCs2e6vFH1gWe2_4test + 56
+26  terraphim_grep-c20f6268f6f81f63     0x00000001022c0dd4 _RINvCs2e6vFH1gWe2_4test28___rust_begin_short_backtraceINtNtCs2Nm7W9hpCY5_4core6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEFEBQ_EB2_ + 60
+test rlm_context::tests::test_build_prompt ... ok
+27  terraphim_grep-c20f6268f6f81f63     0x000000010226da18 _RNvMs2_NtCs2e6vFH1gWe2_4test5typesNtB5_12RunnableTest3run + 136
+28  terraphim_grep-c20f6268f6f81f63     0x00000001022c7854 _RNCNvCs2e6vFH1gWe2_4test19run_test_in_process0B3_ + 76
+29  terraphim_grep-c20f6268f6f81f63     0x0000000102219350 _RNvXsn_NtNtCs2Nm7W9hpCY5_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNvCs2e6vFH1gWe2_4test19run_test_in_process0EINtNtNtB9_3ops8function6FnOnceuE9call_onceB1d_ + 76
+30  terraphim_grep-c20f6268f6f81f63     0x0000000102251e4c _RINvNvNtCs6IkSv4vjECX_3std9panicking12catch_unwind7do_callINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNvCs2e6vFH1gWe2_4test19run_test_in_process0EINtNtB11_6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEEB1Z_ + 152
+31  terraphim_grep-c20f6268f6f81f63     0x000000010225c5a4 __rust_try + 56
+32  terraphim_grep-c20f6268f6f81f63     0x00000001022511dc _RINvNtCs6IkSv4vjECX_3std9panicking12catch_unwindINtNtCs2Nm7W9hpCY5_4core6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEINtNtNtBP_5panic11unwind_safe16AssertUnwindSafeNCNvCs2e6vFH1gWe2_4test19run_test_in_process0EEB2P_ + 180
+33  terraphim_grep-c20f6268f6f81f63     0x00000001022d289c _RINvNtCs6IkSv4vjECX_3std5panic12catch_unwindINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNvCs2e6vFH1gWe2_4test19run_test_in_process0EINtNtBN_6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEEB1L_ + 76
+34  terraphim_grep-c20f6268f6f81f63     0x00000001022c9988 _RNvCs2e6vFH1gWe2_4test19run_test_in_process + 456
+test rlm_context::tests::test_rlm_context_new ... ok
+35  terraphim_grep-c20f6268f6f81f63     0x00000001022c846c _RNCNvCs2e6vFH1gWe2_4test8run_test0B3_ + 448
+test rlm_context::tests::test_rlm_context_with_chunks ... ok
+36  terraphim_grep-c20f6268f6f81f63     0x00000001022c8844 _RNCNvCs2e6vFH1gWe2_4test8run_tests_0B3_ + 608
+37  terraphim_grep-c20f6268f6f81f63     0x0000000102230ba4 _RINvNtNtCs6IkSv4vjECX_3std3sys9backtrace28___rust_begin_short_backtraceNCNvCs2e6vFH1gWe2_4test8run_tests_0uEB1b_ + 52
+38  terraphim_grep-c20f6268f6f81f63     0x00000001021e4fb4 _RNCNCINvNtNtCs6IkSv4vjECX_3std6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00B14_ + 140
+39  terraphim_grep-c20f6268f6f81f63     0x00000001022192e0 _RNvXsn_NtNtCs2Nm7W9hpCY5_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCs6IkSv4vjECX_3std6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2e_ + 68
+40  terraphim_grep-c20f6268f6f81f63     0x0000000102251d34 _RINvNvNtCs6IkSv4vjECX_3std9panicking12catch_unwind7do_callINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00EuEB2L_ + 148
+41  terraphim_grep-c20f6268f6f81f63     0x000000010225c5a4 __rust_try + 56
+42  terraphim_grep-c20f6268f6f81f63     0x00000001022513c8 _RINvNtCs6IkSv4vjECX_3std9panicking12catch_unwinduINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB4_6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00EEB2C_ + 176
+43  terraphim_grep-c20f6268f6f81f63     0x00000001022d281c _RINvNtCs6IkSv4vjECX_3std5panic12catch_unwindINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB4_6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00EuEB2x_ + 68
+44  terraphim_grep-c20f6268f6f81f63     0x00000001021e4a00 _RNCINvNtNtCs6IkSv4vjECX_3std6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_0B12_ + 200
+45  terraphim_grep-c20f6268f6f81f63     0x00000001021e6084 _RNSNvYNCINvNtNtCs6IkSv4vjECX_3std6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_0INtNtNtCs2Nm7W9hpCY5_4core3ops8function6FnOnceuE9call_once6vtableB17_ + 52
+46  terraphim_grep-c20f6268f6f81f63     0x00000001037abf80 _RNvXst_NtCskvfJcxttRmW_5alloc5boxedINtB5_3BoxDINtNtNtCs2Nm7W9hpCY5_4core3ops8function6FnOnceuEp6OutputuNtNtBP_6marker4SendEL_EIBJ_uE9call_onceCs6IkSv4vjECX_3std + 156
+47  terraphim_grep-c20f6268f6f81f63     0x00000001036c2d4c _RNvNvMs0_NtNtNtCs6IkSv4vjECX_3std3sys6thread4unixNtB7_6Thread3new12thread_start + 268
+test rlm_context::tests::test_rlm_context_with_concepts ... ok
+test rlm_context::tests::test_truncate ... ok
+test signatures::tests::test_answer_signature_parse ... ok
+test signatures::tests::test_answer_signature_parse_markdown_wrapped ... ok
+test signatures::tests::test_concept_extraction_signature_parse ... ok
+test signatures::tests::test_extract_json_finds_array_in_prose ... ok
+test signatures::tests::test_extract_json_finds_bare_json_in_prose ... ok
+test signatures::tests::test_extract_json_handles_unterminated_fence ... ok
+test signatures::tests::test_extract_json_prefers_json_fence_over_other_language ... ok
+test signatures::tests::test_extract_json_strips_generic_markdown_fence ... ok
+test signatures::tests::test_extract_json_strips_markdown_fences ... ok
+test signatures::tests::test_search_result_signature_invalid ... ok
+test signatures::tests::test_search_result_signature_parse ... ok
+test hybrid_searcher::tests::default_build_greps_populated_directory ... ok
+test signatures::tests::test_signature_instructions ... ok
+test sufficiency_judge::tests::test_coverage_calculation ... ok
+test sufficiency_judge::tests::test_diversity_calculation ... ok
+test sufficiency_judge::tests::test_empty_results_insufficient ... ok
+test sufficiency_judge::tests::test_high_coverage_sufficient ... ok
+test sufficiency_judge::tests::test_judge_delegates_to_judge_with_metrics ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_empty_results ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_reports_measurements ... ok
+test sufficiency_judge::tests::test_kg_confidence_calculation ... ok
+test openrouter_client::tests::test_openrouter_client_new_validates_inputs ... ok
+test openrouter_client::tests::test_openrouter_client_timeout_is_120_seconds ... ok
+test openrouter_client::tests::test_into_llm_client_returns_trait_object ... ok
+test sufficiency_judge::tests::test_low_results_insufficient ... ok
+test tests::grep_result_serialises_sufficiency_explanation ... ok
+test openrouter_client::tests::test_openrouter_client_base_url_resolution ... ok
+test tests::rlm_requested_only_for_explicit_flags ... ok
+test tests::test_answer_prompt_includes_json_instructions ... ok
+test hybrid_searcher::tests::multiple_search_paths_merge_results ... ok
+test tests::test_grep_options_default ... ok
+test tests::test_list_prompt_excludes_json_instructions ... ok
+test tests::search_without_thesaurus_uses_fff_mode ... ok
+test tests::insufficient_path_propagates_chunk_count ... ok
+test tests::search_without_llm_degrades_to_search_only ... ok
+test tests::force_rlm_without_answer_invokes_llm ... ok
+test tests::needs_synthesis_with_answer_invokes_llm ... ok
+test tests::needs_synthesis_without_answer_skips_llm ... ok
+
+test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.24s
+
+
+[envprobe] summary: setenv=1 unsetenv=2 getenv=223 getenv_on_other_thread_after_first_write=112 strict_overlaps=1 widen_us=500
+=== ITER 8 exit=0
+=== ITER 9 widen=500 00:04:40
+
+running 57 tests
+test hybrid_searcher::tests::kg_boost_no_concepts_is_a_noop ... ok
+test hybrid_searcher::tests::kg_boost_matches_concept_at_identifier_boundary ... ok
+test hybrid_searcher::tests::test_grep_options_default ... ok
+test hybrid_searcher::tests::kg_boost_does_not_match_concept_embedded_in_larger_word ... ok
+test hybrid_searcher::tests::kg_boost_keeps_author_only_chunk_below_real_auth_chunk ... ok
+test hybrid_searcher::tests::test_hybrid_results_empty ... ok
+test hybrid_searcher::tests::kg_boost_promotes_matching_chunks_to_top ... ok
+
+[envprobe] OVERLAP: getenv("OSLogRateLimit") on thread 24895984 while writer active on thread 24895986
+0   libenvprobe.dylib                   0x0000000104570880 my_getenv + 192
+1   libsystem_trace.dylib               0x00000001870d3384 _os_trace_metadata_init + 172
+2   libdispatch.dylib                   0x000000018721c02c _firehose_task_buffer_init + 212
+3   libdispatch.dylib                   0x000000018720d4b0 _dispatch_client_callout + 16
+4   libdispatch.dylib                   0x00000001871f6630 _dispatch_once_callout + 32
+5   libdispatch.dylib                   0x000000018721ab94 voucher_activity_get_metadata_buffer + 108
+6   libsystem_trace.dylib               0x00000001870d2e28 _os_trace_init_slow + 260
+7   librustc-nightly_rt.tsan.dylib      0x0000000104b4b908 wrap_dispatch_once + 256
+8   librustc-nightly_rt.tsan.dylib      0x0000000104b4b9bc wrap_dispatch_once_f + 156
+9   libsystem_trace.dylib               0x00000001870dab60 os_state_add_handler + 348
+10  SystemConfiguration                 0x00000001888d7428 ____SCDynamicStoreInitialize_block_invoke + 116
+11  librustc-nightly_rt.tsan.dylib      0x0000000104b4b908 wrap_dispatch_once + 256
+12  SystemConfiguration                 0x00000001888d5040 __SCDynamicStoreCreateInternal + 544
+13  SystemConfiguration                 0x00000001888d5d44 SCDynamicStoreCreateWithOptions + 68
+test hybrid_searcher::tests::kg_boost_stacks_when_multiple_concepts_match ... ok
+14  terraphim_grep-c20f6268f6f81f63     0x0000000100ab15f4 _RNvMs0_NtCs8cL68D4V6fR_20system_configuration13dynamic_storeNtB5_14SCDynamicStore6create + 196
+15  terraphim_grep-c20f6268f6f81f63     0x0000000100aa64e0 _RNvMs_NtCs8cL68D4V6fR_20system_configuration13dynamic_storeINtB4_21SCDynamicStoreBuilderuE5buildCsdiKaSvCGoMj_10hyper_util + 336
+16  terraphim_grep-c20f6268f6f81f63     0x0000000100a7b71c _RNvNtNtNtNtCsdiKaSvCGoMj_10hyper_util6client5proxy7matcher3mac11with_system + 156
+17  terraphim_grep-c20f6268f6f81f63     0x0000000100a91f74 _RNvMs2_NtNtNtCsdiKaSvCGoMj_10hyper_util6client5proxy7matcherNtB5_7Builder11from_system + 48
+18  terraphim_grep-c20f6268f6f81f63     0x0000000100a91960 _RNvMNtNtNtCsdiKaSvCGoMj_10hyper_util6client5proxy7matcherNtB2_7Matcher11from_system + 36
+19  terraphim_grep-c20f6268f6f81f63     0x00000001005efeb0 _RNvMs2_NtCs1U6CEVISJ0l_7reqwest5proxyNtB5_7Matcher6system + 40
+20  terraphim_grep-c20f6268f6f81f63     0x00000001005f0324 _RNvMs2_NtNtCs1U6CEVISJ0l_7reqwest10async_impl6clientNtB5_13ClientBuilder5build + 512
+21  terraphim_grep-c20f6268f6f81f63     0x000000010028aa64 _RNvMNtCsdCZj06SHlo3_14terraphim_grep17openrouter_clientNtB2_16OpenRouterClient3new + 548
+22  terraphim_grep-c20f6268f6f81f63     0x0000000100268890 _RNvNtNtCsdCZj06SHlo3_14terraphim_grep17openrouter_client5testss_41test_into_llm_client_returns_trait_object + 68
+23  terraphim_grep-c20f6268f6f81f63     0x00000001002b5840 _RNCNvNtNtCsdCZj06SHlo3_14terraphim_grep17openrouter_client5tests41test_into_llm_client_returns_trait_object0B7_ + 52
+24  terraphim_grep-c20f6268f6f81f63     0x00000001002a1204 _RNvYNCNvNtNtCsdCZj06SHlo3_14terraphim_grep17openrouter_client5tests41test_into_llm_client_returns_trait_object0INtNtNtCs2Nm7W9hpCY5_4core3ops8function6FnOnceuE9call_onceBa_ + 40
+test hybrid_searcher::tests::test_hybrid_results_to_chunks ... ok
+25  terraphim_grep-c20f6268f6f81f63     0x00000001003138f8 _RNvYFEINtNtCs2Nm7W9hpCY5_4core6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEINtNtNtB9_3ops8function6FnOnceuE9call_onceCs2e6vFH1gWe2_4test + 56
+26  terraphim_grep-c20f6268f6f81f63     0x00000001003e8dd4 _RINvCs2e6vFH1gWe2_4test28___rust_begin_short_backtraceINtNtCs2Nm7W9hpCY5_4core6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEFEBQ_EB2_ + 60
+27  terraphim_grep-c20f6268f6f81f63     0x0000000100395a18 _RNvMs2_NtCs2e6vFH1gWe2_4test5typesNtB5_12RunnableTest3run + 136
+28  terraphim_grep-c20f6268f6f81f63     0x00000001003ef854 _RNCNvCs2e6vFH1gWe2_4test19run_test_in_process0B3_ + 76
+29  terraphim_grep-c20f6268f6f81f63     0x0000000100341350 _RNvXsn_NtNtCs2Nm7W9hpCY5_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNvCs2e6vFH1gWe2_4test19run_test_in_process0EINtNtNtB9_3ops8function6FnOnceuE9call_onceB1d_ + 76
+30  terraphim_grep-c20f6268f6f81f63     0x0000000100379e4c _RINvNvNtCs6IkSv4vjECX_3std9panicking12catch_unwind7do_callINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNvCs2e6vFH1gWe2_4test19run_test_in_process0EINtNtB11_6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEEB1Z_ + 152
+31  terraphim_grep-c20f6268f6f81f63     0x00000001003845a4 __rust_try + 56
+32  terraphim_grep-c20f6268f6f81f63     0x00000001003791dc _RINvNtCs6IkSv4vjECX_3std9panicking12catch_unwindINtNtCs2Nm7W9hpCY5_4core6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEINtNtNtBP_5panic11unwind_safe16AssertUnwindSafeNCNvCs2e6vFH1gWe2_4test19run_test_in_process0EEB2P_ + 180
+33  terraphim_grep-c20f6268f6f81f63     0x00000001003fa89c _RINvNtCs6IkSv4vjECX_3std5panic12catch_unwindINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNvCs2e6vFH1gWe2_4test19run_test_in_process0EINtNtBN_6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEEB1L_ + 76
+34  terraphim_grep-c20f6268f6f81f63     0x00000001003f1988 _RNvCs2e6vFH1gWe2_4test19run_test_in_process + 456
+35  terraphim_grep-c20f6268f6f81f63     0x00000001003f046c _RNCNvCs2e6vFH1gWe2_4test8run_test0B3_ + 448
+36  terraphim_grep-c20f6268f6f81f63     0x00000001003f0844 _RNCNvCs2e6vFH1gWe2_4test8run_tests_0B3_ + 608
+37  terraphim_grep-c20f6268f6f81f63     0x0000000100358ba4 _RINvNtNtCs6IkSv4vjECX_3std3sys9backtrace28___rust_begin_short_backtraceNCNvCs2e6vFH1gWe2_4test8run_tests_0uEB1b_ + 52
+38  terraphim_grep-c20f6268f6f81f63     0x000000010030cfb4 _RNCNCINvNtNtCs6IkSv4vjECX_3std6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00B14_ + 140
+39  terraphim_grep-c20f6268f6f81f63     0x00000001003412e0 _RNvXsn_NtNtCs2Nm7W9hpCY5_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCs6IkSv4vjECX_3std6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2e_ + 68
+40  terraphim_grep-c20f6268f6f81f63     0x0000000100379d34 _RINvNvNtCs6IkSv4vjECX_3std9panicking12catch_unwind7do_callINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00EuEB2L_ + 148
+41  terraphim_grep-c20f6268f6f81f63     0x00000001003845a4 __rust_try + 56
+42  terraphim_grep-c20f6268f6f81f63     0x00000001003793c8 _RINvNtCs6IkSv4vjECX_3std9panicking12catch_unwinduINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB4_6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00EEB2C_ + 176
+43  terraphim_grep-c20f6268f6f81f63     0x00000001003fa81c _RINvNtCs6IkSv4vjECX_3std5panic12catch_unwindINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB4_6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00EuEB2x_ + 68
+44  terraphim_grep-c20f6268f6f81f63     0x000000010030ca00 _RNCINvNtNtCs6IkSv4vjECX_3std6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_0B12_ + 200
+45  terraphim_grep-c20f6268f6f81f63     0x000000010030e084 _RNSNvYNCINvNtNtCs6IkSv4vjECX_3std6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_0INtNtNtCs2Nm7W9hpCY5_4core3ops8function6FnOnceuE9call_once6vtableB17_ + 52
+46  terraphim_grep-c20f6268f6f81f63     0x00000001018d3f80 _RNvXst_NtCskvfJcxttRmW_5alloc5boxedINtB5_3BoxDINtNtNtCs2Nm7W9hpCY5_4core3ops8function6FnOnceuEp6OutputuNtNtBP_6marker4SendEL_EIBJ_uE9call_onceCs6IkSv4vjECX_3std + 156
+47  terraphim_grep-c20f6268f6f81f63     0x00000001017ead4c _RNvNvMs0_NtNtNtCs6IkSv4vjECX_3std3sys6thread4unixNtB7_6Thread3new12thread_start + 268
+test hybrid_searcher::tests::thesaurus_query_concepts_uses_automata_not_substring_expansion ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_expands_shared_normalised_term ... ok
+test kg_curation::tests::test_persist_concepts_empty_is_noop ... ok
+test kg_curation::tests::test_persist_concepts_skips_existing_files ... ok
+test kg_curation::tests::test_persist_concepts_writes_markdown_files ... ok
+test rlm_context::tests::test_build_prompt ... ok
+test rlm_context::tests::test_rlm_context_new ... ok
+test rlm_context::tests::test_rlm_context_with_chunks ... ok
+test rlm_context::tests::test_rlm_context_with_concepts ... ok
+test rlm_context::tests::test_truncate ... ok
+test signatures::tests::test_answer_signature_parse ... ok
+test signatures::tests::test_answer_signature_parse_markdown_wrapped ... ok
+test hybrid_searcher::tests::default_build_greps_populated_directory ... ok
+test signatures::tests::test_concept_extraction_signature_parse ... ok
+test signatures::tests::test_extract_json_finds_array_in_prose ... ok
+test signatures::tests::test_extract_json_finds_bare_json_in_prose ... ok
+test openrouter_client::tests::test_into_llm_client_returns_trait_object ... ok
+test openrouter_client::tests::test_openrouter_client_new_validates_inputs ... ok
+test openrouter_client::tests::test_openrouter_client_timeout_is_120_seconds ... ok
+test signatures::tests::test_extract_json_handles_unterminated_fence ... ok
+test openrouter_client::tests::test_openrouter_client_base_url_resolution ... ok
+test signatures::tests::test_extract_json_prefers_json_fence_over_other_language ... ok
+test hybrid_searcher::tests::multiple_search_paths_merge_results ... ok
+test signatures::tests::test_extract_json_strips_generic_markdown_fence ... ok
+test signatures::tests::test_extract_json_strips_markdown_fences ... ok
+test signatures::tests::test_search_result_signature_invalid ... ok
+test signatures::tests::test_search_result_signature_parse ... ok
+test signatures::tests::test_signature_instructions ... ok
+test sufficiency_judge::tests::test_coverage_calculation ... ok
+test sufficiency_judge::tests::test_diversity_calculation ... ok
+test sufficiency_judge::tests::test_empty_results_insufficient ... ok
+test sufficiency_judge::tests::test_high_coverage_sufficient ... ok
+test sufficiency_judge::tests::test_judge_delegates_to_judge_with_metrics ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_empty_results ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_reports_measurements ... ok
+test sufficiency_judge::tests::test_kg_confidence_calculation ... ok
+test sufficiency_judge::tests::test_low_results_insufficient ... ok
+test tests::grep_result_serialises_sufficiency_explanation ... ok
+test tests::rlm_requested_only_for_explicit_flags ... ok
+test tests::test_answer_prompt_includes_json_instructions ... ok
+test tests::test_grep_options_default ... ok
+test tests::test_list_prompt_excludes_json_instructions ... ok
+test tests::insufficient_path_propagates_chunk_count ... ok
+test tests::search_without_llm_degrades_to_search_only ... ok
+test tests::needs_synthesis_with_answer_invokes_llm ... ok
+test tests::search_without_thesaurus_uses_fff_mode ... ok
+test tests::needs_synthesis_without_answer_skips_llm ... ok
+test tests::force_rlm_without_answer_invokes_llm ... ok
+
+test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.47s
+
+
+[envprobe] summary: setenv=1 unsetenv=2 getenv=223 getenv_on_other_thread_after_first_write=102 strict_overlaps=1 widen_us=500
+=== ITER 9 exit=0
+=== ITER 10 widen=500 00:04:43
+
+running 57 tests
+test hybrid_searcher::tests::kg_boost_does_not_match_concept_embedded_in_larger_word ... ok
+test hybrid_searcher::tests::kg_boost_matches_concept_at_identifier_boundary ... ok
+test hybrid_searcher::tests::kg_boost_keeps_author_only_chunk_below_real_auth_chunk ... ok
+test hybrid_searcher::tests::kg_boost_no_concepts_is_a_noop ... ok
+test hybrid_searcher::tests::test_grep_options_default ... ok
+test hybrid_searcher::tests::test_hybrid_results_empty ... ok
+test hybrid_searcher::tests::test_hybrid_results_to_chunks ... ok
+
+[envprobe] OVERLAP: getenv("OSLogRateLimit") on thread 24900171 while writer active on thread 24900173
+0   libenvprobe.dylib                   0x0000000106a78880 my_getenv + 192
+1   libsystem_trace.dylib               0x00000001870d3384 _os_trace_metadata_init + 172
+2   libdispatch.dylib                   0x000000018721c02c _firehose_task_buffer_init + 212
+3   libdispatch.dylib                   0x000000018720d4b0 _dispatch_client_callout + 16
+4   libdispatch.dylib                   0x00000001871f6630 _dispatch_once_callout + 32
+5   libdispatch.dylib                   0x000000018721ab94 voucher_activity_get_metadata_buffer + 108
+6   libsystem_trace.dylib               0x00000001870d2e28 _os_trace_init_slow + 260
+7   librustc-nightly_rt.tsan.dylib      0x00000001071bf908 wrap_dispatch_once + 256
+8   librustc-nightly_rt.tsan.dylib      0x00000001071bf9bc wrap_dispatch_once_f + 156
+9   libsystem_trace.dylib               0x00000001870dab60 os_state_add_handler + 348
+10  SystemConfiguration                 0x00000001888d7428 ____SCDynamicStoreInitialize_block_invoke + 116
+11  librustc-nightly_rt.tsan.dylib      0x00000001071bf908 wrap_dispatch_once + 256
+12  SystemConfiguration                 0x00000001888d5040 __SCDynamicStoreCreateInternal + 544
+13  SystemConfiguration                 0x00000001888d5d44 SCDynamicStoreCreateWithOptions + 68
+14  terraphim_grep-c20f6268f6f81f63     0x0000000102fb95f4 _RNvMs0_NtCs8cL68D4V6fR_20system_configuration13dynamic_storeNtB5_14SCDynamicStore6create + 196
+test kg_curation::tests::test_persist_concepts_empty_is_noop ... ok
+15  terraphim_grep-c20f6268f6f81f63     0x0000000102fae4e0 _RNvMs_NtCs8cL68D4V6fR_20system_configuration13dynamic_storeINtB4_21SCDynamicStoreBuilderuE5buildCsdiKaSvCGoMj_10hyper_util + 336
+test hybrid_searcher::tests::thesaurus_query_concepts_uses_automata_not_substring_expansion ... ok
+16  terraphim_grep-c20f6268f6f81f63     0x0000000102f8371c _RNvNtNtNtNtCsdiKaSvCGoMj_10hyper_util6client5proxy7matcher3mac11with_system + 156
+17  terraphim_grep-c20f6268f6f81f63     0x0000000102f99f74 _RNvMs2_NtNtNtCsdiKaSvCGoMj_10hyper_util6client5proxy7matcherNtB5_7Builder11from_system + 48
+18  terraphim_grep-c20f6268f6f81f63     0x0000000102f99960 _RNvMNtNtNtCsdiKaSvCGoMj_10hyper_util6client5proxy7matcherNtB2_7Matcher11from_system + 36
+test kg_curation::tests::test_persist_concepts_skips_existing_files ... ok
+19  terraphim_grep-c20f6268f6f81f63     0x0000000102af7eb0 _RNvMs2_NtCs1U6CEVISJ0l_7reqwest5proxyNtB5_7Matcher6system + 40
+20  terraphim_grep-c20f6268f6f81f63     0x0000000102af8324 _RNvMs2_NtNtCs1U6CEVISJ0l_7reqwest10async_impl6clientNtB5_13ClientBuilder5build + 512
+21  terraphim_grep-c20f6268f6f81f63     0x0000000102792a64 _RNvMNtCsdCZj06SHlo3_14terraphim_grep17openrouter_clientNtB2_16OpenRouterClient3new + 548
+test hybrid_searcher::tests::kg_boost_promotes_matching_chunks_to_top ... ok
+22  terraphim_grep-c20f6268f6f81f63     0x0000000102770890 _RNvNtNtCsdCZj06SHlo3_14terraphim_grep17openrouter_client5testss_41test_into_llm_client_returns_trait_object + 68
+23  terraphim_grep-c20f6268f6f81f63     0x00000001027bd840 _RNCNvNtNtCsdCZj06SHlo3_14terraphim_grep17openrouter_client5tests41test_into_llm_client_returns_trait_object0B7_ + 52
+24  terraphim_grep-c20f6268f6f81f63     0x00000001027a9204 _RNvYNCNvNtNtCsdCZj06SHlo3_14terraphim_grep17openrouter_client5tests41test_into_llm_client_returns_trait_object0INtNtNtCs2Nm7W9hpCY5_4core3ops8function6FnOnceuE9call_onceBa_ + 40
+test hybrid_searcher::tests::thesaurus_query_concepts_expands_shared_normalised_term ... ok
+25  terraphim_grep-c20f6268f6f81f63     0x000000010281b8f8 _RNvYFEINtNtCs2Nm7W9hpCY5_4core6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEINtNtNtB9_3ops8function6FnOnceuE9call_onceCs2e6vFH1gWe2_4test + 56
+26  terraphim_grep-c20f6268f6f81f63     0x00000001028f0dd4 _RINvCs2e6vFH1gWe2_4test28___rust_begin_short_backtraceINtNtCs2Nm7W9hpCY5_4core6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEFEBQ_EB2_ + 60
+27  terraphim_grep-c20f6268f6f81f63     0x000000010289da18 _RNvMs2_NtCs2e6vFH1gWe2_4test5typesNtB5_12RunnableTest3run + 136
+28  terraphim_grep-c20f6268f6f81f63     0x00000001028f7854 _RNCNvCs2e6vFH1gWe2_4test19run_test_in_process0B3_ + 76
+29  terraphim_grep-c20f6268f6f81f63     0x0000000102849350 _RNvXsn_NtNtCs2Nm7W9hpCY5_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNvCs2e6vFH1gWe2_4test19run_test_in_process0EINtNtNtB9_3ops8function6FnOnceuE9call_onceB1d_ + 76
+30  terraphim_grep-c20f6268f6f81f63     0x0000000102881e4c _RINvNvNtCs6IkSv4vjECX_3std9panicking12catch_unwind7do_callINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNvCs2e6vFH1gWe2_4test19run_test_in_process0EINtNtB11_6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEEB1Z_ + 152
+31  terraphim_grep-c20f6268f6f81f63     0x000000010288c5a4 __rust_try + 56
+32  terraphim_grep-c20f6268f6f81f63     0x00000001028811dc _RINvNtCs6IkSv4vjECX_3std9panicking12catch_unwindINtNtCs2Nm7W9hpCY5_4core6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEINtNtNtBP_5panic11unwind_safe16AssertUnwindSafeNCNvCs2e6vFH1gWe2_4test19run_test_in_process0EEB2P_ + 180
+33  terraphim_grep-c20f6268f6f81f63     0x000000010290289c _RINvNtCs6IkSv4vjECX_3std5panic12catch_unwindINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNvCs2e6vFH1gWe2_4test19run_test_in_process0EINtNtBN_6result6ResultuNtNtCskvfJcxttRmW_5alloc6string6StringEEB1L_ + 76
+34  terraphim_grep-c20f6268f6f81f63     0x00000001028f9988 _RNvCs2e6vFH1gWe2_4test19run_test_in_process + 456
+35  terraphim_grep-c20f6268f6f81f63     0x00000001028f846c _RNCNvCs2e6vFH1gWe2_4test8run_test0B3_ + 448
+36  terraphim_grep-c20f6268f6f81f63     0x00000001028f8844 _RNCNvCs2e6vFH1gWe2_4test8run_tests_0B3_ + 608
+37  terraphim_grep-c20f6268f6f81f63     0x0000000102860ba4 _RINvNtNtCs6IkSv4vjECX_3std3sys9backtrace28___rust_begin_short_backtraceNCNvCs2e6vFH1gWe2_4test8run_tests_0uEB1b_ + 52
+38  terraphim_grep-c20f6268f6f81f63     0x0000000102814fb4 _RNCNCINvNtNtCs6IkSv4vjECX_3std6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00B14_ + 140
+39  terraphim_grep-c20f6268f6f81f63     0x00000001028492e0 _RNvXsn_NtNtCs2Nm7W9hpCY5_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCs6IkSv4vjECX_3std6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2e_ + 68
+40  terraphim_grep-c20f6268f6f81f63     0x0000000102881d34 _RINvNvNtCs6IkSv4vjECX_3std9panicking12catch_unwind7do_callINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00EuEB2L_ + 148
+41  terraphim_grep-c20f6268f6f81f63     0x000000010288c5a4 __rust_try + 56
+42  terraphim_grep-c20f6268f6f81f63     0x00000001028813c8 _RINvNtCs6IkSv4vjECX_3std9panicking12catch_unwinduINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB4_6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00EEB2C_ + 176
+43  terraphim_grep-c20f6268f6f81f63     0x000000010290281c _RINvNtCs6IkSv4vjECX_3std5panic12catch_unwindINtNtNtCs2Nm7W9hpCY5_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB4_6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_00EuEB2x_ + 68
+44  terraphim_grep-c20f6268f6f81f63     0x0000000102814a00 _RNCINvNtNtCs6IkSv4vjECX_3std6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_0B12_ + 200
+45  terraphim_grep-c20f6268f6f81f63     0x0000000102816084 _RNSNvYNCINvNtNtCs6IkSv4vjECX_3std6thread9lifecycle15spawn_uncheckedNCNvCs2e6vFH1gWe2_4test8run_tests_0uEs_0INtNtNtCs2Nm7W9hpCY5_4core3ops8function6FnOnceuE9call_once6vtableB17_ + 52
+46  terraphim_grep-c20f6268f6f81f63     0x0000000103ddbf80 _RNvXst_NtCskvfJcxttRmW_5alloc5boxedINtB5_3BoxDINtNtNtCs2Nm7W9hpCY5_4core3ops8function6FnOnceuEp6OutputuNtNtBP_6marker4SendEL_EIBJ_uE9call_onceCs6IkSv4vjECX_3std + 156
+47  terraphim_grep-c20f6268f6f81f63     0x0000000103cf2d4c _RNvNvMs0_NtNtNtCs6IkSv4vjECX_3std3sys6thread4unixNtB7_6Thread3new12thread_start + 268
+test kg_curation::tests::test_persist_concepts_writes_markdown_files ... ok
+test rlm_context::tests::test_build_prompt ... ok
+test rlm_context::tests::test_rlm_context_new ... ok
+test hybrid_searcher::tests::kg_boost_stacks_when_multiple_concepts_match ... ok
+test rlm_context::tests::test_rlm_context_with_chunks ... ok
+test rlm_context::tests::test_rlm_context_with_concepts ... ok
+test rlm_context::tests::test_truncate ... ok
+test signatures::tests::test_answer_signature_parse ... ok
+test signatures::tests::test_answer_signature_parse_markdown_wrapped ... ok
+test hybrid_searcher::tests::default_build_greps_populated_directory ... ok
+test signatures::tests::test_concept_extraction_signature_parse ... ok
+test openrouter_client::tests::test_openrouter_client_timeout_is_120_seconds ... ok
+test openrouter_client::tests::test_into_llm_client_returns_trait_object ... ok
+test openrouter_client::tests::test_openrouter_client_base_url_resolution ... ok
+test signatures::tests::test_extract_json_finds_array_in_prose ... ok
+test openrouter_client::tests::test_openrouter_client_new_validates_inputs ... ok
+test signatures::tests::test_extract_json_finds_bare_json_in_prose ... ok
+test signatures::tests::test_extract_json_handles_unterminated_fence ... ok
+test signatures::tests::test_extract_json_prefers_json_fence_over_other_language ... ok
+test signatures::tests::test_extract_json_strips_generic_markdown_fence ... ok
+test signatures::tests::test_extract_json_strips_markdown_fences ... ok
+test signatures::tests::test_search_result_signature_invalid ... ok
+test signatures::tests::test_search_result_signature_parse ... ok
+test signatures::tests::test_signature_instructions ... ok
+test sufficiency_judge::tests::test_coverage_calculation ... ok
+test sufficiency_judge::tests::test_diversity_calculation ... ok
+test sufficiency_judge::tests::test_empty_results_insufficient ... ok
+test hybrid_searcher::tests::multiple_search_paths_merge_results ... ok
+test sufficiency_judge::tests::test_high_coverage_sufficient ... ok
+test sufficiency_judge::tests::test_judge_delegates_to_judge_with_metrics ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_empty_results ... ok
+test sufficiency_judge::tests::test_kg_confidence_calculation ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_reports_measurements ... ok
+test sufficiency_judge::tests::test_low_results_insufficient ... ok
+test tests::grep_result_serialises_sufficiency_explanation ... ok
+test tests::rlm_requested_only_for_explicit_flags ... ok
+test tests::test_answer_prompt_includes_json_instructions ... ok
+test tests::test_grep_options_default ... ok
+test tests::test_list_prompt_excludes_json_instructions ... ok
+test tests::insufficient_path_propagates_chunk_count ... ok
+test tests::search_without_llm_degrades_to_search_only ... ok
+test tests::search_without_thesaurus_uses_fff_mode ... ok
+test tests::needs_synthesis_without_answer_skips_llm ... ok
+test tests::force_rlm_without_answer_invokes_llm ... ok
+test tests::needs_synthesis_with_answer_invokes_llm ... ok
+
+test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.42s
+
+
+[envprobe] summary: setenv=1 unsetenv=2 getenv=223 getenv_on_other_thread_after_first_write=98 strict_overlaps=1 widen_us=500
+=== ITER 10 exit=0

@@ -1,0 +1,54 @@
+# CMD: MIRIFLAGS="-Zmiri-disable-isolation -Zmiri-symbolic-alignment-check" cargo +nightly miri test -p terraphim_grep --lib -- --test-threads=1 --skip openrouter --skip hybrid_searcher::tests --skip needs_synthesis_without_answer_skips_llm --skip needs_synthesis_with_answer_invokes_llm --skip force_rlm_without_answer_invokes_llm --skip insufficient_path_propagates_chunk_count --skip search_without_llm_degrades_to_search_only --skip search_without_thesaurus_uses_fff_mode
+# DATE: 2026-09-12 00:24 BST
+    Blocking waiting for file lock on package cache
+warning: patch `rustls-webpki v0.103.12 (https://github.com/rustls/webpki.git?tag=v%2F0.103.12#27131d47)` was not used in the crate graph
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on build directory
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.86s
+     Running unittests src/lib.rs (target/miri/aarch64-apple-darwin/debug/deps/terraphim_grep-fa31e74ce9803657)
+
+running 34 tests
+test kg_curation::tests::test_persist_concepts_empty_is_noop ... ok
+test kg_curation::tests::test_persist_concepts_skips_existing_files ... ok
+test kg_curation::tests::test_persist_concepts_writes_markdown_files ... ok
+test rlm_context::tests::test_build_prompt ... ok
+test rlm_context::tests::test_rlm_context_new ... ok
+test rlm_context::tests::test_rlm_context_with_chunks ... ok
+test rlm_context::tests::test_rlm_context_with_concepts ... ok
+test rlm_context::tests::test_truncate ... ok
+test signatures::tests::test_answer_signature_parse ... ok
+test signatures::tests::test_answer_signature_parse_markdown_wrapped ... ok
+test signatures::tests::test_concept_extraction_signature_parse ... ok
+test signatures::tests::test_extract_json_finds_array_in_prose ... ok
+test signatures::tests::test_extract_json_finds_bare_json_in_prose ... ok
+test signatures::tests::test_extract_json_handles_unterminated_fence ... ok
+test signatures::tests::test_extract_json_prefers_json_fence_over_other_language ... ok
+test signatures::tests::test_extract_json_strips_generic_markdown_fence ... ok
+test signatures::tests::test_extract_json_strips_markdown_fences ... ok
+test signatures::tests::test_search_result_signature_invalid ... ok
+test signatures::tests::test_search_result_signature_parse ... ok
+test signatures::tests::test_signature_instructions ... ok
+test sufficiency_judge::tests::test_coverage_calculation ... ok
+test sufficiency_judge::tests::test_diversity_calculation ... ok
+test sufficiency_judge::tests::test_empty_results_insufficient ... ok
+test sufficiency_judge::tests::test_high_coverage_sufficient ... ok
+test sufficiency_judge::tests::test_judge_delegates_to_judge_with_metrics ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_empty_results ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_reports_measurements ... ok
+test sufficiency_judge::tests::test_kg_confidence_calculation ... ok
+test sufficiency_judge::tests::test_low_results_insufficient ... ok
+test tests::grep_result_serialises_sufficiency_explanation ... ok
+test tests::rlm_requested_only_for_explicit_flags ... ok
+test tests::test_answer_prompt_includes_json_instructions ... ok
+test tests::test_grep_options_default ... ok
+test tests::test_list_prompt_excludes_json_instructions ... ok
+
+test result: ok. 34 passed; 0 failed; 0 ignored; 0 measured; 23 filtered out; finished in 11.27s
+
+MIRI_EXIT=0

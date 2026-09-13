@@ -1,0 +1,1512 @@
+Phase 11 campaign C: Miri completion pass over the terraphim-session-analyzer tests each axis skipped
+DATE=2026-09-12 23:28 CEST
+HOST=Ubuntu-2004-focal-64-minimal-hwe / Ubuntu 24.04.4 LTS / 24 cores (bigbox, not the macOS host named in the design: the macOS host is 16 GB and two Tree Borrows axes already failed on it)
+SOURCE=git worktree /tmp/ubx-r9/src at e90b1938e02fe650cec88728771b9809bcacb3be
+TOOLCHAIN=rustc 1.100.0-nightly (67eda617e 2026-09-10) binary: rustc commit-hash: 67eda617e6a8f8ecec01e1ba7fafe2072a64adcc commit-date: 2026-09-10 host: x86_64-unknown-linux-gnu release: 1.100.0-nightly LLVM version: 23.1.1 
+MIRI=miri 0.1.0 (67eda617e6 2026-09-10)
+DRIVER=/tmp/ubx-r9/drivers/campaignC.sh (bash -c driver; exit captured via PIPESTATUS[0])
+DF_BEFORE= 283G
+BASELINE: Phase 3 ran 128 tests on tree-borrows, 80 on default, 80 on strict-provenance, 73 on symbolic-alignment.
+  The tree-borrows set is a strict superset of the other three, so the deltas are 48, 48 and 55 tests.
+  This pass runs exactly those deltas with PROPTEST_CASES=16 and -Zmiri-ignore-leaks.
+  Native preflight on this host: the 48-name --exact filter selected 48 of 128 tests, 48 passed.
+===== AXIS default : MIRIFLAGS=-Zmiri-disable-isolation -Zmiri-ignore-leaks  : 48 tests
+warning: unused workspace dependency `rustls`
+   --> Cargo.toml:101:1
+    |
+101 | rustls = { version = "0.23", default-features = false, features = ["logging", "std", "ring"] }
+    | ^^^^^^
+    |
+    = note: `cargo::unused_workspace_dependencies` is set to `warn` by default
+help: consider removing the workspace dependency `rustls`
+warning: unused workspace dependency `rustls-webpki`
+   --> Cargo.toml:102:1
+    |
+102 | rustls-webpki = "0.103.12"
+    | ^^^^^^^^^^^^^
+    |
+help: consider removing the workspace dependency `rustls-webpki`
+warning: unused field `authors` in `workspace.package`
+  --> Cargo.toml:20:1
+   |
+20 | authors = ["Terraphim Team <team@terraphim.ai>"]
+   | ^^^^^^^
+   |
+   = note: `cargo::unused_workspace_package_fields` is set to `warn` by default
+help: consider removing the field `workspace.package.authors`
+warning: unused field `documentation` in `workspace.package`
+  --> Cargo.toml:21:1
+   |
+21 | documentation = "https://terraphim.ai"
+   | ^^^^^^^^^^^^^
+   |
+help: consider removing the field `workspace.package.documentation`
+warning: unused field `homepage` in `workspace.package`
+  --> Cargo.toml:22:1
+   |
+22 | homepage = "https://terraphim.ai"
+   | ^^^^^^^^
+   |
+help: consider removing the field `workspace.package.homepage`
+warning: unused field `repository` in `workspace.package`
+  --> Cargo.toml:23:1
+   |
+23 | repository = "https://git.terraphim.cloud/terraphim/terraphim-clients"
+   | ^^^^^^^^^^
+   |
+help: consider removing the field `workspace.package.repository`
+warning: unused field `license` in `workspace.package`
+  --> Cargo.toml:24:1
+   |
+24 | license = "Apache-2.0"
+   | ^^^^^^^
+   |
+help: consider removing the field `workspace.package.license`
+warning: unused field `readme` in `workspace.package`
+  --> Cargo.toml:25:1
+   |
+25 | readme = "README.md"
+   | ^^^^^^
+   |
+help: consider removing the field `workspace.package.readme`
+warning: workspace (manifest) generated 8 warnings
+warning: `package.homepage` is redundant with `package.documentation`
+ --> crates/terraphim_command_runtime/Cargo.toml:8:12
+  |
+7 | documentation = "https://terraphim.ai"
+  |                 ----------------------
+8 | homepage = "https://terraphim.ai"
+  |            ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim_command_runtime` (manifest) generated 1 warning
+warning: `package.homepage` is redundant with `package.documentation`
+ --> crates/terraphim_cli/Cargo.toml:8:12
+  |
+7 | documentation = "https://terraphim.ai"
+  |                 ----------------------
+8 | homepage = "https://terraphim.ai"
+  |            ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim-cli` (manifest) generated 1 warning
+warning: `package.homepage` is redundant with `package.documentation`
+ --> crates/terraphim_negative_contribution/Cargo.toml:8:12
+  |
+7 | documentation = "https://terraphim.ai"
+  |                 ----------------------
+8 | homepage = "https://terraphim.ai"
+  |            ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim_negative_contribution` (manifest) generated 1 warning
+warning: `package.homepage` is redundant with `package.documentation`
+ --> crates/terraphim_lsp/Cargo.toml:8:12
+  |
+7 | documentation = "https://terraphim.ai"
+  |                 ----------------------
+8 | homepage = "https://terraphim.ai"
+  |            ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim_lsp` (manifest) generated 1 warning
+warning: `package.homepage` is redundant with `package.documentation`
+  --> crates/terraphim_sessions/Cargo.toml:11:12
+   |
+10 | documentation = "https://terraphim.ai"
+   |                 ----------------------
+11 | homepage = "https://terraphim.ai"
+   |            ^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim_sessions` (manifest) generated 1 warning
+warning: `package.homepage` is redundant with `package.documentation`
+ --> crates/terraphim_update/Cargo.toml:8:12
+  |
+7 | documentation = "https://terraphim.ai"
+  |                 ----------------------
+8 | homepage = "https://terraphim.ai"
+  |            ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim_update` (manifest) generated 1 warning
+warning: binary `terraphim_mcp_server` should have a kebab-case name
+   |
+ 1 | /tmp/ubx-r9/campaignC/target/miri/.../terraphim_mcp_server
+   |                                       ^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `cargo::non_kebab_case_bins` is set to `warn` by default
+help: to change the binary name to `terraphim-mcp-server`, convert `bin.name`
+  --> crates/terraphim_mcp_server/Cargo.toml:14:8
+   |
+14 - name = "terraphim_mcp_server"
+14 + name = "terraphim-mcp-server"
+   |
+warning: `package.homepage` is redundant with `package.documentation`
+ --> crates/terraphim_mcp_server/Cargo.toml:7:12
+  |
+6 | documentation = "https://terraphim.ai"
+  |                 ----------------------
+7 | homepage = "https://terraphim.ai"
+  |            ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim_mcp_server` (manifest) generated 2 warnings
+warning: `package.homepage` is redundant with `package.documentation`
+ --> crates/terraphim-session-analyzer/Cargo.toml:8:12
+  |
+7 | documentation = "https://terraphim.ai"
+  |                 ----------------------
+8 | homepage = "https://terraphim.ai"
+  |            ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim-session-analyzer` (manifest) generated 1 warning
+warning: explicit `package.readme` can be inferred
+ --> crates/terraphim_grep/Cargo.toml:9:1
+  |
+9 | readme = "README.md"
+  | ^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `cargo::manual_readme` is set to `warn` by default
+help: consider removing `package.readme`
+warning: `package.homepage` is redundant with `package.documentation`
+ --> crates/terraphim_grep/Cargo.toml:8:12
+  |
+7 | documentation = "https://terraphim.ai"
+  |                 ----------------------
+8 | homepage = "https://terraphim.ai"
+  |            ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim_grep` (manifest) generated 2 warnings
+warning: `package.homepage` is redundant with `package.documentation`
+ --> crates/terraphim_hooks/Cargo.toml:8:12
+  |
+7 | documentation = "https://terraphim.ai"
+  |                 ----------------------
+8 | homepage = "https://terraphim.ai"
+  |            ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim_hooks` (manifest) generated 1 warning
+warning: explicit `package.readme` can be inferred
+  --> crates/terraphim_agent/Cargo.toml:16:1
+   |
+16 | readme = "README.md"
+   | ^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `cargo::manual_readme` is set to `warn` by default
+help: consider removing `package.readme`
+warning: `package.homepage` is redundant with `package.documentation`
+  --> crates/terraphim_agent/Cargo.toml:12:12
+   |
+11 | documentation = "https://terraphim.ai"
+   |                 ----------------------
+12 | homepage = "https://terraphim.ai"
+   |            ^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim_agent` (manifest) generated 2 warnings
+warning: patch `rustls-webpki v0.103.12 (https://github.com/rustls/webpki.git?tag=v%2F0.103.12#27131d47)` was not used in the crate graph
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.45
+   Compiling unicode-ident v1.0.24
+   Compiling libc v0.2.186
+   Compiling cfg-if v1.0.4
+   Compiling serde_core v1.0.228
+   Compiling memchr v2.8.2
+   Compiling serde v1.0.228
+   Compiling zerocopy v0.8.52
+   Compiling once_cell v1.21.4
+   Compiling version_check v0.9.5
+   Compiling getrandom v0.3.4
+   Compiling fnv v1.0.7
+   Compiling getrandom v0.4.3
+   Compiling ident_case v1.0.1
+   Compiling strsim v0.11.1
+   Compiling rustix v1.1.4
+   Compiling crossbeam-utils v0.8.21
+   Compiling regex-syntax v0.8.11
+   Compiling zmij v1.0.21
+   Compiling bitflags v2.13.0
+   Compiling linux-raw-sys v0.12.1
+   Compiling crossbeam-epoch v0.9.21
+   Compiling autocfg v1.5.1
+   Compiling find-msvc-tools v0.1.9
+   Compiling ucd-trie v0.1.7
+   Compiling itoa v1.0.18
+   Compiling fastrand v2.4.1
+   Compiling shlex v2.0.1
+   Compiling serde_json v1.0.150
+   Compiling syn v1.0.109
+   Compiling utf8parse v0.2.2
+   Compiling cc v1.2.65
+   Compiling anstyle v1.0.14
+   Compiling anstyle-parse v1.0.0
+   Compiling colorchoice v1.0.5
+   Compiling unicode-width v0.2.2
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling anstyle-query v1.1.5
+   Compiling proc-macro-error-attr v1.0.4
+   Compiling proc-macro-error v1.0.4
+   Compiling rayon-core v1.13.0
+   Compiling either v1.16.0
+   Compiling tracing-core v0.1.36
+   Compiling log v0.4.32
+   Compiling clap_lex v1.1.0
+   Compiling anstream v1.0.0
+   Compiling equivalent v1.0.2
+   Compiling thiserror v2.0.18
+   Compiling hashbrown v0.17.1
+   Compiling lazy_static v1.5.0
+   Compiling ciborium-io v0.2.2
+   Compiling plotters-backend v0.3.7
+   Compiling portable-atomic v1.13.1
+   Compiling heck v0.5.0
+   Compiling itertools v0.13.0
+   Compiling bytecount v0.6.9
+   Compiling thiserror v1.0.69
+   Compiling bit-vec v0.8.0
+   Compiling aho-corasick v1.1.4
+   Compiling toml_write v0.1.2
+   Compiling cast v0.3.0
+   Compiling num-traits v0.2.19
+   Compiling anyhow v1.0.104
+   Compiling clap_builder v4.6.0
+   Compiling winnow v0.7.15
+   Compiling pin-project-lite v0.2.17
+   Compiling same-file v1.0.6
+   Compiling num-modular v0.6.4
+   Compiling quick-error v1.2.3
+   Compiling pest v2.8.6
+   Compiling plotters-svg v0.3.7
+   Compiling unicode-width v0.1.14
+   Compiling heck v0.4.1
+   Compiling bit-set v0.8.0
+   Compiling tracing-log v0.2.0
+   Compiling walkdir v2.5.0
+   Compiling syn v2.0.118
+   Compiling csv-core v0.1.13
+   Compiling papergrid v0.11.0
+   Compiling crossbeam-deque v0.8.6
+   Compiling sharded-slab v0.1.7
+   Compiling thread_local v1.1.9
+   Compiling nu-ansi-term v0.50.3
+   Compiling oorandom v11.1.5
+   Compiling unarray v0.1.4
+   Compiling shell-words v1.1.1
+   Compiling zeroize v1.9.0
+   Compiling ryu v1.0.23
+   Compiling unit-prefix v0.5.2
+   Compiling anes v0.1.6
+   Compiling similar v2.7.0
+   Compiling smallvec v1.15.2
+   Compiling num-order v1.2.0
+   Compiling colored v2.2.0
+   Compiling glob v0.3.3
+   Compiling plotters v0.3.7
+   Compiling home v0.5.12
+   Compiling errno v0.3.14
+   Compiling console v0.16.3
+   Compiling wait-timeout v0.2.1
+   Compiling page_size v0.6.0
+   Compiling rayon v1.12.0
+   Compiling rand_core v0.9.5
+   Compiling regex-automata v0.4.14
+   Compiling alloca v0.4.0
+   Compiling indicatif v0.18.4
+   Compiling rand_xorshift v0.4.0
+   Compiling rand v0.9.4
+   Compiling pest_meta v2.8.6
+   Compiling criterion-plot v0.8.2
+   Compiling indexmap v2.14.0
+   Compiling jiff v0.2.28
+   Compiling csv v1.4.0
+   Compiling tabled_derive v0.7.0
+   Compiling tempfile v3.27.0
+   Compiling rusty-fork v0.3.1
+   Compiling dialoguer v0.12.0
+   Compiling insta v1.48.0
+   Compiling tabled v0.15.0
+   Compiling darling_core v0.20.11
+   Compiling pest_generator v2.8.6
+   Compiling regex v1.12.4
+   Compiling matchers v0.2.0
+   Compiling serde_derive v1.0.228
+   Compiling zerocopy-derive v0.8.52
+   Compiling thiserror-impl v2.0.18
+   Compiling clap_derive v4.6.1
+   Compiling tracing-attributes v0.1.31
+   Compiling thiserror-impl v1.0.69
+   Compiling pest_derive v2.8.6
+   Compiling tracing v0.1.44
+   Compiling tracing-subscriber v0.3.23
+   Compiling darling_macro v0.20.11
+   Compiling darling v0.20.11
+   Compiling derive_builder_core v0.20.2
+   Compiling clap v4.6.1
+   Compiling derive_builder_macro v0.20.2
+   Compiling derive_builder v0.20.2
+   Compiling serde_spanned v0.6.9
+   Compiling toml_datetime v0.6.11
+   Compiling tinytemplate v1.2.1
+   Compiling handlebars v6.4.1
+   Compiling toml_edit v0.22.27
+   Compiling toml v0.8.23
+   Compiling half v2.7.1
+   Compiling ppv-lite86 v0.2.21
+   Compiling rand_chacha v0.9.0
+   Compiling ciborium-ll v0.2.2
+   Compiling proptest v1.11.0
+   Compiling ciborium v0.2.2
+   Compiling criterion v0.8.2
+   Compiling terraphim-session-analyzer v1.21.14 (/tmp/ubx-r9/src/crates/terraphim-session-analyzer)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.68s
+     Running unittests src/lib.rs (/tmp/ubx-r9/campaignC/target/miri/x86_64-unknown-linux-gnu/debug/build/terraphim-session-analyzer/56d698c0aae4a7f0/out/terraphim_session_analyzer-56d698c0aae4a7f0)
+
+running 48 tests
+test analyzer::tests::test_analyze_drops_sessions_without_target_file_operations ... warning: integer-to-pointer cast
+   --> /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/atomic.rs:204:11
+    |
+204 |         &*(ptr as *const T)
+    |           ^^^^^^^^^^^^^^^^^ integer-to-pointer cast
+    |
+    = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+    = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+    = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+    = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+    = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+    = note: this is on thread `unnamed-2`
+    = note: stack backtrace:
+            0: <crossbeam_epoch::internal::Local as crossbeam_epoch::atomic::Pointable>::deref::<'_>
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/atomic.rs:204:11: 204:28
+            1: crossbeam_epoch::atomic::Shared::<'_, crossbeam_epoch::internal::Local>::deref
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/atomic.rs:1414:9: 1414:22
+            2: crossbeam_epoch::sync::list::List::<crossbeam_epoch::internal::Local>::insert
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/sync/list.rs:176:41: 176:58
+            3: crossbeam_epoch::internal::Local::register
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/internal.rs:348:13: 348:65
+            4: crossbeam_epoch::collector::Collector::register
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/collector.rs:45:9: 45:30
+            5: crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/default.rs:34:34: 34:56
+            6: <fn() -> crossbeam_epoch::collector::LocalHandle {crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn} as std::ops::FnOnce<()>>::call_once - shim(fn() -> crossbeam_epoch::collector::LocalHandle {crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn})
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5: 250:71
+            7: std::thread::local_impl::LazyStorage::<crossbeam_epoch::collector::LocalHandle, ()>::get_or_init_slow::<fn() -> crossbeam_epoch::collector::LocalHandle {crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn}>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/thread_local/native/lazy.rs:80:17: 80:59
+            8: std::thread::local_impl::LazyStorage::<crossbeam_epoch::collector::LocalHandle, ()>::get_or_init::<fn() -> crossbeam_epoch::collector::LocalHandle {crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn}>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/thread_local/native/lazy.rs:62:22: 62:49
+            9: crossbeam_epoch::default::HANDLE::{constant#0}::{closure#0}
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/thread_local/native/mod.rs:97:25: 97:115
+            10: <{closure@crossbeam_epoch::default::HANDLE::{constant#0}::{closure#0}} as std::ops::FnOnce<(std::option::Option<&mut std::option::Option<crossbeam_epoch::collector::LocalHandle>>,)>>::call_once - shim
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5: 250:71
+            11: std::thread::LocalKey::<crossbeam_epoch::collector::LocalHandle>::try_with::<{closure@crossbeam_epoch::default::with_handle<{closure@crossbeam_epoch::default::is_pinned::{closure#0}}, bool>::{closure#0}}, bool>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/local.rs:462:37: 462:55
+            12: crossbeam_epoch::default::with_handle::<{closure@crossbeam_epoch::default::is_pinned::{closure#0}}, bool>
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/default.rs:59:5: 60:28
+            13: crossbeam_epoch::default::is_pinned
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/default.rs:46:5: 46:45
+            14: crossbeam_deque::deque::Stealer::<rayon_core::job::JobRef>::steal
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-deque-0.8.6/src/deque.rs:642:12: 642:30
+            15: rayon_core::registry::WorkerThread::take_local_job
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:757:19: 757:39
+            16: rayon_core::registry::WorkerThread::wait_until_cold
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:791:32: 791:53
+            17: rayon_core::registry::WorkerThread::wait_until::<rayon_core::latch::OnceLatch>
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:775:13: 775:40
+            18: rayon_core::registry::WorkerThread::wait_until_out_of_work
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:824:9: 824:65
+            19: rayon_core::registry::main_loop
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:929:5: 929:43
+            20: rayon::ThreadBuilder::run
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:50:18: 50:33
+            21: <rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:95:20: 95:32
+            22: std::sys::backtrace::__rust_begin_short_backtrace::<{closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166:18: 166:21
+            23: std::thread::lifecycle::spawn_unchecked::<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:64:13: 64:67
+            24: <std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}> as std::ops::FnOnce<()>>::call_once
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275:9: 275:19
+            25: std::panicking::catch_unwind::do_call::<std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}>, ()>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:573:43: 573:46
+            26: std::panicking::catch_unwind::<(), std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}>>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:541:19: 541:77
+            27: std::panic::catch_unwind::<std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}>, ()>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359:14: 359:40
+            28: std::thread::lifecycle::spawn_unchecked::<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:62:26: 65:12
+            29: <{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}} as std::ops::FnOnce<()>>::call_once - shim(vtable)
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5: 250:71
+            30: <std::boxed::Box<dyn std::ops::FnOnce() + std::marker::Send> as std::ops::FnOnce<()>>::call_once
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc/src/boxed.rs:2366:9: 2366:52
+            31: std::sys::thread::unix::Thread::new::thread_start
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/thread/unix.rs:127:17: 127:29
+note: the last function in that backtrace got called indirectly due to this code
+   --> crates/terraphim-session-analyzer/src/analyzer.rs:70:40
+    |
+ 70 |           let analyses: Result<Vec<_>> = self
+    |  ________________________________________^
+ 71 | |             .parsers
+ 72 | |             .par_iter()
+ 73 | |             .filter_map(|parser| {
+...   |
+ 84 | |             })
+ 85 | |             .collect();
+    | |______________________^
+
+warning: integer-to-pointer cast
+    --> /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/atomic.rs:1338:9
+     |
+1338 |         raw as *const _
+     |         ^^^^^^^^^^^^^^^ integer-to-pointer cast
+     |
+     = note: this is on thread `unnamed-2`
+     = note: stack backtrace:
+             0: crossbeam_epoch::atomic::Shared::<'_, crossbeam_epoch::internal::Local>::as_raw
+                 at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/atomic.rs:1338:9: 1338:24
+             1: crossbeam_epoch::internal::Local::register
+                 at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/internal.rs:350:24: 350:38
+             2: crossbeam_epoch::collector::Collector::register
+                 at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/collector.rs:45:9: 45:30
+             3: crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn
+                 at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/default.rs:34:34: 34:56
+             4: <fn() -> crossbeam_epoch::collector::LocalHandle {crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn} as std::ops::FnOnce<()>>::call_once - shim(fn() -> crossbeam_epoch::collector::LocalHandle {crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn})
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5: 250:71
+             5: std::thread::local_impl::LazyStorage::<crossbeam_epoch::collector::LocalHandle, ()>::get_or_init_slow::<fn() -> crossbeam_epoch::collector::LocalHandle {crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn}>
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/thread_local/native/lazy.rs:80:17: 80:59
+             6: std::thread::local_impl::LazyStorage::<crossbeam_epoch::collector::LocalHandle, ()>::get_or_init::<fn() -> crossbeam_epoch::collector::LocalHandle {crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn}>
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/thread_local/native/lazy.rs:62:22: 62:49
+             7: crossbeam_epoch::default::HANDLE::{constant#0}::{closure#0}
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/thread_local/native/mod.rs:97:25: 97:115
+             8: <{closure@crossbeam_epoch::default::HANDLE::{constant#0}::{closure#0}} as std::ops::FnOnce<(std::option::Option<&mut std::option::Option<crossbeam_epoch::collector::LocalHandle>>,)>>::call_once - shim
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5: 250:71
+             9: std::thread::LocalKey::<crossbeam_epoch::collector::LocalHandle>::try_with::<{closure@crossbeam_epoch::default::with_handle<{closure@crossbeam_epoch::default::is_pinned::{closure#0}}, bool>::{closure#0}}, bool>
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/local.rs:462:37: 462:55
+             10: crossbeam_epoch::default::with_handle::<{closure@crossbeam_epoch::default::is_pinned::{closure#0}}, bool>
+                 at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/default.rs:59:5: 60:28
+             11: crossbeam_epoch::default::is_pinned
+                 at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/default.rs:46:5: 46:45
+             12: crossbeam_deque::deque::Stealer::<rayon_core::job::JobRef>::steal
+                 at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-deque-0.8.6/src/deque.rs:642:12: 642:30
+             13: rayon_core::registry::WorkerThread::take_local_job
+                 at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:757:19: 757:39
+             14: rayon_core::registry::WorkerThread::wait_until_cold
+                 at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:791:32: 791:53
+             15: rayon_core::registry::WorkerThread::wait_until::<rayon_core::latch::OnceLatch>
+                 at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:775:13: 775:40
+             16: rayon_core::registry::WorkerThread::wait_until_out_of_work
+                 at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:824:9: 824:65
+             17: rayon_core::registry::main_loop
+                 at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:929:5: 929:43
+             18: rayon::ThreadBuilder::run
+                 at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:50:18: 50:33
+             19: <rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}
+                 at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:95:20: 95:32
+             20: std::sys::backtrace::__rust_begin_short_backtrace::<{closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166:18: 166:21
+             21: std::thread::lifecycle::spawn_unchecked::<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:64:13: 64:67
+             22: <std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}> as std::ops::FnOnce<()>>::call_once
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275:9: 275:19
+             23: std::panicking::catch_unwind::do_call::<std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}>, ()>
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:573:43: 573:46
+             24: std::panicking::catch_unwind::<(), std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}>>
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:541:19: 541:77
+             25: std::panic::catch_unwind::<std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}>, ()>
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359:14: 359:40
+             26: std::thread::lifecycle::spawn_unchecked::<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:62:26: 65:12
+             27: <{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}} as std::ops::FnOnce<()>>::call_once - shim(vtable)
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5: 250:71
+             28: <std::boxed::Box<dyn std::ops::FnOnce() + std::marker::Send> as std::ops::FnOnce<()>>::call_once
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc/src/boxed.rs:2366:9: 2366:52
+             29: std::sys::thread::unix::Thread::new::thread_start
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/thread/unix.rs:127:17: 127:29
+note: the last function in that backtrace got called indirectly due to this code
+    --> crates/terraphim-session-analyzer/src/analyzer.rs:70:40
+     |
+  70 |           let analyses: Result<Vec<_>> = self
+     |  ________________________________________^
+  71 | |             .parsers
+  72 | |             .par_iter()
+  73 | |             .filter_map(|parser| {
+...    |
+  84 | |             })
+  85 | |             .collect();
+     | |______________________^
+
+error: Undefined Behavior: trying to retag from <389698> for SharedReadWrite permission at alloc126305[0x8], but that tag does not exist in the borrow stack for this location
+   --> /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/internal.rs:567:9
+    |
+567 |         &*local_ptr
+    |         ^^^^^^^^^^^ this error occurs as part of retag at alloc126305[0x0..0x180]
+    |
+    = help: this indicates a potential bug in the program: it performed an invalid operation, but the Stacked Borrows rules it violated are still experimental
+    = help: see https://github.com/rust-lang/unsafe-code-guidelines/blob/master/wip/stacked-borrows.md for further information
+help: <389698> was created by a SharedReadWrite retag at offsets [0x0..0x8]
+   --> /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/internal.rs:566:26
+    |
+566 |         let local_ptr = (entry as *const Entry).cast::<Self>();
+    |                          ^^^^^
+    = note: this is on thread `unnamed-2`
+    = note: stack backtrace:
+            0: <crossbeam_epoch::internal::Local as crossbeam_epoch::sync::list::IsElement<crossbeam_epoch::internal::Local>>::element_of
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/internal.rs:567:9: 567:20
+            1: <crossbeam_epoch::sync::list::Iter<'_, crossbeam_epoch::internal::Local, crossbeam_epoch::internal::Local> as std::iter::Iterator>::next
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/sync/list.rs:290:37: 290:53
+            2: crossbeam_epoch::internal::Global::try_advance
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/internal.rs:245:22: 245:45
+            3: crossbeam_epoch::internal::Global::collect
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/internal.rs:200:28: 200:51
+            4: crossbeam_epoch::internal::Local::pin
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/internal.rs:453:17: 453:46
+            5: crossbeam_epoch::collector::LocalHandle::pin
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/collector.rs:81:18: 81:37
+            6: crossbeam_epoch::default::pin::{closure#0}
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/default.rs:40:26: 40:38
+            7: crossbeam_epoch::default::with_handle::<{closure@crossbeam_epoch::default::pin::{closure#0}}, crossbeam_epoch::guard::Guard>::{closure#0}
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/default.rs:60:23: 60:27
+            8: std::thread::LocalKey::<crossbeam_epoch::collector::LocalHandle>::try_with::<{closure@crossbeam_epoch::default::with_handle<{closure@crossbeam_epoch::default::pin::{closure#0}}, crossbeam_epoch::guard::Guard>::{closure#0}}, crossbeam_epoch::guard::Guard>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/local.rs:463:12: 463:27
+            9: crossbeam_epoch::default::with_handle::<{closure@crossbeam_epoch::default::pin::{closure#0}}, crossbeam_epoch::guard::Guard>
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/default.rs:59:5: 60:28
+            10: crossbeam_epoch::default::pin
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/default.rs:40:5: 40:39
+            11: crossbeam_deque::deque::Stealer::<rayon_core::job::JobRef>::steal
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-deque-0.8.6/src/deque.rs:646:22: 646:34
+            12: rayon_core::registry::WorkerThread::take_local_job
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:757:19: 757:39
+            13: rayon_core::registry::WorkerThread::wait_until_cold
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:791:32: 791:53
+            14: rayon_core::registry::WorkerThread::wait_until::<rayon_core::latch::OnceLatch>
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:775:13: 775:40
+            15: rayon_core::registry::WorkerThread::wait_until_out_of_work
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:824:9: 824:65
+            16: rayon_core::registry::main_loop
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:929:5: 929:43
+            17: rayon::ThreadBuilder::run
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:50:18: 50:33
+            18: <rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:95:20: 95:32
+            19: std::sys::backtrace::__rust_begin_short_backtrace::<{closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166:18: 166:21
+            20: std::thread::lifecycle::spawn_unchecked::<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:64:13: 64:67
+            21: <std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}> as std::ops::FnOnce<()>>::call_once
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275:9: 275:19
+            22: std::panicking::catch_unwind::do_call::<std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}>, ()>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:573:43: 573:46
+            23: std::panicking::catch_unwind::<(), std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}>>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:541:19: 541:77
+            24: std::panic::catch_unwind::<std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}>, ()>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359:14: 359:40
+            25: std::thread::lifecycle::spawn_unchecked::<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:62:26: 65:12
+            26: <{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}} as std::ops::FnOnce<()>>::call_once - shim(vtable)
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5: 250:71
+            27: <std::boxed::Box<dyn std::ops::FnOnce() + std::marker::Send> as std::ops::FnOnce<()>>::call_once
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc/src/boxed.rs:2366:9: 2366:52
+            28: std::sys::thread::unix::Thread::new::thread_start
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/thread/unix.rs:127:17: 127:29
+note: the last function in that backtrace got called indirectly due to this code
+   --> crates/terraphim-session-analyzer/src/analyzer.rs:70:40
+    |
+ 70 |           let analyses: Result<Vec<_>> = self
+    |  ________________________________________^
+ 71 | |             .parsers
+ 72 | |             .par_iter()
+ 73 | |             .filter_map(|parser| {
+...   |
+ 84 | |             })
+ 85 | |             .collect();
+    | |______________________^
+
+error: aborting due to 1 previous error; 2 warnings emitted
+
+error: test failed, to rerun pass `-p terraphim-session-analyzer --lib`
+
+Caused by:
+  process didn't exit successfully: `/home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/bin/cargo-miri runner /tmp/ubx-r9/campaignC/target/miri/x86_64-unknown-linux-gnu/debug/build/terraphim-session-analyzer/56d698c0aae4a7f0/out/terraphim_session_analyzer-56d698c0aae4a7f0 --exact --test-threads=1 'analyzer::tests::test_analyze_drops_sessions_without_target_file_operations' 'analyzer::tests::test_calculate_agent_tool_correlations' 'analyzer::tests::test_calculate_category_breakdown' 'analyzer::tests::test_calculate_confidence_score' 'analyzer::tests::test_calculate_tool_statistics' 'analyzer::tests::test_detect_tool_chains_basic' 'analyzer::tests::test_detect_tool_chains_deployment_pipeline' 'analyzer::tests::test_detect_tool_chains_ignores_single_occurrence' 'analyzer::tests::test_detect_tool_chains_success_rate' 'analyzer::tests::test_detect_tool_chains_time_window' 'analyzer::tests::test_should_exclude_file' 'parser::tests::test_assistant_with_thinking_block_parses' 'parser::tests::test_assistant_with_unknown_content_block_parses' 'parser::tests::test_entry_type_peek_extracts_type' 'parser::tests::test_extract_agent_invocations_ignores_non_task_tool_use' 'parser::tests::test_extract_file_operations' 'parser::tests::test_extract_file_operations_ignores_unknown_tool_and_missing_path' 'parser::tests::test_extract_from_bash_command_ignores_non_bash_tool_use' 'parser::tests::test_extract_from_bash_command_reads_bash_tool_use' 'parser::tests::test_find_active_agent_returns_most_recent_prior_task' 'parser::tests::test_find_active_agent_skips_task_without_subagent_type' 'parser::tests::test_metadata_entries_skipped_in_from_file' 'parser::tests::test_parse_session_entry' 'parser::tests::test_parse_task_invocation' 'parser::tests::test_project_path_taken_from_first_entry_carrying_cwd' 'parser::tests::test_skip_set_contains_metadata_types' 'parser::tests::test_skip_set_excludes_message_types' 'parser::tests::test_user_and_assistant_entries_still_parsed' 'tool_analyzer::tests::test_calculate_tool_statistics_deduplicates_agents' 'tool_analyzer::tests::test_parse_command_context' 'tool_analyzer::tests::test_parse_wrangler_bunx' 'tool_analyzer::tests::test_parse_wrangler_case_insensitive' 'tool_analyzer::tests::test_parse_wrangler_complex_flags' 'tool_analyzer::tests::test_parse_wrangler_deploy_with_env' 'tool_analyzer::tests::test_parse_wrangler_dev' 'tool_analyzer::tests::test_parse_wrangler_in_pipeline' 'tool_analyzer::tests::test_parse_wrangler_init' 'tool_analyzer::tests::test_parse_wrangler_kv_commands' 'tool_analyzer::tests::test_parse_wrangler_pages_deploy' 'tool_analyzer::tests::test_parse_wrangler_pnpm' 'tool_analyzer::tests::test_parse_wrangler_secret_put' 'tool_analyzer::tests::test_parse_wrangler_tail' 'tool_analyzer::tests::test_parse_wrangler_whoami' 'tool_analyzer::tests::test_parse_wrangler_with_output_redirect' 'tool_analyzer::tests::test_parse_wrangler_yarn' 'tool_analyzer::tests::test_split_command_pipeline' 'tool_analyzer::tests::test_split_with_pipe' 'tool_analyzer::tests::test_split_with_quotes'` (exit status: 1)
+note: test exited abnormally; to see the full output pass --no-capture to the harness.
+MIRI_EXIT[default]=1
+AXIS_DONE[default] 23:28:33
+===== AXIS strict_provenance : MIRIFLAGS=-Zmiri-disable-isolation -Zmiri-ignore-leaks -Zmiri-strict-provenance : 48 tests
+warning: unused workspace dependency `rustls`
+   --> Cargo.toml:101:1
+    |
+101 | rustls = { version = "0.23", default-features = false, features = ["logging", "std", "ring"] }
+    | ^^^^^^
+    |
+    = note: `cargo::unused_workspace_dependencies` is set to `warn` by default
+help: consider removing the workspace dependency `rustls`
+warning: unused workspace dependency `rustls-webpki`
+   --> Cargo.toml:102:1
+    |
+102 | rustls-webpki = "0.103.12"
+    | ^^^^^^^^^^^^^
+    |
+help: consider removing the workspace dependency `rustls-webpki`
+warning: unused field `authors` in `workspace.package`
+  --> Cargo.toml:20:1
+   |
+20 | authors = ["Terraphim Team <team@terraphim.ai>"]
+   | ^^^^^^^
+   |
+   = note: `cargo::unused_workspace_package_fields` is set to `warn` by default
+help: consider removing the field `workspace.package.authors`
+warning: unused field `documentation` in `workspace.package`
+  --> Cargo.toml:21:1
+   |
+21 | documentation = "https://terraphim.ai"
+   | ^^^^^^^^^^^^^
+   |
+help: consider removing the field `workspace.package.documentation`
+warning: unused field `homepage` in `workspace.package`
+  --> Cargo.toml:22:1
+   |
+22 | homepage = "https://terraphim.ai"
+   | ^^^^^^^^
+   |
+help: consider removing the field `workspace.package.homepage`
+warning: unused field `repository` in `workspace.package`
+  --> Cargo.toml:23:1
+   |
+23 | repository = "https://git.terraphim.cloud/terraphim/terraphim-clients"
+   | ^^^^^^^^^^
+   |
+help: consider removing the field `workspace.package.repository`
+warning: unused field `license` in `workspace.package`
+  --> Cargo.toml:24:1
+   |
+24 | license = "Apache-2.0"
+   | ^^^^^^^
+   |
+help: consider removing the field `workspace.package.license`
+warning: unused field `readme` in `workspace.package`
+  --> Cargo.toml:25:1
+   |
+25 | readme = "README.md"
+   | ^^^^^^
+   |
+help: consider removing the field `workspace.package.readme`
+warning: workspace (manifest) generated 8 warnings
+warning: `package.homepage` is redundant with `package.documentation`
+ --> crates/terraphim_command_runtime/Cargo.toml:8:12
+  |
+7 | documentation = "https://terraphim.ai"
+  |                 ----------------------
+8 | homepage = "https://terraphim.ai"
+  |            ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim_command_runtime` (manifest) generated 1 warning
+warning: `package.homepage` is redundant with `package.documentation`
+ --> crates/terraphim_cli/Cargo.toml:8:12
+  |
+7 | documentation = "https://terraphim.ai"
+  |                 ----------------------
+8 | homepage = "https://terraphim.ai"
+  |            ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim-cli` (manifest) generated 1 warning
+warning: `package.homepage` is redundant with `package.documentation`
+ --> crates/terraphim_negative_contribution/Cargo.toml:8:12
+  |
+7 | documentation = "https://terraphim.ai"
+  |                 ----------------------
+8 | homepage = "https://terraphim.ai"
+  |            ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim_negative_contribution` (manifest) generated 1 warning
+warning: `package.homepage` is redundant with `package.documentation`
+ --> crates/terraphim_lsp/Cargo.toml:8:12
+  |
+7 | documentation = "https://terraphim.ai"
+  |                 ----------------------
+8 | homepage = "https://terraphim.ai"
+  |            ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim_lsp` (manifest) generated 1 warning
+warning: `package.homepage` is redundant with `package.documentation`
+  --> crates/terraphim_sessions/Cargo.toml:11:12
+   |
+10 | documentation = "https://terraphim.ai"
+   |                 ----------------------
+11 | homepage = "https://terraphim.ai"
+   |            ^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim_sessions` (manifest) generated 1 warning
+warning: `package.homepage` is redundant with `package.documentation`
+ --> crates/terraphim_update/Cargo.toml:8:12
+  |
+7 | documentation = "https://terraphim.ai"
+  |                 ----------------------
+8 | homepage = "https://terraphim.ai"
+  |            ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim_update` (manifest) generated 1 warning
+warning: binary `terraphim_mcp_server` should have a kebab-case name
+   |
+ 1 | /tmp/ubx-r9/campaignC/target/miri/.../terraphim_mcp_server
+   |                                       ^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `cargo::non_kebab_case_bins` is set to `warn` by default
+help: to change the binary name to `terraphim-mcp-server`, convert `bin.name`
+  --> crates/terraphim_mcp_server/Cargo.toml:14:8
+   |
+14 - name = "terraphim_mcp_server"
+14 + name = "terraphim-mcp-server"
+   |
+warning: `package.homepage` is redundant with `package.documentation`
+ --> crates/terraphim_mcp_server/Cargo.toml:7:12
+  |
+6 | documentation = "https://terraphim.ai"
+  |                 ----------------------
+7 | homepage = "https://terraphim.ai"
+  |            ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim_mcp_server` (manifest) generated 2 warnings
+warning: `package.homepage` is redundant with `package.documentation`
+ --> crates/terraphim-session-analyzer/Cargo.toml:8:12
+  |
+7 | documentation = "https://terraphim.ai"
+  |                 ----------------------
+8 | homepage = "https://terraphim.ai"
+  |            ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim-session-analyzer` (manifest) generated 1 warning
+warning: explicit `package.readme` can be inferred
+ --> crates/terraphim_grep/Cargo.toml:9:1
+  |
+9 | readme = "README.md"
+  | ^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `cargo::manual_readme` is set to `warn` by default
+help: consider removing `package.readme`
+warning: `package.homepage` is redundant with `package.documentation`
+ --> crates/terraphim_grep/Cargo.toml:8:12
+  |
+7 | documentation = "https://terraphim.ai"
+  |                 ----------------------
+8 | homepage = "https://terraphim.ai"
+  |            ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim_grep` (manifest) generated 2 warnings
+warning: `package.homepage` is redundant with `package.documentation`
+ --> crates/terraphim_hooks/Cargo.toml:8:12
+  |
+7 | documentation = "https://terraphim.ai"
+  |                 ----------------------
+8 | homepage = "https://terraphim.ai"
+  |            ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim_hooks` (manifest) generated 1 warning
+warning: explicit `package.readme` can be inferred
+  --> crates/terraphim_agent/Cargo.toml:16:1
+   |
+16 | readme = "README.md"
+   | ^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `cargo::manual_readme` is set to `warn` by default
+help: consider removing `package.readme`
+warning: `package.homepage` is redundant with `package.documentation`
+  --> crates/terraphim_agent/Cargo.toml:12:12
+   |
+11 | documentation = "https://terraphim.ai"
+   |                 ----------------------
+12 | homepage = "https://terraphim.ai"
+   |            ^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim_agent` (manifest) generated 2 warnings
+warning: patch `rustls-webpki v0.103.12 (https://github.com/rustls/webpki.git?tag=v%2F0.103.12#27131d47)` was not used in the crate graph
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running unittests src/lib.rs (/tmp/ubx-r9/campaignC/target/miri/x86_64-unknown-linux-gnu/debug/build/terraphim-session-analyzer/56d698c0aae4a7f0/out/terraphim_session_analyzer-56d698c0aae4a7f0)
+
+running 48 tests
+test analyzer::tests::test_analyze_drops_sessions_without_target_file_operations ... error: unsupported operation: integer-to-pointer casts and `ptr::with_exposed_provenance` are not supported with `-Zmiri-strict-provenance`
+   --> /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/atomic.rs:204:11
+    |
+204 |         &*(ptr as *const T)
+    |           ^^^^^^^^^^^^^^^^^ unsupported operation occurred here
+    |
+    = help: use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+    = note: this is on thread `unnamed-2`
+    = note: stack backtrace:
+            0: <crossbeam_epoch::internal::Local as crossbeam_epoch::atomic::Pointable>::deref::<'_>
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/atomic.rs:204:11: 204:28
+            1: crossbeam_epoch::atomic::Shared::<'_, crossbeam_epoch::internal::Local>::deref
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/atomic.rs:1414:9: 1414:22
+            2: crossbeam_epoch::sync::list::List::<crossbeam_epoch::internal::Local>::insert
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/sync/list.rs:176:41: 176:58
+            3: crossbeam_epoch::internal::Local::register
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/internal.rs:348:13: 348:65
+            4: crossbeam_epoch::collector::Collector::register
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/collector.rs:45:9: 45:30
+            5: crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/default.rs:34:34: 34:56
+            6: <fn() -> crossbeam_epoch::collector::LocalHandle {crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn} as std::ops::FnOnce<()>>::call_once - shim(fn() -> crossbeam_epoch::collector::LocalHandle {crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn})
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5: 250:71
+            7: std::thread::local_impl::LazyStorage::<crossbeam_epoch::collector::LocalHandle, ()>::get_or_init_slow::<fn() -> crossbeam_epoch::collector::LocalHandle {crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn}>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/thread_local/native/lazy.rs:80:17: 80:59
+            8: std::thread::local_impl::LazyStorage::<crossbeam_epoch::collector::LocalHandle, ()>::get_or_init::<fn() -> crossbeam_epoch::collector::LocalHandle {crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn}>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/thread_local/native/lazy.rs:62:22: 62:49
+            9: crossbeam_epoch::default::HANDLE::{constant#0}::{closure#0}
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/thread_local/native/mod.rs:97:25: 97:115
+            10: <{closure@crossbeam_epoch::default::HANDLE::{constant#0}::{closure#0}} as std::ops::FnOnce<(std::option::Option<&mut std::option::Option<crossbeam_epoch::collector::LocalHandle>>,)>>::call_once - shim
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5: 250:71
+            11: std::thread::LocalKey::<crossbeam_epoch::collector::LocalHandle>::try_with::<{closure@crossbeam_epoch::default::with_handle<{closure@crossbeam_epoch::default::is_pinned::{closure#0}}, bool>::{closure#0}}, bool>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/local.rs:462:37: 462:55
+            12: crossbeam_epoch::default::with_handle::<{closure@crossbeam_epoch::default::is_pinned::{closure#0}}, bool>
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/default.rs:59:5: 60:28
+            13: crossbeam_epoch::default::is_pinned
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/default.rs:46:5: 46:45
+            14: crossbeam_deque::deque::Stealer::<rayon_core::job::JobRef>::steal
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-deque-0.8.6/src/deque.rs:642:12: 642:30
+            15: rayon_core::registry::WorkerThread::take_local_job
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:757:19: 757:39
+            16: rayon_core::registry::WorkerThread::wait_until_cold
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:791:32: 791:53
+            17: rayon_core::registry::WorkerThread::wait_until::<rayon_core::latch::OnceLatch>
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:775:13: 775:40
+            18: rayon_core::registry::WorkerThread::wait_until_out_of_work
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:824:9: 824:65
+            19: rayon_core::registry::main_loop
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:929:5: 929:43
+            20: rayon::ThreadBuilder::run
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:50:18: 50:33
+            21: <rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:95:20: 95:32
+            22: std::sys::backtrace::__rust_begin_short_backtrace::<{closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166:18: 166:21
+            23: std::thread::lifecycle::spawn_unchecked::<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:64:13: 64:67
+            24: <std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}> as std::ops::FnOnce<()>>::call_once
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275:9: 275:19
+            25: std::panicking::catch_unwind::do_call::<std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}>, ()>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:573:43: 573:46
+            26: std::panicking::catch_unwind::<(), std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}>>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:541:19: 541:77
+            27: std::panic::catch_unwind::<std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}>, ()>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359:14: 359:40
+            28: std::thread::lifecycle::spawn_unchecked::<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:62:26: 65:12
+            29: <{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}} as std::ops::FnOnce<()>>::call_once - shim(vtable)
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5: 250:71
+            30: <std::boxed::Box<dyn std::ops::FnOnce() + std::marker::Send> as std::ops::FnOnce<()>>::call_once
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc/src/boxed.rs:2366:9: 2366:52
+            31: std::sys::thread::unix::Thread::new::thread_start
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/thread/unix.rs:127:17: 127:29
+note: the last function in that backtrace got called indirectly due to this code
+   --> crates/terraphim-session-analyzer/src/analyzer.rs:70:40
+    |
+ 70 |           let analyses: Result<Vec<_>> = self
+    |  ________________________________________^
+ 71 | |             .parsers
+ 72 | |             .par_iter()
+ 73 | |             .filter_map(|parser| {
+...   |
+ 84 | |             })
+ 85 | |             .collect();
+    | |______________________^
+
+note: some details are omitted, run with `MIRIFLAGS=-Zmiri-backtrace=full` for a verbose backtrace
+
+error: aborting due to 1 previous error
+
+error: test failed, to rerun pass `-p terraphim-session-analyzer --lib`
+
+Caused by:
+  process didn't exit successfully: `/home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/bin/cargo-miri runner /tmp/ubx-r9/campaignC/target/miri/x86_64-unknown-linux-gnu/debug/build/terraphim-session-analyzer/56d698c0aae4a7f0/out/terraphim_session_analyzer-56d698c0aae4a7f0 --exact --test-threads=1 'analyzer::tests::test_analyze_drops_sessions_without_target_file_operations' 'analyzer::tests::test_calculate_agent_tool_correlations' 'analyzer::tests::test_calculate_category_breakdown' 'analyzer::tests::test_calculate_confidence_score' 'analyzer::tests::test_calculate_tool_statistics' 'analyzer::tests::test_detect_tool_chains_basic' 'analyzer::tests::test_detect_tool_chains_deployment_pipeline' 'analyzer::tests::test_detect_tool_chains_ignores_single_occurrence' 'analyzer::tests::test_detect_tool_chains_success_rate' 'analyzer::tests::test_detect_tool_chains_time_window' 'analyzer::tests::test_should_exclude_file' 'parser::tests::test_assistant_with_thinking_block_parses' 'parser::tests::test_assistant_with_unknown_content_block_parses' 'parser::tests::test_entry_type_peek_extracts_type' 'parser::tests::test_extract_agent_invocations_ignores_non_task_tool_use' 'parser::tests::test_extract_file_operations' 'parser::tests::test_extract_file_operations_ignores_unknown_tool_and_missing_path' 'parser::tests::test_extract_from_bash_command_ignores_non_bash_tool_use' 'parser::tests::test_extract_from_bash_command_reads_bash_tool_use' 'parser::tests::test_find_active_agent_returns_most_recent_prior_task' 'parser::tests::test_find_active_agent_skips_task_without_subagent_type' 'parser::tests::test_metadata_entries_skipped_in_from_file' 'parser::tests::test_parse_session_entry' 'parser::tests::test_parse_task_invocation' 'parser::tests::test_project_path_taken_from_first_entry_carrying_cwd' 'parser::tests::test_skip_set_contains_metadata_types' 'parser::tests::test_skip_set_excludes_message_types' 'parser::tests::test_user_and_assistant_entries_still_parsed' 'tool_analyzer::tests::test_calculate_tool_statistics_deduplicates_agents' 'tool_analyzer::tests::test_parse_command_context' 'tool_analyzer::tests::test_parse_wrangler_bunx' 'tool_analyzer::tests::test_parse_wrangler_case_insensitive' 'tool_analyzer::tests::test_parse_wrangler_complex_flags' 'tool_analyzer::tests::test_parse_wrangler_deploy_with_env' 'tool_analyzer::tests::test_parse_wrangler_dev' 'tool_analyzer::tests::test_parse_wrangler_in_pipeline' 'tool_analyzer::tests::test_parse_wrangler_init' 'tool_analyzer::tests::test_parse_wrangler_kv_commands' 'tool_analyzer::tests::test_parse_wrangler_pages_deploy' 'tool_analyzer::tests::test_parse_wrangler_pnpm' 'tool_analyzer::tests::test_parse_wrangler_secret_put' 'tool_analyzer::tests::test_parse_wrangler_tail' 'tool_analyzer::tests::test_parse_wrangler_whoami' 'tool_analyzer::tests::test_parse_wrangler_with_output_redirect' 'tool_analyzer::tests::test_parse_wrangler_yarn' 'tool_analyzer::tests::test_split_command_pipeline' 'tool_analyzer::tests::test_split_with_pipe' 'tool_analyzer::tests::test_split_with_quotes'` (exit status: 1)
+note: test exited abnormally; to see the full output pass --no-capture to the harness.
+MIRI_EXIT[strict_provenance]=1
+AXIS_DONE[strict_provenance] 23:28:35
+===== AXIS symbolic_alignment : MIRIFLAGS=-Zmiri-disable-isolation -Zmiri-ignore-leaks -Zmiri-symbolic-alignment-check : 55 tests
+warning: unused workspace dependency `rustls`
+   --> Cargo.toml:101:1
+    |
+101 | rustls = { version = "0.23", default-features = false, features = ["logging", "std", "ring"] }
+    | ^^^^^^
+    |
+    = note: `cargo::unused_workspace_dependencies` is set to `warn` by default
+help: consider removing the workspace dependency `rustls`
+warning: unused workspace dependency `rustls-webpki`
+   --> Cargo.toml:102:1
+    |
+102 | rustls-webpki = "0.103.12"
+    | ^^^^^^^^^^^^^
+    |
+help: consider removing the workspace dependency `rustls-webpki`
+warning: unused field `authors` in `workspace.package`
+  --> Cargo.toml:20:1
+   |
+20 | authors = ["Terraphim Team <team@terraphim.ai>"]
+   | ^^^^^^^
+   |
+   = note: `cargo::unused_workspace_package_fields` is set to `warn` by default
+help: consider removing the field `workspace.package.authors`
+warning: unused field `documentation` in `workspace.package`
+  --> Cargo.toml:21:1
+   |
+21 | documentation = "https://terraphim.ai"
+   | ^^^^^^^^^^^^^
+   |
+help: consider removing the field `workspace.package.documentation`
+warning: unused field `homepage` in `workspace.package`
+  --> Cargo.toml:22:1
+   |
+22 | homepage = "https://terraphim.ai"
+   | ^^^^^^^^
+   |
+help: consider removing the field `workspace.package.homepage`
+warning: unused field `repository` in `workspace.package`
+  --> Cargo.toml:23:1
+   |
+23 | repository = "https://git.terraphim.cloud/terraphim/terraphim-clients"
+   | ^^^^^^^^^^
+   |
+help: consider removing the field `workspace.package.repository`
+warning: unused field `license` in `workspace.package`
+  --> Cargo.toml:24:1
+   |
+24 | license = "Apache-2.0"
+   | ^^^^^^^
+   |
+help: consider removing the field `workspace.package.license`
+warning: unused field `readme` in `workspace.package`
+  --> Cargo.toml:25:1
+   |
+25 | readme = "README.md"
+   | ^^^^^^
+   |
+help: consider removing the field `workspace.package.readme`
+warning: workspace (manifest) generated 8 warnings
+warning: `package.homepage` is redundant with `package.documentation`
+ --> crates/terraphim_command_runtime/Cargo.toml:8:12
+  |
+7 | documentation = "https://terraphim.ai"
+  |                 ----------------------
+8 | homepage = "https://terraphim.ai"
+  |            ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim_command_runtime` (manifest) generated 1 warning
+warning: `package.homepage` is redundant with `package.documentation`
+ --> crates/terraphim_cli/Cargo.toml:8:12
+  |
+7 | documentation = "https://terraphim.ai"
+  |                 ----------------------
+8 | homepage = "https://terraphim.ai"
+  |            ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim-cli` (manifest) generated 1 warning
+warning: `package.homepage` is redundant with `package.documentation`
+ --> crates/terraphim_negative_contribution/Cargo.toml:8:12
+  |
+7 | documentation = "https://terraphim.ai"
+  |                 ----------------------
+8 | homepage = "https://terraphim.ai"
+  |            ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim_negative_contribution` (manifest) generated 1 warning
+warning: `package.homepage` is redundant with `package.documentation`
+ --> crates/terraphim_lsp/Cargo.toml:8:12
+  |
+7 | documentation = "https://terraphim.ai"
+  |                 ----------------------
+8 | homepage = "https://terraphim.ai"
+  |            ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim_lsp` (manifest) generated 1 warning
+warning: `package.homepage` is redundant with `package.documentation`
+  --> crates/terraphim_sessions/Cargo.toml:11:12
+   |
+10 | documentation = "https://terraphim.ai"
+   |                 ----------------------
+11 | homepage = "https://terraphim.ai"
+   |            ^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim_sessions` (manifest) generated 1 warning
+warning: `package.homepage` is redundant with `package.documentation`
+ --> crates/terraphim_update/Cargo.toml:8:12
+  |
+7 | documentation = "https://terraphim.ai"
+  |                 ----------------------
+8 | homepage = "https://terraphim.ai"
+  |            ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim_update` (manifest) generated 1 warning
+warning: binary `terraphim_mcp_server` should have a kebab-case name
+   |
+ 1 | /tmp/ubx-r9/campaignC/target/miri/.../terraphim_mcp_server
+   |                                       ^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `cargo::non_kebab_case_bins` is set to `warn` by default
+help: to change the binary name to `terraphim-mcp-server`, convert `bin.name`
+  --> crates/terraphim_mcp_server/Cargo.toml:14:8
+   |
+14 - name = "terraphim_mcp_server"
+14 + name = "terraphim-mcp-server"
+   |
+warning: `package.homepage` is redundant with `package.documentation`
+ --> crates/terraphim_mcp_server/Cargo.toml:7:12
+  |
+6 | documentation = "https://terraphim.ai"
+  |                 ----------------------
+7 | homepage = "https://terraphim.ai"
+  |            ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim_mcp_server` (manifest) generated 2 warnings
+warning: `package.homepage` is redundant with `package.documentation`
+ --> crates/terraphim-session-analyzer/Cargo.toml:8:12
+  |
+7 | documentation = "https://terraphim.ai"
+  |                 ----------------------
+8 | homepage = "https://terraphim.ai"
+  |            ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim-session-analyzer` (manifest) generated 1 warning
+warning: explicit `package.readme` can be inferred
+ --> crates/terraphim_grep/Cargo.toml:9:1
+  |
+9 | readme = "README.md"
+  | ^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `cargo::manual_readme` is set to `warn` by default
+help: consider removing `package.readme`
+warning: `package.homepage` is redundant with `package.documentation`
+ --> crates/terraphim_grep/Cargo.toml:8:12
+  |
+7 | documentation = "https://terraphim.ai"
+  |                 ----------------------
+8 | homepage = "https://terraphim.ai"
+  |            ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim_grep` (manifest) generated 2 warnings
+warning: `package.homepage` is redundant with `package.documentation`
+ --> crates/terraphim_hooks/Cargo.toml:8:12
+  |
+7 | documentation = "https://terraphim.ai"
+  |                 ----------------------
+8 | homepage = "https://terraphim.ai"
+  |            ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim_hooks` (manifest) generated 1 warning
+warning: explicit `package.readme` can be inferred
+  --> crates/terraphim_agent/Cargo.toml:16:1
+   |
+16 | readme = "README.md"
+   | ^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `cargo::manual_readme` is set to `warn` by default
+help: consider removing `package.readme`
+warning: `package.homepage` is redundant with `package.documentation`
+  --> crates/terraphim_agent/Cargo.toml:12:12
+   |
+11 | documentation = "https://terraphim.ai"
+   |                 ----------------------
+12 | homepage = "https://terraphim.ai"
+   |            ^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `terraphim_agent` (manifest) generated 2 warnings
+warning: patch `rustls-webpki v0.103.12 (https://github.com/rustls/webpki.git?tag=v%2F0.103.12#27131d47)` was not used in the crate graph
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.10s
+     Running unittests src/lib.rs (/tmp/ubx-r9/campaignC/target/miri/x86_64-unknown-linux-gnu/debug/build/terraphim-session-analyzer/56d698c0aae4a7f0/out/terraphim_session_analyzer-56d698c0aae4a7f0)
+
+running 55 tests
+test analyzer::tests::test_analyze_drops_sessions_without_target_file_operations ... warning: integer-to-pointer cast
+   --> /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/atomic.rs:204:11
+    |
+204 |         &*(ptr as *const T)
+    |           ^^^^^^^^^^^^^^^^^ integer-to-pointer cast
+    |
+    = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+    = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+    = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+    = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+    = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+    = note: this is on thread `unnamed-2`
+    = note: stack backtrace:
+            0: <crossbeam_epoch::internal::Local as crossbeam_epoch::atomic::Pointable>::deref::<'_>
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/atomic.rs:204:11: 204:28
+            1: crossbeam_epoch::atomic::Shared::<'_, crossbeam_epoch::internal::Local>::deref
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/atomic.rs:1414:9: 1414:22
+            2: crossbeam_epoch::sync::list::List::<crossbeam_epoch::internal::Local>::insert
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/sync/list.rs:176:41: 176:58
+            3: crossbeam_epoch::internal::Local::register
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/internal.rs:348:13: 348:65
+            4: crossbeam_epoch::collector::Collector::register
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/collector.rs:45:9: 45:30
+            5: crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/default.rs:34:34: 34:56
+            6: <fn() -> crossbeam_epoch::collector::LocalHandle {crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn} as std::ops::FnOnce<()>>::call_once - shim(fn() -> crossbeam_epoch::collector::LocalHandle {crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn})
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5: 250:71
+            7: std::thread::local_impl::LazyStorage::<crossbeam_epoch::collector::LocalHandle, ()>::get_or_init_slow::<fn() -> crossbeam_epoch::collector::LocalHandle {crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn}>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/thread_local/native/lazy.rs:80:17: 80:59
+            8: std::thread::local_impl::LazyStorage::<crossbeam_epoch::collector::LocalHandle, ()>::get_or_init::<fn() -> crossbeam_epoch::collector::LocalHandle {crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn}>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/thread_local/native/lazy.rs:62:22: 62:49
+            9: crossbeam_epoch::default::HANDLE::{constant#0}::{closure#0}
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/thread_local/native/mod.rs:97:25: 97:115
+            10: <{closure@crossbeam_epoch::default::HANDLE::{constant#0}::{closure#0}} as std::ops::FnOnce<(std::option::Option<&mut std::option::Option<crossbeam_epoch::collector::LocalHandle>>,)>>::call_once - shim
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5: 250:71
+            11: std::thread::LocalKey::<crossbeam_epoch::collector::LocalHandle>::try_with::<{closure@crossbeam_epoch::default::with_handle<{closure@crossbeam_epoch::default::is_pinned::{closure#0}}, bool>::{closure#0}}, bool>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/local.rs:462:37: 462:55
+            12: crossbeam_epoch::default::with_handle::<{closure@crossbeam_epoch::default::is_pinned::{closure#0}}, bool>
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/default.rs:59:5: 60:28
+            13: crossbeam_epoch::default::is_pinned
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/default.rs:46:5: 46:45
+            14: crossbeam_deque::deque::Stealer::<rayon_core::job::JobRef>::steal
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-deque-0.8.6/src/deque.rs:642:12: 642:30
+            15: rayon_core::registry::WorkerThread::take_local_job
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:757:19: 757:39
+            16: rayon_core::registry::WorkerThread::wait_until_cold
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:791:32: 791:53
+            17: rayon_core::registry::WorkerThread::wait_until::<rayon_core::latch::OnceLatch>
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:775:13: 775:40
+            18: rayon_core::registry::WorkerThread::wait_until_out_of_work
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:824:9: 824:65
+            19: rayon_core::registry::main_loop
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:929:5: 929:43
+            20: rayon::ThreadBuilder::run
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:50:18: 50:33
+            21: <rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:95:20: 95:32
+            22: std::sys::backtrace::__rust_begin_short_backtrace::<{closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166:18: 166:21
+            23: std::thread::lifecycle::spawn_unchecked::<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:64:13: 64:67
+            24: <std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}> as std::ops::FnOnce<()>>::call_once
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275:9: 275:19
+            25: std::panicking::catch_unwind::do_call::<std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}>, ()>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:573:43: 573:46
+            26: std::panicking::catch_unwind::<(), std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}>>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:541:19: 541:77
+            27: std::panic::catch_unwind::<std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}>, ()>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359:14: 359:40
+            28: std::thread::lifecycle::spawn_unchecked::<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:62:26: 65:12
+            29: <{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}} as std::ops::FnOnce<()>>::call_once - shim(vtable)
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5: 250:71
+            30: <std::boxed::Box<dyn std::ops::FnOnce() + std::marker::Send> as std::ops::FnOnce<()>>::call_once
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc/src/boxed.rs:2366:9: 2366:52
+            31: std::sys::thread::unix::Thread::new::thread_start
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/thread/unix.rs:127:17: 127:29
+note: the last function in that backtrace got called indirectly due to this code
+   --> crates/terraphim-session-analyzer/src/analyzer.rs:70:40
+    |
+ 70 |           let analyses: Result<Vec<_>> = self
+    |  ________________________________________^
+ 71 | |             .parsers
+ 72 | |             .par_iter()
+ 73 | |             .filter_map(|parser| {
+...   |
+ 84 | |             })
+ 85 | |             .collect();
+    | |______________________^
+
+warning: integer-to-pointer cast
+    --> /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/atomic.rs:1338:9
+     |
+1338 |         raw as *const _
+     |         ^^^^^^^^^^^^^^^ integer-to-pointer cast
+     |
+     = note: this is on thread `unnamed-2`
+     = note: stack backtrace:
+             0: crossbeam_epoch::atomic::Shared::<'_, crossbeam_epoch::internal::Local>::as_raw
+                 at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/atomic.rs:1338:9: 1338:24
+             1: crossbeam_epoch::internal::Local::register
+                 at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/internal.rs:350:24: 350:38
+             2: crossbeam_epoch::collector::Collector::register
+                 at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/collector.rs:45:9: 45:30
+             3: crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn
+                 at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/default.rs:34:34: 34:56
+             4: <fn() -> crossbeam_epoch::collector::LocalHandle {crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn} as std::ops::FnOnce<()>>::call_once - shim(fn() -> crossbeam_epoch::collector::LocalHandle {crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn})
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5: 250:71
+             5: std::thread::local_impl::LazyStorage::<crossbeam_epoch::collector::LocalHandle, ()>::get_or_init_slow::<fn() -> crossbeam_epoch::collector::LocalHandle {crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn}>
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/thread_local/native/lazy.rs:80:17: 80:59
+             6: std::thread::local_impl::LazyStorage::<crossbeam_epoch::collector::LocalHandle, ()>::get_or_init::<fn() -> crossbeam_epoch::collector::LocalHandle {crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn}>
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/thread_local/native/lazy.rs:62:22: 62:49
+             7: crossbeam_epoch::default::HANDLE::{constant#0}::{closure#0}
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/thread_local/native/mod.rs:97:25: 97:115
+             8: <{closure@crossbeam_epoch::default::HANDLE::{constant#0}::{closure#0}} as std::ops::FnOnce<(std::option::Option<&mut std::option::Option<crossbeam_epoch::collector::LocalHandle>>,)>>::call_once - shim
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5: 250:71
+             9: std::thread::LocalKey::<crossbeam_epoch::collector::LocalHandle>::try_with::<{closure@crossbeam_epoch::default::with_handle<{closure@crossbeam_epoch::default::is_pinned::{closure#0}}, bool>::{closure#0}}, bool>
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/local.rs:462:37: 462:55
+             10: crossbeam_epoch::default::with_handle::<{closure@crossbeam_epoch::default::is_pinned::{closure#0}}, bool>
+                 at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/default.rs:59:5: 60:28
+             11: crossbeam_epoch::default::is_pinned
+                 at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/default.rs:46:5: 46:45
+             12: crossbeam_deque::deque::Stealer::<rayon_core::job::JobRef>::steal
+                 at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-deque-0.8.6/src/deque.rs:642:12: 642:30
+             13: rayon_core::registry::WorkerThread::take_local_job
+                 at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:757:19: 757:39
+             14: rayon_core::registry::WorkerThread::wait_until_cold
+                 at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:791:32: 791:53
+             15: rayon_core::registry::WorkerThread::wait_until::<rayon_core::latch::OnceLatch>
+                 at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:775:13: 775:40
+             16: rayon_core::registry::WorkerThread::wait_until_out_of_work
+                 at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:824:9: 824:65
+             17: rayon_core::registry::main_loop
+                 at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:929:5: 929:43
+             18: rayon::ThreadBuilder::run
+                 at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:50:18: 50:33
+             19: <rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}
+                 at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:95:20: 95:32
+             20: std::sys::backtrace::__rust_begin_short_backtrace::<{closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166:18: 166:21
+             21: std::thread::lifecycle::spawn_unchecked::<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:64:13: 64:67
+             22: <std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}> as std::ops::FnOnce<()>>::call_once
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275:9: 275:19
+             23: std::panicking::catch_unwind::do_call::<std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}>, ()>
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:573:43: 573:46
+             24: std::panicking::catch_unwind::<(), std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}>>
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:541:19: 541:77
+             25: std::panic::catch_unwind::<std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}>, ()>
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359:14: 359:40
+             26: std::thread::lifecycle::spawn_unchecked::<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:62:26: 65:12
+             27: <{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}} as std::ops::FnOnce<()>>::call_once - shim(vtable)
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5: 250:71
+             28: <std::boxed::Box<dyn std::ops::FnOnce() + std::marker::Send> as std::ops::FnOnce<()>>::call_once
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc/src/boxed.rs:2366:9: 2366:52
+             29: std::sys::thread::unix::Thread::new::thread_start
+                 at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/thread/unix.rs:127:17: 127:29
+note: the last function in that backtrace got called indirectly due to this code
+    --> crates/terraphim-session-analyzer/src/analyzer.rs:70:40
+     |
+  70 |           let analyses: Result<Vec<_>> = self
+     |  ________________________________________^
+  71 | |             .parsers
+  72 | |             .par_iter()
+  73 | |             .filter_map(|parser| {
+...    |
+  84 | |             })
+  85 | |             .collect();
+     | |______________________^
+
+error: Undefined Behavior: trying to retag from <412324> for SharedReadWrite permission at alloc133282[0x8], but that tag does not exist in the borrow stack for this location
+   --> /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/internal.rs:567:9
+    |
+567 |         &*local_ptr
+    |         ^^^^^^^^^^^ this error occurs as part of retag at alloc133282[0x0..0x180]
+    |
+    = help: this indicates a potential bug in the program: it performed an invalid operation, but the Stacked Borrows rules it violated are still experimental
+    = help: see https://github.com/rust-lang/unsafe-code-guidelines/blob/master/wip/stacked-borrows.md for further information
+help: <412324> was created by a SharedReadWrite retag at offsets [0x0..0x8]
+   --> /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/internal.rs:566:26
+    |
+566 |         let local_ptr = (entry as *const Entry).cast::<Self>();
+    |                          ^^^^^
+    = note: this is on thread `unnamed-2`
+    = note: stack backtrace:
+            0: <crossbeam_epoch::internal::Local as crossbeam_epoch::sync::list::IsElement<crossbeam_epoch::internal::Local>>::element_of
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/internal.rs:567:9: 567:20
+            1: <crossbeam_epoch::sync::list::Iter<'_, crossbeam_epoch::internal::Local, crossbeam_epoch::internal::Local> as std::iter::Iterator>::next
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/sync/list.rs:290:37: 290:53
+            2: crossbeam_epoch::internal::Global::try_advance
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/internal.rs:245:22: 245:45
+            3: crossbeam_epoch::internal::Global::collect
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/internal.rs:200:28: 200:51
+            4: crossbeam_epoch::internal::Local::pin
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/internal.rs:453:17: 453:46
+            5: crossbeam_epoch::collector::LocalHandle::pin
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/collector.rs:81:18: 81:37
+            6: crossbeam_epoch::default::pin::{closure#0}
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/default.rs:40:26: 40:38
+            7: crossbeam_epoch::default::with_handle::<{closure@crossbeam_epoch::default::pin::{closure#0}}, crossbeam_epoch::guard::Guard>::{closure#0}
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/default.rs:60:23: 60:27
+            8: std::thread::LocalKey::<crossbeam_epoch::collector::LocalHandle>::try_with::<{closure@crossbeam_epoch::default::with_handle<{closure@crossbeam_epoch::default::pin::{closure#0}}, crossbeam_epoch::guard::Guard>::{closure#0}}, crossbeam_epoch::guard::Guard>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/local.rs:463:12: 463:27
+            9: crossbeam_epoch::default::with_handle::<{closure@crossbeam_epoch::default::pin::{closure#0}}, crossbeam_epoch::guard::Guard>
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/default.rs:59:5: 60:28
+            10: crossbeam_epoch::default::pin
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/default.rs:40:5: 40:39
+            11: crossbeam_deque::deque::Stealer::<rayon_core::job::JobRef>::steal
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-deque-0.8.6/src/deque.rs:646:22: 646:34
+            12: rayon_core::registry::WorkerThread::take_local_job
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:757:19: 757:39
+            13: rayon_core::registry::WorkerThread::wait_until_cold
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:791:32: 791:53
+            14: rayon_core::registry::WorkerThread::wait_until::<rayon_core::latch::OnceLatch>
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:775:13: 775:40
+            15: rayon_core::registry::WorkerThread::wait_until_out_of_work
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:824:9: 824:65
+            16: rayon_core::registry::main_loop
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:929:5: 929:43
+            17: rayon::ThreadBuilder::run
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:50:18: 50:33
+            18: <rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}
+                at /home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:95:20: 95:32
+            19: std::sys::backtrace::__rust_begin_short_backtrace::<{closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166:18: 166:21
+            20: std::thread::lifecycle::spawn_unchecked::<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:64:13: 64:67
+            21: <std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}> as std::ops::FnOnce<()>>::call_once
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275:9: 275:19
+            22: std::panicking::catch_unwind::do_call::<std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}>, ()>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:573:43: 573:46
+            23: std::panicking::catch_unwind::<(), std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}>>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:541:19: 541:77
+            24: std::panic::catch_unwind::<std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}>, ()>
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359:14: 359:40
+            25: std::thread::lifecycle::spawn_unchecked::<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:62:26: 65:12
+            26: <{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}} as std::ops::FnOnce<()>>::call_once - shim(vtable)
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5: 250:71
+            27: <std::boxed::Box<dyn std::ops::FnOnce() + std::marker::Send> as std::ops::FnOnce<()>>::call_once
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc/src/boxed.rs:2366:9: 2366:52
+            28: std::sys::thread::unix::Thread::new::thread_start
+                at /home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/thread/unix.rs:127:17: 127:29
+note: the last function in that backtrace got called indirectly due to this code
+   --> crates/terraphim-session-analyzer/src/analyzer.rs:70:40
+    |
+ 70 |           let analyses: Result<Vec<_>> = self
+    |  ________________________________________^
+ 71 | |             .parsers
+ 72 | |             .par_iter()
+ 73 | |             .filter_map(|parser| {
+...   |
+ 84 | |             })
+ 85 | |             .collect();
+    | |______________________^
+
+error: aborting due to 1 previous error; 2 warnings emitted
+
+error: test failed, to rerun pass `-p terraphim-session-analyzer --lib`
+
+Caused by:
+  process didn't exit successfully: `/home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/bin/cargo-miri runner /tmp/ubx-r9/campaignC/target/miri/x86_64-unknown-linux-gnu/debug/build/terraphim-session-analyzer/56d698c0aae4a7f0/out/terraphim_session_analyzer-56d698c0aae4a7f0 --exact --test-threads=1 'analyzer::tests::test_analyze_drops_sessions_without_target_file_operations' 'analyzer::tests::test_calculate_agent_tool_correlations' 'analyzer::tests::test_calculate_category_breakdown' 'analyzer::tests::test_calculate_confidence_score' 'analyzer::tests::test_calculate_tool_statistics' 'analyzer::tests::test_detect_tool_chains_basic' 'analyzer::tests::test_detect_tool_chains_deployment_pipeline' 'analyzer::tests::test_detect_tool_chains_ignores_single_occurrence' 'analyzer::tests::test_detect_tool_chains_success_rate' 'analyzer::tests::test_detect_tool_chains_time_window' 'analyzer::tests::test_should_exclude_file' 'models::tests::proptest_tests::test_extract_file_path_properties' 'models::tests::proptest_tests::test_newtype_wrapper_roundtrip' 'models::tests::proptest_tests::test_normalize_agent_name_properties' 'models::tests::proptest_tests::test_parse_timestamp_properties' 'parser::tests::test_assistant_with_thinking_block_parses' 'parser::tests::test_assistant_with_unknown_content_block_parses' 'parser::tests::test_entry_type_peek_extracts_type' 'parser::tests::test_extract_agent_invocations_ignores_non_task_tool_use' 'parser::tests::test_extract_file_operations' 'parser::tests::test_extract_file_operations_ignores_unknown_tool_and_missing_path' 'parser::tests::test_extract_from_bash_command_ignores_non_bash_tool_use' 'parser::tests::test_extract_from_bash_command_reads_bash_tool_use' 'parser::tests::test_find_active_agent_returns_most_recent_prior_task' 'parser::tests::test_find_active_agent_skips_task_without_subagent_type' 'parser::tests::test_metadata_entries_skipped_in_from_file' 'parser::tests::test_parse_session_entry' 'parser::tests::test_parse_task_invocation' 'parser::tests::test_project_path_taken_from_first_entry_carrying_cwd' 'parser::tests::test_skip_set_contains_metadata_types' 'parser::tests::test_skip_set_excludes_message_types' 'parser::tests::test_user_and_assistant_entries_still_parsed' 'patterns::knowledge_graph::tests::proptest_tests::test_confidence_properties' 'patterns::knowledge_graph::tests::proptest_tests::test_observe_properties' 'patterns::knowledge_graph::tests::proptest_tests::test_promotion_threshold_properties' 'tool_analyzer::tests::test_calculate_tool_statistics_deduplicates_agents' 'tool_analyzer::tests::test_parse_command_context' 'tool_analyzer::tests::test_parse_wrangler_bunx' 'tool_analyzer::tests::test_parse_wrangler_case_insensitive' 'tool_analyzer::tests::test_parse_wrangler_complex_flags' 'tool_analyzer::tests::test_parse_wrangler_deploy_with_env' 'tool_analyzer::tests::test_parse_wrangler_dev' 'tool_analyzer::tests::test_parse_wrangler_in_pipeline' 'tool_analyzer::tests::test_parse_wrangler_init' 'tool_analyzer::tests::test_parse_wrangler_kv_commands' 'tool_analyzer::tests::test_parse_wrangler_pages_deploy' 'tool_analyzer::tests::test_parse_wrangler_pnpm' 'tool_analyzer::tests::test_parse_wrangler_secret_put' 'tool_analyzer::tests::test_parse_wrangler_tail' 'tool_analyzer::tests::test_parse_wrangler_whoami' 'tool_analyzer::tests::test_parse_wrangler_with_output_redirect' 'tool_analyzer::tests::test_parse_wrangler_yarn' 'tool_analyzer::tests::test_split_command_pipeline' 'tool_analyzer::tests::test_split_with_pipe' 'tool_analyzer::tests::test_split_with_quotes'` (exit status: 1)
+note: test exited abnormally; to see the full output pass --no-capture to the harness.
+MIRI_EXIT[symbolic_alignment]=1
+AXIS_DONE[symbolic_alignment] 23:28:37
+DF_AFTER= 282G
+CAMPAIGN_C_DONE
+
+########################################################################
+# SECOND PASS: per-test runs (the batch runs above abort the whole
+# process on the first failing test, so they cannot tell us how much of
+# each delta is actually coverable). Each delta test was run in its own
+# Miri process, 4 at a time, same MIRIFLAGS, PROPTEST_CASES=16.
+# DATE=2026-09-12 23:31 CEST
+# Drivers: /tmp/ubx-r9/drivers/pertest.sh ; per-test logs under
+# /tmp/ubx-r9/campaignC/pertest/<axis>/<test>.log with EXIT=<rc> appended.
+########################################################################
+== default 48 tests: {'UB:/home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/internal.rs': 5, 'PASS': 43}
+    analyzer::tests::test_analyze_drops_sessions_without_target_file_operations -> UB:/home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/internal.rs exit 1
+    parser::tests::test_extract_agent_invocations_ignores_non_task_tool_use -> UB:/home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/internal.rs exit 1
+    parser::tests::test_extract_file_operations -> UB:/home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/internal.rs exit 1
+    parser::tests::test_extract_file_operations_ignores_unknown_tool_and_missing_path -> UB:/home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/internal.rs exit 1
+    parser::tests::test_parse_task_invocation -> UB:/home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/internal.rs exit 1
+== strict_provenance 48 tests: {'UNSUPPORTED:registry': 5, 'PASS': 43}
+    analyzer::tests::test_analyze_drops_sessions_without_target_file_operations -> UNSUPPORTED:registry exit 1
+    parser::tests::test_extract_agent_invocations_ignores_non_task_tool_use -> UNSUPPORTED:registry exit 1
+    parser::tests::test_extract_file_operations -> UNSUPPORTED:registry exit 1
+    parser::tests::test_extract_file_operations_ignores_unknown_tool_and_missing_path -> UNSUPPORTED:registry exit 1
+    parser::tests::test_parse_task_invocation -> UNSUPPORTED:registry exit 1
+== symbolic_alignment 55 tests: {'UB:/home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/internal.rs': 5, 'PASS': 50}
+    analyzer::tests::test_analyze_drops_sessions_without_target_file_operations -> UB:/home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/internal.rs exit 1
+    parser::tests::test_extract_agent_invocations_ignores_non_task_tool_use -> UB:/home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/internal.rs exit 1
+    parser::tests::test_extract_file_operations -> UB:/home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/internal.rs exit 1
+    parser::tests::test_extract_file_operations_ignores_unknown_tool_and_missing_path -> UB:/home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/internal.rs exit 1
+    parser::tests::test_parse_task_invocation -> UB:/home/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/internal.rs exit 1
+
+RESULT
+  Phase 3 baseline: tree-borrows 128 tests, default 80, strict-provenance 80, symbolic-alignment 73 (of 128).
+  This pass: default 43/48 of its delta passed, strict-provenance 43/48, symbolic-alignment 50/55.
+  Every axis therefore now covers the same 123 of 128 tests:
+    default            80 + 43 = 123
+    strict-provenance  80 + 43 = 123
+    symbolic-alignment 73 + 50 = 123
+    tree-borrows      128 (already the full set in Phase 3)
+  The 5 tests no Stacked-Borrows-based axis can cover are the same 5 on every axis:
+    analyzer::tests::test_analyze_drops_sessions_without_target_file_operations
+    parser::tests::test_extract_agent_invocations_ignores_non_task_tool_use
+    parser::tests::test_extract_file_operations
+    parser::tests::test_extract_file_operations_ignores_unknown_tool_and_missing_path
+    parser::tests::test_parse_task_invocation
+  Reason, identical in every case and identical to EXP-101: these tests drive
+  SessionAnalyzer::analyze, whose rayon par_iter (crates/terraphim-session-analyzer/src/analyzer.rs:70)
+  starts rayon's global pool. On a rayon worker thread crossbeam-epoch 0.9.21 then either
+    (default, symbolic-alignment) violates Stacked Borrows at internal.rs:567 (&*local_ptr in
+      Local::element_of, reached from Global::try_advance via Stealer::steal), or
+    (strict-provenance) performs an integer-to-pointer cast at atomic.rs:204 (Pointable::deref,
+      reached from List::insert in Local::register), which that axis refuses as an unsupported operation.
+  Every erroring frame is a dependency frame (crossbeam-epoch / rayon-core / std). No workspace
+  frame appears in any backtrace: analyzer.rs:70 is named only by Miri's 'called indirectly due to
+  this code' note, i.e. as the code that started the pool. Under the audit rule this is a dependency
+  limitation, not CONFIRMED_UB, and it repeats EXP-101 (crossbeam_epoch::internal::Local::element_of
+  under Stacked Borrows, clean under Tree Borrows) rather than adding anything new. Tree Borrows
+  covers all 128 tests precisely because it does not flag this pattern.
+  -Zmiri-ignore-leaks was set on every axis as the design requires; it was necessary but not
+  sufficient, since these five abort on the crossbeam-epoch report rather than on a leak.
+CAMPAIGN_C_VERDICT: NO_EVIDENCE of workspace UB. 123 of 128 tests on all four axes; the
+  remaining 5 are uncoverable on the three Stacked-Borrows-based axes for the dependency reason above.
+DF_AFTER= 280G
+CAMPAIGN_C_PERTEST_DONE

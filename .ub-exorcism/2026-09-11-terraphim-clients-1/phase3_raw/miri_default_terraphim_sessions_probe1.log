@@ -1,0 +1,85 @@
+# CMD: MIRIFLAGS="-Zmiri-disable-isolation" cargo +nightly miri test -p terraphim_sessions --lib -- --test-threads=1 --skip connector::native --skip connector::cursor --skip service
+# DATE: 2026-09-12 00:18 BST
+    Blocking waiting for file lock on package cache
+warning: patch `rustls-webpki v0.103.12 (https://github.com/rustls/webpki.git?tag=v%2F0.103.12#27131d47)` was not used in the crate graph
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on build directory
+   Compiling ppv-lite86 v0.2.21
+   Compiling uuid v1.23.3
+   Compiling tokio v1.52.3
+   Compiling schemars v0.8.22
+   Compiling chrono v0.4.45
+   Compiling ahash v0.8.12
+   Compiling dialoguer v0.12.0
+   Compiling notify-types v2.1.0
+   Compiling fsevent-sys v4.1.0
+   Compiling criterion v0.8.2
+   Compiling notify v8.2.0
+   Compiling rand_chacha v0.9.0
+   Compiling rand v0.9.4
+   Compiling terraphim-session-analyzer v1.21.14 (/Users/alex/projects/terraphim/terraphim-clients/crates/terraphim-session-analyzer)
+   Compiling ulid v1.2.1
+   Compiling terraphim_types v1.22.1 (registry `terraphim`)
+   Compiling terraphim-markdown-parser v1.20.2 (registry `terraphim`)
+   Compiling tokio-stream v0.1.18
+   Compiling tokio-test v0.4.5
+   Compiling terraphim_sessions v1.21.2 (/Users/alex/projects/terraphim/terraphim-clients/crates/terraphim_sessions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 16.67s
+     Running unittests src/lib.rs (target/miri/aarch64-apple-darwin/debug/deps/terraphim_sessions-d1fdef330c2cb025)
+
+running 51 tests
+test cla::connector::tests::test_cla_claude_connector ... ok
+test connector::aider::tests::count_aider_history_files_respects_depth_cap ... ok
+test connector::aider::tests::count_aider_history_files_terminates_on_symlink_cycle ... ok
+test connector::aider::tests::test_import_from_tempdir_history_file ... error: unsupported operation: can't call foreign function `kqueue` on OS `macos`
+  --> /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/mio-1.2.1/src/sys/unix/mod.rs:8:28
+   |
+ 8 |         let res = unsafe { libc::$fn($($arg, )*) };
+   |                            ^^^^^^^^^^^^^^^^^^^^^ unsupported operation occurred here
+   |
+  ::: /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/mio-1.2.1/src/sys/unix/selector/kqueue.rs:77:48
+   |
+77 |         let kq = unsafe { OwnedFd::from_raw_fd(syscall!(kqueue())?) };
+   |                                                ------------------ in this macro invocation
+   |
+   = help: this means the program tried to do something Miri does not support; it does not indicate a bug in the program
+   = note: this is on thread `connector::aider::tests::test_import_from_tempdir_history_file`
+   = note: stack backtrace:
+           0: mio::sys::unix::selector::Selector::new
+               at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/mio-1.2.1/src/sys/unix/mod.rs:8:28: 8:49
+           1: mio::poll::Poll::new
+               at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/mio-1.2.1/src/poll.rs:324:13: 324:33
+           2: tokio::runtime::io::driver::Driver::new
+               at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/io/driver.rs:118:20: 118:36
+           3: tokio::runtime::driver::create_io_stack
+               at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/driver.rs:154:42: 154:82
+           4: tokio::runtime::driver::Driver::new
+               at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/driver.rs:48:52: 48:95
+           5: tokio::runtime::Builder::build_current_thread_runtime_components
+               at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/builder.rs:1673:39: 1673:63
+           6: tokio::runtime::Builder::build_current_thread_runtime
+               at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/builder.rs:1640:13: 1640:63
+           7: tokio::runtime::Builder::build
+               at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/builder.rs:1064:36: 1064:71
+           8: connector::aider::tests::test_import_from_tempdir_history_file
+               at crates/terraphim_sessions/src/connector/aider.rs:531:9: 531:15
+           9: connector::aider::tests::test_import_from_tempdir_history_file::{closure#0}
+               at crates/terraphim_sessions/src/connector/aider.rs:509:53: 509:53
+   = note: this error originates in the macro `syscall` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+note: some details are omitted, run with `MIRIFLAGS=-Zmiri-backtrace=full` for a verbose backtrace
+
+error: aborting due to 1 previous error
+
+error: test failed, to rerun pass `-p terraphim_sessions --lib`
+
+Caused by:
+  process didn't exit successfully: `/Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/bin/cargo-miri runner /Users/alex/projects/terraphim/terraphim-clients/target/miri/aarch64-apple-darwin/debug/deps/terraphim_sessions-d1fdef330c2cb025 --test-threads=1 --skip 'connector::native' --skip 'connector::cursor' --skip service` (exit status: 1)
+note: test exited abnormally; to see the full output pass --no-capture to the harness.
+MIRI_EXIT=1

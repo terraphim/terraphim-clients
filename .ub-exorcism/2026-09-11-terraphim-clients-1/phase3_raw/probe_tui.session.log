@@ -1,0 +1,4 @@
+tui widen=0: pre=0 call=0 ok=100 iters=100
+tui widen=500: pre=0 call=0 ok=100 iters=100
+tui widen=2000: pre=0 call=0 ok=100 iters=100
+=== PROBE tui DONE

@@ -1,0 +1,27 @@
+# EXP-003c Phase 5 disposition (2026-09-12). No re-run: the crate has zero #[test] functions, so there is no test surface for Miri to execute.
+# Copied from phase3_raw/miri_default_terraphim_command_runtime.log:
+# CMD: MIRIFLAGS="-Zmiri-disable-isolation" cargo +nightly miri test -p terraphim_command_runtime --lib -- --test-threads=1
+# DATE: 2026-09-12 00:18 BST
+    Blocking waiting for file lock on package cache
+warning: patch `rustls-webpki v0.103.12 (https://github.com/rustls/webpki.git?tag=v%2F0.103.12#27131d47)` was not used in the crate graph
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on build directory
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 16.90s
+     Running unittests src/lib.rs (target/miri/aarch64-apple-darwin/debug/deps/terraphim_command_runtime-2afb441aa092d38f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+MIRI_EXIT=0
+
+# Test-surface check (Phase 5):
+no #[test] attributes under crates/terraphim_command_runtime/src
+# unsafe check:
+no unsafe under crates/terraphim_command_runtime/src
+70 /Users/alex/projects/terraphim/terraphim-clients/crates/terraphim_command_runtime/src/lib.rs

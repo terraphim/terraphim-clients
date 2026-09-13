@@ -1,0 +1,34 @@
+start byte index 2 is not a char boundary; it is inside 'é' (bytes 1..3 of string)
+PANIC slicing 2..2 pats=["", "caf"]
+start byte index 9 is not a char boundary; it is inside 'é' (bytes 8..10 of string)
+PANIC slicing 9..9 pats=["", "caf"]
+start byte index 12 is not a char boundary; it is inside '😀' (bytes 11..15 of string)
+PANIC slicing 12..12 pats=["", "caf"]
+start byte index 13 is not a char boundary; it is inside '😀' (bytes 11..15 of string)
+PANIC slicing 13..13 pats=["", "caf"]
+start byte index 14 is not a char boundary; it is inside '😀' (bytes 11..15 of string)
+PANIC slicing 14..14 pats=["", "caf"]
+pats=["", "caf"] matches=14 non_boundary=5
+start byte index 2 is not a char boundary; it is inside 'é' (bytes 1..3 of string)
+PANIC slicing 2..2 pats=["caf", ""]
+start byte index 9 is not a char boundary; it is inside 'é' (bytes 8..10 of string)
+PANIC slicing 9..9 pats=["caf", ""]
+start byte index 12 is not a char boundary; it is inside '😀' (bytes 11..15 of string)
+PANIC slicing 12..12 pats=["caf", ""]
+start byte index 13 is not a char boundary; it is inside '😀' (bytes 11..15 of string)
+PANIC slicing 13..13 pats=["caf", ""]
+start byte index 14 is not a char boundary; it is inside '😀' (bytes 11..15 of string)
+PANIC slicing 14..14 pats=["caf", ""]
+pats=["caf", ""] matches=14 non_boundary=5
+start byte index 2 is not a char boundary; it is inside 'é' (bytes 1..3 of string)
+PANIC slicing 2..2 pats=[""]
+start byte index 9 is not a char boundary; it is inside 'é' (bytes 8..10 of string)
+PANIC slicing 9..9 pats=[""]
+start byte index 12 is not a char boundary; it is inside '😀' (bytes 11..15 of string)
+PANIC slicing 12..12 pats=[""]
+start byte index 13 is not a char boundary; it is inside '😀' (bytes 11..15 of string)
+PANIC slicing 13..13 pats=[""]
+start byte index 14 is not a char boundary; it is inside '😀' (bytes 11..15 of string)
+PANIC slicing 14..14 pats=[""]
+pats=[""] matches=17 non_boundary=5
+non-empty patterns non_boundary=0

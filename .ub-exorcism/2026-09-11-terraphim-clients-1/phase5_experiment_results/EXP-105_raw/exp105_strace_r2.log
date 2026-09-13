@@ -1,0 +1,180 @@
+2193693 connect(10, {sa_family=AF_UNIX, sun_path="/var/run/nscd/socket"}, 110) = -1 ENOENT (No such file or directory)
+2193693 connect(10, {sa_family=AF_UNIX, sun_path="/var/run/nscd/socket"}, 110) = -1 ENOENT (No such file or directory)
+2193693 connect(10, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("127.0.0.53")}, 16) = 0
+2193693 connect(10, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("188.114.97.9")}, 16) = 0
+2193693 connect(10, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+2193693 connect(10, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("188.114.96.9")}, 16) = 0
+2193693 connect(10, {sa_family=AF_INET6, sin6_port=htons(0), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "2a06:98c1:3120::9", &sin6_addr), sin6_scope_id=0}, 28) = 0
+2193693 connect(10, {sa_family=AF_UNSPEC, sa_data="\0\0\0\0\0\0\0\0\0\0\0\0\0\0"}, 16) = 0
+2193693 connect(10, {sa_family=AF_INET6, sin6_port=htons(0), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "2a06:98c1:3121::9", &sin6_addr), sin6_scope_id=0}, 28) = 0
+2193693 connect(10, {sa_family=AF_INET6, sin6_port=htons(443), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "2a06:98c1:3120::9", &sin6_addr), sin6_scope_id=0}, 28) = -1 EINPROGRESS (Operation now in progress)
+2193734 +++ exited with 0 +++
+2193728 +++ exited with 0 +++
+2193729 +++ exited with 0 +++
+2193723 +++ exited with 0 +++
+2193731 +++ exited with 0 +++
+2193725 +++ exited with 0 +++
+2193724 +++ exited with 0 +++
+2193732 +++ exited with 0 +++
+2193726 +++ exited with 0 +++
+2193733 +++ exited with 0 +++
+2193727 +++ exited with 0 +++
+2193730 +++ exited with 0 +++
+2193722 +++ exited with 0 +++
+2193696 --- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=2193722, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+2193746 +++ exited with 0 +++
+2193738 +++ exited with 0 +++
+2193745 +++ exited with 0 +++
+2193736 +++ exited with 0 +++
+2193744 +++ exited with 0 +++
+2193742 +++ exited with 0 +++
+2193740 +++ exited with 0 +++
+2193737 +++ exited with 0 +++
+2193739 +++ exited with 0 +++
+2193741 +++ exited with 0 +++
+2193743 +++ exited with 0 +++
+2193747 +++ exited with 0 +++
+2193735 +++ exited with 0 +++
+2193667 --- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=2193735, si_uid=1000, si_status=0, si_utime=0, si_stime=1 /* 0.01 s */} ---
+2193772 +++ exited with 0 +++
+2193769 +++ exited with 0 +++
+2193775 +++ exited with 0 +++
+2193776 +++ exited with 0 +++
+2193770 +++ exited with 0 +++
+2193773 +++ exited with 0 +++
+2193767 +++ exited with 0 +++
+2193771 +++ exited with 0 +++
+2193768 +++ exited with 0 +++
+2193774 +++ exited with 0 +++
+2193777 +++ exited with 0 +++
+2193778 +++ exited with 0 +++
+2193766 +++ exited with 0 +++
+2193667 --- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=2193766, si_uid=1000, si_status=0, si_utime=0, si_stime=1 /* 0.01 s */} ---
+2193792 +++ exited with 0 +++
+2193784 +++ exited with 0 +++
+2193785 +++ exited with 0 +++
+2193786 +++ exited with 0 +++
+2193787 +++ exited with 0 +++
+2193781 +++ exited with 0 +++
+2193789 +++ exited with 0 +++
+2193788 +++ exited with 0 +++
+2193790 +++ exited with 0 +++
+2193782 +++ exited with 0 +++
+2193791 +++ exited with 0 +++
+2193783 +++ exited with 0 +++
+2193780 +++ exited with 0 +++
+2193667 --- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=2193780, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+2193805 +++ exited with 0 +++
+2193797 +++ exited with 0 +++
+2193798 +++ exited with 0 +++
+2193799 +++ exited with 0 +++
+2193795 +++ exited with 0 +++
+2193803 +++ exited with 0 +++
+2193802 +++ exited with 0 +++
+2193801 +++ exited with 0 +++
+2193796 +++ exited with 0 +++
+2193800 +++ exited with 0 +++
+2193794 +++ exited with 0 +++
+2193804 +++ exited with 0 +++
+2193793 +++ exited with 0 +++
+2193696 --- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=2193793, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+2193806 +++ exited with 2 +++
+2193696 --- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=2193806, si_uid=1000, si_status=2, si_utime=0, si_stime=0} ---
+2193814 +++ exited with 0 +++
+2193819 +++ exited with 0 +++
+2193812 +++ exited with 0 +++
+2193818 +++ exited with 0 +++
+2193816 +++ exited with 0 +++
+2193811 +++ exited with 0 +++
+2193813 +++ exited with 0 +++
+2193810 +++ exited with 0 +++
+2193809 +++ exited with 0 +++
+2193817 +++ exited with 0 +++
+2193815 +++ exited with 0 +++
+2193808 +++ exited with 0 +++
+2193807 +++ exited with 0 +++
+2193696 --- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=2193807, si_uid=1000, si_status=0, si_utime=0, si_stime=1 /* 0.01 s */} ---
+2193820 +++ exited with 2 +++
+2193667 --- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=2193820, si_uid=1000, si_status=2, si_utime=0, si_stime=0} ---
+2193833 +++ exited with 0 +++
+2193823 +++ exited with 0 +++
+2193824 +++ exited with 0 +++
+2193825 +++ exited with 0 +++
+2193826 +++ exited with 0 +++
+2193827 +++ exited with 0 +++
+2193828 +++ exited with 0 +++
+2193829 +++ exited with 0 +++
+2193830 +++ exited with 0 +++
+2193832 +++ exited with 0 +++
+2193831 +++ exited with 0 +++
+2193822 +++ exited with 0 +++
+2193821 +++ exited with 0 +++
+2193696 --- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=2193821, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+2193846 +++ exited with 0 +++
+2193838 +++ exited with 0 +++
+2193839 +++ exited with 0 +++
+2193840 +++ exited with 0 +++
+2193841 +++ exited with 0 +++
+2193842 +++ exited with 0 +++
+2193835 +++ exited with 0 +++
+2193843 +++ exited with 0 +++
+2193844 +++ exited with 0 +++
+2193836 +++ exited with 0 +++
+2193845 +++ exited with 0 +++
+2193837 +++ exited with 0 +++
+2193834 +++ exited with 0 +++
+2193696 --- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=2193834, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+2193847 +++ exited with 2 +++
+2193696 --- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=2193847, si_uid=1000, si_status=2, si_utime=0, si_stime=0} ---
+2193696 +++ exited with 0 +++
+2193719 +++ exited with 0 +++
+2193705 +++ exited with 0 +++
+2193698 +++ exited with 0 +++
+2193711 +++ exited with 0 +++
+2193701 +++ exited with 0 +++
+2193707 +++ exited with 0 +++
+2193706 +++ exited with 0 +++
+2193704 +++ exited with 0 +++
+2193702 +++ exited with 0 +++
+2193697 +++ exited with 0 +++
+2193712 +++ exited with 0 +++
+2193708 +++ exited with 0 +++
+2193709 +++ exited with 0 +++
+2193703 +++ exited with 0 +++
+2193710 +++ exited with 0 +++
+2193713 +++ exited with 0 +++
+2193700 +++ exited with 0 +++
+2193714 +++ exited with 0 +++
+2193717 +++ exited with 0 +++
+2193716 +++ exited with 0 +++
+2193715 +++ exited with 0 +++
+2193718 +++ exited with 0 +++
+2193699 +++ exited with 0 +++
+2193692 +++ exited with 0 +++
+2193693 +++ exited with 0 +++
+2193671 +++ exited with 0 +++
+2193670 +++ exited with 0 +++
+2193669 +++ exited with 0 +++
+2193673 +++ exited with 0 +++
+2193674 +++ exited with 0 +++
+2193678 +++ exited with 0 +++
+2193675 +++ exited with 0 +++
+2193676 +++ exited with 0 +++
+2193668 +++ exited with 0 +++
+2193679 +++ exited with 0 +++
+2193680 +++ exited with 0 +++
+2193686 +++ exited with 0 +++
+2193685 +++ exited with 0 +++
+2193681 +++ exited with 0 +++
+2193689 +++ exited with 0 +++
+2193684 +++ exited with 0 +++
+2193687 +++ exited with 0 +++
+2193688 +++ exited with 0 +++
+2193683 +++ exited with 0 +++
+2193682 +++ exited with 0 +++
+2193691 +++ exited with 0 +++
+2193690 +++ exited with 0 +++
+2193677 +++ exited with 0 +++
+2193721 +++ exited with 0 +++
+2193720 +++ exited with 0 +++
+2193667 +++ exited with 0 +++

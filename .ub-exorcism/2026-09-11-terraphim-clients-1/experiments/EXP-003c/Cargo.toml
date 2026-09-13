@@ -1,0 +1,11 @@
+[package]
+name = "exp003c_command_runtime"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+terraphim_command_runtime = { path = "../../../../crates/terraphim_command_runtime" }
+terraphim_config = { version = "1.0.0" }
+terraphim_types = { version = "1.22.1", registry = "terraphim" }
+tokio = { version = "1", features = ["sync"] }

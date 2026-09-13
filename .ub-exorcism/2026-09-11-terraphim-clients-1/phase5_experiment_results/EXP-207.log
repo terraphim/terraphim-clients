@@ -1,0 +1,59 @@
+=== EXP-207 hostile LMDB data.mdb -> heed/lmdb-master-sys under ASan ===
+date: 2026-09-12T17:17:33Z  host: Ubuntu-2004-focal-64-minimal-hwe
+HEAD(clone): 46bbc43
+df avail:  284G
+--- build (nightly, build-std, ASan) ---
+   Compiling idna v1.1.0
+   Compiling globset v0.4.20
+   Compiling neo_frizbee v0.10.4
+   Compiling regex v1.13.1
+   Compiling url v2.5.8
+   Compiling ignore v0.4.33
+   Compiling tracing-appender v0.2.5
+   Compiling git2 v0.20.4
+   Compiling exp207_lmdb_hostile v0.0.0 (/tmp/ubx-r8/src_experiments/EXP-207)
+    Finished `release` profile [optimized + debuginfo] target(s) in 12.57s
+--- ASan admissibility: __asan_ in lmdb-master-sys objects ---
+lmdb object: /tmp/ubx-r8/EXP-207/target/x86_64-unknown-linux-gnu/release/build/lmdb-master-sys/a7b6c48b8c01f608/out/b40eeb0d3a911fbe-mdb.o
+lmdb __asan_ count (all objs): 38
+interceptors: __asan_report_load __asan_report_load1 __asan_report_load16 __asan_report_load2 __asan_report_load4 __asan_report_load8 __asan_report_store __asan_report_store1 __asan_report_store16 __asan_report_store2 __asan_report_store4 __asan_report_store8 
+--- init valid env ---
+EXP-207 init: populated env at /tmp/ubx-r8/EXP-207/valid_env; access_count(file_0)=Ok(2)
+valid data.mdb: -rw------- 1 alex alex 86016 Sep 12 19:17 data.mdb -rw------- 1 alex alex  8192 Sep 12 19:17 lock.mdb 
+--- gen corpus ---
+valid data.mdb size 86016
+wrote 00_control 86016 bytes
+wrote 01_bad_magic 86016 bytes
+wrote 02_bad_version 86016 bytes
+wrote 03_bad_root_pgno 86016 bytes
+wrote 04_bad_txnid_root 86016 bytes
+wrote 05_page2_scribble 86016 bytes
+wrote 06_nodeptr_clobber 86016 bytes
+wrote 07_truncated_tail 85816 bytes
+wrote 08_truncated_meta_only 8256 bytes
+wrote 09_random_fuzz 86016 bytes
+wrote 10_bad_page_pgno 86016 bytes
+corpus dirs: 11
+--- drive corpus ---
+EXP-207 driving 11 crafted env dir(s)
+--- /tmp/ubx-r8/EXP-207/corpus/00_control : OPENED; access_count=Ok(2) last_access=Ok(Some(0)) score=1
+--- /tmp/ubx-r8/EXP-207/corpus/01_bad_magic : open rejected (refutation): Failed to open frecency database env: MDB_INVALID: File is not an LMDB file
+--- /tmp/ubx-r8/EXP-207/corpus/02_bad_version : open rejected (refutation): Failed to open frecency database env: MDB_VERSION_MISMATCH: Database environment version mismatch
+--- /tmp/ubx-r8/EXP-207/corpus/03_bad_root_pgno : open rejected (refutation): Failed to open frecency database env: Invalid argument (os error 22)
+--- /tmp/ubx-r8/EXP-207/corpus/04_bad_txnid_root : OPENED; access_count=Ok(2) last_access=Ok(Some(0)) score=1
+--- /tmp/ubx-r8/EXP-207/corpus/05_page2_scribble : OPENED; access_count=Err(DbRead { db: "frecency", source: Mdb(PageNotFound) }) last_access=Err(DbRead { db: "frecency", source: Mdb(PageNotFound) }) score=0
+--- /tmp/ubx-r8/EXP-207/corpus/06_nodeptr_clobber : OPENED; access_count=Err(DbRead { db: "frecency", source: Mdb(PageNotFound) }) last_access=Err(DbRead { db: "frecency", source: Mdb(PageNotFound) }) score=0
+--- /tmp/ubx-r8/EXP-207/corpus/07_truncated_tail : OPENED; access_count=Ok(2) last_access=Ok(Some(0)) score=1
+--- /tmp/ubx-r8/EXP-207/corpus/08_truncated_meta_only : OPENED; access_count=Err(DbRead { db: "frecency", source: Mdb(Corrupted) }) last_access=Err(DbRead { db: "frecency", source: Mdb(Corrupted) }) score=0
+--- /tmp/ubx-r8/EXP-207/corpus/09_random_fuzz : open rejected (refutation): Failed to open frecency database env: MDB_VERSION_MISMATCH: Database environment version mismatch
+--- /tmp/ubx-r8/EXP-207/corpus/10_bad_page_pgno : OPENED; access_count=Ok(2) last_access=Ok(Some(0)) score=1
+EXP-207 done: inspect ASan for an LMDB page-pointer dereference fault
+run exit: 0
+DONE_EXP207
+
+=== ASan admissibility (corrected; inline check printed empty) ===
+lmdb objects: mdb.o + midl.o
+mdb.o __asan_ count: 28 (LMDB core: env open, meta read, page traversal)
+total lmdb __asan_ (mdb.o+midl.o): 38
+interceptors: __asan_report_load{,1,2,4,8,16} __asan_report_store{,1,2,4,8,16}
+ADMISSIBLE: LMDB (lmdb-master-sys, LMDB 0.9.70) C code is ASan-instrumented; env open + meta-page read + page traversal covered.

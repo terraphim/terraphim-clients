@@ -1,0 +1,7 @@
+[package]
+name = "exp204_correction_slice"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]

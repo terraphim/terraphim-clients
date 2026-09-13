@@ -1,0 +1,29 @@
+transmute                                                              0
+MaybeUninit                                                            0
+mem::zeroed                                                            0
+mem::uninitialized                                                     0
+asm!                                                                   0
+read_volatile|write_volatile                                           0
+repr\(packed                                                           0
+target_feature                                                         0
+Pin::new_unchecked|get_unchecked_mut                                   0
+unsafe impl                                                            0
+extern "C"|extern "system"                                             0
+from_raw|into_raw                                                      0
+Box::leak                                                              0
+feature\(specialization|min_specialization                             0
+NonNull|NonZero                                                        0
+get_unchecked|unchecked_                                               0
+from_utf8_unchecked                                                    0
+Allocator|GlobalAlloc                                                  0
+UnsafeCell                                                             0
+static mut                                                             0
+ptr::                                                                  0
+Rc<RefCell|Rc::new                                                     0
+impl Hash for|impl PartialEq for|impl Eq for|impl Ord for|impl PartialOrd for|impl Borrow 0
+size_hint                                                              0
+impl Drop                                                              0
+catch_unwind|resume_unwind                                             1
+std::mem::forget|ManuallyDrop                                          0
+Handle::current|block_on                                               29
+poison|into_inner\(\)                                                  5

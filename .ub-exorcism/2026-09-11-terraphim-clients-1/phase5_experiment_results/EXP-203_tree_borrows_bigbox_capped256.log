@@ -1,0 +1,41 @@
+EXP-203 Tree Borrows axis, re-run on bigbox (the 16 GB macOS audit host could not complete it)
+DATE=2026-09-13 00:23 CEST
+HOST=Ubuntu-2004-focal-64-minimal-hwe / Ubuntu 24.04.4 LTS / 24 cores
+SOURCE_HEAD=e90b193 (harness copied verbatim from WORKSPACE/experiments/EXP-203; only change: standalone [workspace] table in Cargo.toml and an env-gated corpus cap, inactive unless EXP203_SKIP/EXP203_MAX is set)
+TOOLCHAIN=rustc 1.100.0-nightly (67eda617e 2026-09-10) binary: rustc commit-hash: 67eda617e6a8f8ecec01e1ba7fafe2072a64adcc commit-date: 2026-09-10 host: x86_64-unknown-linux-gnu release: 1.100.0-nightly LLVM version: 23.1.1 
+MIRI=miri 0.1.0 (67eda617e6 2026-09-10)
+DRIVER=/tmp/ubx-r9/drivers/exp203tb.sh (bash -c driver; exit captured via PIPESTATUS[0])
+DF_BEFORE= 287G
+CORPUS_CAP=none
+===== MIRIFLAGS=-Zmiri-disable-isolation -Zmiri-tree-borrows
+exp203_semver_version v0.0.0 (/tmp/ubx-r9/EXP-203)
+├── anyhow v1.0.104
+└── semver v1.0.28
+TREE-BORROWS CAPPED AXIS ABORTED 2026-09-13 00:50 CEST: RSS 54418644 KB exceeded the 40 GB audit cap and the run was killed deliberately to protect the host. This is an aborted run, not a verdict.
+warning: binary `exp203_semver_version` should have a kebab-case name
+   |
+ 1 | /tmp/ubx-r9/EXP-203/target/miri/.../exp203_semver_version
+   |                                     ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `cargo::non_kebab_case_bins` is set to `warn` by default
+help: to change the binary name to `exp203-semver-version`, convert `package.name`
+  --> Cargo.toml:2:8
+   |
+ 2 - name = "exp203_semver_version"
+ 2 + name = "exp203-semver-version"
+   |
+help: to change the binary name to `exp203-semver-version`, specify `bin.name`
+  --> Cargo.toml:11:13
+   |
+11 ~ [workspace]
+12 + [[bin]]
+13 + name = "exp203-semver-version"
+14 + path = "src/main.rs"
+   |
+warning: `exp203_semver_version` (manifest) generated 1 warning
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.00s
+     Running `/home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/bin/cargo-miri runner target/miri/x86_64-unknown-linux-gnu/debug/exp203_semver_version`
+MIRI_EXIT=143
+DF_AFTER= 270G
+EXP203_TB_DONE
+CORRECTION: actual cap for this log: EXP203_MAX=256, keeping 273 of the 308 inputs (35 excluded, byte sizes 259 260 261 263 264 265 517 519 2008 4100 4104 4105 6006 8199 16388 16392 16393 32775 65540 65544 65545 131079).

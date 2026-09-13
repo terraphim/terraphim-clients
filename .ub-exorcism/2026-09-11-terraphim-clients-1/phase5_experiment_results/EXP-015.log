@@ -1,0 +1,175 @@
+=== EXP-015 start 2026-09-12 10:27:31 BST host=Klarian-147.local rustc 1.98.0-nightly (bd08c9e71 2026-06-25)
+=== env: TERRAPHIM_PROFILE_MEMORY_TYPE=<unset> TERRAPHIM_SETTINGS_PATH=<unset> TERRAPHIM_DATA_PATH=/Users/alex/.terraphim
+=== settings file consulted by terraphim_persistence on this host: /Users/alex/Library/Application Support/com.aks.terraphim/settings.toml
+8:[profiles.memory]
+9:type = "memory"
+11:[profiles.rocksdb]
+12:type = "rocksdb"
+13:datadir = "/tmp/terraphim_rocksdb"
+15:[profiles.redb]
+16:type = "redb"
+19:[profiles.sqlite]
+20:type = "sqlite"
+21:datadir = "/Users/alex/.terraphim/sqlite"
+22:connection_string = "/Users/alex/.terraphim/sqlite/terraphim.db"
+25:[profiles.dashmap]
+26:type = "dashmap"
+=== db before: stat: cannot read file system information for '%N size=%z mtime=%Sm': No such file or directory
+  File: "/Users/alex/.terraphim/sqlite/terraphim.db"
+    ID: 100000d0000001a Namelen: ?       Type: apfs
+Block size: 4096       Fundamental block size: 4096
+Blocks: Total: 242837545  Free: 22657078   Available: 22657078
+Inodes: Total: 914802967  Free: 906283120
+total 33892
+drwxr-xr-x 6 alex staff      192 Sep 12 10:25 .
+drwx------ 8 alex staff      256 Sep  7 09:57 ..
+-rw-r--r-- 1 alex staff        0 Apr 21 17:24 terraphim.Database
+-rw-r--r-- 1 alex staff 28508160 Sep 12 10:26 terraphim.db
+-rw-r--r-- 1 alex staff    32768 Sep 12 10:25 terraphim.db-shm
+-rw-r--r-- 1 alex staff  4272472 Sep 12 10:27 terraphim.db-wal
+=== building test binary
+   Compiling terraphim_mcp_server v1.0.0 (/Users/alex/projects/terraphim/terraphim-clients/crates/terraphim_mcp_server)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3m 09s
+  Executable tests/integration_test.rs (/private/tmp/claude-501/ubx-exp-target/debug/deps/integration_test-9b87ef27cbdf9efe)
+=== poller started 10:30:41
+=== running: cargo +nightly test -p terraphim_mcp_server --test integration_test -- --nocapture --test-threads=1
+                        mime_type: Some(
+                            "text",
+                        ),
+                        text: "# README\n\n# Knowledge Graph directory\n\nThis directory holds the **Logseq-format** concept files that `terraphim_automata::builder::Logseq` consumes to build thesaurus structures used by `terraphim_mcp_server` and `terraphim_agent` integration tests.\n\n## File format\n\nEach `.md` file in this directory represents one concept. The filename stem becomes the canonical `NormalizedTerm::value` (used as a KG link target via `kg:filename-stem`). The first H1 heading becomes `NormalizedTerm::display_value`. The `synonyms::` line maps alternative spellings, abbreviations, and related terms to the same canonical entry.\n\nRequired structure:\n\n```markdown\n# Display Name (Title Case)\n\nOne or more paragraphs describing the concept. Plain Markdown, no frontmatter\nrequired. The body is informational only; it does not affect the thesaurus.\n\nsynonyms:: lowercase, comma, separated, list, of, synonyms, and, related, terms\n```\n\n### Filename → value mapping\n\n- Filename: `bun.md` → value: `bun` → KG link: `[bun](kg:bun)`\n- Filename: `terraphim-graph.md` → value: `terraphim-graph` → KG link: `[Terraphim Graph](kg:terraphim-graph)`\n\nUse **kebab-case** for multi-word filenames. Underscores are not transformed, so `machine_learning.md` becomes the value `machine_learning` (not `machine-learning`).\n\n### Synonyms line rules\n\n- Must be exactly `synonyms::` followed by a space, then a comma-separated list.\n- All entries are lowercased and whitespace-trimmed at parse time.\n- A trailing comma is allowed but ignored.\n- The concept's own value (filename stem) is added to the synonym set automatically; you do not need to repeat it.\n- Empty synonym lines are valid (the concept still appears once, keyed by its filename).\n- Indenting the `synonyms::` line with leading spaces is not supported and will silently drop the line.\n\n### Display value rules\n\n- Only the first `# H1` heading in the file is used.\n- If no H1 is present, `NormalizedTerm::display()` falls back to the value (filename stem).\n- H2/H3 and below are ignored for display purposes.\n\n## Adding a new concept\n\n1. Create `docs/src/kg/<kebab-case-name>.md`.\n2. Start the file with an H1 heading that is the human-readable display name.\n3. Add a `synonyms::` line with at least one entry (lowercase, comma-separated).\n4. Optionally add a body paragraph explaining the concept for human readers.\n5. Run `cargo test -p terraphim_mcp_server --test mcp_rolegraph_validation_test` to confirm the thesaurus builder parses the new file.\n\n## Reference\n\nThe canonical writer of this format lives at `crates/terraphim_grep/src/kg_curation.rs` (function `format_concept_markdown`, lines ~100-120). The canonical reader is `terraphim_automata::builder::Logseq` (in the private `terraphim-ai` dependency installed via `cargo install --locked --git ... terraphim-ai --tag v1.21.3`).\n\nIf you change the format here, update both ends. Adding a new field (e.g., `related::`) requires:\n1. Updating `format_concept_markdown` in `kg_curation.rs` to emit it.\n2. Updating `Logseq` builder to parse it.\n3. Documenting it in this README.",
+                        meta: None,
+                    },
+                },
+            ),
+            annotations: None,
+        },
+        Annotated {
+            raw: Resource(
+                RawEmbeddedResource {
+                    meta: None,
+                    resource: TextResourceContents {
+                        uri: "terraphim://fff_users_alex_projects_terraphim_terraphim_clients_crates_terraphim_mcp_server_docs_src_kg_terraphim_graph_md",
+                        mime_type: Some(
+                            "text",
+                        ),
+                        text: "# terraphim-graph\n\n# Terraphim Graph\n\nThe Terraphim knowledge graph used by `terraphim_mcp_server` integration tests to build\na deterministic thesaurus under `docs/src/kg/`. The file exists so that the\n`mcp_autocomplete_e2e_test`, `mcp_rolegraph_validation_test`, and `test_all_mcp_tools`\ntest fixtures (which assert `terraphim-graph.md` exists under `docs/src/kg/`) can resolve\ntheir knowledge-graph directory.\n\nsynonyms:: terraphim, terraphim graph, knowledge graph, ontology, thesaurus, kg, role, role graph",
+                        meta: None,
+                    },
+                },
+            ),
+            annotations: None,
+        },
+    ],
+    structured_content: None,
+    is_error: Some(
+        false,
+    ),
+    meta: None,
+}
+Search response for 'Terraphim': [auto-route] picked role "Default" (score=0, candidates=1); pass role parameter to override
+❌ No documents found for 'Terraphim': [auto-route] picked role "Default" (score=0, candidates=1); pass role parameter to override
+Testing search for: 'neural'
+[32m INFO[0m [1mserve_inner[0m[2m:[0m [2mterraphim_config[0m[2m:[0m Creating role Engineer
+[32m INFO[0m [1mserve_inner[0m[2m:[0m [2mterraphim_config[0m[2m:[0m Role Engineer is configured correctly with automata_path
+[32m INFO[0m [1mserve_inner[0m[2m:[0m [2mterraphim_config[0m[2m:[0m Loading Role `Engineer` - URL: Remote("https://staging-storage.terraphim.io/thesaurus_Default.json")
+[32m INFO[0m [1mserve_inner[0m[2m:[0m [2mterraphim_config[0m[2m:[0m Successfully loaded thesaurus from automata path
+[32m INFO[0m [1mserve_inner[0m[2m:[0m [2mterraphim_config[0m[2m:[0m Creating role System Operator
+[32m INFO[0m [1mserve_inner[0m[2m:[0m [2mterraphim_config[0m[2m:[0m Role System Operator is configured correctly with automata_path
+[32m INFO[0m [1mserve_inner[0m[2m:[0m [2mterraphim_config[0m[2m:[0m Loading Role `System Operator` - URL: Remote("https://staging-storage.terraphim.io/thesaurus_Default.json")
+[32m INFO[0m [1mserve_inner[0m[2m:[0m [2mterraphim_config[0m[2m:[0m Successfully loaded thesaurus from automata path
+[32m INFO[0m [1mserve_inner[0m[2m:[0m [2mterraphim_config[0m[2m:[0m Creating role Default
+[32m INFO[0m [1mserve_inner[0m[2m:[0m [2mterraphim_middleware::indexer[0m[2m:[0m Finding documents in haystack: Haystack {
+    location: "/Users/alex/projects/terraphim/terraphim-clients/crates/terraphim_mcp_server/../../docs/src",
+    service: Ripgrep,
+    read_only: false,
+    fetch_content: false,
+    atomic_server_secret: None,
+    extra_parameters: {},
+}
+[32m INFO[0m [1mserve_inner[0m[2m:[0m[1mwalk_filesystem[0m[2m:[0m [2mfff_search::file_picker[0m[2m:[0m SCAN: Starting filesystem walk and git status (async)
+[32m INFO[0m [1mserve_inner[0m[2m:[0m[1mwalk_filesystem[0m[2m:[0m [2mfff_search::file_picker[0m[2m:[0m SCAN: File walking completed in 1.456166ms for 3 files
+[32m INFO[0m [1mserve_inner[0m[2m:[0m[1mwalk_filesystem[0m[2m:[0m [2mfff_search::file_picker[0m[2m:[0m SCAN: Walk completed in 2.024834ms (3 files, 1 dirs, chunked_store=0.00MB, files_vec=0.00MB, dirs=0.00MB, FileItem=96B)
+Search result for 'neural': CallToolResult {
+    content: [
+        Annotated {
+            raw: Text(
+                RawTextContent {
+                    text: "[auto-route] picked role \"Default\" (score=0, candidates=1); pass role parameter to override",
+                    meta: None,
+                },
+            ),
+            annotations: None,
+        },
+        Annotated {
+            raw: Text(
+                RawTextContent {
+                    text: "Found 0 documents matching your query.",
+                    meta: None,
+                },
+            ),
+            annotations: None,
+        },
+    ],
+    structured_content: None,
+    is_error: Some(
+        false,
+    ),
+    meta: None,
+}
+Search response for 'neural': [auto-route] picked role "Default" (score=0, candidates=1); pass role parameter to override
+❌ No documents found for 'neural': [auto-route] picked role "Default" (score=0, candidates=1); pass role parameter to override
+Testing search for: 'system'
+[32m INFO[0m [1mserve_inner[0m[2m:[0m [2mterraphim_config[0m[2m:[0m Creating role Engineer
+[32m INFO[0m [1mserve_inner[0m[2m:[0m [2mterraphim_config[0m[2m:[0m Role Engineer is configured correctly with automata_path
+[32m INFO[0m [1mserve_inner[0m[2m:[0m [2mterraphim_config[0m[2m:[0m Loading Role `Engineer` - URL: Remote("https://staging-storage.terraphim.io/thesaurus_Default.json")
+[32m INFO[0m [1mserve_inner[0m[2m:[0m [2mterraphim_config[0m[2m:[0m Successfully loaded thesaurus from automata path
+[32m INFO[0m [1mserve_inner[0m[2m:[0m [2mterraphim_config[0m[2m:[0m Creating role System Operator
+[32m INFO[0m [1mserve_inner[0m[2m:[0m [2mterraphim_config[0m[2m:[0m Role System Operator is configured correctly with automata_path
+[32m INFO[0m [1mserve_inner[0m[2m:[0m [2mterraphim_config[0m[2m:[0m Loading Role `System Operator` - URL: Remote("https://staging-storage.terraphim.io/thesaurus_Default.json")
+[32m INFO[0m [1mserve_inner[0m[2m:[0m [2mterraphim_config[0m[2m:[0m Successfully loaded thesaurus from automata path
+[32m INFO[0m [1mserve_inner[0m[2m:[0m [2mterraphim_config[0m[2m:[0m Creating role Default
+[31mERROR[0m [1mserve_inner[0m[2m:[0m [2mterraphim_mcp_server[0m[2m:[0m Search failed: Config error: Role `Terraphim Engineer` not found in config
+Search result for 'system': CallToolResult {
+    content: [
+        Annotated {
+            raw: Text(
+                RawTextContent {
+                    text: "Search failed: Config error: Role `Terraphim Engineer` not found in config",
+                    meta: None,
+                },
+            ),
+            annotations: None,
+        },
+    ],
+    structured_content: None,
+    is_error: Some(
+        true,
+    ),
+    meta: None,
+}
+Search response for 'system': Search failed: Config error: Role `Terraphim Engineer` not found in config
+❌ No documents found for 'system': Search failed: Config error: Role `Terraphim Engineer` not found in config
+[32m INFO[0m [1mserve_inner[0m[2m:[0m [2mrmcp::service[0m[2m:[0m input stream terminated
+[32m INFO[0m [1mserve_inner[0m[2m:[0m [2mrmcp::service[0m[2m:[0m serve finished [3mquit_reason[0m[2m=[0mClosed
+ok
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 18.56s
+=== test exit=0
+=== db after: stat: cannot read file system information for '%N size=%z mtime=%Sm': No such file or directory
+  File: "/Users/alex/.terraphim/sqlite/terraphim.db"
+    ID: 100000d0000001a Namelen: ?       Type: apfs
+Block size: 4096       Fundamental block size: 4096
+Blocks: Total: 242837545  Free: 22210299   Available: 22210299
+Inodes: Total: 896934225  Free: 888411960
+total 30820
+drwxr-xr-x 6 alex staff      192 Sep 12 10:30 .
+drwx------ 8 alex staff      256 Sep  7 09:57 ..
+-rw-r--r-- 1 alex staff        0 Apr 21 17:24 terraphim.Database
+-rw-r--r-- 1 alex staff 28508160 Sep 12 10:30 terraphim.db
+-rw-r--r-- 1 alex staff    32768 Sep 12 10:30 terraphim.db-shm
+-rw-r--r-- 1 alex staff  1660392 Sep 12 10:31 terraphim.db-wal
+=== lsof poll: 18 matching lines; distinct (command,pid,file):
+      6 terraphim 86519 /Users/alex/.terraphim/sqlite/terraphim.db-wal
+      6 terraphim 86519 /Users/alex/.terraphim/sqlite/terraphim.db-shm
+      6 terraphim 86519 /Users/alex/.terraphim/sqlite/terraphim.db
+=== distinct pids that had terraphim.db open: 86519 
+=== EXP-015 DONE 2026-09-12 10:31:03 BST

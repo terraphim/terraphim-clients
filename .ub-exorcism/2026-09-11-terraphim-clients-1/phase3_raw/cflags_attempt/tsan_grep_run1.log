@@ -1,0 +1,657 @@
+=== RUN 1 START 2026-09-11 23:57:43 BST CFLAGS=-fsanitize=thread
+warning: patch `rustls-webpki v0.103.12 (https://github.com/rustls/webpki.git?tag=v%2F0.103.12#27131d47)` was not used in the crate graph
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+   Compiling compiler_builtins v0.1.160 (/Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins)
+   Compiling test v0.0.0 (/Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/test)
+   Compiling serde_core v1.0.228
+   Compiling libc v0.2.185
+   Compiling libc v0.2.186
+   Compiling shlex v2.0.1
+   Compiling find-msvc-tools v0.1.9
+   Compiling serde v1.0.228
+   Compiling quote v1.0.45
+   Compiling parking_lot_core v0.9.12
+   Compiling siphasher v1.0.3
+   Compiling icu_properties_data v2.2.0
+   Compiling icu_normalizer_data v2.2.0
+   Compiling serde_json v1.0.150
+   Compiling pkg-config v0.3.33
+   Compiling zmij v1.0.21
+   Compiling syn v2.0.118
+   Compiling zerocopy v0.8.52
+   Compiling fs_extra v1.3.0
+   Compiling dunce v1.0.5
+   Compiling thiserror v2.0.18
+   Compiling crossbeam-utils v0.8.21
+   Compiling generic-array v0.14.7
+   Compiling aws-lc-rs v1.17.0
+   Compiling vcpkg v0.2.15
+   Compiling crc32fast v1.5.0
+   Compiling getrandom v0.3.4
+   Compiling stable_deref_trait v1.2.1
+   Compiling rustls v0.23.40
+   Compiling getrandom v0.4.3
+   Compiling rand_core v0.6.4
+   Compiling phf_shared v0.11.3
+   Compiling num-traits v0.2.19
+   Compiling rand v0.8.6
+   Compiling ahash v0.8.12
+   Compiling cfg-if v1.0.4
+   Compiling system-configuration-sys v0.6.0
+   Compiling httparse v1.10.1
+   Compiling phf_shared v0.13.1
+   Compiling writeable v0.6.3
+   Compiling fastrand v2.4.1
+   Compiling jobserver v0.1.34
+   Compiling smallvec v1.15.2
+   Compiling litemap v0.8.2
+   Compiling futures-core v0.3.32
+   Compiling utf8_iter v1.0.4
+   Compiling heck v0.5.0
+   Compiling phf_generator v0.13.1
+   Compiling pin-project-lite v0.2.17
+   Compiling cc v1.2.65
+   Compiling zeroize v1.9.0
+   Compiling typenum v1.20.1
+   Compiling scopeguard v1.2.0
+   Compiling lock_api v0.4.14
+   Compiling thiserror v1.0.69
+   Compiling rustls-pki-types v1.14.1
+   Compiling futures-sink v0.3.32
+   Compiling anyhow v1.0.102
+   Compiling getrandom v0.2.17
+   Compiling equivalent v1.0.2
+   Compiling untrusted v0.9.0
+   Compiling memchr v2.8.2
+   Compiling percent-encoding v2.3.2
+   Compiling once_cell v1.21.4
+   Compiling phf_generator v0.11.3
+   Compiling form_urlencoded v1.2.2
+   Compiling mio v1.2.1
+   Compiling rustc-std-workspace-core v1.99.0 (/Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/rustc-std-workspace-core)
+   Compiling alloc v0.0.0 (/Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc)
+   Compiling memchr v2.7.6
+   Compiling adler2 v2.0.1
+   Compiling rustc-demangle v0.1.27
+   Compiling panic_abort v0.0.0 (/Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/panic_abort)
+   Compiling rustc-literal-escaper v0.0.8
+   Compiling socket2 v0.6.4
+   Compiling futures-task v0.3.32
+   Compiling foldhash v0.1.5
+   Compiling slab v0.4.12
+   Compiling itoa v1.0.18
+   Compiling unwind v0.0.0 (/Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/unwind)
+   Compiling schemars v0.8.22
+   Compiling allocator-api2 v0.2.21
+   Compiling bytes v1.12.0
+   Compiling futures-io v0.3.32
+   Compiling cmake v0.1.58
+   Compiling futures-util v0.3.32
+   Compiling hashbrown v0.15.5
+   Compiling concurrent-queue v2.5.0
+   Compiling parking_lot v0.12.5
+   Compiling crypto-common v0.1.7
+   Compiling block-buffer v0.10.4
+   Compiling tracing-core v0.1.36
+   Compiling webpki-roots v1.0.8
+   Compiling phf_codegen v0.13.1
+   Compiling digest v0.10.7
+   Compiling cpufeatures v0.2.17
+   Compiling log v0.4.32
+   Compiling subtle v2.6.1
+   Compiling crc-catalog v2.5.0
+   Compiling parking v2.2.1
+   Compiling tokio v1.52.3
+   Compiling hashbrown v0.17.1
+   Compiling event-listener v5.4.1
+   Compiling crc v3.4.0
+   Compiling sha2 v0.10.9
+   Compiling webpki-roots v0.26.11
+   Compiling futures-intrusive v0.5.0
+   Compiling ring v0.17.14
+   Compiling aws-lc-sys v0.41.0
+   Compiling zstd-sys v2.0.16+zstd.1.5.7
+   Compiling libsqlite3-sys v0.30.1
+   Compiling indexmap v2.14.0
+   Compiling hashlink v0.10.0
+   Compiling rustc-std-workspace-alloc v1.99.0 (/Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/rustc-std-workspace-alloc)
+   Compiling gimli v0.32.3
+   Compiling object v0.37.3
+   Compiling miniz_oxide v0.8.9
+   Compiling std_detect v0.1.5 (/Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std_detect)
+   Compiling panic_unwind v0.0.0 (/Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/panic_unwind)
+   Compiling synstructure v0.13.2
+   Compiling serde_derive_internals v0.29.1
+   Compiling darling_core v0.20.11
+   Compiling crossbeam-queue v0.3.12
+   Compiling spin v0.9.8
+   Compiling base64 v0.22.1
+   Compiling heck v0.4.1
+   Compiling ryu v1.0.23
+   Compiling flume v0.11.1
+   Compiling rustls-webpki v0.103.13
+   Compiling atoi v2.0.0
+   Compiling futures-executor v0.3.32
+   Compiling addr2line v0.25.1
+   Compiling libz-sys v1.1.29
+   Compiling serde_derive v1.0.228
+   Compiling zerofrom-derive v0.1.7
+   Compiling yoke-derive v0.8.2
+   Compiling zerovec-derive v0.11.3
+   Compiling displaydoc v0.2.6
+   Compiling tokio-macros v2.7.0
+   Compiling std v0.0.0 (/Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std)
+   Compiling tracing-attributes v0.1.31
+   Compiling zerocopy-derive v0.8.52
+   Compiling thiserror-impl v2.0.18
+   Compiling futures-macro v0.3.32
+   Compiling zerofrom v0.1.8
+   Compiling yoke v0.8.3
+   Compiling zerovec v0.11.6
+   Compiling zerotrie v0.2.4
+   Compiling thiserror-impl v1.0.69
+   Compiling schemars_derive v0.8.22
+   Compiling tracing v0.1.44
+   Compiling tinystr v0.8.3
+   Compiling potential_utf v0.1.5
+   Compiling icu_locale_core v2.2.0
+   Compiling icu_collections v2.2.0
+   Compiling tokio-stream v0.1.18
+   Compiling phf_macros v0.11.3
+   Compiling darling_macro v0.20.11
+   Compiling async-trait v0.1.89
+   Compiling phf_macros v0.13.1
+   Compiling phf v0.11.3
+   Compiling string_cache_codegen v0.5.4
+   Compiling phf_codegen v0.11.3
+   Compiling futures-channel v0.3.32
+   Compiling icu_provider v2.2.0
+   Compiling proc-macro2-diagnostics v0.10.1
+   Compiling rustix v1.1.4
+   Compiling zstd-safe v7.2.4
+   Compiling semver v1.0.28
+   Compiling icu_properties v2.2.0
+   Compiling icu_normalizer v2.2.0
+   Compiling either v1.16.0
+   Compiling serde_urlencoded v0.7.1
+   Compiling unicode-segmentation v1.13.3
+   Compiling syn v1.0.109
+   Compiling rustc_version v0.4.1
+   Compiling markup5ever v0.12.1
+   Compiling convert_case v0.10.0
+   Compiling darling v0.20.11
+   Compiling doxygen-rs v0.4.2
+   Compiling clap_derive v4.6.1
+   Compiling string_cache_codegen v0.6.1
+   Compiling yansi v1.0.1
+   Compiling fst v0.4.7
+   Compiling rayon-core v1.13.0
+   Compiling unicode-xid v0.2.6
+   Compiling hex v0.4.3
+   Compiling dotenvy v0.15.7
+   Compiling web_atoms v0.2.5
+   Compiling derive_more-impl v2.1.1
+   Compiling lmdb-master-sys v0.2.6
+   Compiling cached_proc_macro v0.25.0
+   Compiling curve25519-dalek v4.1.3
+   Compiling idna_adapter v1.2.2
+   Compiling idna v1.1.0
+   Compiling libgit2-sys v0.18.5+1.9.4
+   Compiling url v2.5.8
+   Compiling rustc-std-workspace-std v1.99.0 (/Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/rustc-std-workspace-std)
+   Compiling getopts v0.2.24
+   Compiling proc_macro v0.0.0 (/Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/proc_macro)
+   Compiling ouroboros_macro v0.18.5
+   Compiling html5ever v0.27.0
+   Compiling darling_core v0.23.0
+   Compiling errno v0.3.14
+   Compiling signal-hook-registry v1.4.8
+   Compiling core-foundation-sys v0.8.7
+   Compiling bitflags v2.13.0
+   Compiling aho-corasick v1.1.4
+   Compiling regex-syntax v0.8.11
+   Compiling simd-adler32 v0.3.9
+   Compiling http v1.4.2
+   Compiling zlib-rs v0.6.3
+   Compiling http-body v1.0.1
+   Compiling fnv v1.0.7
+   Compiling atomic-waker v1.1.2
+   Compiling tower-service v0.3.3
+   Compiling try-lock v0.2.5
+   Compiling want v0.3.1
+   Compiling regex-automata v0.4.14
+   Compiling core-foundation v0.9.4
+   Compiling compression-core v0.4.32
+   Compiling new_debug_unreachable v1.0.6
+   Compiling option-ext v0.2.0
+   Compiling system-configuration v0.7.0
+   Compiling sync_wrapper v1.0.2
+   Compiling strsim v0.11.1
+   Compiling tower-layer v0.3.3
+   Compiling ipnet v2.12.0
+   Compiling http-body-util v0.1.3
+   Compiling precomputed-hash v0.1.1
+   Compiling same-file v1.0.6
+   Compiling walkdir v2.5.0
+   Compiling ppv-lite86 v0.2.21
+   Compiling uuid v1.23.3
+   Compiling rand_core v0.9.5
+   Compiling iana-time-zone v0.1.65
+   Compiling hybrid-array v0.4.12
+   Compiling rand_chacha v0.9.0
+   Compiling chrono v0.4.45
+   Compiling serde_spanned v0.6.9
+   Compiling tokio-util v0.7.18
+   Compiling tower v0.5.3
+   Compiling toml_datetime v0.6.11
+   Compiling mac v0.1.1
+   Compiling toml_write v0.1.2
+   Compiling h2 v0.4.15
+   Compiling winnow v0.7.15
+   Compiling utf8parse v0.2.2
+   Compiling anstyle-parse v1.0.0
+   Compiling futf v0.1.5
+   Compiling rand v0.9.4
+   Compiling anstyle-query v1.1.5
+   Compiling dyn-clone v1.0.20
+   Compiling colorchoice v1.0.5
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling anstyle v1.0.14
+   Compiling utf-8 v0.7.6
+   Compiling tendril v0.4.3
+   Compiling anstream v1.0.0
+   Compiling crypto-common v0.2.2
+   Compiling ulid v1.2.1
+   Compiling futures v0.3.32
+   Compiling unicode-width v0.2.2
+   Compiling lazy_static v1.5.0
+   Compiling dirs-sys v0.5.0
+   Compiling crossbeam-epoch v0.9.18
+   Compiling bincode v1.3.3
+   Compiling clap_lex v1.1.0
+   Compiling cmov v0.5.4
+   Compiling sqlx-core v0.8.6
+   Compiling regex v1.12.4
+   Compiling toml_edit v0.22.27
+   Compiling ctutils v0.4.2
+   Compiling matchers v0.2.0
+   Compiling clap_builder v4.6.0
+   Compiling crossbeam-deque v0.8.6
+   Compiling sharded-slab v0.1.7
+   Compiling phf v0.13.1
+   Compiling block-buffer v0.12.1
+   Compiling flate2 v1.1.9
+   Compiling compression-codecs v0.4.38
+   Compiling hashbrown v0.14.5
+   Compiling async-compression v0.4.42
+   Compiling notify-types v2.1.0
+   Compiling tracing-log v0.2.0
+   Compiling tower-http v0.6.11
+   Compiling thread_local v1.1.9
+   Compiling powerfmt v0.2.0
+   Compiling nu-ansi-term v0.50.3
+   Compiling const-oid v0.10.2
+   Compiling num-conv v0.2.2
+   Compiling time-core v0.1.9
+   Compiling unicode-id v0.3.6
+   Compiling deranged v0.5.8
+   Compiling markdown v1.0.0
+   Compiling digest v0.11.3
+   Compiling tracing-subscriber v0.3.23
+   Compiling toml v0.8.23
+   Compiling hyper v1.10.1
+   Compiling terraphim_types v1.22.1 (registry `terraphim`)
+   Compiling sqlx-sqlite v0.8.6
+   Compiling hyper-util v0.1.20
+   Compiling time v0.3.49
+   Compiling clap v4.6.1
+   Compiling string_cache v0.8.9
+   Compiling dirs v6.0.0
+   Compiling dirs-sys v0.4.1
+   Compiling itertools v0.14.0
+   Compiling objc2-core-foundation v0.3.2
+   Compiling sqlx-macros-core v0.8.6
+   Compiling bstr v1.12.1
+   Compiling rustc-hash v2.1.2
+   Compiling cached_proc_macro_types v0.1.1
+   Compiling constant_time_eq v0.4.2
+   Compiling web-time v1.1.0
+   Compiling cached v0.56.0
+   Compiling terraphim-markdown-parser v1.20.2 (registry `terraphim`)
+   Compiling objc2-core-services v0.3.2
+   Compiling dirs v5.0.1
+   Compiling shellexpand v3.1.2
+   Compiling zstd v0.13.3
+   Compiling string_cache v0.9.0
+   Compiling signature v2.2.0
+   Compiling envy v0.4.2
+   Compiling toml v0.5.11
+   Compiling config-derive v0.15.0
+   Compiling page_size v0.6.0
+   Compiling cpufeatures v0.3.0
+   Compiling static_assertions v1.1.0
+   Compiling heed-traits v0.20.0
+   Compiling dtoa v1.0.11
+   Compiling byteorder v1.5.0
+   Compiling file-id v0.2.3
+   Compiling xxhash-rust v0.8.15
+   Compiling aliasable v0.1.3
+   Compiling derive_more v2.1.1
+   Compiling blake3 v1.8.5
+   Compiling heed v0.22.1
+   Compiling heed-types v0.21.0
+   Compiling rayon v1.12.0
+   Compiling notify v9.0.0-rc.4
+   Compiling ouroboros v0.18.5
+   Compiling sqlx-macros v0.8.6
+   Compiling dtoa-short v0.3.5
+   Compiling ed25519 v2.2.3
+   Compiling globset v0.4.18
+   Compiling dashmap v6.2.1
+error: linking with `cc` failed: exit status: 1
+  |
+  = note:  "cc" "-Wl,-exported_symbols_list" "-Wl,/private/tmp/claude-501/ubx-target-tsan/debug/deps/rustcBmQc7C/list" "/private/tmp/claude-501/ubx-target-tsan/debug/deps/rustcBmQc7C/symbols.o" "<8 object files omitted>" "/private/tmp/claude-501/ubx-target-tsan/debug/deps/rustcBmQc7C/rmeta.o" "<1 object files omitted>" "/private/tmp/claude-501/ubx-target-tsan/debug/deps/{libsqlx_macros_core-e5544333b2fd2591,libdotenvy-e5e5224f58c3f814,libhex-740d13290beac9f5,libheck-6eb4c0eddaaf708a,libsyn-4b12908735b6df4a,libsqlx_sqlite-ca637c30069b6b5a,libfutures_executor-7d0580ec08708431,libflume-735db8231d6dbf9d,libspin-dfca9a756be54245,libserde_urlencoded-82cb3695955031bd,libryu-7298baba2d75e618,libfutures_channel-f043c5fb671c8f26,libfutures_intrusive-dafd3339353fcca5,libparking_lot-cb5492bfb202772f,libparking_lot_core-06263038769c1cc0,liblock_api-6502a123cd468f37,libscopeguard-0e2c29d3ee62b928,liblibsqlite3_sys-07888e87eace8371,libatoi-5778e49e5aa42a9f,libnum_traits-3974546f0dff3a9e,libsqlx_core-70126b91752dd4d9,libwebpki_roots-bd9ef4bb80058c06,libwebpki_roots-5a8764c95ae6199b,libthiserror-21999d7365a00030,libindexmap-608b0c0307a87086,libhashbrown-c00f972516958982,libbase64-6f99dee6f74bbd6a,libsha2-539b636825be93e2,libdigest-562a035a6b2d0f94,libblock_buffer-e868199e529d36b0,libcrypto_common-fb1a07aa3aef7ccc,libgeneric_array-63ffa02c3ebcc765,libtypenum-a6509e2b18967d62,librustls-bdf8341084b52550,libsubtle-4ba0de1e3c6e8cd0,libwebpki-b89cc68f20a28b02,libring-7d7ac5aeeee6de29,libgetrandom-d45a5ea8bbed25e0,libuntrusted-56e66ec507ad6711,libcfg_if-bde9c5d1c0c364e1,librustls_pki_types-34b2e267688d33f7,libzeroize-04c133a54f2cf745,libtokio-57a91ca21b37684f,libsocket2-04098eb487a633ea,libmio-d0f743be088863fb,liblibc-516f467b21d39421,libbytes-b47726b97392569b,libhashlink-1635005641dcd4ef,libhashbrown-2e3a95b31dfe17a0,libfoldhash-a9258c93e4b2470b,libequivalent-ce6bc52b17163e3d,liballocator_api2-5a367a774dce576b,libserde_json-4fd30629c3f01a4a,libitoa-b75844b8c5c153be,libzmij-8edbdc98e389ae45,liburl-dfb49675c6430185,libidna-71f84f1f05f4971a,libidna_adapter-4a4df84f55f2a5d7,libicu_properties-0f67964983f819eb,libicu_properties_data-d265e829452ceaaa,libicu_normalizer-e7625e498cf2a7f1,libsmallvec-4c5138133a2088b9,libicu_normalizer_data-f895e25b3539dabe,libicu_collections-80ac3de85f5b2971,libutf8_iter-2aeafe32207e6b67,libpotential_utf-841d67195989257d,libicu_provider-f600195715a9c779,libicu_locale_core-b520f0f02d51a649,libtinystr-4668b9cc3d51899b,liblitemap-8653a7e6e46a02ef,libwriteable-5d11041e7652560d,libzerovec-93d65987f344aced,libzerotrie-3cdc775c4ec62114,libyoke-1c6bf335a65c0409,libstable_deref_trait-aca7dc0c7162757f,libzerofrom-fc5f2561a82d75fa,libform_urlencoded-ff59b83e5681c9ee,libpercent_encoding-57d8cd1fd0a50ab2,libtracing-0953a1b5b1966a5c,liblog-d4b1879d7989bb69,libtracing_core-6a0aad5c607ec3cc,libcrossbeam_queue-3e504cad758094a8,libcrossbeam_utils-9a3d6efe30845346,libeither-7781e856862aef09,libserde-cc0fe9b88d1198b7,libserde_core-f842c663bc057fb7,libevent_listener-c18675a692275192,libparking-bc1b11ca58790d23,libfutures_util-8dd4de91cb8c1394,libmemchr-6b9682e609056799,libfutures_io-ed245cec0133be73,libslab-bb181016e25f049f,libpin_project_lite-2c98448ad1f778aa,libfutures_sink-8cc40ef71cdfa112,libfutures_task-d3144871216413c4,libfutures_core-2e2ee5a2261e043d,libonce_cell-55d28c4bd098a7ad,libquote-5356dfa239104679,libproc_macro2-b0795a20783e0f06,libunicode_ident-fce9caa99c41951d}.rlib" "<sysroot>/lib/rustlib/aarch64-apple-darwin/lib/{libproc_macro-*,librustc_literal_escaper-*,libstd-*,libpanic_unwind-*,libobject-*,libmemchr-*,libaddr2line-*,libgimli-*,libcfg_if-*,librustc_demangle-*,libstd_detect-*,libhashbrown-*,librustc_std_workspace_alloc-*,libminiz_oxide-*,libadler2-*,libunwind-*,liblibc-*,librustc_std_workspace_core-*,liballoc-*,libcore-*,libcompiler_builtins-*}.rlib" "-liconv" "-lSystem" "-lc" "-lm" "-arch" "arm64" "-mmacosx-version-min=11.0.0" "-L" "/private/tmp/claude-501/ubx-target-tsan/debug/build/ring-fcfd27cdbc6831ca/out" "-L" "/private/tmp/claude-501/ubx-target-tsan/debug/build/libsqlite3-sys-fabff0924fdd25df/out" "-L" "<sysroot>/lib/rustlib/aarch64-apple-darwin/lib" "-o" "/private/tmp/claude-501/ubx-target-tsan/debug/deps/libsqlx_macros-e3ada3bd7fece068.dylib" "-Wl,-dead_strip" "-dynamiclib" "-nodefaultlibs"
+  = note: some arguments are omitted. use `--verbose` to show all linker arguments
+  = note: ld: warning: object file (/private/tmp/claude-501/ubx-target-tsan/debug/deps/liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)) was built for newer 'macOS' version (26.5) than being linked (11.0)
+          ld: warning: object file (/private/tmp/claude-501/ubx-target-tsan/debug/deps/libring-7d7ac5aeeee6de29.rlib[20](25ac62e5b3c53843-curve25519.o)) was built for newer 'macOS' version (26.5) than being linked (11.0)
+          ld: warning: object file (/private/tmp/claude-501/ubx-target-tsan/debug/deps/libring-7d7ac5aeeee6de29.rlib[21](0bbbd18bda93c05b-aes_nohw.o)) was built for newer 'macOS' version (26.5) than being linked (11.0)
+          ld: warning: object file (/private/tmp/claude-501/ubx-target-tsan/debug/deps/libring-7d7ac5aeeee6de29.rlib[22](00c879ee3285a50d-montgomery.o)) was built for newer 'macOS' version (26.5) than being linked (11.0)
+          ld: warning: object file (/private/tmp/claude-501/ubx-target-tsan/debug/deps/libring-7d7ac5aeeee6de29.rlib[23](00c879ee3285a50d-montgomery_inv.o)) was built for newer 'macOS' version (26.5) than being linked (11.0)
+          ld: warning: object file (/private/tmp/claude-501/ubx-target-tsan/debug/deps/libring-7d7ac5aeeee6de29.rlib[24](a0330e891e733f4e-ecp_nistz.o)) was built for newer 'macOS' version (26.5) than being linked (11.0)
+          ld: warning: object file (/private/tmp/claude-501/ubx-target-tsan/debug/deps/libring-7d7ac5aeeee6de29.rlib[26](a0330e891e733f4e-gfp_p384.o)) was built for newer 'macOS' version (26.5) than being linked (11.0)
+          ld: warning: object file (/private/tmp/claude-501/ubx-target-tsan/debug/deps/libring-7d7ac5aeeee6de29.rlib[28](aaa1ba3e455ee2e1-limbs.o)) was built for newer 'macOS' version (26.5) than being linked (11.0)
+          ld: warning: object file (/private/tmp/claude-501/ubx-target-tsan/debug/deps/libring-7d7ac5aeeee6de29.rlib[29](a4019cc0736b0423-mem.o)) was built for newer 'macOS' version (26.5) than being linked (11.0)
+          ld: warning: object file (/private/tmp/claude-501/ubx-target-tsan/debug/deps/libring-7d7ac5aeeee6de29.rlib[30](d5a9841f3dc6e253-poly1305.o)) was built for newer 'macOS' version (26.5) than being linked (11.0)
+          ld: warning: object file (/private/tmp/claude-501/ubx-target-tsan/debug/deps/libring-7d7ac5aeeee6de29.rlib[31](a0330e891e733f4e-p256-nistz.o)) was built for newer 'macOS' version (26.5) than being linked (11.0)
+          ld: warning: object file (/private/tmp/claude-501/ubx-target-tsan/debug/deps/libring-7d7ac5aeeee6de29.rlib[32](c322a0bcc369f531-chacha-armv8-ios64.o)) was built for newer 'macOS' version (26.5) than being linked (11.0)
+          ld: warning: object file (/private/tmp/claude-501/ubx-target-tsan/debug/deps/libring-7d7ac5aeeee6de29.rlib[33](c322a0bcc369f531-chacha20_poly1305_armv8-ios64.o)) was built for newer 'macOS' version (26.5) than being linked (11.0)
+          ld: warning: object file (/private/tmp/claude-501/ubx-target-tsan/debug/deps/libring-7d7ac5aeeee6de29.rlib[34](c322a0bcc369f531-aesv8-armx-ios64.o)) was built for newer 'macOS' version (26.5) than being linked (11.0)
+          ld: warning: object file (/private/tmp/claude-501/ubx-target-tsan/debug/deps/libring-7d7ac5aeeee6de29.rlib[35](c322a0bcc369f531-aesv8-gcm-armv8-ios64.o)) was built for newer 'macOS' version (26.5) than being linked (11.0)
+          ld: warning: object file (/private/tmp/claude-501/ubx-target-tsan/debug/deps/libring-7d7ac5aeeee6de29.rlib[36](c322a0bcc369f531-ghash-neon-armv8-ios64.o)) was built for newer 'macOS' version (26.5) than being linked (11.0)
+          ld: warning: object file (/private/tmp/claude-501/ubx-target-tsan/debug/deps/libring-7d7ac5aeeee6de29.rlib[37](c322a0bcc369f531-ghashv8-armx-ios64.o)) was built for newer 'macOS' version (26.5) than being linked (11.0)
+          ld: warning: object file (/private/tmp/claude-501/ubx-target-tsan/debug/deps/libring-7d7ac5aeeee6de29.rlib[38](c322a0bcc369f531-vpaes-armv8-ios64.o)) was built for newer 'macOS' version (26.5) than being linked (11.0)
+          ld: warning: object file (/private/tmp/claude-501/ubx-target-tsan/debug/deps/libring-7d7ac5aeeee6de29.rlib[39](c322a0bcc369f531-armv8-mont-ios64.o)) was built for newer 'macOS' version (26.5) than being linked (11.0)
+          ld: warning: object file (/private/tmp/claude-501/ubx-target-tsan/debug/deps/libring-7d7ac5aeeee6de29.rlib[40](c322a0bcc369f531-p256-armv8-asm-ios64.o)) was built for newer 'macOS' version (26.5) than being linked (11.0)
+          ld: warning: object file (/private/tmp/claude-501/ubx-target-tsan/debug/deps/libring-7d7ac5aeeee6de29.rlib[41](c322a0bcc369f531-sha512-armv8-ios64.o)) was built for newer 'macOS' version (26.5) than being linked (11.0)
+          ld: warning: object file (/private/tmp/claude-501/ubx-target-tsan/debug/deps/libring-7d7ac5aeeee6de29.rlib[42](c322a0bcc369f531-sha256-armv8-ios64.o)) was built for newer 'macOS' version (26.5) than being linked (11.0)
+          Undefined symbols for architecture arm64:
+            "___tsan_atomic16_load", referenced from:
+                _walFindFrame in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+            "___tsan_atomic16_store", referenced from:
+                _walIndexAppend in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+            "___tsan_atomic32_load", referenced from:
+                _sqlite3RunParser in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_is_interrupted in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _walTryBeginRead in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _walTryBeginRead in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _walTryBeginRead in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _walTryBeginRead in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _walCheckpoint in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _walCheckpoint in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                ...
+            "___tsan_atomic32_store", referenced from:
+                _sqlite3_soft_heap_limit64 in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3OomFault in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3Step in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3RunParser in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_interrupt in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_wal_checkpoint_v2 in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3OomClear in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                ...
+            "___tsan_atomic64_store", referenced from:
+                _sqlite3_config in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_config in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+            "___tsan_atomic8_load", referenced from:
+                _sqlite3ParseUri in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+            "___tsan_atomic8_store", referenced from:
+                _sqlite3_config in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+            "___tsan_atomic_thread_fence", referenced from:
+                _sqlite3MemoryBarrier in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+            "___tsan_func_entry", referenced from:
+                _sqlite3_status64 in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3MisuseError in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3Pcache1Mutex in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3MallocMutex in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_mutex_enter in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_mutex_leave in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                ...
+            "___tsan_func_exit", referenced from:
+                _sqlite3_status64 in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3MisuseError in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3Pcache1Mutex in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3MallocMutex in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_mutex_enter in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_mutex_leave in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                ...
+            "___tsan_init", referenced from:
+                _tsan.module_ctor in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _tsan.module_ctor in libring-7d7ac5aeeee6de29.rlib[20](25ac62e5b3c53843-curve25519.o)
+                _tsan.module_ctor in libring-7d7ac5aeeee6de29.rlib[21](0bbbd18bda93c05b-aes_nohw.o)
+                _tsan.module_ctor in libring-7d7ac5aeeee6de29.rlib[22](00c879ee3285a50d-montgomery.o)
+                _tsan.module_ctor in libring-7d7ac5aeeee6de29.rlib[23](00c879ee3285a50d-montgomery_inv.o)
+                _tsan.module_ctor in libring-7d7ac5aeeee6de29.rlib[24](a0330e891e733f4e-ecp_nistz.o)
+                _tsan.module_ctor in libring-7d7ac5aeeee6de29.rlib[26](a0330e891e733f4e-gfp_p384.o)
+                ...
+            "___tsan_memcpy", referenced from:
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3FpDecode in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_randomness in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _chacha_block in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_config in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_config in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_config in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_config in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_config in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_config in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                ...
+            "___tsan_memset", referenced from:
+                _sqlite3_initialize in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_randomness in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _valueFromValueList in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3VdbeExpandSql in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3MallocInit in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3Utf16to8 in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _unixFcntlExternalReader in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                ...
+            "___tsan_read1", referenced from:
+                _sqlite3SafetyCheckOk in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3BtreeEnterAll in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3BtreeLeaveAll in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3DeleteTrigger in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_initialize in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3MutexAlloc in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3MutexInit in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                ...
+            "___tsan_read16", referenced from:
+                _sqlite3RunParser in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _yy_reduce in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _yy_reduce in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _yy_reduce in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _yy_reduce in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _yy_reduce in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _yy_reduce in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _yy_reduce in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _yy_reduce in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _yy_reduce in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _yy_reduce in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _yy_reduce in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _yy_reduce in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _yy_reduce in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                ...
+            "___tsan_read2", referenced from:
+                _sqlite3PagerMemUsed in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3PcacheReleaseMemory in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3DbMallocSize in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _unixOpen in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _unixOpen in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _unixOpen in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _unixAccess in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                ...
+            "___tsan_read4", referenced from:
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                ...
+            "___tsan_read8", referenced from:
+                _sqlite3_status64 in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_status64 in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_status64 in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3Pcache1Mutex in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3MallocMutex in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_mutex_enter in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_mutex_leave in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                ...
+            "___tsan_unaligned_read2", referenced from:
+                _sqlite3PrimaryKeyIndex in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3AnalysisLoad in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3SrcListDelete in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3SrcListDelete in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3SrcListDelete in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _loadStatTbl in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3FreeIndex in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                ...
+            "___tsan_unaligned_write2", referenced from:
+                _sqlite3AnalysisLoad in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _analysisLoader in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _analysisLoader in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _decodeIntArray in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _decodeIntArray in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _decodeIntArray in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _decodeIntArray in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _decodeIntArray in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                ...
+            "___tsan_write1", referenced from:
+                _sqlite3_initialize in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_str_vappendf in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                ...
+            "___tsan_write16", referenced from:
+                _yy_syntax_error in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3AddColumn in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3AddColumn in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _tokenExpr in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+            "___tsan_write2", referenced from:
+                _sqlite3ResetAllSchemasOfConnection in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3BtreeSetVersion in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3BtreeSetVersion in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3BtreeSetVersion in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_clear_bindings in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_clear_bindings in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_value_blob in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                ...
+            "___tsan_write4", referenced from:
+                _sqlite3_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                ...
+            "___tsan_write8", referenced from:
+                _sqlite3_status64 in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_status64 in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_status64 in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                _sqlite3_db_status in liblibsqlite3_sys-07888e87eace8371.rlib[5](c877a2978823c39d-sqlite3.o)
+                ...
+          ld: symbol(s) not found for architecture arm64
+          clang: error: linker command failed with exit code 1 (use -v to see invocation)
+          
+
+error: could not compile `sqlx-macros` (lib) due to 1 previous error
+warning: build failed, waiting for other jobs to finish...
+=== RUN 1 END exit=101 wall=119s

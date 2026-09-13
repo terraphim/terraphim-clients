@@ -1,0 +1,205 @@
+
+=== Rust toolchain inventory ===
+  [✓] rustup             rustup 1.29.1 (2026-08-13)
+  [✓] nightly            rustc 1.98.0-nightly (bd08c9e71 2026-06-25)
+  [✓] miri               
+  [✓] rust_src           
+  [✓] cargo-fuzz         cargo-fuzz 0.13.2
+  [ ] cargo-afl          (hint: cargo install cargo-afl)
+  [✓] cargo-geiger       cargo-geiger 0.13.0
+  [✓] cargo-audit        cargo-audit 0.22.2
+  [✓] cargo-deny         cargo-deny 0.20.2
+  [✓] cargo-expand       cargo-expand 1.0.121
+  [✓] ast-grep           ast-grep 0.45.3
+  [✓] semgrep            1.176.1
+
+=== Flywheel tools inventory ===
+  [✓] br     (HARD)  br 0.1.13
+  [ ] bv     (HARD)  curl-bash one-liner available
+  [✓] cass   (SOFT)  cass 0.1.64
+  [✓] ubs    (SOFT)  UBS Meta-Runner v5.3.13
+  [✓] rch    (SOFT)  rch 1.0.19
+  [✓] jsm    (SOFT)  jsm 0.3.22
+  [ ] ntm    (SOFT)  curl-bash one-liner available
+  [✓] dcg    (REC)  
+  [ ] sbh    (REC)  curl-bash one-liner available
+  [ ] dsr    (REC)  curl-bash one-liner available
+  [✓] slb    (REC)  
+
+  ⚠ Missing HARD requirements: bv
+  The skill needs these before Phase 9 beads handoff can run.
+
+
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded cargo-afl v0.18.2
+  Installing cargo-afl v0.18.2
+    Updating crates.io index
+     Locking 38 packages to latest compatible versions
+ Downloading crates ...
+  Downloaded xdg v3.0.0
+  Downloaded cargo-afl-common v0.18.2
+   Compiling libc v0.2.189
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.24
+   Compiling rustix v1.1.4
+   Compiling anyhow v1.0.104
+   Compiling getrandom v0.4.3
+   Compiling heck v0.5.0
+   Compiling utf8parse v0.2.2
+   Compiling anstyle-query v1.1.5
+   Compiling colorchoice v1.0.5
+   Compiling anstyle-parse v1.0.0
+   Compiling cargo-afl-common v0.18.2
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling anstyle v1.0.14
+   Compiling clap_lex v1.1.0
+   Compiling strsim v0.11.1
+   Compiling semver v1.0.28
+   Compiling bitflags v2.13.2
+   Compiling anstream v1.0.0
+   Compiling cfg-if v1.0.4
+   Compiling rustc_version v0.4.1
+   Compiling xdg v3.0.0
+   Compiling fastrand v2.5.0
+   Compiling clap_builder v4.6.6
+   Compiling once_cell v1.21.4
+   Compiling home v0.5.12
+   Compiling syn v3.0.5
+   Compiling errno v0.3.14
+   Compiling tempfile v3.27.0
+   Compiling clap_derive v4.6.4
+   Compiling clap v4.6.6
+   Compiling cargo-afl v0.18.2
+    Finished `release` profile [optimized] target(s) in 23.17s
+  Installing /Users/alex/.cargo/bin/cargo-afl
+   Installed package `cargo-afl v0.18.2` (executable `cargo-afl`)
+  [✓] cargo-afl post-install smoke OK
+
+HARD requirement: bv
+One-liner: curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/beads_viewer/main/install.sh?$(date +%s)" | bash
+[1;34m==>[0m Installing bv...
+[1;34m==>[0m Detected platform: darwin_arm64
+[1;34m==>[0m Checking for pre-built binary...
+[1;34m==>[0m Pre-built binary not available, falling back to source build...
+[1;34m==>[0m Attempting to build from source with go build...
+[1;34m==>[0m Using Go 1.27.1
+[1;34m==>[0m Fetching source...
+[1;34m==>[0m Building bv from source...
+[1;32m==>[0m Built and installed bv from source to /Users/alex/.local/bin/bv
+[1;34m==>[0m Run 'bv' in any beads project to view issues.
+
+Tip: You can also install via Homebrew:
+  brew install dicklesworthstone/tap/bv
+
+SOFT requirement: ntm
+One-liner: curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/ntm/main/install.sh?$(date +%s)" | bash -s -- --easy-mode
+[1;34m==>[0m Installing ntm...
+[1;34m==>[0m Detected platform: darwin_arm64
+[1;34m==>[0m Found tmux: /opt/homebrew/bin/tmux
+[1;34m==>[0m Install directory: /usr/local/bin
+[1;34m==>[0m Fetching latest version...
+[1;34m==>[0m Installing ntm v1.33.1 for darwin_arm64
+[1;34m==>[0m Downloading from https://github.com/Dicklesworthstone/ntm/releases/download/v1.33.1/ntm_1.33.1_darwin_arm64.tar.gz...
+[1;34m==>[0m Verifying checksum...
+[1;32m==>[0m Installed ntm v1.33.1 to /usr/local/bin/ntm
+
+Shell Integration
+
+Add this to /Users/alex/.zshrc:
+  eval "$(ntm shell zsh)"
+
+[1;32m==>[0m Added shell integration to /Users/alex/.zshrc
+[1;34m==>[0m Restart your shell or run 'source /Users/alex/.zshrc' to activate.
+
+[1;32m==>[0m Installation complete!
+
+Quick start:
+  ntm spawn myproject --cc=2 --cod=2   # Create session with agents
+  ntm attach myproject                  # Attach to session
+  ntm palette                           # Open command palette
+  ntm tutorial                          # Interactive tutorial
+
+Tip: You can also install via Homebrew:
+  brew install dicklesworthstone/tap/ntm
+
+Run 'ntm --help' for full documentation.
+
+Recommended: sbh
+One-liner: curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/storage_ballast_helper/main/scripts/install.sh | bash
+[trace:install-20260911T220156Z-46607-3441] prepare/start: resolving prerequisites and installer contract
+[trace:install-20260911T220156Z-46607-3441] prepare/success: resolved prerequisites and artifact contract
+[trace:install-20260911T220156Z-46607-3441] download_artifact/start: downloading release artifact
+==> Downloading release artifact (archive)
+[trace:install-20260911T220156Z-46607-3441] download_artifact/success: release artifact downloaded
+[trace:install-20260911T220156Z-46607-3441] verify_artifact/start: verifying artifact checksum
+==> Verifying checksum
+[trace:install-20260911T220156Z-46607-3441] verify_artifact/success: artifact checksum verified
+[trace:install-20260911T220156Z-46607-3441] extract_artifact/start: extracting release archive
+==> Extracting archive
+[trace:install-20260911T220156Z-46607-3441] extract_artifact/success: release archive extracted
+[trace:install-20260911T220156Z-46607-3441] verify_macos_trust/start: verifying macOS Developer ID signature
+==> Verifying macOS binary trust
+/var/folders/rb/l4_6j2nx0lnfhysk974ldpg40000gn/T/tmp.XQR0Qid3X9/extract/sbh: valid on disk
+/var/folders/rb/l4_6j2nx0lnfhysk974ldpg40000gn/T/tmp.XQR0Qid3X9/extract/sbh: satisfies its Designated Requirement
+[trace:install-20260911T220156Z-46607-3441] verify_macos_trust/failure: macOS release binary was not signed by the expected Developer ID Application identity. Refusing to install. (Set SBH_ALLOW_UNSIGNED_MACOS=1 or pass --allow-unsigned to allow adhoc binaries while keeping checksum verification, or use --no-verify)
+ERROR: macOS release binary was not signed by the expected Developer ID Application identity. Refusing to install. (Set SBH_ALLOW_UNSIGNED_MACOS=1 or pass --allow-unsigned to allow adhoc binaries while keeping checksum verification, or use --no-verify)
+
+Recommended: dsr
+One-liner: curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/doodlestein_self_releaser/main/install.sh?$(date +%s)" | bash
+
+[0;33m╔════════════════════════════════════════════════════╗[0m
+[0;33m║[0m  [1;33mdsr installer[0m                                     [0;33m║[0m
+[0;33m║[0m  [0;90mFallback release infrastructure for throttled CI[0m  [0;33m║[0m
+[0;33m╚════════════════════════════════════════════════════╝[0m
+
+[0;34m→[0m Target version: 0.1.2
+[0;34m→[0m Running preflight checks
+[0;32m✓[0m Preflight checks passed
+[0;34m→[0m Cloning dsr from Dicklesworthstone/doodlestein_self_releaser...
+[0;34m→[0m Cloning repository (main)...
+[0;32m✓[0m Cloned dsr (main) to /Users/alex/.local/share/dsr/repo
+[0;32m✓[0m Repo validation passed (407 KB script, 26 modules)
+[0;32m✓[0m Linked /Users/alex/.local/bin/dsr → /Users/alex/.local/share/dsr/repo/dsr
+[0;34m→[0m Checking dependencies...
+[1;33m⚠[0m Optional dependencies not found (some features will be limited):
+[1;33m⚠[0m   • act (nektos/act — local GitHub Actions runner)
+[1;33m⚠[0m   • minisign (artifact signing)
+[1;33m⚠[0m   • syft (SBOM generation)
+[0;32m✓[0m Core dependencies satisfied
+[0;32m✓[0m Configuration directories created
+[0;34m→[0m Scanning for AI coding agents...
+[1;34mDetected AI Coding Agents:[0m
+  [0;32m✓[0m claude-code
+  [0;32m✓[0m codex-cli
+  [0;32m✓[0m gemini-cli
+[0;32m✓[0m Claude Code skill already installed
+[0;32m✓[0m Codex CLI skill already installed
+[0;34m→[0m Gemini CLI: detected; no automatic skill setup
+
+[0;32m╔═══════════════════════════════════════════════════╗[0m
+[0;32m║[0m  [1;32mdsr is ready![0m                                    [0;32m║[0m
+[0;32m║[0m                                                   [0;32m║[0m
+[0;32m║[0m  Version:  dsr version 0.1.2                      [0;32m║[0m
+[0;32m║[0m  Managed paths:                                   [0;32m║[0m
+[0;32m║[0m    Binary: ~/.local/bin/dsr                       [0;32m║[0m
+[0;32m║[0m    Repo:   ~/.local/share/dsr/repo                [0;32m║[0m
+[0;32m║[0m                                                   [0;32m║[0m
+[0;32m║[0m  Claude Code: Skill already present               [0;32m║[0m
+[0;32m║[0m  Codex CLI:   Skill already present               [0;32m║[0m
+[0;32m║[0m  Gemini CLI:  Detected; no automatic skill setup  [0;32m║[0m
+[0;32m║[0m                                                   [0;32m║[0m
+[0;32m║[0m  Get started:  dsr doctor                         [0;32m║[0m
+[0;32m║[0m  Quick check:  dsr check --all                    [0;32m║[0m
+[0;32m╚═══════════════════════════════════════════════════╝[0m
+
+⚠ Tools present on PATH but smoke-test FAILED: slb
+  These tools cannot be used as-is. Investigate before relying on them.
+  Flywheel tools (separately maintained CLIs): slb
+    See scripts/install.sh — it has the canonical curl|bash one-liners.
+    Quirk: some tools (e.g. `slb`) exit non-zero on `--version` even
+    when working. Run the tool's own --help before reinstalling.
+
+Wrote inventory: /Users/alex/projects/terraphim/terraphim-clients/.ub-exorcism/2026-09-11-terraphim-clients-1/phase0_toolchain_inventory.json
+INSTALL_DONE

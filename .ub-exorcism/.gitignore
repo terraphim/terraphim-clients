@@ -1,0 +1,8 @@
+# UB-audit workspaces: keep the findings, designs, reports and raw tool logs,
+# which are the audit's evidence, but never the rebuildable build output or the
+# compiled probe shims.
+*/experiments/target/
+**/*.dylib
+**/*.so
+**/*.o
+**/*.rlib

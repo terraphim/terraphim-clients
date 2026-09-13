@@ -1,0 +1,14 @@
+{
+  "round": 1,
+  "verdicts": {
+    "OPEN": 1,
+    "CONFIRMED_UB": 2,
+    "NO_EVIDENCE": 11,
+    "NEEDS_REFINEMENT": 3,
+    "DEFERRED": 1
+  },
+  "new_findings": 35,
+  "new_needs_refinement": 3,
+  "quiet": false,
+  "prev_quiet": false
+}

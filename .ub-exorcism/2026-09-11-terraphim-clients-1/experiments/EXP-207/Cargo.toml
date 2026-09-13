@@ -1,0 +1,13 @@
+[package]
+name = "exp207_lmdb_hostile"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+fff-search = "=0.8.4"
+
+[profile.release]
+debug = true
+
+[workspace]

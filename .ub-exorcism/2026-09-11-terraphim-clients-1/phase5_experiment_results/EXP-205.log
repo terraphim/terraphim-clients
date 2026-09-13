@@ -1,0 +1,39 @@
+=== EXP-205 hostile git repo -> libgit2 under ASan ===
+date: 2026-09-12T17:11:29Z  host: Ubuntu-2004-focal-64-minimal-hwe
+HEAD(clone): 46bbc43
+df avail:  284G
+libgit2-sys lock: version = "0.18.8+1.9.7"
+--- build (nightly, build-std, ASan) ---
+   Compiling regex v1.13.1
+   Compiling glidesort v0.1.2
+   Compiling tracing-subscriber v0.3.23
+   Compiling ignore v0.4.33
+   Compiling idna_adapter v1.2.2
+   Compiling idna v1.1.0
+   Compiling neo_frizbee v0.10.4
+   Compiling url v2.5.8
+   Compiling tracing-appender v0.2.5
+   Compiling git2 v0.20.4
+   Compiling exp205_git_hostile v0.0.0 (/tmp/ubx-r8/src_experiments/EXP-205)
+    Finished `release` profile [optimized + debuginfo] target(s) in 14.38s
+--- ASan admissibility: __asan_ in libgit2-sys C objects ---
+sample objs: 
+libgit2-sys __asan_ symbol count: 0
+--- run over corpus ---
+EXP-205 driving 5 repo(s); baseline peak_rss=13632KiB
+--- /tmp/ubx-r8/EXP-205/corpus/00_benign : collected 1 files; peak_rss_before=13824KiB peak_rss_after=33600KiB delta=19776KiB
+--- /tmp/ubx-r8/EXP-205/corpus/01_deep_config : collected 1 files; peak_rss_before=33600KiB peak_rss_after=36724KiB delta=3124KiB
+--- /tmp/ubx-r8/EXP-205/corpus/02_config_loop : collected 1 files; peak_rss_before=36724KiB peak_rss_after=39000KiB delta=2276KiB
+--- /tmp/ubx-r8/EXP-205/corpus/03_parent_config : collected 19 files; peak_rss_before=39000KiB peak_rss_after=41784KiB delta=2784KiB
+--- /tmp/ubx-r8/EXP-205/corpus/04_delta_inflate : collected 1 files; peak_rss_before=41784KiB peak_rss_after=43520KiB delta=1736KiB
+EXP-205 done: inspect ASan/RSS for libgit2 delta/config abuse
+run exit: 0
+DONE_EXP205
+
+=== ASan admissibility (corrected path; the inline check used a wrong glob) ===
+libgit2-sys bundled objects: 206
+total __asan_ symbols across libgit2 objects: 2517
+repository.o (discover/status) __asan_: 25
+config_file.o (config parse) __asan_: 19
+interceptors: __asan_report_load1 __asan_report_load4 __asan_report_load8 
+ADMISSIBLE: libgit2 1.9.7 C code is ASan-instrumented; discover+status+config paths covered.

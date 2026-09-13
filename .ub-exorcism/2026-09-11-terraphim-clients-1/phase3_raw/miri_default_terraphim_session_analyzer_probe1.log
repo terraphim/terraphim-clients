@@ -1,0 +1,370 @@
+# CMD: MIRIFLAGS="-Zmiri-disable-isolation" cargo +nightly miri test -p terraphim-session-analyzer --lib -- --test-threads=1 --skip connectors::cursor
+# DATE: 2026-09-12 00:18 BST
+    Blocking waiting for file lock on package cache
+warning: patch `rustls-webpki v0.103.12 (https://github.com/rustls/webpki.git?tag=v%2F0.103.12#27131d47)` was not used in the crate graph
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on build directory
+   Compiling serde_core v1.0.228
+   Compiling serde v1.0.228
+   Compiling zerocopy v0.8.52
+   Compiling errno v0.3.14
+   Compiling zerocopy-derive v0.8.52
+   Compiling num-traits v0.2.19
+   Compiling proc-macro-error-attr v1.0.4
+   Compiling ucd-trie v0.1.7
+   Compiling syn v1.0.109
+   Compiling cc v1.2.65
+   Compiling crossbeam-epoch v0.9.18
+   Compiling rustix v1.1.4
+   Compiling pest v2.8.6
+   Compiling proc-macro-error v1.0.4
+   Compiling either v1.16.0
+   Compiling rayon-core v1.13.0
+   Compiling unicode-width v0.2.2
+   Compiling fnv v1.0.7
+   Compiling crossbeam-deque v0.8.6
+   Compiling console v0.16.3
+   Compiling derive_builder_core v0.20.2
+   Compiling ciborium-io v0.2.2
+   Compiling plotters-backend v0.3.7
+   Compiling portable-atomic v1.13.1
+   Compiling plotters-svg v0.3.7
+   Compiling clap_builder v4.6.0
+   Compiling clap_derive v4.6.1
+   Compiling itertools v0.13.0
+   Compiling derive_builder_macro v0.20.2
+   Compiling tracing-attributes v0.1.31
+   Compiling tempfile v3.27.0
+   Compiling alloca v0.4.0
+   Compiling wait-timeout v0.2.1
+   Compiling unicode-width v0.1.14
+   Compiling quick-error v1.2.3
+   Compiling pest_meta v2.8.6
+   Compiling bit-vec v0.8.0
+   Compiling bytecount v0.6.9
+   Compiling cast v0.3.0
+   Compiling num-modular v0.6.4
+   Compiling bit-set v0.8.0
+   Compiling papergrid v0.11.0
+   Compiling pest_generator v2.8.6
+   Compiling num-order v1.2.0
+   Compiling tracing v0.1.44
+   Compiling criterion-plot v0.8.2
+   Compiling rusty-fork v0.3.1
+   Compiling derive_builder v0.20.2
+   Compiling rayon v1.12.0
+   Compiling tabled_derive v0.7.0
+   Compiling plotters v0.3.7
+   Compiling rand_xorshift v0.4.0
+   Compiling serde_json v1.0.150
+   Compiling indexmap v2.14.0
+   Compiling clap v4.6.1
+   Compiling rand v0.9.4
+   Compiling page_size v0.6.0
+   Compiling csv-core v0.1.13
+   Compiling pest_derive v2.8.6
+   Compiling anes v0.1.6
+   Compiling unit-prefix v0.5.2
+   Compiling shell-words v1.1.1
+   Compiling unarray v0.1.4
+   Compiling oorandom v11.1.5
+   Compiling similar v2.7.0
+   Compiling toml_datetime v0.6.11
+   Compiling serde_spanned v0.6.9
+   Compiling csv v1.4.0
+   Compiling dialoguer v0.12.0
+   Compiling tracing-subscriber v0.3.23
+   Compiling toml_edit v0.22.27
+   Compiling tabled v0.15.0
+   Compiling indicatif v0.18.4
+   Compiling jiff v0.2.28
+   Compiling tinytemplate v1.2.1
+   Compiling handlebars v6.4.1
+   Compiling colored v2.2.0
+   Compiling insta v1.48.0
+   Compiling glob v0.3.3
+   Compiling home v0.5.12
+   Compiling toml v0.8.23
+   Compiling half v2.7.1
+   Compiling ppv-lite86 v0.2.21
+   Compiling rand_chacha v0.9.0
+   Compiling ciborium-ll v0.2.2
+   Compiling proptest v1.11.0
+   Compiling ciborium v0.2.2
+   Compiling criterion v0.8.2
+   Compiling terraphim-session-analyzer v1.21.14 (/Users/alex/projects/terraphim/terraphim-clients/crates/terraphim-session-analyzer)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 11.76s
+     Running unittests src/lib.rs (target/miri/aarch64-apple-darwin/debug/deps/terraphim_session_analyzer-17fbcc96823d773e)
+
+running 128 tests
+test analyzer::tests::test_analyze_drops_sessions_without_target_file_operations ... warning: integer-to-pointer cast
+   --> /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.18/src/atomic.rs:204:11
+    |
+204 |         &*(ptr as *const T)
+    |           ^^^^^^^^^^^^^^^^^ integer-to-pointer cast
+    |
+    = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+    = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+    = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+    = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+    = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+    = note: this is on thread `unnamed-2`
+    = note: stack backtrace:
+            0: <crossbeam_epoch::internal::Local as crossbeam_epoch::atomic::Pointable>::deref::<'_>
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.18/src/atomic.rs:204:11: 204:28
+            1: crossbeam_epoch::atomic::Shared::<'_, crossbeam_epoch::internal::Local>::deref
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.18/src/atomic.rs:1421:9: 1421:22
+            2: crossbeam_epoch::sync::list::List::<crossbeam_epoch::internal::Local>::insert
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.18/src/sync/list.rs:176:41: 176:58
+            3: crossbeam_epoch::internal::Local::register
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.18/src/internal.rs:330:13: 330:65
+            4: crossbeam_epoch::collector::Collector::register
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.18/src/collector.rs:45:9: 45:30
+            5: crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.18/src/default.rs:34:34: 34:56
+            6: <fn() -> crossbeam_epoch::collector::LocalHandle {crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn} as std::ops::FnOnce<()>>::call_once - shim(fn() -> crossbeam_epoch::collector::LocalHandle {crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn})
+                at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5: 250:71
+            7: std::thread::local_impl::LazyStorage::<crossbeam_epoch::collector::LocalHandle, ()>::get_or_init_slow::<fn() -> crossbeam_epoch::collector::LocalHandle {crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn}>
+                at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/sys/thread_local/native/lazy.rs:80:17: 80:59
+            8: std::thread::local_impl::LazyStorage::<crossbeam_epoch::collector::LocalHandle, ()>::get_or_init::<fn() -> crossbeam_epoch::collector::LocalHandle {crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn}>
+                at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/sys/thread_local/native/lazy.rs:62:22: 62:49
+            9: crossbeam_epoch::default::HANDLE::{constant#0}::{closure#0}
+                at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/sys/thread_local/native/mod.rs:97:25: 97:115
+            10: <{closure@crossbeam_epoch::default::HANDLE::{constant#0}::{closure#0}} as std::ops::FnOnce<(std::option::Option<&mut std::option::Option<crossbeam_epoch::collector::LocalHandle>>,)>>::call_once - shim
+                at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5: 250:71
+            11: std::thread::LocalKey::<crossbeam_epoch::collector::LocalHandle>::try_with::<{closure@crossbeam_epoch::default::with_handle<{closure@crossbeam_epoch::default::is_pinned::{closure#0}}, bool>::{closure#0}}, bool>
+                at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/thread/local.rs:462:37: 462:55
+            12: crossbeam_epoch::default::with_handle::<{closure@crossbeam_epoch::default::is_pinned::{closure#0}}, bool>
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.18/src/default.rs:59:5: 60:28
+            13: crossbeam_epoch::default::is_pinned
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.18/src/default.rs:46:5: 46:45
+            14: crossbeam_deque::deque::Stealer::<rayon_core::job::JobRef>::steal
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-deque-0.8.6/src/deque.rs:642:12: 642:30
+            15: rayon_core::registry::WorkerThread::take_local_job
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:757:19: 757:39
+            16: rayon_core::registry::WorkerThread::wait_until_cold
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:791:32: 791:53
+            17: rayon_core::registry::WorkerThread::wait_until::<rayon_core::latch::OnceLatch>
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:775:13: 775:40
+            18: rayon_core::registry::WorkerThread::wait_until_out_of_work
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:824:9: 824:65
+            19: rayon_core::registry::main_loop
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:929:5: 929:43
+            20: rayon::ThreadBuilder::run
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:50:18: 50:33
+            21: <rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:95:20: 95:32
+            22: std::sys::backtrace::__rust_begin_short_backtrace::<{closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>
+                at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166:18: 166:21
+            23: std::thread::lifecycle::spawn_unchecked::<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}
+                at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:70:13: 70:67
+            24: <std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}> as std::ops::FnOnce<()>>::call_once
+                at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275:9: 275:19
+            25: std::panicking::catch_unwind::do_call::<std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}>, ()>
+                at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/panicking.rs:576:43: 576:46
+            26: std::panicking::catch_unwind::<(), std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}>>
+                at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/panicking.rs:544:19: 544:77
+            27: std::panic::catch_unwind::<std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}>, ()>
+                at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/panic.rs:359:14: 359:40
+            28: std::thread::lifecycle::spawn_unchecked::<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}
+                at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:68:26: 71:12
+            29: <{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}} as std::ops::FnOnce<()>>::call_once - shim(vtable)
+                at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5: 250:71
+            30: <std::boxed::Box<dyn std::ops::FnOnce() + std::marker::Send> as std::ops::FnOnce<()>>::call_once
+                at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/boxed.rs:2273:9: 2273:52
+            31: std::sys::thread::unix::Thread::new::thread_start
+                at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/sys/thread/unix.rs:118:17: 118:29
+note: the last function in that backtrace got called indirectly due to this code
+   --> crates/terraphim-session-analyzer/src/analyzer.rs:70:40
+    |
+ 70 |           let analyses: Result<Vec<_>> = self
+    |  ________________________________________^
+ 71 | |             .parsers
+ 72 | |             .par_iter()
+ 73 | |             .filter_map(|parser| {
+...   |
+ 84 | |             })
+ 85 | |             .collect();
+    | |______________________^
+
+warning: integer-to-pointer cast
+    --> /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.18/src/atomic.rs:1345:9
+     |
+1345 |         raw as *const _
+     |         ^^^^^^^^^^^^^^^ integer-to-pointer cast
+     |
+     = note: this is on thread `unnamed-2`
+     = note: stack backtrace:
+             0: crossbeam_epoch::atomic::Shared::<'_, crossbeam_epoch::internal::Local>::as_raw
+                 at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.18/src/atomic.rs:1345:9: 1345:24
+             1: crossbeam_epoch::internal::Local::register
+                 at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.18/src/internal.rs:332:24: 332:38
+             2: crossbeam_epoch::collector::Collector::register
+                 at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.18/src/collector.rs:45:9: 45:30
+             3: crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn
+                 at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.18/src/default.rs:34:34: 34:56
+             4: <fn() -> crossbeam_epoch::collector::LocalHandle {crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn} as std::ops::FnOnce<()>>::call_once - shim(fn() -> crossbeam_epoch::collector::LocalHandle {crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn})
+                 at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5: 250:71
+             5: std::thread::local_impl::LazyStorage::<crossbeam_epoch::collector::LocalHandle, ()>::get_or_init_slow::<fn() -> crossbeam_epoch::collector::LocalHandle {crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn}>
+                 at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/sys/thread_local/native/lazy.rs:80:17: 80:59
+             6: std::thread::local_impl::LazyStorage::<crossbeam_epoch::collector::LocalHandle, ()>::get_or_init::<fn() -> crossbeam_epoch::collector::LocalHandle {crossbeam_epoch::default::HANDLE::__rust_std_internal_init_fn}>
+                 at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/sys/thread_local/native/lazy.rs:62:22: 62:49
+             7: crossbeam_epoch::default::HANDLE::{constant#0}::{closure#0}
+                 at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/sys/thread_local/native/mod.rs:97:25: 97:115
+             8: <{closure@crossbeam_epoch::default::HANDLE::{constant#0}::{closure#0}} as std::ops::FnOnce<(std::option::Option<&mut std::option::Option<crossbeam_epoch::collector::LocalHandle>>,)>>::call_once - shim
+                 at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5: 250:71
+             9: std::thread::LocalKey::<crossbeam_epoch::collector::LocalHandle>::try_with::<{closure@crossbeam_epoch::default::with_handle<{closure@crossbeam_epoch::default::is_pinned::{closure#0}}, bool>::{closure#0}}, bool>
+                 at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/thread/local.rs:462:37: 462:55
+             10: crossbeam_epoch::default::with_handle::<{closure@crossbeam_epoch::default::is_pinned::{closure#0}}, bool>
+                 at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.18/src/default.rs:59:5: 60:28
+             11: crossbeam_epoch::default::is_pinned
+                 at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.18/src/default.rs:46:5: 46:45
+             12: crossbeam_deque::deque::Stealer::<rayon_core::job::JobRef>::steal
+                 at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-deque-0.8.6/src/deque.rs:642:12: 642:30
+             13: rayon_core::registry::WorkerThread::take_local_job
+                 at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:757:19: 757:39
+             14: rayon_core::registry::WorkerThread::wait_until_cold
+                 at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:791:32: 791:53
+             15: rayon_core::registry::WorkerThread::wait_until::<rayon_core::latch::OnceLatch>
+                 at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:775:13: 775:40
+             16: rayon_core::registry::WorkerThread::wait_until_out_of_work
+                 at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:824:9: 824:65
+             17: rayon_core::registry::main_loop
+                 at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:929:5: 929:43
+             18: rayon::ThreadBuilder::run
+                 at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:50:18: 50:33
+             19: <rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}
+                 at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:95:20: 95:32
+             20: std::sys::backtrace::__rust_begin_short_backtrace::<{closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>
+                 at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166:18: 166:21
+             21: std::thread::lifecycle::spawn_unchecked::<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}
+                 at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:70:13: 70:67
+             22: <std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}> as std::ops::FnOnce<()>>::call_once
+                 at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275:9: 275:19
+             23: std::panicking::catch_unwind::do_call::<std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}>, ()>
+                 at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/panicking.rs:576:43: 576:46
+             24: std::panicking::catch_unwind::<(), std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}>>
+                 at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/panicking.rs:544:19: 544:77
+             25: std::panic::catch_unwind::<std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}>, ()>
+                 at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/panic.rs:359:14: 359:40
+             26: std::thread::lifecycle::spawn_unchecked::<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}
+                 at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:68:26: 71:12
+             27: <{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}} as std::ops::FnOnce<()>>::call_once - shim(vtable)
+                 at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5: 250:71
+             28: <std::boxed::Box<dyn std::ops::FnOnce() + std::marker::Send> as std::ops::FnOnce<()>>::call_once
+                 at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/boxed.rs:2273:9: 2273:52
+             29: std::sys::thread::unix::Thread::new::thread_start
+                 at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/sys/thread/unix.rs:118:17: 118:29
+note: the last function in that backtrace got called indirectly due to this code
+    --> crates/terraphim-session-analyzer/src/analyzer.rs:70:40
+     |
+  70 |           let analyses: Result<Vec<_>> = self
+     |  ________________________________________^
+  71 | |             .parsers
+  72 | |             .par_iter()
+  73 | |             .filter_map(|parser| {
+...    |
+  84 | |             })
+  85 | |             .collect();
+     | |______________________^
+
+error: Undefined Behavior: trying to retag from <399065> for SharedReadWrite permission at alloc153741[0x8], but that tag does not exist in the borrow stack for this location
+   --> /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.18/src/internal.rs:549:9
+    |
+549 |         &*local_ptr
+    |         ^^^^^^^^^^^ this error occurs as part of retag at alloc153741[0x0..0x180]
+    |
+    = help: this indicates a potential bug in the program: it performed an invalid operation, but the Stacked Borrows rules it violated are still experimental
+    = help: see https://github.com/rust-lang/unsafe-code-guidelines/blob/master/wip/stacked-borrows.md for further information
+help: <399065> was created by a SharedReadWrite retag at offsets [0x0..0x8]
+   --> /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.18/src/internal.rs:548:26
+    |
+548 |         let local_ptr = (entry as *const Entry).cast::<Self>();
+    |                          ^^^^^
+    = note: this is on thread `unnamed-2`
+    = note: stack backtrace:
+            0: <crossbeam_epoch::internal::Local as crossbeam_epoch::sync::list::IsElement<crossbeam_epoch::internal::Local>>::element_of
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.18/src/internal.rs:549:9: 549:20
+            1: <crossbeam_epoch::sync::list::Iter<'_, crossbeam_epoch::internal::Local, crossbeam_epoch::internal::Local> as std::iter::Iterator>::next
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.18/src/sync/list.rs:290:37: 290:53
+            2: crossbeam_epoch::internal::Global::try_advance
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.18/src/internal.rs:235:22: 235:45
+            3: crossbeam_epoch::internal::Global::collect
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.18/src/internal.rs:200:28: 200:51
+            4: crossbeam_epoch::internal::Local::pin
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.18/src/internal.rs:435:17: 435:46
+            5: crossbeam_epoch::collector::LocalHandle::pin
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.18/src/collector.rs:81:18: 81:37
+            6: crossbeam_epoch::default::pin::{closure#0}
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.18/src/default.rs:40:26: 40:38
+            7: crossbeam_epoch::default::with_handle::<{closure@crossbeam_epoch::default::pin::{closure#0}}, crossbeam_epoch::guard::Guard>::{closure#0}
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.18/src/default.rs:60:23: 60:27
+            8: std::thread::LocalKey::<crossbeam_epoch::collector::LocalHandle>::try_with::<{closure@crossbeam_epoch::default::with_handle<{closure@crossbeam_epoch::default::pin::{closure#0}}, crossbeam_epoch::guard::Guard>::{closure#0}}, crossbeam_epoch::guard::Guard>
+                at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/thread/local.rs:463:12: 463:27
+            9: crossbeam_epoch::default::with_handle::<{closure@crossbeam_epoch::default::pin::{closure#0}}, crossbeam_epoch::guard::Guard>
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.18/src/default.rs:59:5: 60:28
+            10: crossbeam_epoch::default::pin
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.18/src/default.rs:40:5: 40:39
+            11: crossbeam_deque::deque::Stealer::<rayon_core::job::JobRef>::steal
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-deque-0.8.6/src/deque.rs:646:22: 646:34
+            12: rayon_core::registry::WorkerThread::take_local_job
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:757:19: 757:39
+            13: rayon_core::registry::WorkerThread::wait_until_cold
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:791:32: 791:53
+            14: rayon_core::registry::WorkerThread::wait_until::<rayon_core::latch::OnceLatch>
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:775:13: 775:40
+            15: rayon_core::registry::WorkerThread::wait_until_out_of_work
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:824:9: 824:65
+            16: rayon_core::registry::main_loop
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:929:5: 929:43
+            17: rayon::ThreadBuilder::run
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:50:18: 50:33
+            18: <rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}
+                at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/registry.rs:95:20: 95:32
+            19: std::sys::backtrace::__rust_begin_short_backtrace::<{closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>
+                at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166:18: 166:21
+            20: std::thread::lifecycle::spawn_unchecked::<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}
+                at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:70:13: 70:67
+            21: <std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}> as std::ops::FnOnce<()>>::call_once
+                at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275:9: 275:19
+            22: std::panicking::catch_unwind::do_call::<std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}>, ()>
+                at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/panicking.rs:576:43: 576:46
+            23: std::panicking::catch_unwind::<(), std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}>>
+                at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/panicking.rs:544:19: 544:77
+            24: std::panic::catch_unwind::<std::panic::AssertUnwindSafe<{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}::{closure#0}}>, ()>
+                at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/panic.rs:359:14: 359:40
+            25: std::thread::lifecycle::spawn_unchecked::<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}
+                at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:68:26: 71:12
+            26: <{closure@std::thread::lifecycle::spawn_unchecked<'_, {closure@<rayon_core::registry::DefaultSpawn as rayon_core::registry::ThreadSpawn>::spawn::{closure#0}}, ()>::{closure#1}} as std::ops::FnOnce<()>>::call_once - shim(vtable)
+                at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5: 250:71
+            27: <std::boxed::Box<dyn std::ops::FnOnce() + std::marker::Send> as std::ops::FnOnce<()>>::call_once
+                at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/boxed.rs:2273:9: 2273:52
+            28: std::sys::thread::unix::Thread::new::thread_start
+                at /Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/sys/thread/unix.rs:118:17: 118:29
+note: the last function in that backtrace got called indirectly due to this code
+   --> crates/terraphim-session-analyzer/src/analyzer.rs:70:40
+    |
+ 70 |           let analyses: Result<Vec<_>> = self
+    |  ________________________________________^
+ 71 | |             .parsers
+ 72 | |             .par_iter()
+ 73 | |             .filter_map(|parser| {
+...   |
+ 84 | |             })
+ 85 | |             .collect();
+    | |______________________^
+
+error: aborting due to 1 previous error; 2 warnings emitted
+
+error: test failed, to rerun pass `-p terraphim-session-analyzer --lib`
+
+Caused by:
+  process didn't exit successfully: `/Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/bin/cargo-miri runner /Users/alex/projects/terraphim/terraphim-clients/target/miri/aarch64-apple-darwin/debug/deps/terraphim_session_analyzer-17fbcc96823d773e --test-threads=1 --skip 'connectors::cursor'` (exit status: 1)
+note: test exited abnormally; to see the full output pass --no-capture to the harness.
+MIRI_EXIT=1

@@ -1,0 +1,37 @@
+=== TRACE ITERATION (ENVPROBE_TRACE=1, one run, widen=0): distinct getenv names by thread class
+exit=0
+--- getenv names (count):
+     48 TMPDIR
+     26 XDG_CONFIG_HOME
+      8 GITHUB_TOKEN
+      7 TERRAPHIM_UPDATE_BASE_URL
+      7 TERRAPHIM_UPDATE_BACKEND
+      7 HOME
+      3 RUST_LIB_BACKTRACE
+      3 RUST_BACKTRACE
+      1 no_proxy
+      1 https_proxy
+      1 http_proxy
+      1 all_proxy
+      1 TERM
+      1 SSL_CERT_FILE
+      1 SSL_CERT_DIR
+      1 RUST_TEST_NOCAPTURE
+      1 RUST_MIN_STACK
+      1 REQUEST_METHOD
+      1 NO_PROXY
+      1 HTTP_PROXY
+      1 HTTPS_PROXY
+      1 ALL_PROXY
+--- setenv names (count):
+     10 XDG_CONFIG_HOME
+     10 USERPROFILE
+     10 LOCALAPPDATA
+     10 HOME
+     10 APPDATA
+      1 SSL_CERT_FILE
+      1 SSL_CERT_DIR
+--- distinct tids doing getenv: 61; distinct tids doing setenv: 11
+E 10806961325392010 1210643 get RUST_TEST_NOCAPTURE
+E 10806961325435588 1210643 get TERM
+E 10806961325488036 1210643 get RUST_MIN_STACK

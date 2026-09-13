@@ -1,0 +1,138 @@
+=== EXP-012 start 2026-09-12 10:26:42 BST host=Klarian-147.local rustc 1.98.0-nightly (bd08c9e71 2026-06-25) target=aarch64-apple-darwin
+warning: patch `rustls-webpki v0.103.12 (https://github.com/rustls/webpki.git?tag=v%2F0.103.12#27131d47)` was not used in the crate graph
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+   Compiling serde_core v1.0.228
+   Compiling serde v1.0.228
+   Compiling smallvec v1.15.2
+   Compiling libc v0.2.186
+   Compiling stable_deref_trait v1.2.1
+   Compiling futures-sink v0.3.32
+   Compiling cc v1.2.65
+   Compiling getrandom v0.4.3
+   Compiling serde_json v1.0.150
+   Compiling bitflags v2.13.0
+   Compiling futures-task v0.3.32
+   Compiling yoke v0.8.3
+   Compiling slab v0.4.12
+   Compiling futures-channel v0.3.32
+   Compiling hashbrown v0.17.1
+   Compiling num-traits v0.2.19
+   Compiling futures-util v0.3.32
+   Compiling tracing v0.1.44
+   Compiling zerovec v0.11.6
+   Compiling zerotrie v0.2.4
+   Compiling typenum v1.20.1
+   Compiling regex-automata v0.4.14
+   Compiling syn v1.0.109
+   Compiling rustix v1.1.4
+   Compiling errno v0.3.14
+   Compiling parking_lot_core v0.9.12
+   Compiling signal-hook-registry v1.4.8
+   Compiling tinystr v0.8.3
+   Compiling mio v1.2.1
+   Compiling parking_lot v0.12.5
+   Compiling socket2 v0.6.4
+   Compiling icu_locale_core v2.2.0
+   Compiling potential_utf v0.1.5
+   Compiling getrandom v0.3.4
+   Compiling icu_collections v2.2.0
+   Compiling getrandom v0.2.17
+   Compiling tokio v1.52.3
+   Compiling rand_core v0.9.5
+   Compiling generic-array v0.14.7
+   Compiling rand_chacha v0.9.0
+   Compiling futures-io v0.3.32
+   Compiling ring v0.17.14
+   Compiling either v1.16.0
+   Compiling rand v0.9.4
+   Compiling console v0.16.3
+   Compiling crypto-common v0.1.7
+   Compiling block-buffer v0.10.4
+   Compiling icu_provider v2.2.0
+   Compiling digest v0.10.7
+   Compiling cpufeatures v0.2.17
+   Compiling dirs-sys v0.4.1
+   Compiling sha2 v0.10.9
+   Compiling icu_normalizer v2.2.0
+   Compiling icu_properties v2.2.0
+   Compiling indicatif v0.18.4
+   Compiling proc-macro-error v1.0.4
+   Compiling rayon v1.12.0
+   Compiling itertools v0.14.0
+   Compiling tabled_derive v0.7.0
+   Compiling indexmap v2.14.0
+   Compiling rustls v0.23.40
+   Compiling uuid v1.23.3
+   Compiling futures v0.3.32
+   Compiling idna_adapter v1.2.2
+   Compiling idna v1.1.0
+   Compiling tempfile v3.27.0
+   Compiling toml_datetime v0.6.11
+   Compiling serde_spanned v0.6.9
+   Compiling ahash v0.8.12
+   Compiling url v2.5.8
+   Compiling ulid v1.2.1
+   Compiling chrono v0.4.45
+   Compiling regex v1.12.4
+   Compiling toml_edit v0.22.27
+   Compiling serde_urlencoded v0.7.1
+   Compiling matchers v0.2.0
+   Compiling schemars v0.8.22
+   Compiling bincode v1.3.3
+   Compiling tracing-subscriber v0.3.23
+   Compiling handlebars v6.4.1
+   Compiling dialoguer v0.12.0
+   Compiling tabled v0.15.0
+   Compiling rustls-webpki v0.103.13
+   Compiling jiff v0.2.28
+   Compiling csv v1.4.0
+   Compiling fsevent-sys v4.1.0
+   Compiling notify-types v2.1.0
+   Compiling dirs v5.0.1
+   Compiling notify v8.2.0
+   Compiling toml v0.8.23
+   Compiling terraphim_types v1.22.1 (registry `terraphim`)
+   Compiling hyper v1.10.1
+   Compiling tower v0.5.3
+   Compiling cached v0.56.0
+   Compiling tower-http v0.6.11
+   Compiling hyper-util v0.1.20
+   Compiling terraphim-session-analyzer v1.21.14 (/Users/alex/projects/terraphim/terraphim-clients/crates/terraphim-session-analyzer)
+   Compiling terraphim-markdown-parser v1.20.2 (registry `terraphim`)
+   Compiling tokio-rustls v0.26.4
+   Compiling hyper-rustls v0.27.9
+   Compiling reqwest v0.12.28
+   Compiling terraphim_automata v1.21.0 (registry `terraphim`)
+   Compiling terraphim_rolegraph v1.20.2 (registry `terraphim`)
+   Compiling terraphim_sessions v1.21.2 (/Users/alex/projects/terraphim/terraphim-clients/crates/terraphim_sessions)
+   Compiling exp012_char_boundary v0.0.0 (/Users/alex/projects/terraphim/terraphim-clients/.ub-exorcism/2026-09-11-terraphim-clients-1/experiments/EXP-012)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 30.33s
+     Running `/private/tmp/claude-501/ubx-exp-target/debug/exp012_char_boundary`
+
+thread 'main' (29202131) panicked at /Users/alex/projects/terraphim/terraphim-clients/crates/terraphim_sessions/src/model.rs:332:48:
+end byte index 100 is not a char boundary; it is inside 'é' (bytes 99..101 of string)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+summary arm (Session::summary direct): PANIC: end byte index 100 is not a char boundary; it is inside 'é' (bytes 99..101 of string)
+
+thread 'main' (29202131) panicked at /Users/alex/projects/terraphim/terraphim-clients/crates/terraphim_sessions/src/model.rs:332:48:
+end byte index 100 is not a char boundary; it is inside 'é' (bytes 99..101 of string)
+summary arm (via search_sessions): PANIC: end byte index 100 is not a char boundary; it is inside 'é' (bytes 99..101 of string)
+
+thread 'main' (29202131) panicked at EXP-012/src/main.rs:27:74:
+end byte index 40 is not a char boundary; it is inside 'é' (bytes 39..41 of string)
+display arm (handler.rs:1995 idiom): PANIC: end byte index 40 is not a char boundary; it is inside 'é' (bytes 39..41 of string)
+
+thread 'main' (29202131) panicked at /Users/alex/projects/terraphim/terraphim-clients/crates/terraphim_sessions/src/enrichment/enricher.rs:188:31:
+start byte index 31 is not a char boundary; it is inside 'é' (bytes 30..32 of string)
+enricher arm (enrich_session -> extract_context): PANIC: start byte index 31 is not a char boundary; it is inside 'é' (bytes 30..32 of string)
+
+thread 'main' (29202131) panicked at EXP-012/src/main.rs:46:16:
+end byte index 23 is not a char boundary; it is inside 'é' (bytes 22..24 of string)
+paragraph arm (markdown_parser idiom): PANIC: end byte index 23 is not a char boundary; it is inside 'é' (bytes 22..24 of string)
+control (ASCII): no panic
+EXP-012 RESULT: panicking arms = 5 of 5
+EXP-012 PANIC CONFIRMED (safe-Rust panic, not UB)
+=== exit=0

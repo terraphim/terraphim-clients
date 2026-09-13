@@ -1,0 +1,47 @@
+=== EXP-206 crafted SQLite -> bundled SQLite 3.46.0 under ASan ===
+date: 2026-09-12T17:14:38Z  host: Ubuntu-2004-focal-64-minimal-hwe
+HEAD(clone): 46bbc43
+df avail:  284G
+--- build (nightly, build-std, ASan) ---
+   Compiling once_cell v1.21.4
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling smallvec v1.16.1
+   Compiling bitflags v2.13.2
+   Compiling fallible-iterator v0.3.0
+   Compiling hashbrown v0.14.5
+   Compiling hashlink v0.9.1
+   Compiling rusqlite v0.32.1
+   Compiling exp206_sqlite_corrupt v0.0.0 (/tmp/ubx-r8/src_experiments/EXP-206)
+    Finished `release` profile [optimized + debuginfo] target(s) in 1m 10s
+--- ASan admissibility: __asan_ in libsqlite3-sys sqlite3.o (target) ---
+sqlite3.o: 
+target sqlite3.o __asan_ count: 
+interceptors: 
+host sqlite3.o (should be absent/0): none count=0
+--- run over corpus ---
+EXP-206 sqlite version: 3.46.0
+EXP-206 driving 14 database file(s)
+--- /tmp/ubx-r8/EXP-206/corpus/00_control.db : q1=err(Invalid column type Text at index: 0, name: key) q2=err(Invalid column type Text at index: 0, name: key) integrity_check="ok"
+--- /tmp/ubx-r8/EXP-206/corpus/01_bad_magic.corrupt : q1=err(file is not a database) q2=err(file is not a database) integrity_check=err(file is not a database)
+--- /tmp/ubx-r8/EXP-206/corpus/02_bad_pagesize.corrupt : q1=err(file is not a database) q2=err(file is not a database) integrity_check=err(file is not a database)
+--- /tmp/ubx-r8/EXP-206/corpus/03_bad_encoding.corrupt : q1=err(Invalid column type Text at index: 0, name: key) q2=err(Invalid column type Text at index: 0, name: key) integrity_check="ok"
+--- /tmp/ubx-r8/EXP-206/corpus/04_inflated_pagecount.corrupt : q1=err(database disk image is malformed) q2=err(database disk image is malformed) integrity_check=err(database disk image is malformed)
+--- /tmp/ubx-r8/EXP-206/corpus/05_truncated_tail.corrupt : q1=err(Invalid column type Text at index: 0, name: key) q2=err(Invalid column type Text at index: 0, name: key) integrity_check="malformed inverted index for FTS5 table "
+--- /tmp/ubx-r8/EXP-206/corpus/06_truncated_header.corrupt : q1=err(database disk image is malformed) q2=err(database disk image is malformed) integrity_check=err(database disk image is malformed)
+--- /tmp/ubx-r8/EXP-206/corpus/07_page2_scribble.corrupt : q1=err(database disk image is malformed) q2=err(Invalid column type Text at index: 0, name: key) integrity_check="*** in database main ***\nTree 2 page 2: "
+--- /tmp/ubx-r8/EXP-206/corpus/08_bad_pagetype.corrupt : q1=err(database disk image is malformed) q2=err(database disk image is malformed) integrity_check=err(vtable constructor failed: ftsdoc)
+--- /tmp/ubx-r8/EXP-206/corpus/09_cellptr_clobber.corrupt : q1=err(database disk image is malformed) q2=err(Invalid column type Text at index: 0, name: key) integrity_check="*** in database main ***\nTree 2 page 2 c"
+--- /tmp/ubx-r8/EXP-206/corpus/10_bad_freelist.corrupt : q1=err(Invalid column type Text at index: 0, name: key) q2=err(Invalid column type Text at index: 0, name: key) integrity_check="*** in database main ***\nFreelist: inval"
+--- /tmp/ubx-r8/EXP-206/corpus/11_random_fuzz.corrupt : q1=err(database disk image is malformed) q2=err(database disk image is malformed) integrity_check=err(database disk image is malformed)
+--- /tmp/ubx-r8/EXP-206/corpus/12_fts5_shadow.corrupt : q1=err(Invalid column type Text at index: 0, name: key) q2=err(Invalid column type Text at index: 0, name: key) integrity_check="ok"
+--- /tmp/ubx-r8/EXP-206/corpus/_base.sqlite : q1=err(Invalid column type Text at index: 0, name: key) q2=err(Invalid column type Text at index: 0, name: key) integrity_check="ok"
+EXP-206 done: inspect ASan for a libsqlite3 page/btree/FTS5 fault
+run exit: 0
+DONE_EXP206
+
+=== ASan admissibility (corrected path; inline check globbed the wrong object name) ===
+sqlite object: /tmp/ubx-r8/EXP-206/target/x86_64-unknown-linux-gnu/release/build/libsqlite3-sys/debc6df8c30d4872/out/c877a2978823c39d-sqlite3.o
+sqlite3.o __asan_ count: 30
+interceptors: __asan_report_load __asan_report_load1 __asan_report_load16 __asan_report_load2 __asan_report_load4 __asan_report_load8 __asan_report_store __asan_report_store1 __asan_report_store16 __asan_report_store2 __asan_report_store4 __asan_report_store8 
+host libsqlite3-sys copy: none (standalone crate, no proc-macro host link)
+ADMISSIBLE: SQLite 3.46.0 C code is ASan-instrumented; open/btree/FTS5/integrity_check paths covered.

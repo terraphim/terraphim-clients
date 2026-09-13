@@ -1,0 +1,87 @@
+=== EXP-013 start 2026-09-12 10:27:13 BST host=Klarian-147.local rustc 1.98.0-nightly (bd08c9e71 2026-06-25) target=aarch64-apple-darwin
+warning: patch `rustls-webpki v0.103.12 (https://github.com/rustls/webpki.git?tag=v%2F0.103.12#27131d47)` was not used in the crate graph
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+   Compiling tokio v1.52.3
+   Compiling rustls v0.23.40
+   Compiling rustls-webpki v0.103.13
+   Compiling derive_more-impl v2.1.1
+   Compiling strum v0.28.0
+   Compiling ratatui-core v0.1.2
+   Compiling derive_more v2.1.1
+   Compiling selectors v0.33.0
+   Compiling crossterm v0.29.0
+   Compiling ratatui-widgets v0.3.2
+   Compiling ratatui-crossterm v0.1.2
+   Compiling comfy-table v7.2.2
+   Compiling scraper v0.25.0
+   Compiling ratatui-macros v0.7.2
+   Compiling ratatui v0.30.2
+   Compiling sqlx-core v0.8.6
+   Compiling ureq v2.12.1
+   Compiling tokio-util v0.7.18
+   Compiling tower v0.5.3
+   Compiling tokio-rustls v0.26.4
+   Compiling tokio-stream v0.1.18
+   Compiling cached v0.56.0
+   Compiling backon v1.6.0
+   Compiling terraphim_router v1.20.2 (registry `terraphim`)
+   Compiling terraphim_spawner v1.21.0 (registry `terraphim`)
+   Compiling terraphim_sessions v1.21.2 (/Users/alex/projects/terraphim/terraphim-clients/crates/terraphim_sessions)
+   Compiling tower-http v0.6.11
+   Compiling h2 v0.4.15
+   Compiling sqlx-sqlite v0.8.6
+   Compiling sqlx-macros-core v0.8.6
+   Compiling sqlx-macros v0.8.6
+   Compiling hyper v1.10.1
+   Compiling sqlx v0.8.6
+   Compiling hyper-util v0.1.20
+   Compiling hyper-rustls v0.27.9
+   Compiling axum v0.8.9
+   Compiling reqwest v0.12.28
+   Compiling terraphim_automata v1.21.0 (registry `terraphim`)
+   Compiling opendal v0.54.1
+   Compiling reqwest-middleware v0.4.2
+   Compiling terraphim_tracker v1.20.2 (registry `terraphim`)
+   Compiling self_update v0.42.0
+   Compiling reqwest-retry v0.7.0
+   Compiling terraphim_update v1.20.2 (/Users/alex/projects/terraphim/terraphim-clients/crates/terraphim_update)
+   Compiling terraphim_rolegraph v1.20.2 (registry `terraphim`)
+   Compiling terraphim_file_search v1.21.0 (registry `terraphim`)
+   Compiling terraphim_mcp_search v0.1.3 (registry `terraphim`)
+   Compiling terraphim_hooks v1.21.14 (/Users/alex/projects/terraphim/terraphim-clients/crates/terraphim_hooks)
+   Compiling terraphim_persistence v1.20.2 (registry `terraphim`)
+   Compiling terraphim_config v1.20.2 (registry `terraphim`)
+   Compiling terraphim_agent_evolution v1.20.2 (registry `terraphim`)
+   Compiling terraphim_middleware v1.21.0 (registry `terraphim`)
+   Compiling terraphim_command_runtime v0.1.0 (/Users/alex/projects/terraphim/terraphim-clients/crates/terraphim_command_runtime)
+   Compiling terraphim_service v1.21.1 (registry `terraphim`)
+   Compiling terraphim_orchestrator v1.21.0 (registry `terraphim`)
+   Compiling terraphim_agent v1.21.14 (/Users/alex/projects/terraphim/terraphim-clients/crates/terraphim_agent)
+   Compiling exp013_current_thread_bridge v0.0.0 (/Users/alex/projects/terraphim/terraphim-clients/.ub-exorcism/2026-09-11-terraphim-clients-1/experiments/EXP-013)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2m 40s
+     Running unittests src/lib.rs (/private/tmp/claude-501/ubx-exp-target/debug/deps/exp013_current_thread_bridge-a667cea8d579a505)
+
+running 3 tests
+
+thread 'tests::sync_trait_panics_on_current_thread' (29359300) panicked at /Users/alex/projects/terraphim/terraphim-clients/crates/terraphim_agent/src/shared_learning/store.rs:609:5:
+can call blocking only when running on the multi-threaded runtime
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test tests::sync_trait_panics_on_current_thread - should panic ... ok
+test tests::sync_trait_completes_on_multi_thread_single_worker ... ok
+
+thread 'tests::sync_trait_panics_without_runtime' (29359301) panicked at /Users/alex/projects/terraphim/terraphim-clients/crates/terraphim_agent/src/shared_learning/store.rs:610:18:
+there is no reactor running, must be called from the context of a Tokio 1.x runtime
+test tests::sync_trait_panics_without_runtime - should panic ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+   Doc-tests exp013_current_thread_bridge
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+=== exit=0

@@ -1,0 +1,111 @@
+EXP-202 Tree Borrows axis, re-run on bigbox (the 16 GB macOS audit host could not complete it)
+DATE=2026-09-12 23:20 CEST
+HOST=Ubuntu-2004-focal-64-minimal-hwe / Ubuntu 24.04.4 LTS / 24 cores
+SOURCE_HEAD=e90b193 (harness copied verbatim from WORKSPACE/experiments/EXP-202; only change: standalone [workspace] table in Cargo.toml and an env-gated corpus cap, inactive unless EXP202_SKIP/EXP202_MAX is set)
+TOOLCHAIN=rustc 1.100.0-nightly (67eda617e 2026-09-10) binary: rustc commit-hash: 67eda617e6a8f8ecec01e1ba7fafe2072a64adcc commit-date: 2026-09-10 host: x86_64-unknown-linux-gnu release: 1.100.0-nightly LLVM version: 23.1.1 
+MIRI=miri 0.1.0 (67eda617e6 2026-09-10)
+DRIVER=/tmp/ubx-r9/drivers/exp202tb.sh (bash -c driver; exit captured via PIPESTATUS[0])
+DF_BEFORE= 285G
+CORPUS_CAP=none
+===== MIRIFLAGS=-Zmiri-disable-isolation -Zmiri-tree-borrows
+    Updating crates.io index
+    Blocking waiting for file lock on package cache
+     Locking 14 packages to highest compatible versions
+    Blocking waiting for file lock on package cache
+exp202_yaml_frontmatter v0.0.0 (/tmp/ubx-r9/EXP-202)
+├── serde v1.0.229
+│   ├── serde_core v1.0.229
+│   └── serde_derive v1.0.229 (proc-macro)
+│       ├── proc-macro2 v1.0.107
+│       │   └── unicode-ident v1.0.24
+│       ├── quote v1.0.47
+│       │   └── proc-macro2 v1.0.107 (*)
+│       └── syn v3.0.5
+│           ├── proc-macro2 v1.0.107 (*)
+│           ├── quote v1.0.47 (*)
+│           └── unicode-ident v1.0.24
+└── serde_yaml v0.9.34+deprecated
+    ├── indexmap v2.14.2
+    │   ├── equivalent v1.0.2
+    │   └── hashbrown v0.17.1
+    ├── itoa v1.0.18
+    ├── ryu v1.0.23
+    ├── serde v1.0.229 (*)
+    └── unsafe-libyaml v0.2.11
+warning: binary `exp202_yaml_frontmatter` should have a kebab-case name
+   |
+ 1 | /tmp/ubx-r9/EXP-202/target/miri/.../exp202_yaml_frontmatter
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `cargo::non_kebab_case_bins` is set to `warn` by default
+help: to change the binary name to `exp202-yaml-frontmatter`, convert `package.name`
+  --> Cargo.toml:2:8
+   |
+ 2 - name = "exp202_yaml_frontmatter"
+ 2 + name = "exp202-yaml-frontmatter"
+   |
+help: to change the binary name to `exp202-yaml-frontmatter`, specify `bin.name`
+  --> Cargo.toml:11:13
+   |
+11 ~ [workspace]
+12 + [[bin]]
+13 + name = "exp202-yaml-frontmatter"
+14 + path = "src/main.rs"
+   |
+warning: `exp202_yaml_frontmatter` (manifest) generated 1 warning
+   Compiling proc-macro2 v1.0.107
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.47
+   Compiling serde_core v1.0.229
+   Compiling serde v1.0.229
+   Compiling equivalent v1.0.2
+   Compiling hashbrown v0.17.1
+   Compiling itoa v1.0.18
+   Compiling ryu v1.0.23
+   Compiling unsafe-libyaml v0.2.11
+   Compiling indexmap v2.14.2
+   Compiling syn v3.0.5
+   Compiling serde_derive v1.0.229
+   Compiling serde_yaml v0.9.34+deprecated
+   Compiling exp202_yaml_frontmatter v0.0.0 (/tmp/ubx-r9/EXP-202)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.74s
+     Running `/home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/bin/cargo-miri runner target/miri/x86_64-unknown-linux-gnu/debug/exp202_yaml_frontmatter`
+EXP-202: 43 inputs, serde_yaml 0.9.34 / unsafe-libyaml 0.2.11
+[control] len=83 value=ok | cmd=ok | injector=ok | learning=ok | from_str=ok
+[alias-fanout] len=122 value=ok | cmd=err: missing field `name` | injector=err: title: invalid type: sequence, expected a string at line 5 column 11 | learning=err: keywords[0]: invalid type: sequence, expected a string at line 4 column 4 | from_str=ok
+[alias-undefined] len=23 value=err: unknown anchor at line 1 column 8 | cmd=err: unknown anchor at line 1 column 8 | injector=err: unknown anchor at line 1 column 8 | learning=err: unknown anchor at line 1 column 8 | from_str=err: unknown anchor at line 1 column 8
+[alias-self] len=15 value=err: recursion limit exceeded at line 1 column 8 | cmd=err: missing field `name` | injector=err: title: invalid type: sequence, expected a string at line 1 column 8 | learning=err: title: invalid type: sequence, expected a string at line 1 column 8 | from_str=err: recursion limit exceeded at line 1 column 8
+[merge-key-bomb] len=103 value=ok | cmd=err: missing field `name` | injector=err: title: invalid type: map, expected a string at line 4 column 8 | learning=err: title: invalid type: map, expected a string at line 4 column 8 | from_str=ok
+[deep-flow-seq-300] len=610 value=err: recursion limit exceeded at line 1 column 138 | cmd=err: missing field `name` | injector=err: missing field `id` | learning=err: keywords[0]: invalid type: sequence, expected a string at line 1 column 12 | from_str=err: recursion limit exceeded at line 1 column 138
+[deep-flow-map-300] len=1508 value=err: recursion limit exceeded at line 1 column 516 | cmd=err: missing field `name` | injector=err: title: invalid type: map, expected a string at line 1 column 8 | learning=err: title: invalid type: map, expected a string at line 1 column 8 | from_str=err: recursion limit exceeded at line 1 column 516
+[deep-block-300] len=46052 value=err: recursion limit exceeded at line 129 column 129 | cmd=err: missing field `name` | injector=err: missing field `id` | learning=err: missing field `id` | from_str=err: recursion limit exceeded at line 129 column 129
+[deep-block-seq-300] len=45750 value=err: recursion limit exceeded at line 129 column 129 | cmd=err: invalid type: sequence, expected struct CommandDefinition | injector=err: invalid type: sequence, expected struct InjectorFrontmatter | learning=err: invalid type: sequence, expected struct LearningFrontmatter | from_str=err: recursion limit exceeded at line 129 column 129
+[lone-surrogate] len=16 value=err: found invalid Unicode character escape code at line 1 column 11, while parsing a quoted sc | cmd=err: found invalid Unicode character escape code at line 1 column 11, while parsing a quoted sc | injector=err: found invalid Unicode character escape code at line 1 column 11, while parsing a quoted sc | learning=err: found invalid Unicode character escape code at line 1 column 11, while parsing a quoted sc | from_str=err: found invalid Unicode character escape code at line 1 column 11, while parsing a quoted sc
+[surrogate-pair-split] len=22 value=err: found invalid Unicode character escape code at line 1 column 11, while parsing a quoted sc | cmd=err: found invalid Unicode character escape code at line 1 column 11, while parsing a quoted sc | injector=err: found invalid Unicode character escape code at line 1 column 11, while parsing a quoted sc | learning=err: found invalid Unicode character escape code at line 1 column 11, while parsing a quoted sc | from_str=err: found invalid Unicode character escape code at line 1 column 11, while parsing a quoted sc
+[bad-escape] len=12 value=err: found unknown escape character at line 1 column 9, while parsing a quoted scalar at line 1 | cmd=err: found unknown escape character at line 1 column 9, while parsing a quoted scalar at line 1 | injector=err: found unknown escape character at line 1 column 9, while parsing a quoted scalar at line 1 | learning=err: found unknown escape character at line 1 column 9, while parsing a quoted scalar at line 1 | from_str=err: found unknown escape character at line 1 column 9, while parsing a quoted scalar at line 1
+[truncated-escape-eof] len=12 value=err: found unknown escape character at line 1 column 12, while parsing a quoted scalar at line  | cmd=err: found unknown escape character at line 1 column 12, while parsing a quoted scalar at line  | injector=err: found unknown escape character at line 1 column 12, while parsing a quoted scalar at line  | learning=err: found unknown escape character at line 1 column 12, while parsing a quoted scalar at line  | from_str=err: found unknown escape character at line 1 column 12, while parsing a quoted scalar at line 
+[truncated-quote-eof] len=11 value=err: found unexpected end of stream at line 1 column 12, while scanning a quoted scalar at line | cmd=err: found unexpected end of stream at line 1 column 12, while scanning a quoted scalar at line | injector=err: found unexpected end of stream at line 1 column 12, while scanning a quoted scalar at line | learning=err: found unexpected end of stream at line 1 column 12, while scanning a quoted scalar at line | from_str=err: found unexpected end of stream at line 1 column 12, while scanning a quoted scalar at line
+[truncated-unicode-escape] len=14 value=err: did not find expected hexadecimal number at line 1 column 11, while parsing a quoted scala | cmd=err: did not find expected hexadecimal number at line 1 column 11, while parsing a quoted scala | injector=err: did not find expected hexadecimal number at line 1 column 11, while parsing a quoted scala | learning=err: did not find expected hexadecimal number at line 1 column 11, while parsing a quoted scala | from_str=err: did not find expected hexadecimal number at line 1 column 11, while parsing a quoted scala
+[invalid-utf8-plain] len=27 value=err: invalid leading UTF-8 octet at position 7 | cmd=err: invalid leading UTF-8 octet at position 7 | injector=err: invalid leading UTF-8 octet at position 7 | learning=err: invalid leading UTF-8 octet at position 7 | from_str=n/a (not UTF-8; workspace from_str unreachable, from_slice covers it)
+[invalid-utf8-block-scalar] len=35 value=err: invalid leading UTF-8 octet at position 16 | cmd=err: invalid leading UTF-8 octet at position 16 | injector=err: invalid leading UTF-8 octet at position 16 | learning=err: invalid leading UTF-8 octet at position 16 | from_str=n/a (not UTF-8; workspace from_str unreachable, from_slice covers it)
+[invalid-utf8-in-quoted] len=14 value=err: invalid length of a UTF-8 sequence at position 9 | cmd=err: invalid length of a UTF-8 sequence at position 9 | injector=err: invalid length of a UTF-8 sequence at position 9 | learning=err: invalid length of a UTF-8 sequence at position 9 | from_str=n/a (not UTF-8; workspace from_str unreachable, from_slice covers it)
+[utf16-bom] len=20 value=err: invalid leading UTF-8 octet | cmd=err: invalid leading UTF-8 octet | injector=err: invalid leading UTF-8 octet | learning=err: invalid leading UTF-8 octet | from_str=n/a (not UTF-8; workspace from_str unreachable, from_slice covers it)
+[utf8-bom-tabs] len=25 value=err: found a tab character that violates indentation at line 2 column 1, while scanning a plain | cmd=err: found a tab character that violates indentation at line 2 column 1, while scanning a plain | injector=err: found a tab character that violates indentation at line 2 column 1, while scanning a plain | learning=err: found a tab character that violates indentation at line 2 column 1, while scanning a plain | from_str=err: found a tab character that violates indentation at line 2 column 1, while scanning a plain
+[nul-bytes] len=17 value=err: control characters are not allowed at position 8 | cmd=err: control characters are not allowed at position 8 | injector=err: control characters are not allowed at position 8 | learning=err: control characters are not allowed at position 8 | from_str=err: control characters are not allowed at position 8
+[oversized-tag] len=4109 value=ok | cmd=err: missing field `name` | injector=err: missing field `id` | learning=err: missing field `id` | from_str=ok
+[oversized-tag-handle] len=4133 value=ok | cmd=err: missing field `name` at line 3 column 1 | injector=err: missing field `id` at line 3 column 1 | learning=err: missing field `id` at line 3 column 1 | from_str=ok
+[many-directives] len=4193 value=ok | cmd=err: missing field `name` at line 202 column 1 | injector=err: missing field `id` at line 202 column 1 | learning=err: missing field `id` at line 202 column 1 | from_str=ok
+[long-anchor] len=6017 value=ok | cmd=err: missing field `name` | injector=err: missing field `agent_id` | learning=err: missing field `agent_id` | from_str=ok
+[plain-scalar-40k] len=40968 value=ok | cmd=err: missing field `name` | injector=err: missing field `id` | learning=err: missing field `id` | from_str=ok
+[dq-scalar-40k-escapes] len=51210 value=ok | cmd=err: missing field `name` | injector=err: missing field `id` | learning=err: missing field `id` | from_str=ok
+[sq-scalar-40k] len=43018 value=ok | cmd=err: missing field `name` | injector=err: missing field `id` | learning=err: missing field `id` | from_str=ok
+[block-literal-40k-lines] len=52009 value=ok | cmd=err: missing field `name` | injector=err: missing field `id` | learning=err: missing field `id` | from_str=ok
+[folded-40k] len=52010 value=ok | cmd=err: missing field `name` | injector=err: missing field `id` | learning=err: missing field `id` | from_str=ok
+[indent-indicator-bad] len=15 value=err: did not find expected comment or line break at line 1 column 10, while scanning a block sc | cmd=err: did not find expected comment or line break at line 1 column 10, while scanning a block sc | injector=err: did not find expected comment or line break at line 1 column 10, while scanning a block sc | learning=err: did not find expected comment or line break at line 1 column 10, while scanning a block sc | from_str=err: did not find expected comment or line break at line 1 column 10, while scanning a block sc
+[explicit-key-deep] len=402 value=err: recursion limit exceeded at line 1 column 257 | cmd=err: invalid type: map, expected field identifier at line 1 column 3 | injector=err: invalid type: map, expected field identifier at line 1 column 3 | learning=err: invalid type: map, expected field identifier at line 1 column 3 | from_str=err: recursion limit exceeded at line 1 column 257
+[complex-key] len=30 value=ok | cmd=err: invalid type: sequence, expected field identifier at line 1 column 3 | injector=err: invalid type: sequence, expected field identifier at line 1 column 3 | learning=err: invalid type: sequence, expected field identifier at line 1 column 3 | from_str=ok
+[multi-doc-with-alias] len=35 value=err: deserializing from YAML containing more than one document is not supported | cmd=err: missing field `name` at line 1 column 5 | injector=err: missing field `id` at line 1 column 5 | learning=err: missing field `id` at line 1 column 5 | from_str=err: deserializing from YAML containing more than one document is not supported
+MIRI_EXIT=143
+DF_AFTER= 281G
+EXP202_TB_DONE
+TREE-BORROWS AXIS PART 1 ABORTED 2026-09-13 03:26 CEST after 4h06m at the audit four-hour limit, with 34 of the 43 corpus inputs completed and no Miri diagnostic. Not a verdict on its own. The documented cap (exclude the 52 KB folded-40k input) could not help: folded-40k had already completed here, and the remaining time went on the later inputs. Part 2 covers the 9 remaining inputs in a fresh process via EXP202_SKIP.

@@ -1,0 +1,141 @@
+{
+  "archetype": "pure-safe-with-env-unsafe",
+  "convergence_floor_rounds": 10,
+  "sections": [
+    {
+      "id": "A",
+      "name": "env-unsafe-sites",
+      "paths": [
+        "crates/terraphim_update/src/state.rs",
+        "crates/terraphim_grep/src/openrouter_client.rs",
+        "crates/terraphim_mcp_server/tests/test_mcp_stdio.rs",
+        "crates/terraphim_agent/build.rs"
+      ],
+      "priors": [
+        "data-race (set_var vs getenv)",
+        "test-binary thread model",
+        "SAFETY-comment accuracy"
+      ],
+      "hub": true
+    },
+    {
+      "id": "B",
+      "name": "terraphim_agent-core",
+      "paths": [
+        "crates/terraphim_agent/src"
+      ],
+      "priors": [
+        "Send/Sync via Arc<Mutex>",
+        "block_on inside runtime (store.rs)",
+        "OnceLock/LazyLock init races",
+        "async drop"
+      ],
+      "hub": true
+    },
+    {
+      "id": "C",
+      "name": "terraphim_agent-tests",
+      "paths": [
+        "crates/terraphim_agent/tests"
+      ],
+      "priors": [
+        "env::var reads racing set_var in other tests",
+        "shared tempdir/state across parallel tests"
+      ],
+      "hub": false
+    },
+    {
+      "id": "D",
+      "name": "terraphim_sessions",
+      "paths": [
+        "crates/terraphim_sessions/src"
+      ],
+      "priors": [
+        "RwLock poisoning",
+        "enricher/redaction concurrency",
+        "Hash/Eq consistency in dedupe"
+      ],
+      "hub": true
+    },
+    {
+      "id": "E",
+      "name": "terraphim_update",
+      "paths": [
+        "crates/terraphim_update/src",
+        "crates/terraphim_update/tests"
+      ],
+      "priors": [
+        "scheduler atomics ordering",
+        "block_on in lib.rs:1409 nested runtime",
+        "file-replace-in-place lifecycle"
+      ],
+      "hub": true
+    },
+    {
+      "id": "F",
+      "name": "terraphim_grep",
+      "paths": [
+        "crates/terraphim_grep/src"
+      ],
+      "priors": [
+        "lib.rs concurrency hub",
+        "repr/enum validity",
+        "size_hint/iterator invariants"
+      ],
+      "hub": true
+    },
+    {
+      "id": "G",
+      "name": "terraphim_mcp_server",
+      "paths": [
+        "crates/terraphim_mcp_server/src",
+        "crates/terraphim_mcp_server/tests"
+      ],
+      "priors": [
+        "stdio framing + shared test support state",
+        "env reads"
+      ],
+      "hub": false
+    },
+    {
+      "id": "H",
+      "name": "terraphim_lsp+cli+hooks+runtime+negcontrib",
+      "paths": [
+        "crates/terraphim_lsp/src",
+        "crates/terraphim_cli/src",
+        "crates/terraphim_hooks/src",
+        "crates/terraphim_command_runtime/src",
+        "crates/terraphim_negative_contribution/src"
+      ],
+      "priors": [
+        "server.rs concurrency",
+        "service.rs Arc state"
+      ],
+      "hub": false
+    },
+    {
+      "id": "I",
+      "name": "terraphim-session-analyzer",
+      "paths": [
+        "crates/terraphim-session-analyzer/src"
+      ],
+      "priors": [
+        "parsing invariants (Hash/Eq/Ord)",
+        "large-input iterator contracts"
+      ],
+      "hub": false
+    },
+    {
+      "id": "J",
+      "name": "dependency-unsafe-surface",
+      "paths": [
+        "Cargo.lock"
+      ],
+      "priors": [
+        "cargo-geiger transitive unsafe",
+        "cargo-audit/deny advisories for UB CVEs (RUSTSEC)"
+      ],
+      "hub": false
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+[package]
+name = "exp104_mmap_grep"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+fff-search = "=0.8.4"
+tempfile = "3"

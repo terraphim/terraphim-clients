@@ -1,0 +1,21 @@
+{
+  "timestamp": "2026-09-11T21:53:00Z",
+  "source": "/Users/alex/projects/terraphim/terraphim-clients",
+  "checks": {
+    "rustup_present": {"ok": "yes", "note": ""},
+    "nightly_installed": {"ok": "yes", "note": ""},
+    "cargo_metadata": {"ok": "yes", "note": ""},
+    "cargo_check_lib": {"ok": "yes", "note": "warning: patch `rustls-webpki v0.103.12 (https://github.com/rustls/webpki.git?tag=v%2F0.103.12#27131d47)` was not used in the crate graph"},
+    "cargo_check_nightly": {"ok": "yes", "note": "warning: patch `rustls-webpki v0.103.12 (https://github.com/rustls/webpki.git?tag=v%2F0.103.12#27131d47)` was not used in the crate graph"},
+    "miri_available": {"ok": "yes", "note": ""},
+    "has_tests": {"ok": "yes", "note": "inline=194 integration=0"},
+    "has_fuzz": {"ok": "no", "note": "no fuzz/ dir"},
+    "disk_space": {"ok": "yes", "note": ""}
+  },
+  "archetype_hints": {
+    "forbid_unsafe": "no",
+    "ffi_present": "no",
+    "unsafe_blocks_count": "6"
+  },
+  "failed_count": 1
+}

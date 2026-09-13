@@ -1,0 +1,57 @@
+# CMD: MIRIFLAGS="-Zmiri-disable-isolation -Zmiri-tree-borrows" cargo +nightly miri test -p terraphim_hooks --lib -- --test-threads=1 --skip discovery --skip latency
+# DATE: 2026-09-12 00:24 BST
+warning: patch `rustls-webpki v0.103.12 (https://github.com/rustls/webpki.git?tag=v%2F0.103.12#27131d47)` was not used in the crate graph
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.20s
+     Running unittests src/lib.rs (target/miri/aarch64-apple-darwin/debug/deps/terraphim_hooks-1a19f0c50325a936)
+
+running 39 tests
+test replacement::tests::replace_count_equals_distinct_substitutions ... ok
+test replacement::tests::replace_count_matches_find_matches_len ... ok
+test replacement::tests::replace_handles_adjacent_matches ... ok
+test replacement::tests::replace_reports_actual_count ... ok
+test replacement::tests::replace_reports_two_matches ... ok
+test replacement::tests::replace_reports_zero_when_no_matches ... ok
+test replacement::tests::success_constructor_unchanged ... ok
+test replacement::tests::test_contains_matches_false ... ok
+test replacement::tests::test_contains_matches_true ... ok
+test replacement::tests::test_find_matches_returns_matched_terms ... ok
+test replacement::tests::test_hook_result_fail_open ... ok
+test replacement::tests::test_hook_result_fail_open_serialization_skips_none_error ... ok
+test replacement::tests::test_hook_result_pass_through ... ok
+test replacement::tests::test_hook_result_serde_round_trip ... ok
+test replacement::tests::test_hook_result_success ... ok
+test replacement::tests::test_hook_result_success_when_unchanged ... ok
+test replacement::tests::test_replace_fail_open_on_valid_input ... ok
+test replacement::tests::test_replacement_multiple_terms_in_one_text ... ok
+test replacement::tests::test_replacement_preserves_surrounding_text ... ok
+test replacement::tests::test_replacement_service_basic ... ok
+test replacement::tests::test_replacement_service_no_match ... ok
+test replacement::tests::test_replacement_service_pnpm ... ok
+test replacement::tests::test_replacement_with_unicode_text ... ok
+test replacement::tests::test_with_link_type_builder_pattern ... ok
+test replacement::tests::with_count_sets_changed_correctly ... ok
+test validation::tests::test_has_matches ... ok
+test validation::tests::test_validate_allow ... ok
+test validation::tests::test_validate_block ... ok
+test validation::tests::test_validate_fail_open ... ok
+test validation::tests::test_validate_modify ... ok
+test validation::tests::test_validate_no_matches ... ok
+test validation::tests::test_validate_warn ... ok
+test validation_types::tests::test_validation_outcome_serialization ... ok
+test validation_types::tests::test_validation_result_allow ... ok
+test validation_types::tests::test_validation_result_block ... ok
+test validation_types::tests::test_validation_result_fail_open ... ok
+test validation_types::tests::test_validation_result_modify ... ok
+test validation_types::tests::test_validation_result_serde_round_trip ... ok
+test validation_types::tests::test_validation_result_warn ... ok
+
+test result: ok. 39 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 800.81s
+
+MIRI_EXIT=0

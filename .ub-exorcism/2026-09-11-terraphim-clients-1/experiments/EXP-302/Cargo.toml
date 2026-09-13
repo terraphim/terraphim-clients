@@ -1,0 +1,19 @@
+# EXP-302 SSE client driver. UNTESTED THIS SESSION (safety classifier blocked
+# build/execution): compile-verify before relying on it. rmcp version and
+# features mirror crates/terraphim_mcp_server/Cargo.toml (rmcp 0.9.0, client +
+# transport-sse-client).
+[package]
+name = "exp302_sse_driver"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+rmcp = { version = "0.9.0", features = ["client", "transport-sse-client"] }
+tokio = { version = "1", features = ["full"] }
+serde_json = "1"
+
+[profile.release]
+debug = true
+
+[workspace]

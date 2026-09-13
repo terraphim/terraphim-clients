@@ -1,0 +1,16 @@
+# EXP-201 (UF-040): standalone root (own [workspace]) so it builds inside a Linux
+# container without the sibling path-dependent members. Cargo.lock copied from
+# ../Cargo.lock so fff-search 0.8.4 resolves to the same dependency versions.
+[package]
+name = "exp201_path_inflation"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+fff-search = "=0.8.4"
+
+[profile.release]
+debug = 1

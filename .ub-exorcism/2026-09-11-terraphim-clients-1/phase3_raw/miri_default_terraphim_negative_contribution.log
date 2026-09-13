@@ -1,0 +1,55 @@
+# CMD: MIRIFLAGS="-Zmiri-disable-isolation" cargo +nightly miri test -p terraphim_negative_contribution --lib -- --test-threads=1
+# DATE: 2026-09-12 00:10 BST
+warning: patch `rustls-webpki v0.103.12 (https://github.com/rustls/webpki.git?tag=v%2F0.103.12#27131d47)` was not used in the crate graph
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.24s
+     Running unittests src/lib.rs (target/miri/aarch64-apple-darwin/debug/deps/terraphim_negative_contribution-8e505882294ad567)
+
+running 40 tests
+test exclusion::tests::test_backslash_paths ... ok
+test exclusion::tests::test_benches_dir_excluded ... ok
+test exclusion::tests::test_build_rs_excluded ... ok
+test exclusion::tests::test_cfg_test_excluded ... ok
+test exclusion::tests::test_examples_dir_excluded ... ok
+test exclusion::tests::test_inline_test_excluded ... ok
+test exclusion::tests::test_is_non_production_content_based ... ok
+test exclusion::tests::test_is_non_production_path_based ... ok
+test exclusion::tests::test_is_non_production_production_file ... ok
+test exclusion::tests::test_no_test_markers ... ok
+test exclusion::tests::test_normal_file_not_excluded ... ok
+test exclusion::tests::test_test_suffix_excluded ... ok
+test exclusion::tests::test_tests_dir_excluded ... ok
+test scanner::tests::test_clean_file ... ok
+test scanner::tests::test_confidence_value ... ok
+test scanner::tests::test_detect_panic_not_implemented ... ok
+test scanner::tests::test_detect_panic_todo ... ok
+test scanner::tests::test_detect_todo ... ok
+test scanner::tests::test_detect_todo_with_message ... ok
+test scanner::tests::test_detect_unimplemented ... ok
+test scanner::tests::test_detect_unimplemented_with_message ... ok
+test scanner::tests::test_excluded_build_rs ... ok
+test scanner::tests::test_excluded_cfg_test ... ok
+test scanner::tests::test_excluded_examples_dir ... ok
+test scanner::tests::test_excluded_inline_test ... ok
+test scanner::tests::test_excluded_tests_dir ... ok
+test scanner::tests::test_fixme_not_flagged ... ok
+test scanner::tests::test_from_thesaurus_custom ... ok
+test scanner::tests::test_hack_not_flagged ... ok
+test scanner::tests::test_multiple_patterns ... ok
+test scanner::tests::test_parse_url_metadata ... ok
+test scanner::tests::test_parse_url_metadata_none ... ok
+test scanner::tests::test_scan_files_multiple ... ok
+test scanner::tests::test_scan_to_output_fail ... ok
+test scanner::tests::test_scan_to_output_pass ... ok
+test scanner::tests::test_scanner_default ... ok
+test scanner::tests::test_scanner_is_clone ... ok
+test scanner::tests::test_suggestion_from_thesaurus ... ok
+test scanner::tests::test_suppression ... ok
+test scanner::tests::test_suppression_does_not_affect_other_lines ... ok
+
+test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 406.83s
+
+MIRI_EXIT=0

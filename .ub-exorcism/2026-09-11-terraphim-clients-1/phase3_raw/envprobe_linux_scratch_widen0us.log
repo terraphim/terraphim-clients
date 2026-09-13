@@ -1,0 +1,1978 @@
+=== ITER 1 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 282608 while writer active on tid 282618
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+E 10804001341851066 282608 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 282608 while writer active on tid 282618
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001341897341 282608 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=2 widen_us=0
+=== ITER 1 exit=0
+=== ITER 2 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 282790 while writer active on tid 282798
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001357242425 282790 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 2 exit=0
+=== ITER 3 widen=0 10:38:57
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 3 exit=0
+=== ITER 4 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 283078 while writer active on tid 283085
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001376158280 283078 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 4 exit=0
+=== ITER 5 widen=0 10:38:57
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 5 exit=0
+=== ITER 6 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 283351 while writer active on tid 283359
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001396154490 283351 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 6 exit=0
+=== ITER 7 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 283555 while writer active on tid 283560
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001405051291 283555 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 7 exit=0
+=== ITER 8 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 283617 while writer active on tid 283622
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001413956329 283617 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 8 exit=0
+=== ITER 9 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 283794 while writer active on tid 283805
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001423548173 283794 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 9 exit=0
+=== ITER 10 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 283946 while writer active on tid 283952
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001436133428 283946 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 10 exit=0
+=== ITER 11 widen=0 10:38:57
+[envprobe] OVERLAP(pre): getenv("SQLITE_TMPDIR") on tid 284130 while writer active on tid 284131
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x17a0 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001445314109 284130 get SQLITE_TMPDIR OVERLAP_PRE
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=1 overlaps_call=0 widen_us=0
+=== ITER 11 exit=0
+=== ITER 12 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 284215 while writer active on tid 284217
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001454025888 284215 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 12 exit=0
+=== ITER 13 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 284387 while writer active on tid 284392
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001466160487 284387 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 13 exit=0
+=== ITER 14 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 284471 while writer active on tid 284475
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001474429473 284471 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 14 exit=0
+=== ITER 15 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 284649 while writer active on tid 284654
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001486029792 284649 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 15 exit=0
+=== ITER 16 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 284817 while writer active on tid 284822
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+E 10804001495031838 284817 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 284817 while writer active on tid 284822
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001495076307 284817 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=2 widen_us=0
+=== ITER 16 exit=0
+=== ITER 17 widen=0 10:38:57
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 17 exit=0
+=== ITER 18 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 285050 while writer active on tid 285066
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001512879598 285050 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 18 exit=0
+=== ITER 19 widen=0 10:38:57
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 19 exit=0
+=== ITER 20 widen=0 10:38:57
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 20 exit=0
+=== ITER 21 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 285457 while writer active on tid 285465
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001540599222 285457 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 21 exit=0
+=== ITER 22 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 285648 while writer active on tid 285656
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+E 10804001549919168 285648 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 285648 while writer active on tid 285656
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001549985894 285648 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=2 widen_us=0
+=== ITER 22 exit=0
+=== ITER 23 widen=0 10:38:57
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 23 exit=0
+=== ITER 24 widen=0 10:38:57
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 24 exit=0
+=== ITER 25 widen=0 10:38:57
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 25 exit=0
+=== ITER 26 widen=0 10:38:57
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 26 exit=0
+=== ITER 27 widen=0 10:38:57
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 27 exit=0
+=== ITER 28 widen=0 10:38:57
+[envprobe] OVERLAP(pre): getenv("SQLITE_TMPDIR") on tid 286293 while writer active on tid 286305
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x17a0 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001601757230 286293 get SQLITE_TMPDIR OVERLAP_PRE
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=1 overlaps_call=0 widen_us=0
+=== ITER 28 exit=0
+=== ITER 29 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 286464 while writer active on tid 286477
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+E 10804001610295901 286464 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 286464 while writer active on tid 286477
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001610346454 286464 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=2 widen_us=0
+=== ITER 29 exit=0
+=== ITER 30 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 286549 while writer active on tid 286551
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001619274586 286549 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 30 exit=0
+=== ITER 31 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 286723 while writer active on tid 286734
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001628339882 286723 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 31 exit=0
+=== ITER 32 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 286803 while writer active on tid 286810
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001636548129 286803 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 32 exit=0
+=== ITER 33 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 286930 while writer active on tid 286933
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001645372994 286930 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 33 exit=0
+=== ITER 34 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 287082 while writer active on tid 287089
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001655031702 287082 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 34 exit=0
+=== ITER 35 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 287169 while writer active on tid 287171
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001662603013 287169 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 35 exit=0
+=== ITER 36 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 287343 while writer active on tid 287350
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001671151280 287343 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 36 exit=0
+=== ITER 37 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 287384 while writer active on tid 287385
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001679142199 287384 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 37 exit=0
+=== ITER 38 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 287559 while writer active on tid 287565
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001687983542 287559 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 38 exit=0
+=== ITER 39 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 287625 while writer active on tid 287626
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001698380632 287625 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 39 exit=0
+=== ITER 40 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 287820 while writer active on tid 287827
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001709577815 287820 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 40 exit=0
+=== ITER 41 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 287888 while writer active on tid 287889
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001719706601 287888 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 41 exit=0
+=== ITER 42 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 288057 while writer active on tid 288065
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001730478491 288057 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 42 exit=0
+=== ITER 43 widen=0 10:38:57
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 43 exit=0
+=== ITER 44 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 288338 while writer active on tid 288340
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001751081951 288338 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 44 exit=0
+=== ITER 45 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 288422 while writer active on tid 288424
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001760911112 288422 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 45 exit=0
+=== ITER 46 widen=0 10:38:57
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 46 exit=0
+=== ITER 47 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 288684 while writer active on tid 288685
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001778772687 288684 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 47 exit=0
+=== ITER 48 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 288884 while writer active on tid 288886
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001789274740 288884 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 48 exit=0
+=== ITER 49 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 288947 while writer active on tid 288954
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+E 10804001797337965 288947 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 288947 while writer active on tid 288954
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001797388067 288947 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=2 widen_us=0
+=== ITER 49 exit=0
+=== ITER 50 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 289163 while writer active on tid 289171
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001807176979 289163 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 50 exit=0
+=== ITER 51 widen=0 10:38:57
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 51 exit=0
+=== ITER 52 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 289417 while writer active on tid 289424
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001825719107 289417 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 52 exit=0
+=== ITER 53 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 289479 while writer active on tid 289486
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001835982637 289479 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 53 exit=0
+=== ITER 54 widen=0 10:38:57
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 54 exit=0
+=== ITER 55 widen=0 10:38:57
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=0 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 55 exit=0
+=== ITER 56 widen=0 10:38:57
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 56 exit=0
+=== ITER 57 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 290004 while writer active on tid 290016
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001874976059 290004 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 57 exit=0
+=== ITER 58 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 290216 while writer active on tid 290229
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001883865107 290216 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 58 exit=0
+=== ITER 59 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 290332 while writer active on tid 290340
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001892733391 290332 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 59 exit=0
+=== ITER 60 widen=0 10:38:57
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 60 exit=0
+=== ITER 61 widen=0 10:38:57
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 61 exit=0
+=== ITER 62 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 290741 while writer active on tid 290747
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001919146241 290741 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 62 exit=0
+=== ITER 63 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 290813 while writer active on tid 290821
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+E 10804001929833416 290813 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 290813 while writer active on tid 290821
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001929892990 290813 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=2 widen_us=0
+=== ITER 63 exit=0
+=== ITER 64 widen=0 10:38:57
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 64 exit=0
+=== ITER 65 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 291204 while writer active on tid 291214
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001951534356 291204 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 65 exit=0
+=== ITER 66 widen=0 10:38:57
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 66 exit=0
+=== ITER 67 widen=0 10:38:57
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 67 exit=0
+=== ITER 68 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 291663 while writer active on tid 291671
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804001983823438 291663 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 68 exit=0
+=== ITER 69 widen=0 10:38:57
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 69 exit=0
+=== ITER 70 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 291991 while writer active on tid 291993
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002002704719 291991 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 70 exit=0
+=== ITER 71 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 292074 while writer active on tid 292080
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+E 10804002011922625 292074 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 292074 while writer active on tid 292080
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002011961625 292074 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=2 widen_us=0
+=== ITER 71 exit=0
+=== ITER 72 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 292254 while writer active on tid 292259
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002020557971 292254 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 72 exit=0
+=== ITER 73 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 292334 while writer active on tid 292342
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+E 10804002029517065 292334 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 292334 while writer active on tid 292342
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002029575263 292334 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=2 widen_us=0
+=== ITER 73 exit=0
+=== ITER 74 widen=0 10:38:57
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 74 exit=0
+=== ITER 75 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 292601 while writer active on tid 292602
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002047988547 292601 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 75 exit=0
+=== ITER 76 widen=0 10:38:57
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 292789 while writer active on tid 292794
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002058044883 292789 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 76 exit=0
+=== ITER 77 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 77 exit=0
+=== ITER 78 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 292998 while writer active on tid 293012
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002073433104 292998 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 78 exit=0
+=== ITER 79 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 79 exit=0
+=== ITER 80 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 293285 while writer active on tid 293300
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002092092080 293285 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 80 exit=0
+=== ITER 81 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 81 exit=0
+=== ITER 82 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 293628 while writer active on tid 293636
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+E 10804002128323220 293628 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 293628 while writer active on tid 293636
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002128380474 293628 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=2 widen_us=0
+=== ITER 82 exit=0
+=== ITER 83 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 293845 while writer active on tid 293849
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002137657653 293845 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 83 exit=0
+=== ITER 84 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 293919 while writer active on tid 293923
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002145607239 293919 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 84 exit=0
+=== ITER 85 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=0 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 85 exit=0
+=== ITER 86 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 86 exit=0
+=== ITER 87 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 87 exit=0
+=== ITER 88 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 88 exit=0
+=== ITER 89 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 294672 while writer active on tid 294676
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+E 10804002187091063 294672 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] OVERLAP(pre): getenv("TMPDIR") on tid 294672 while writer active on tid 294676
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x17a0 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002187150530 294672 get TMPDIR OVERLAP_PRE
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=1 overlaps_call=1 widen_us=0
+=== ITER 89 exit=0
+=== ITER 90 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 294715 while writer active on tid 294719
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002195419985 294715 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 90 exit=0
+=== ITER 91 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 91 exit=0
+=== ITER 92 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 92 exit=0
+=== ITER 93 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 295189 while writer active on tid 295201
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002220697711 295189 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 93 exit=0
+=== ITER 94 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 295241 while writer active on tid 295243
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002228528041 295241 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 94 exit=0
+=== ITER 95 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 295451 while writer active on tid 295459
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002237330985 295451 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 95 exit=0
+=== ITER 96 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 96 exit=0
+=== ITER 97 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 295737 while writer active on tid 295747
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002253859647 295737 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 97 exit=0
+=== ITER 98 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 295772 while writer active on tid 295786
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002262048766 295772 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 98 exit=0
+=== ITER 99 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 99 exit=0
+=== ITER 100 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 296056 while writer active on tid 296070
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002278522074 296056 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 100 exit=0
+=== ITER 101 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 296219 while writer active on tid 296224
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002286167451 296219 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 101 exit=0
+=== ITER 102 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 296281 while writer active on tid 296292
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002293902396 296281 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 102 exit=0
+=== ITER 103 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 103 exit=0
+=== ITER 104 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 296559 while writer active on tid 296571
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002312018733 296559 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 104 exit=0
+=== ITER 105 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 296774 while writer active on tid 296778
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002320965023 296774 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 105 exit=0
+=== ITER 106 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 296885 while writer active on tid 296891
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002330095497 296885 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 106 exit=0
+=== ITER 107 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 297090 while writer active on tid 297095
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+E 10804002338903996 297090 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 297090 while writer active on tid 297095
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002338941721 297090 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=2 widen_us=0
+=== ITER 107 exit=0
+=== ITER 108 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 108 exit=0
+=== ITER 109 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 297355 while writer active on tid 297358
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002356936875 297355 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 109 exit=0
+=== ITER 110 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 110 exit=0
+=== ITER 111 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 111 exit=0
+=== ITER 112 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 297794 while writer active on tid 297795
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002382079860 297794 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 112 exit=0
+=== ITER 113 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 113 exit=0
+=== ITER 114 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 298079 while writer active on tid 298080
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002399404391 298079 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 114 exit=0
+=== ITER 115 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 115 exit=0
+=== ITER 116 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 116 exit=0
+=== ITER 117 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 117 exit=0
+=== ITER 118 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 298604 while writer active on tid 298614
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002433975881 298604 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 118 exit=0
+=== ITER 119 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 298657 while writer active on tid 298663
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002441880060 298657 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 119 exit=0
+=== ITER 120 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 298858 while writer active on tid 298863
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002450746689 298858 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 120 exit=0
+=== ITER 121 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 121 exit=0
+=== ITER 122 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 299129 while writer active on tid 299136
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002467762145 299129 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 122 exit=0
+=== ITER 123 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 123 exit=0
+=== ITER 124 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 299383 while writer active on tid 299385
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002483632797 299383 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 124 exit=0
+=== ITER 125 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 125 exit=0
+=== ITER 126 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 299648 while writer active on tid 299654
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002500051957 299648 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 126 exit=0
+=== ITER 127 widen=0 10:38:58
+[envprobe] OVERLAP(pre): getenv("SQLITE_TMPDIR") on tid 299713 while writer active on tid 299721
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x17a0 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002508023649 299713 get SQLITE_TMPDIR OVERLAP_PRE
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=1 overlaps_call=0 widen_us=0
+=== ITER 127 exit=0
+=== ITER 128 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 299921 while writer active on tid 299923
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002516375011 299921 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 128 exit=0
+=== ITER 129 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 129 exit=0
+=== ITER 130 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 130 exit=0
+=== ITER 131 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 131 exit=0
+=== ITER 132 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 300564 while writer active on tid 300575
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002550811213 300564 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 132 exit=0
+=== ITER 133 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 300701 while writer active on tid 300703
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002559779370 300701 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 133 exit=0
+=== ITER 134 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 134 exit=0
+=== ITER 135 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 300958 while writer active on tid 300966
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002576849640 300958 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 135 exit=0
+=== ITER 136 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 136 exit=0
+=== ITER 137 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 301222 while writer active on tid 301228
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002594963517 301222 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 137 exit=0
+=== ITER 138 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 301421 while writer active on tid 301428
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002603375670 301421 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 138 exit=0
+=== ITER 139 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 139 exit=0
+=== ITER 140 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 140 exit=0
+=== ITER 141 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 141 exit=0
+=== ITER 142 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 142 exit=0
+=== ITER 143 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 302010 while writer active on tid 302011
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002645819328 302010 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 143 exit=0
+=== ITER 144 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 302210 while writer active on tid 302211
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002653763089 302210 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 144 exit=0
+=== ITER 145 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 302268 while writer active on tid 302272
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002661754417 302268 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 145 exit=0
+=== ITER 146 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 302451 while writer active on tid 302473
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002670385897 302451 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 146 exit=0
+=== ITER 147 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("SQLITE_TMPDIR") on tid 302531 while writer active on tid 302534
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe594a ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002678458216 302531 get SQLITE_TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 147 exit=0
+=== ITER 148 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 302739 while writer active on tid 302740
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002687215529 302739 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 148 exit=0
+=== ITER 149 widen=0 10:38:58
+[envprobe] OVERLAP(call): getenv("TMPDIR") on tid 302805 while writer active on tid 302812
+  #0 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x150a ?
+  #1 /tmp/ubx-probe-scratch-src/libenvprobe.so+0x1803 getenv
+  #2 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe595d ?
+  #3 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe53e9 ?
+  #4 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0xe5a65 ?
+  #5 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x61a21 ?
+  #6 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5c1e1 ?
+  #7 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x5fa71 ?
+  #8 /tmp/ubx-probe-scratch/target/release/ubx-probe-scratch+0x210c5f ?
+  #9 /lib/x86_64-linux-gnu/libc.so.6+0x9caa4 ?
+  #10 /lib/x86_64-linux-gnu/libc.so.6+0x129c6c ?
+scratch ok
+E 10804002695258114 302805 get TMPDIR OVERLAP_CALL
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=1 widen_us=0
+=== ITER 149 exit=0
+=== ITER 150 widen=0 10:38:58
+scratch ok
+[envprobe] summary: setenv=600 unsetenv=400 getenv=6 getenv_on_other_thread_after_first_write=2 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== ITER 150 exit=0

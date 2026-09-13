@@ -1,0 +1,361 @@
+# CMD: MIRIFLAGS="-Zmiri-disable-isolation" cargo +nightly miri test -p terraphim_grep --lib -- --test-threads=1 --skip openrouter --skip hybrid_searcher::tests
+# DATE: 2026-09-12 00:18 BST
+    Blocking waiting for file lock on package cache
+warning: patch `rustls-webpki v0.103.12 (https://github.com/rustls/webpki.git?tag=v%2F0.103.12#27131d47)` was not used in the crate graph
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on build directory
+   Compiling smallvec v1.15.2
+   Compiling bitflags v2.13.0
+   Compiling siphasher v1.0.3
+   Compiling typenum v1.20.1
+   Compiling stable_deref_trait v1.2.1
+   Compiling cmake v0.1.58
+   Compiling dunce v1.0.5
+   Compiling fs_extra v1.3.0
+   Compiling zerocopy-derive v0.8.52
+   Compiling slab v0.4.12
+   Compiling aws-lc-rs v1.17.0
+   Compiling yoke v0.8.3
+   Compiling crc32fast v1.5.0
+   Compiling rustls v0.23.40
+   Compiling futures-util v0.3.32
+   Compiling rand_core v0.6.4
+   Compiling zerovec v0.11.6
+   Compiling zerotrie v0.2.4
+   Compiling getrandom v0.4.3
+   Compiling parking_lot_core v0.9.12
+   Compiling rand v0.8.6
+   Compiling regex-automata v0.4.14
+   Compiling phf_shared v0.11.3
+   Compiling simd-adler32 v0.3.9
+   Compiling aws-lc-sys v0.41.0
+   Compiling parking_lot v0.12.5
+   Compiling adler2 v2.0.1
+   Compiling miniz_oxide v0.8.9
+   Compiling zlib-rs v0.6.3
+   Compiling system-configuration-sys v0.6.0
+   Compiling tokio v1.52.3
+   Compiling phf_shared v0.13.1
+   Compiling phf_generator v0.11.3
+   Compiling fastrand v2.4.1
+   Compiling tinystr v0.8.3
+   Compiling potential_utf v0.1.5
+   Compiling phf_generator v0.13.1
+   Compiling icu_collections v2.2.0
+   Compiling core-foundation v0.9.4
+   Compiling icu_locale_core v2.2.0
+   Compiling compression-core v0.4.32
+   Compiling new_debug_unreachable v1.0.6
+   Compiling precomputed-hash v0.1.1
+   Compiling uuid v1.23.3
+   Compiling system-configuration v0.7.0
+   Compiling generic-array v0.14.7
+   Compiling hybrid-array v0.4.12
+   Compiling chrono v0.4.45
+   Compiling mac v0.1.1
+   Compiling futf v0.1.5
+   Compiling phf_codegen v0.13.1
+   Compiling utf-8 v0.7.6
+   Compiling tendril v0.4.3
+   Compiling crypto-common v0.1.7
+   Compiling zerocopy v0.8.52
+   Compiling block-buffer v0.10.4
+   Compiling phf_macros v0.11.3
+   Compiling digest v0.10.7
+   Compiling crypto-common v0.2.2
+   Compiling sha2 v0.10.9
+   Compiling phf_macros v0.13.1
+   Compiling phf v0.11.3
+   Compiling string_cache_codegen v0.5.4
+   Compiling icu_provider v2.2.0
+   Compiling icu_properties v2.2.0
+   Compiling icu_normalizer v2.2.0
+   Compiling phf_codegen v0.11.3
+   Compiling libz-sys v1.1.29
+   Compiling cmov v0.5.4
+   Compiling unicode-segmentation v1.13.3
+   Compiling semver v1.0.28
+   Compiling ctutils v0.4.2
+   Compiling rustc_version v0.4.1
+   Compiling markup5ever v0.12.1
+   Compiling phf v0.13.1
+   Compiling convert_case v0.10.0
+   Compiling doxygen-rs v0.4.2
+   Compiling block-buffer v0.12.1
+   Compiling string_cache_codegen v0.6.1
+   Compiling futures-intrusive v0.5.0
+   Compiling notify-types v2.1.0
+   Compiling time-core v0.1.9
+   Compiling const-oid v0.10.2
+   Compiling futures-executor v0.3.32
+   Compiling deranged v0.5.8
+   Compiling unicode-xid v0.2.6
+   Compiling num-conv v0.2.2
+   Compiling powerfmt v0.2.0
+   Compiling derive_more-impl v2.1.1
+   Compiling futures v0.3.32
+   Compiling digest v0.11.3
+   Compiling web_atoms v0.2.5
+   Compiling lmdb-master-sys v0.2.6
+   Compiling curve25519-dalek v4.1.3
+   Compiling rustix v1.1.4
+   Compiling idna_adapter v1.2.2
+   Compiling string_cache v0.8.9
+   Compiling idna v1.1.0
+   Compiling atoi v2.0.0
+   Compiling objc2-core-foundation v0.3.2
+   Compiling regex v1.12.4
+   Compiling url v2.5.8
+   Compiling matchers v0.2.0
+   Compiling tracing-subscriber v0.3.23
+   Compiling libgit2-sys v0.18.5+1.9.4
+   Compiling time v0.3.49
+   Compiling bstr v1.12.1
+   Compiling constant_time_eq v0.4.2
+   Compiling rustc-hash v2.1.2
+   Compiling objc2-core-services v0.3.2
+   Compiling string_cache v0.9.0
+   Compiling signature v2.2.0
+   Compiling darling_core v0.23.0
+   Compiling blake3 v1.8.5
+   Compiling html5ever v0.27.0
+   Compiling cpufeatures v0.3.0
+   Compiling byteorder v1.5.0
+   Compiling derive_more v2.1.1
+   Compiling file-id v0.2.3
+   Compiling heed v0.22.1
+   Compiling heed-traits v0.20.0
+   Compiling dtoa v1.0.11
+   Compiling xxhash-rust v0.8.15
+   Compiling dtoa-short v0.3.5
+   Compiling heed-types v0.21.0
+   Compiling notify v9.0.0-rc.4
+   Compiling ed25519 v2.2.3
+   Compiling rayon v1.12.0
+   Compiling tokio-util v0.7.18
+   Compiling ahash v0.8.12
+   Compiling tower v0.5.3
+   Compiling ppv-lite86 v0.2.21
+   Compiling rand_chacha v0.9.0
+   Compiling tokio-stream v0.1.18
+   Compiling hashbrown v0.14.5
+   Compiling h2 v0.4.15
+   Compiling rand v0.9.4
+   Compiling cached v0.56.0
+   Compiling backon v1.6.0
+   Compiling dashmap v6.2.1
+   Compiling hashlink v0.9.1
+   Compiling ulid v1.2.1
+   Compiling globset v0.4.18
+   Compiling md-5 v0.10.6
+   Compiling terraphim_types v1.22.1 (registry `terraphim`)
+   Compiling selectors v0.33.0
+   Compiling synchronoise v1.0.1
+   Compiling crossbeam-channel v0.5.15
+   Compiling security-framework-sys v2.17.0
+   Compiling core-foundation v0.10.1
+   Compiling cssparser-macros v0.6.1
+   Compiling unicase v2.9.0
+   Compiling darling_macro v0.23.0
+   Compiling flate2 v1.1.9
+   Compiling fff-search v0.8.4
+   Compiling symlink v0.1.0
+   Compiling arrayvec v0.7.6
+   Compiling arrayref v0.3.9
+   Compiling rusqlite v0.32.1
+   Compiling security-framework v3.7.0
+   Compiling tracing-appender v0.2.5
+   Compiling darling v0.23.0
+   Compiling cssparser v0.36.0
+   Compiling mime_guess v2.0.5
+   Compiling notify v8.2.0
+   Compiling ignore v0.4.26
+   Compiling ed25519-dalek v2.2.0
+   Compiling markup5ever v0.36.1
+   Compiling fff-notify-debouncer-full v0.9.4
+   Compiling xml5ever v0.18.1
+   Compiling tempfile v3.27.0
+   Compiling fff-grep v0.8.4
+   Compiling neo_frizbee v0.10.3
+   Compiling inout v0.2.2
+   Compiling servo_arc v0.4.3
+   Compiling memmap2 v0.9.10
+   Compiling typed-path v0.12.3
+   Compiling glidesort v0.1.2
+   Compiling mime v0.3.17
+   Compiling pathdiff v0.2.3
+   Compiling urlencoding v2.1.3
+   Compiling paste v1.0.15
+   Compiling minimal-lexical v0.2.1
+   Compiling fff-query-parser v0.8.4
+   Compiling markup5ever_rcdom v0.3.0
+   Compiling cipher v0.5.2
+   Compiling html5ever v0.36.1
+   Compiling notify-debouncer-full v0.6.0
+   Compiling nom v7.1.3
+   Compiling serde_with_macros v3.21.0
+   Compiling half v2.7.1
+   Compiling sha2 v0.11.0
+   Compiling terraphim-markdown-parser v1.20.2 (registry `terraphim`)
+   Compiling xattr v1.6.1
+   Compiling hmac v0.13.0
+   Compiling getopts v0.2.24
+   Compiling console v0.15.11
+   Compiling strum_macros v0.28.0
+   Compiling alloca v0.4.0
+   Compiling jiff v0.2.28
+   Compiling filetime v0.2.29
+   Compiling encoding_rs v0.8.35
+   Compiling cpubits v0.1.1
+   Compiling self_update v0.42.0
+   Compiling bumpalo v3.20.3
+   Compiling number_prefix v0.4.0
+   Compiling libbz2-rs-sys v0.2.5
+   Compiling ego-tree v0.10.0
+   Compiling unsafe-libyaml v0.2.11
+   Compiling scraper v0.25.0
+   Compiling bzip2 v0.6.1
+   Compiling eventsource-stream v0.2.3
+   Compiling zopfli v0.8.3
+   Compiling indicatif v0.17.11
+   Compiling ciborium-ll v0.2.2
+   Compiling serde_yaml v0.9.34+deprecated
+   Compiling hyper v1.10.1
+   Compiling aes v0.9.1
+   Compiling tar v0.4.46
+   Compiling serde_with v3.21.0
+   Compiling pbkdf2 v0.13.0
+   Compiling lzma-rust2 v0.16.4
+   Compiling zip v7.2.0
+   Compiling strum v0.28.0
+   Compiling html2md v0.2.15
+   Compiling hyper-util v0.1.20
+   Compiling self-replace v1.5.0
+   Compiling zipsign-api v0.1.5
+   Compiling value-ext v0.1.3
+   Compiling sha1 v0.11.0
+   Compiling env_filter v1.0.1
+   Compiling itertools v0.13.0
+   Compiling quick-xml v0.37.5
+   Compiling deflate64 v0.1.12
+   Compiling ppmd-rust v1.4.0
+   Compiling dialoguer v0.12.0
+   Compiling zipsign-api v0.2.1
+   Compiling terraphim_router v1.20.2 (registry `terraphim`)
+   Compiling ciborium v0.2.2
+   Compiling tinytemplate v1.2.1
+   Compiling tokio-test v0.4.5
+   Compiling criterion-plot v0.8.2
+   Compiling compression-codecs v0.4.38
+   Compiling env_logger v0.11.10
+   Compiling zip v8.6.0
+   Compiling async-compression v0.4.42
+   Compiling criterion v0.8.2
+   Compiling tower-http v0.6.11
+   Compiling git2 v0.20.4
+   Compiling rustls-webpki v0.103.13
+   Compiling tokio-rustls v0.26.4
+   Compiling sqlx-core v0.8.6
+   Compiling rustls-platform-verifier v0.7.0
+   Compiling ureq v2.12.1
+   Compiling hyper-rustls v0.27.9
+   Compiling reqwest v0.12.28
+   Compiling reqwest v0.13.4
+   Compiling genai v0.6.5
+   Compiling sqlx-sqlite v0.8.6
+   Compiling terraphim_automata v1.21.0 (registry `terraphim`)
+   Compiling terraphim_update v1.20.2 (/Users/alex/projects/terraphim/terraphim-clients/crates/terraphim_update)
+   Compiling terraphim_rolegraph v1.20.2 (registry `terraphim`)
+   Compiling terraphim_file_search v1.21.0 (registry `terraphim`)
+   Compiling sqlx v0.8.6
+   Compiling opendal v0.54.1
+   Compiling terraphim_persistence v1.20.2 (registry `terraphim`)
+   Compiling terraphim_config v1.20.2 (registry `terraphim`)
+   Compiling terraphim_middleware v1.21.0 (registry `terraphim`)
+   Compiling terraphim_service v1.21.1 (registry `terraphim`)
+   Compiling terraphim_grep v1.21.14 (/Users/alex/projects/terraphim/terraphim-clients/crates/terraphim_grep)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 06s
+     Running unittests src/lib.rs (target/miri/aarch64-apple-darwin/debug/deps/terraphim_grep-fa31e74ce9803657)
+
+running 40 tests
+test kg_curation::tests::test_persist_concepts_empty_is_noop ... ok
+test kg_curation::tests::test_persist_concepts_skips_existing_files ... ok
+test kg_curation::tests::test_persist_concepts_writes_markdown_files ... ok
+test rlm_context::tests::test_build_prompt ... ok
+test rlm_context::tests::test_rlm_context_new ... ok
+test rlm_context::tests::test_rlm_context_with_chunks ... ok
+test rlm_context::tests::test_rlm_context_with_concepts ... ok
+test rlm_context::tests::test_truncate ... ok
+test signatures::tests::test_answer_signature_parse ... ok
+test signatures::tests::test_answer_signature_parse_markdown_wrapped ... ok
+test signatures::tests::test_concept_extraction_signature_parse ... ok
+test signatures::tests::test_extract_json_finds_array_in_prose ... ok
+test signatures::tests::test_extract_json_finds_bare_json_in_prose ... ok
+test signatures::tests::test_extract_json_handles_unterminated_fence ... ok
+test signatures::tests::test_extract_json_prefers_json_fence_over_other_language ... ok
+test signatures::tests::test_extract_json_strips_generic_markdown_fence ... ok
+test signatures::tests::test_extract_json_strips_markdown_fences ... ok
+test signatures::tests::test_search_result_signature_invalid ... ok
+test signatures::tests::test_search_result_signature_parse ... ok
+test signatures::tests::test_signature_instructions ... ok
+test sufficiency_judge::tests::test_coverage_calculation ... ok
+test sufficiency_judge::tests::test_diversity_calculation ... ok
+test sufficiency_judge::tests::test_empty_results_insufficient ... ok
+test sufficiency_judge::tests::test_high_coverage_sufficient ... ok
+test sufficiency_judge::tests::test_judge_delegates_to_judge_with_metrics ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_empty_results ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_reports_measurements ... ok
+test sufficiency_judge::tests::test_kg_confidence_calculation ... ok
+test sufficiency_judge::tests::test_low_results_insufficient ... ok
+test tests::force_rlm_without_answer_invokes_llm ... error: unsupported operation: can't call foreign function `kqueue` on OS `macos`
+  --> /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/mio-1.2.1/src/sys/unix/mod.rs:8:28
+   |
+ 8 |         let res = unsafe { libc::$fn($($arg, )*) };
+   |                            ^^^^^^^^^^^^^^^^^^^^^ unsupported operation occurred here
+   |
+  ::: /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/mio-1.2.1/src/sys/unix/selector/kqueue.rs:77:48
+   |
+77 |         let kq = unsafe { OwnedFd::from_raw_fd(syscall!(kqueue())?) };
+   |                                                ------------------ in this macro invocation
+   |
+   = help: this means the program tried to do something Miri does not support; it does not indicate a bug in the program
+   = note: this is on thread `tests::force_rlm_without_answer_invokes_llm`
+   = note: stack backtrace:
+           0: mio::sys::unix::selector::Selector::new
+               at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/mio-1.2.1/src/sys/unix/mod.rs:8:28: 8:49
+           1: mio::poll::Poll::new
+               at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/mio-1.2.1/src/poll.rs:324:13: 324:33
+           2: tokio::runtime::io::driver::Driver::new
+               at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/io/driver.rs:118:20: 118:36
+           3: tokio::runtime::driver::create_io_stack
+               at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/driver.rs:154:42: 154:82
+           4: tokio::runtime::driver::Driver::new
+               at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/driver.rs:48:52: 48:95
+           5: tokio::runtime::Builder::build_current_thread_runtime_components
+               at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/builder.rs:1673:39: 1673:63
+           6: tokio::runtime::Builder::build_current_thread_runtime
+               at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/builder.rs:1640:13: 1640:63
+           7: tokio::runtime::Builder::build
+               at /Users/alex/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/builder.rs:1064:36: 1064:71
+           8: tests::force_rlm_without_answer_invokes_llm
+               at crates/terraphim_grep/src/lib.rs:695:9: 695:15
+           9: tests::force_rlm_without_answer_invokes_llm::{closure#0}
+               at crates/terraphim_grep/src/lib.rs:674:52: 674:52
+   = note: this error originates in the macro `syscall` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+note: some details are omitted, run with `MIRIFLAGS=-Zmiri-backtrace=full` for a verbose backtrace
+
+error: aborting due to 1 previous error
+
+error: test failed, to rerun pass `-p terraphim_grep --lib`
+
+Caused by:
+  process didn't exit successfully: `/Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/bin/cargo-miri runner /Users/alex/projects/terraphim/terraphim-clients/target/miri/aarch64-apple-darwin/debug/deps/terraphim_grep-fa31e74ce9803657 --test-threads=1 --skip openrouter --skip 'hybrid_searcher::tests'` (exit status: 1)
+note: test exited abnormally; to see the full output pass --no-capture to the harness.
+MIRI_EXIT=1

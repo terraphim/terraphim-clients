@@ -1,0 +1,21 @@
+# EXP-103 run 2026-09-12 11:18:39 BST HEAD=ae06cd2 host=Darwin arm64 binary=/private/tmp/claude-501/ubx-exp-target/release/exp103_empty_pattern
+EXP-103 text bytes=22 chars=18
+[empty-pattern non-ASCII] loader accepted 1 tool(s), patterns=["cargo build", ""]
+[empty-pattern non-ASCII] automaton built
+
+thread 'main' (30654896) panicked at /Users/alex/projects/terraphim/terraphim-clients/crates/terraphim-session-analyzer/src/patterns/matcher.rs:143:32:
+start byte index 4 is not a char boundary; it is inside 'é' (bytes 3..5 of string)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[empty-pattern non-ASCII] PANIC in find_matches: start byte index 4 is not a char boundary; it is inside 'é' (bytes 3..5 of string)
+[empty-pattern ASCII] loader accepted 1 tool(s), patterns=["cargo build", ""]
+[empty-pattern ASCII] automaton built
+[empty-pattern ASCII] no panic: 7 matches, 0 at non-boundaries, first 6 = [(2, 2, ""), (3, 3, ""), (4, 4, ""), (5, 5, ""), (6, 6, ""), (7, 7, "")]
+[whitespace-pattern non-ASCII] loader accepted 1 tool(s), patterns=["cargo build", " "]
+[whitespace-pattern non-ASCII] automaton built
+[whitespace-pattern non-ASCII] no panic: 3 matches, 0 at non-boundaries, first 6 = [(5, 6, " "), (10, 11, " "), (11, 22, "cargo build")]
+[control non-ASCII] loader accepted 1 tool(s), patterns=["cargo build"]
+[control non-ASCII] automaton built
+[control non-ASCII] no panic: 1 matches, 0 at non-boundaries, first 6 = [(11, 22, "cargo build")]
+EXP-103 summary: empty/nonascii panic=true empty/ascii panic=false whitespace/nonascii panic=false control panic=false
+EXP-103 CONFIRMED (panic at matcher.rs:143 with an empty pattern; control clean)
+exit=0

@@ -1,0 +1,18 @@
+=== EXP-010 gaiprobe start 2026-09-12 11:29:41 CEST
+=== self-test: resolver_selftest under gaiprobe (expect getaddrinfo=1, setenv=0)
+getaddrinfo rc=0 (ok)
+direct getenv(RES_OPTIONS)=(null)
+[gaiprobe] summary: setenv+unsetenv=0 getaddrinfo=1 windows_setenv_during_gai=0 windows_gai_during_setenv=0 widen_us=0
+gaiprobe widen=0: windows_setenv=0 windows_gai=0 ok=100 iters=100 seconds=101
+--- summary lines (last 2):
+[gaiprobe] summary: setenv+unsetenv=52 getaddrinfo=14 windows_setenv_during_gai=0 windows_gai_during_setenv=0 widen_us=0
+[gaiprobe] summary: setenv+unsetenv=52 getaddrinfo=14 windows_setenv_during_gai=0 windows_gai_during_setenv=0 widen_us=0
+--- getaddrinfo call count distribution across iterations:
+    100 getaddrinfo=14
+gaiprobe widen=500: windows_setenv=0 windows_gai=6 ok=100 iters=100 seconds=100
+--- summary lines (last 2):
+[gaiprobe] summary: setenv+unsetenv=52 getaddrinfo=14 windows_setenv_during_gai=0 windows_gai_during_setenv=0 widen_us=500
+[gaiprobe] summary: setenv+unsetenv=52 getaddrinfo=14 windows_setenv_during_gai=0 windows_gai_during_setenv=0 widen_us=500
+--- getaddrinfo call count distribution across iterations:
+    100 getaddrinfo=14
+=== EXP-010 gaiprobe DONE 2026-09-12 11:33:02 CEST

@@ -1,0 +1,14 @@
+[package]
+name = "exp013_current_thread_bridge"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+terraphim_agent = { path = "../../../../crates/terraphim_agent" }
+terraphim_types = { version = "1.22.1", registry = "terraphim" }
+tokio = { version = "1", features = ["full"] }
+tempfile = "3"

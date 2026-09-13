@@ -1,0 +1,43 @@
+=== EXP-010 start 2026-09-12 11:24:29 CEST host=Ubuntu-2004-focal-64-minimal-hwe glibc=ldd (Ubuntu GLIBC 2.39-0ubuntu8.7) 2.39
+=== clone HEAD 5f107df0d1bf15d36b6fb7f22740606ae8977a7f (crates/terraphim_update identical to 1120180)
+=== binary /tmp/ubx-probe-target/debug/build/terraphim_update/f85bb49af6656c20/out/terraphim_update-f85bb49af6656c20
+=== instruments: valgrind=ABSENT ltrace=ABSENT strace=/usr/bin/strace
+=== SELFTEST A: shim trace on resolver_selftest with RES_OPTIONS=ndots:2 LOCALDOMAIN=example.org
+getaddrinfo rc=0 (ok)
+direct getenv(RES_OPTIONS)=ndots:2
+--- shim-logged getenv names in self-test:
+--- raw self-test log (first 40 lines):
+E 10806733489819792 1076899 get RES_OPTIONS
+[envprobe] summary: setenv=0 unsetenv=0 getenv=1 getenv_on_other_thread_after_first_write=0 overlaps_pre=0 overlaps_call=0 widen_us=0
+=== SELFTEST B: nm/objdump check of what getaddrinfo binds to
+libc=/lib/x86_64-linux-gnu/libc.so.6
+=== PROBE LOOP: widen 0 and 500 us, 100 iterations each
+update widen=0: pre=0 call=0 ok=100 failed_iters=0 iters=100 seconds=101
+--- summary lines (last 3):
+[envprobe] summary: setenv=52 unsetenv=0 getenv=126 getenv_on_other_thread_after_first_write=69 overlaps_pre=0 overlaps_call=0 widen_us=0
+[envprobe] summary: setenv=52 unsetenv=0 getenv=124 getenv_on_other_thread_after_first_write=69 overlaps_pre=0 overlaps_call=0 widen_us=0
+[envprobe] summary: setenv=52 unsetenv=0 getenv=122 getenv_on_other_thread_after_first_write=69 overlaps_pre=0 overlaps_call=0 widen_us=0
+update widen=500: pre=0 call=0 ok=100 failed_iters=0 iters=100 seconds=100
+--- summary lines (last 3):
+[envprobe] summary: setenv=52 unsetenv=0 getenv=122 getenv_on_other_thread_after_first_write=69 overlaps_pre=0 overlaps_call=0 widen_us=500
+[envprobe] summary: setenv=52 unsetenv=0 getenv=126 getenv_on_other_thread_after_first_write=69 overlaps_pre=0 overlaps_call=0 widen_us=500
+[envprobe] summary: setenv=52 unsetenv=0 getenv=126 getenv_on_other_thread_after_first_write=69 overlaps_pre=0 overlaps_call=0 widen_us=500
+=== EXP-010 DONE 2026-09-12 11:27:50 CEST
+
+=== Phase 5 interpretation (written 2026-09-12 by the experiment executor; raw per-iteration logs in EXP-010-raw-logs.tgz and EXP-010-gai-raw-logs.tgz, trace of one iteration in experiments/EXP-010/trace_iter.log, second-instrument log in EXP-010-gai.log)
+Host: bigbox (Ubuntu 20.04 host, glibc 2.39 userland), clone /tmp/ubx-probe-clients at 5f107df; crates/terraphim_update is byte-identical to 1120180 (HEAD at run time).
+Binary: cargo +nightly test --no-run -p terraphim_update --lib (nightly-x86_64-unknown-linux-gnu), run with --test-threads=8.
+
+Instrument 1, envprobe LD_PRELOAD shim (interposes setenv/unsetenv/getenv via the PLT):
+  - 100 iterations at widen=0 us and 100 at widen=500 us: overlaps_pre=0, overlaps_call=0 in every iteration; all 200 iterations test result: ok.
+  - Per iteration it saw setenv=52 (10 serial tests x 5 variables in setup_temp_config_dir, plus SSL_CERT_FILE and SSL_CERT_DIR, see below), getenv~122-126 on 61 distinct threads, getenv_on_other_thread_after_first_write=69.
+  - Names read (one traced iteration): TMPDIR 48, XDG_CONFIG_HOME 26, GITHUB_TOKEN 8, TERRAPHIM_UPDATE_BASE_URL 7, TERRAPHIM_UPDATE_BACKEND 7, HOME 7, RUST_BACKTRACE/RUST_LIB_BACKTRACE 3 each, proxy variables, SSL_CERT_FILE/DIR, TERM, RUST_MIN_STACK, REQUEST_METHOD 1 each. These are Rust std::env readers, which take std's ENV_LOCK, so an overlap with std::env::set_var is excluded by construction; the shim cannot distinguish std readers from native ones, but the backtrace facility only fires on overlap and none occurred.
+  - Self-test (resolver_selftest.c under the shim with RES_OPTIONS=ndots:2 and ENVPROBE_TRACE=1): getaddrinfo succeeded, yet the shim logged exactly one getenv, the program's own direct call. glibc's resolver reads RES_OPTIONS/LOCALDOMAIN through the internal hidden alias and never crosses the PLT, so THIS INSTRUMENT IS BLIND TO THE RESOLVER READER. Zero overlaps therefore refute the hypothesis only for PLT-visible readers.
+  - Additional writer found: self_update 0.42.0 `set_ssl_vars!()` (src/lib.rs:692, Linux only) calls std::env::set_var("SSL_CERT_FILE"/"SSL_CERT_DIR") from the GitHub backend path reached by test_check_for_updates_auto, which is not #[serial]. That is a second, unannotated env writer in this binary.
+
+Instrument 2, gaiprobe LD_PRELOAD shim (interposes setenv/unsetenv and getaddrinfo; logs when a getaddrinfo starts while a writer is inside setenv, or a setenv runs while a thread is inside getaddrinfo; over-approximation, since it cannot see the read itself):
+  - 100 iterations at widen=0: windows_setenv_during_gai=0, windows_gai_during_setenv=0. getaddrinfo=14 per iteration, all for "localhost" (mock HTTP servers), i.e. the resolver IS exercised concurrently with the test body.
+  - 100 iterations at widen=500 us (setenv artificially held open): windows_gai_during_setenv=6 (iterations 77, 79, 80, 83, 89, 94), each a getaddrinfo("localhost") on a non-writer thread starting while one writer was inside setenv. So a writer and a resolver call can overlap in the same binary once the writer's window is widened; at natural timing no window was observed in 100 iterations.
+  - Whether glibc's getaddrinfo("localhost") reads the environment inside that window is not observable here: valgrind (helgrind) and ltrace are not installed on bigbox and were not installed (shared host); strace only sees syscalls.
+
+Verdict: NEEDS_REFINEMENT. No observable overlap for PLT-visible readers (200 iterations), the resolver reader is unobservable with the available instruments, and the widened run shows the writer/resolver windows do exist. Follow-up EXP-010-a: run the same binary under valgrind --tool=helgrind on a host that has it, or build a libc-level getenv instrument (uprobe on __libc_secure_getenv/getenv inside libc via bpftrace/perf probe) and repeat the widen=500 loop.

@@ -1,0 +1,86 @@
+warning: patch `rustls-webpki v0.103.12 (https://github.com/rustls/webpki.git?tag=v%2F0.103.12#27131d47)` was not used in the crate graph
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.64s
+     Running unittests src/lib.rs (target/miri/aarch64-apple-darwin/debug/deps/terraphim_session_analyzer-17fbcc96823d773e)
+
+running 73 tests
+test models::tests::test_extract_file_path ... ok
+test models::tests::test_extract_file_path_multiedit_branch ... ok
+test models::tests::test_extract_file_path_prefers_direct_fields ... ok
+test models::tests::test_extract_file_path_returns_none_for_unrelated_input ... ok
+test models::tests::test_newtype_wrappers ... ok
+test models::tests::test_normalize_agent_name ... ok
+test models::tests::test_parse_timestamp ... ok
+test patterns::knowledge_graph::tests::test_category_roundtrip ... ok
+test patterns::knowledge_graph::tests::test_category_voting ... ok
+test patterns::knowledge_graph::tests::test_confidence_calculation ... ok
+test patterns::knowledge_graph::tests::test_get_cache_path ... ok
+test patterns::knowledge_graph::tests::test_infer_category_build_tool ... ok
+test patterns::knowledge_graph::tests::test_infer_category_git ... ok
+test patterns::knowledge_graph::tests::test_infer_category_linting ... ok
+test patterns::knowledge_graph::tests::test_infer_category_package_manager ... ok
+test patterns::knowledge_graph::tests::test_infer_category_testing ... ok
+test patterns::knowledge_graph::tests::test_observe_multiple_times ... ok
+test patterns::knowledge_graph::tests::test_observe_single_tool ... ok
+test patterns::knowledge_graph::tests::test_pattern_learner_new ... ok
+test patterns::knowledge_graph::tests::test_pattern_learner_with_threshold ... ok
+test patterns::knowledge_graph::tests::test_promote_candidates_threshold_met ... ok
+test patterns::knowledge_graph::tests::test_promote_candidates_threshold_not_met ... ok
+test patterns::loader::tests::test_default_confidence ... ok
+test patterns::loader::tests::test_empty_patterns_validation ... ok
+test patterns::loader::tests::test_invalid_confidence_validation ... ok
+test patterns::loader::tests::test_load_all_patterns ... ok
+test patterns::loader::tests::test_load_built_in_patterns ... ok
+test patterns::loader::tests::test_load_patterns_from_str ... ok
+test patterns::loader::tests::test_load_user_patterns_no_file ... ok
+test patterns::loader::tests::test_merge_patterns_override ... ok
+test patterns::loader::tests::test_merge_patterns_unique ... ok
+test patterns::loader::tests::test_merge_patterns_validation_fails ... ok
+test patterns::matcher::tests::test_create_matcher_factory ... ok
+test patterns::matcher::tests::test_find_matches_alternative_pattern ... ok
+test patterns::matcher::tests::test_find_matches_basic ... ok
+test patterns::matcher::tests::test_find_matches_case_insensitive ... ok
+test patterns::matcher::tests::test_find_matches_multiple_tools ... ok
+test patterns::matcher::tests::test_find_matches_no_matches ... ok
+test patterns::matcher::tests::test_matcher_initialization ... ok
+test patterns::matcher::tests::test_matcher_type ... ok
+test patterns::matcher::tests::test_uninitialized_matcher ... ok
+test patterns::matcher::wrangler_tests::test_wrangler_all_package_managers ... ok
+test patterns::matcher::wrangler_tests::test_wrangler_case_insensitive ... ok
+test patterns::matcher::wrangler_tests::test_wrangler_deploy_basic ... ok
+test patterns::matcher::wrangler_tests::test_wrangler_deploy_complex_flags ... ok
+test patterns::matcher::wrangler_tests::test_wrangler_deploy_with_env ... ok
+test patterns::matcher::wrangler_tests::test_wrangler_deploy_with_minify ... ok
+test patterns::matcher::wrangler_tests::test_wrangler_dev ... ok
+test patterns::matcher::wrangler_tests::test_wrangler_in_pipeline ... ok
+test patterns::matcher::wrangler_tests::test_wrangler_login_bunx ... ok
+test patterns::matcher::wrangler_tests::test_wrangler_login_npx ... ok
+test patterns::matcher::wrangler_tests::test_wrangler_multiple_commands ... ok
+test patterns::matcher::wrangler_tests::test_wrangler_publish ... ok
+test patterns::matcher::wrangler_tests::test_wrangler_subcommands ... ok
+test patterns::matcher::wrangler_tests::test_wrangler_tail ... ok
+test patterns::matcher::wrangler_tests::test_wrangler_with_output_redirection ... ok
+test reporter::tests::test_format_agent_icon ... ok
+test reporter::tests::test_format_duration ... ok
+test reporter::tests::test_get_correlation_block ... ok
+test reporter::tests::test_print_correlation_matrix ... ok
+test reporter::tests::test_print_tool_analysis_detailed ... ok
+test reporter::tests::test_print_tool_analysis_detailed_empty ... ok
+test reporter::tests::test_print_tool_analysis_detailed_with_correlation ... ok
+test reporter::tests::test_to_json ... ok
+test reporter::tests::test_to_markdown ... ok
+test reporter::tests::test_tool_analysis_csv_with_semicolons ... ok
+test reporter::tests::test_tool_analysis_to_csv ... ok
+test reporter::tests::test_tool_analysis_to_json ... ok
+test reporter::tests::test_tool_analysis_to_markdown ... ok
+test reporter::tests::test_truncate_path ... ok
+test tests::test_extract_project_name ... ok
+test tests::test_get_default_session_dir ... ok
+test tests::test_is_session_file ... ok
+
+test result: ok. 73 passed; 0 failed; 0 ignored; 0 measured; 55 filtered out; finished in 490.74s
+
+MIRI_DONE exit=0

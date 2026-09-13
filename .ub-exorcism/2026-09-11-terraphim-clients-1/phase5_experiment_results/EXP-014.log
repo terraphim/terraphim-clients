@@ -1,0 +1,245 @@
+=== EXP-014 start 2026-09-12 10:29:54 BST host=Klarian-147.local rustc 1.98.0-nightly (bd08c9e71 2026-06-25) target=aarch64-apple-darwin
+--- run 1: default parallelism (--test-threads=4)
+warning: patch `rustls-webpki v0.103.12 (https://github.com/rustls/webpki.git?tag=v%2F0.103.12#27131d47)` was not used in the crate graph
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+    Blocking waiting for file lock on build directory
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.45
+   Compiling slab v0.4.12
+   Compiling futures-core v0.3.32
+   Compiling smallvec v1.15.2
+   Compiling once_cell v1.21.4
+   Compiling log v0.4.32
+   Compiling futures-util v0.3.32
+   Compiling parking_lot_core v0.9.12
+   Compiling parking_lot v0.12.5
+   Compiling syn v2.0.118
+   Compiling futures-executor v0.3.32
+   Compiling serial_test_derive v3.5.0
+   Compiling serial_test v3.5.0
+   Compiling exp014_serial_mixed_binary v0.0.0 (/Users/alex/projects/terraphim/terraphim-clients/.ub-exorcism/2026-09-11-terraphim-clients-1/experiments/EXP-014)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 49.95s
+     Running unittests src/lib.rs (/private/tmp/claude-501/ubx-exp-target/debug/deps/exp014_serial_mixed_binary-105091a3711f0db2)
+
+running 5 tests
+test tests::sibling_a ... ok
+test tests::sibling_c ... ok
+test tests::sibling_b ... ok
+test tests::writer_is_serial ... ok
+test tests::zz_report ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.91s
+
+   Doc-tests exp014_serial_mixed_binary
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+--- run 1 exit=0
+--- run 2: default parallelism (--test-threads=4)
+warning: patch `rustls-webpki v0.103.12 (https://github.com/rustls/webpki.git?tag=v%2F0.103.12#27131d47)` was not used in the crate graph
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.08s
+     Running unittests src/lib.rs (/private/tmp/claude-501/ubx-exp-target/debug/deps/exp014_serial_mixed_binary-105091a3711f0db2)
+
+running 5 tests
+test tests::sibling_a ... ok
+test tests::sibling_b ... ok
+test tests::sibling_c ... ok
+test tests::writer_is_serial ... ok
+test tests::zz_report ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.90s
+
+   Doc-tests exp014_serial_mixed_binary
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+--- run 2 exit=0
+--- run 3: default parallelism (--test-threads=4)
+warning: patch `rustls-webpki v0.103.12 (https://github.com/rustls/webpki.git?tag=v%2F0.103.12#27131d47)` was not used in the crate graph
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.08s
+     Running unittests src/lib.rs (/private/tmp/claude-501/ubx-exp-target/debug/deps/exp014_serial_mixed_binary-105091a3711f0db2)
+
+running 5 tests
+test tests::sibling_a ... ok
+test tests::sibling_b ... ok
+test tests::sibling_c ... ok
+test tests::writer_is_serial ... ok
+test tests::zz_report ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.91s
+
+   Doc-tests exp014_serial_mixed_binary
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+--- run 3 exit=0
+--- run 4: default parallelism (--test-threads=4)
+warning: patch `rustls-webpki v0.103.12 (https://github.com/rustls/webpki.git?tag=v%2F0.103.12#27131d47)` was not used in the crate graph
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running unittests src/lib.rs (/private/tmp/claude-501/ubx-exp-target/debug/deps/exp014_serial_mixed_binary-105091a3711f0db2)
+
+running 5 tests
+test tests::sibling_c ... ok
+test tests::sibling_b ... ok
+test tests::sibling_a ... ok
+test tests::writer_is_serial ... ok
+test tests::zz_report ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.91s
+
+   Doc-tests exp014_serial_mixed_binary
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+--- run 4 exit=0
+--- run 5: default parallelism (--test-threads=4)
+warning: patch `rustls-webpki v0.103.12 (https://github.com/rustls/webpki.git?tag=v%2F0.103.12#27131d47)` was not used in the crate graph
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running unittests src/lib.rs (/private/tmp/claude-501/ubx-exp-target/debug/deps/exp014_serial_mixed_binary-105091a3711f0db2)
+
+running 5 tests
+test tests::sibling_b ... ok
+test tests::sibling_a ... ok
+test tests::sibling_c ... ok
+test tests::writer_is_serial ... ok
+test tests::zz_report ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.90s
+
+   Doc-tests exp014_serial_mixed_binary
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+--- run 5 exit=0
+--- control: --test-threads=1 (zz_report is expected to FAIL here: no concurrency, so no overlap)
+warning: patch `rustls-webpki v0.103.12 (https://github.com/rustls/webpki.git?tag=v%2F0.103.12#27131d47)` was not used in the crate graph
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.08s
+     Running unittests src/lib.rs (/private/tmp/claude-501/ubx-exp-target/debug/deps/exp014_serial_mixed_binary-105091a3711f0db2)
+
+running 5 tests
+test tests::sibling_a ... ok
+test tests::sibling_b ... ok
+test tests::sibling_c ... ok
+test tests::writer_is_serial ... ok
+test tests::zz_report ... FAILED
+
+failures:
+
+---- tests::zz_report stdout ----
+[exp014] report: overlaps=0 siblings_finished=3
+
+thread 'tests::zz_report' (29392989) panicked at EXP-014/src/lib.rs:45:9:
+EXP-014 NO_EVIDENCE: siblings never ran during the serial writer (overlaps=0)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    tests::zz_report
+
+test result: FAILED. 4 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.01s
+
+error: test failed, to rerun pass `-p exp014_serial_mixed_binary --lib`
+--- control exit=101
+=== EXP-014 second pass with --nocapture so the overlap counts and timestamps are visible 10:31:51
+--- nocapture run 1 (--test-threads=4)
+     Running unittests src/lib.rs (/private/tmp/claude-501/ubx-exp-target/debug/deps/exp014_serial_mixed_binary-105091a3711f0db2)
+[exp014] writer: guard live at Instant { tv_sec: 249669, tv_nsec: 42155166 }
+[exp014] sibling_a: observed writer active at Instant { tv_sec: 249669, tv_nsec: 44195916 } (env EXP014_VAR=Ok("1"))
+[exp014] sibling_c: observed writer active at Instant { tv_sec: 249669, tv_nsec: 44277125 } (env EXP014_VAR=Ok("1"))
+[exp014] sibling_b: observed writer active at Instant { tv_sec: 249669, tv_nsec: 44634708 } (env EXP014_VAR=Ok("1"))
+[exp014] writer: guard released at Instant { tv_sec: 249669, tv_nsec: 346991083 }
+[exp014] report: overlaps=3 siblings_finished=3
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.91s
+   Doc-tests exp014_serial_mixed_binary
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+--- nocapture run 1 exit=0
+--- nocapture run 2 (--test-threads=4)
+     Running unittests src/lib.rs (/private/tmp/claude-501/ubx-exp-target/debug/deps/exp014_serial_mixed_binary-105091a3711f0db2)
+[exp014] writer: guard live at Instant { tv_sec: 249670, tv_nsec: 96705250 }
+[exp014] sibling_c: observed writer active at Instant { tv_sec: 249670, tv_nsec: 98914500 } (env EXP014_VAR=Ok("1"))
+[exp014] sibling_a: observed writer active at Instant { tv_sec: 249670, tv_nsec: 99189750 } (env EXP014_VAR=Ok("1"))
+[exp014] sibling_b: observed writer active at Instant { tv_sec: 249670, tv_nsec: 99190208 } (env EXP014_VAR=Ok("1"))
+[exp014] writer: guard released at Instant { tv_sec: 249670, tv_nsec: 398636916 }
+[exp014] report: overlaps=3 siblings_finished=3
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.91s
+   Doc-tests exp014_serial_mixed_binary
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+--- nocapture run 2 exit=0
+--- nocapture run 3 (--test-threads=4)
+     Running unittests src/lib.rs (/private/tmp/claude-501/ubx-exp-target/debug/deps/exp014_serial_mixed_binary-105091a3711f0db2)
+[exp014] writer: guard live at Instant { tv_sec: 249671, tv_nsec: 171066250 }
+[exp014] sibling_a: observed writer active at Instant { tv_sec: 249671, tv_nsec: 173421458 } (env EXP014_VAR=Ok("1"))
+[exp014] sibling_c: observed writer active at Instant { tv_sec: 249671, tv_nsec: 173540500 } (env EXP014_VAR=Ok("1"))
+[exp014] sibling_b: observed writer active at Instant { tv_sec: 249671, tv_nsec: 173542250 } (env EXP014_VAR=Ok("1")test tests::sibling_c ... )
+[exp014] writer: guard released at Instant { tv_sec: 249671, tv_nsec: 471261416 }
+[exp014] report: overlaps=3 siblings_finished=3
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.91s
+   Doc-tests exp014_serial_mixed_binary
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+--- nocapture run 3 exit=0
+--- nocapture run 4 (--test-threads=4)
+     Running unittests src/lib.rs (/private/tmp/claude-501/ubx-exp-target/debug/deps/exp014_serial_mixed_binary-105091a3711f0db2)
+[exp014] writer: guard live at Instant { tv_sec: 249672, tv_nsec: 222904250 }
+[exp014] sibling_c: observed writer active at Instant { tv_sec: 249672, tv_nsec: 222916875 } (env EXP014_VAR=Ok("1"))
+[exp014] sibling_b: observed writer active at Instant { tv_sec: 249672, tv_nsec: 225147625 } (env EXP014_VAR=Ok("1"))
+[exp014] sibling_a: observed writer active at Instant { tv_sec: 249672, tv_nsec: 225395833 } (env EXP014_VAR=Ok("1"))
+[exp014] writer: guard released at Instant { tv_sec: 249672, tv_nsec: 525096708 }
+[exp014] report: overlaps=3 siblings_finished=3
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.90s
+   Doc-tests exp014_serial_mixed_binary
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+--- nocapture run 4 exit=0
+--- nocapture run 5 (--test-threads=4)
+     Running unittests src/lib.rs (/private/tmp/claude-501/ubx-exp-target/debug/deps/exp014_serial_mixed_binary-105091a3711f0db2)
+[exp014] writer: guard live at Instant { tv_sec: 249673, tv_nsec: 296038125 }
+[exp014] sibling_a: observed writer active at Instant { tv_sec: 249673, tv_nsec: 298512666 } (env EXP014_VAR=Ok("1"))
+[exp014] sibling_b: observed writer active at Instant { tv_sec: 249673, tv_nsec: 298529250 } (env EXP014_VAR=Ok("1"))
+[exp014] sibling_c: observed writer active at Instant { tv_sec: 249673, tv_nsec: 298529208 } (env EXP014_VAR=Ok("1"))
+[exp014] writer: guard released at Instant { tv_sec: 249673, tv_nsec: 596151291 }
+[exp014] report: overlaps=3 siblings_finished=3
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.90s
+   Doc-tests exp014_serial_mixed_binary
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+--- nocapture run 5 exit=0
+--- nocapture control (--test-threads=1; zz_report expected to fail)
+     Running unittests src/lib.rs (/private/tmp/claude-501/ubx-exp-target/debug/deps/exp014_serial_mixed_binary-105091a3711f0db2)
+test tests::writer_is_serial ... [exp014] writer: guard live at Instant { tv_sec: 249676, tv_nsec: 151230791 }
+[exp014] writer: guard released at Instant { tv_sec: 249676, tv_nsec: 455855916 }
+test tests::zz_report ... [exp014] report: overlaps=0 siblings_finished=3
+thread 'tests::zz_report' (29433522) panicked at EXP-014/src/lib.rs:45:9:
+test result: FAILED. 4 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.01s
+error: test failed, to rerun pass `-p exp014_serial_mixed_binary --lib`
+--- control exit=101

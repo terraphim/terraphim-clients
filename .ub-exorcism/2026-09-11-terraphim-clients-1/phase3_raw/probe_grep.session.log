@@ -1,0 +1,4 @@
+grep widen=0: pre=0 call=1 ok=100 iters=100
+grep widen=500: pre=463 call=0 ok=100 iters=100
+grep widen=2000: pre=544 call=0 ok=100 iters=100
+=== PROBE grep DONE

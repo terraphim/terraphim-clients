@@ -1,0 +1,75 @@
+2026-09-12 11:46:18 BST
+host: OrbStack Linux container rust:1.96-trixie (aarch64), hostile tree on the container overlay fs under /tmp/ubx-probe-exp201; HEAD=46bbc43c524a71b08a4557d7be956ce2ef9c72ad
+Linux 92f608fd0206 7.0.14-orbstack-00380-ga7e0a2dc9535 #1 SMP PREEMPT Fri Aug  7 03:48:40 UTC 2026 aarch64 GNU/Linux
+rustc 1.96.0 (ac68faa20 2026-05-25)
+   Compiling exp201_path_inflation v0.0.0 (/work)
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.90s
+BUILD_EXIT=0
+EXP-201 root=/tmp/ubx-probe-exp201 os=linux arch=aarch64
+== geometry control-2x250 depth=2 comp_len=250 base_len=35 inflated_rel=1512 inflated_abs=1548 (within PATH_BUF_SIZE=4096; cut residue mod 3 = 0)
+  collected files=1 dirs=1
+  file[0] relative_path_len=1512 (stored byte_len=1512)
+  file[0] absolute_path bytes=1548 exists=false (expected untruncated 1548)
+  grep: matches=0 files=0 total_files_searched=1 total_files=1 filtered_file_count=1 files_with_matches=0
+  geometry control-2x250: invalid_strings=0 panics=0
+== geometry hostile-6x249 depth=6 comp_len=249 base_len=35 inflated_rel=4498 inflated_abs=4534 (exceeds PATH_BUF_SIZE=4096; cut residue mod 3 = 2)
+  collected files=1 dirs=1
+  file[0] relative_path_len=4498 (stored byte_len=4498)
+  file[0] absolute_path bytes=4132 exists=false (expected untruncated 4534)
+  file[0].absolute_path: INVALID UTF-8 (incomplete utf-8 byte sequence from index 4130); len=4132 tail=bd ef bf bd ef bf
+  dir[0].dir_name(len=356): INVALID UTF-8 (incomplete utf-8 byte sequence from index 354); len=356 tail=bd ef bf bd ef bf
+  grep: matches=0 files=0 total_files_searched=1 total_files=1 filtered_file_count=1 files_with_matches=0
+  geometry hostile-6x249: invalid_strings=2 panics=0
+== geometry hostile-6x250 depth=6 comp_len=250 base_len=35 inflated_rel=4516 inflated_abs=4552 (exceeds PATH_BUF_SIZE=4096; cut residue mod 3 = 2)
+  collected files=1 dirs=1
+  file[0] relative_path_len=4516 (stored byte_len=4516)
+  file[0] absolute_path bytes=4132 exists=false (expected untruncated 4552)
+  file[0].absolute_path: INVALID UTF-8 (incomplete utf-8 byte sequence from index 4130); len=4132 tail=bd ef bf bd ef bf
+  dir[0].dir_name(len=341): INVALID UTF-8 (incomplete utf-8 byte sequence from index 339); len=341 tail=bd ef bf bd ef bf
+  grep: matches=0 files=0 total_files_searched=1 total_files=1 filtered_file_count=1 files_with_matches=0
+  geometry hostile-6x250: invalid_strings=2 panics=0
+== geometry hostile-6x251 depth=6 comp_len=251 base_len=35 inflated_rel=4534 inflated_abs=4570 (exceeds PATH_BUF_SIZE=4096; cut residue mod 3 = 2)
+  collected files=1 dirs=1
+  file[0] relative_path_len=4534 (stored byte_len=4534)
+  file[0] absolute_path bytes=4132 exists=false (expected untruncated 4570)
+  file[0].absolute_path: INVALID UTF-8 (incomplete utf-8 byte sequence from index 4130); len=4132 tail=bd ef bf bd ef bf
+  dir[0].dir_name(len=326): INVALID UTF-8 (incomplete utf-8 byte sequence from index 324); len=326 tail=bd ef bf bd ef bf
+  grep: matches=0 files=0 total_files_searched=1 total_files=1 filtered_file_count=1 files_with_matches=0
+  geometry hostile-6x251: invalid_strings=2 panics=0
+== geometry hostile-3x255 depth=3 comp_len=255 base_len=35 inflated_rel=2308 inflated_abs=2344 (within PATH_BUF_SIZE=4096; cut residue mod 3 = 0)
+  collected files=1 dirs=1
+  file[0] relative_path_len=2308 (stored byte_len=2308)
+  file[0] absolute_path bytes=2344 exists=false (expected untruncated 2344)
+  grep: matches=0 files=0 total_files_searched=1 total_files=1 filtered_file_count=1 files_with_matches=0
+  geometry hostile-3x255: invalid_strings=0 panics=0
+== geometry hostile-15x255 depth=15 comp_len=255 base_len=36 inflated_rel=11500 inflated_abs=11537 (exceeds PATH_BUF_SIZE=4096; cut residue mod 3 = 2)
+  collected files=1 dirs=1
+  file[0] relative_path_len=11500 (stored byte_len=11500)
+  file[0] absolute_path bytes=4133 exists=false (expected untruncated 11537)
+  file[0].absolute_path: INVALID UTF-8 (incomplete utf-8 byte sequence from index 4131); len=4133 tail=bd ef bf bd ef bf
+  dir[0].dir_name PANICKED (rel len 11490, last_segment_offset 10724)
+  grep: matches=0 files=0 total_files_searched=1 total_files=1 filtered_file_count=1 files_with_matches=0
+  geometry hostile-15x255: invalid_strings=1 panics=1
+
+thread 'main' (49) panicked at /usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fff-search-0.8.4/src/types.rs:163:27:
+start byte index 10724 is out of bounds for string of length 4096
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+== geometry hostile-7x200 depth=7 comp_len=200 base_len=35 inflated_rel=4217 inflated_abs=4253 (exceeds PATH_BUF_SIZE=4096; cut residue mod 3 = 1)
+  collected files=1 dirs=1
+  file[0] relative_path_len=4217 (stored byte_len=4217)
+  file[0] absolute_path bytes=4132 exists=false (expected untruncated 4253)
+  file[0].absolute_path: INVALID UTF-8 (incomplete utf-8 byte sequence from index 4131); len=4132 tail=bf bd ef bf bd ef
+  dir[0].dir_name(len=490): INVALID UTF-8 (incomplete utf-8 byte sequence from index 489); len=490 tail=bf bd ef bf bd ef
+  grep: matches=0 files=0 total_files_searched=1 total_files=1 filtered_file_count=1 files_with_matches=0
+  geometry hostile-7x200: invalid_strings=2 panics=0
+== geometry hostile-14x100 depth=14 comp_len=100 base_len=36 inflated_rel=4224 inflated_abs=4261 (exceeds PATH_BUF_SIZE=4096; cut residue mod 3 = 0)
+  collected files=1 dirs=1
+  file[0] relative_path_len=4224 (stored byte_len=4224)
+  file[0] absolute_path bytes=4133 exists=false (expected untruncated 4261)
+  grep: matches=0 files=0 total_files_searched=1 total_files=1 filtered_file_count=1 files_with_matches=0
+  geometry hostile-14x100: invalid_strings=0 panics=0
+EXP-201 totals: invalid_strings=9 (control=0) dir_name_panics=1
+EXP-201 CONFIRMED: invalid-UTF-8 path string surfaced through the safe fff-search API
+RUN_EXIT=0
+DOCKER_EXIT=0
+2026-09-12 11:46:19 BST

@@ -1,0 +1,9 @@
+[package]
+name = "exp202_yaml_frontmatter"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "=0.9.34"

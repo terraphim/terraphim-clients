@@ -1,0 +1,10 @@
+[package]
+name = "exp012_char_boundary"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+terraphim_sessions = { path = "../../../../crates/terraphim_sessions", features = ["enrichment"] }
+terraphim_types = { version = "1.22.1", registry = "terraphim" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

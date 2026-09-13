@@ -1,0 +1,68 @@
+2026-09-12 11:46:58 BST
+HEAD=46bbc43c524a71b08a4557d7be956ce2ef9c72ad host=Darwin arm64 rustc 1.98.0-nightly (bd08c9e71 2026-06-25)
+== native run (harness copy of hook.rs:227-275)
+[control ASCII] "use bun instead of npm" -> Some(("npm", "bun"))
+[control 'not' arm] "use bun not npm" -> Some(("npm", "bun"))
+[control 'prefer' arm] "prefer bun over npm" -> Some(("npm", "bun"))
+[ASCII leading spaces (silent corruption)] "  use bun instead of npm" -> Some(("npm", "e bun"))
+    WRONG tuple (expected original=npm, corrected=X)
+[ASCII leading tab] "\tuse bun instead of npm" -> Some(("npm", "bun"))
+[ASCII leading spaces, prefer arm] "   prefer bun over npm" -> Some(("npm", "er bun"))
+    WRONG tuple (expected original=npm, corrected=X)
+[em-space leading (U+2003 x2)] "\u{2003}\u{2003}use bun instead of npm" ->     panic: start byte index 4 is not a char boundary; it is inside '\u{2003}' (bytes 3..6 of string)
+PANIC
+[NBSP leading (U+00A0)] "\u{a0}use bun instead of npm" -> Some(("npm", "e bun"))
+    WRONG tuple (expected original=npm, corrected=X)
+[U+0130 in X (case fold grows)] "use İİ instead of npm" -> Some(("m", "İİ i"))
+    WRONG tuple (expected original=npm, corrected=X)
+[U+0130 in X, not arm] "use İ not npm" -> Some(("pm", "İ"))
+    WRONG tuple (expected original=npm, corrected=X)
+[U+0130 in X, prefer arm] "prefer İİİ over npm" -> None
+[Kelvin sign U+212A in X (fold shrinks)] "use KKK instead of npm" -> Some(("ad of npm", "K"))
+    WRONG tuple (expected original=npm, corrected=X)
+[Cyrillic (ASCII-length-preserving fold)] "use Бан instead of npm" -> Some(("npm", "Бан"))
+[emoji in Y] "use bun instead of npm 😀" -> Some(("npm 😀", "bun"))
+[uppercase prefix] "USE bun INSTEAD OF npm" -> Some(("npm", "bun"))
+[ideographic space leading (U+3000)] "\u{3000}use bun instead of npm" -> Some(("npm", "se bun"))
+    WRONG tuple (expected original=npm, corrected=X)
+[U+0130 x10 in X (offset past end)] "use İİİİİİİİİİ instead of n" ->     panic: start byte index 42 is out of bounds for string of length 33
+PANIC
+[U+0130 x3 in X, 'not' arm short Y] "use İİİ not n" ->     panic: start byte index 14 is out of bounds for string of length 12
+PANIC
+[em-space between words] "use bun\u{2003}instead of npm" -> None
+[U+0130 then em-space] "use İ instead of\u{2003}npm" -> None
+EXP-204: cases=20 panics=3 wrong_tuples=7
+EXP-204 NO_EVIDENCE for UB (safe-Rust panic / data corruption only); panic confirmed
+
+== corroborative: installed ~/.cargo/bin/terraphim-agent (terraphim-agent 1.21.14, built 2026-09-11, not proven to be HEAD); HOME and TERRAPHIM_DEFAULT_DATA_PATH redirected to a scratch dir; stdin JSON shown with explicit escapes
+-- stdin: {"user_prompt":"use bun instead of npm"}
+exit=0
+-- stdin: {"user_prompt":"  use bun instead of npm"}
+exit=0
+-- stdin: {"user_prompt":"  use bun instead of npm"}
+exit=101
+2:thread 'main' (30909965) panicked at crates/terraphim_agent/src/learnings/hook.rs:235:35:
+3:start byte index 4 is not a char boundary; it is inside '\u{2003}' (bytes 3..6 of string)
+-- stdin: {"user_prompt":"use İİİİİİİİİİ instead of n"}
+exit=101
+2:thread 'main' (30910001) panicked at crates/terraphim_agent/src/learnings/hook.rs:239:42:
+3:start byte index 42 is out of bounds for string of length 33
+-- learnings written under the redirected store (the ASCII-leading-space prompt is captured with the corrupted correction):
+## /private/tmp/claude-501/-Users-alex-projects-terraphim-terraphim-clients/7432e3b0-3d08-4734-9788-3ce9ab6f8ac3/scratchpad/exp204-home/data/terraphim/learnings/correction-4446998bdaed44cc9c85aeb4908d37ab-1789210018763.md
+3:type: correction
+4:correction_type: tool-preference
+9:  - correction
+13:## Original
+15:`npm`
+17:## Corrected
+19:`bun`
+23:Auto-captured from user prompt: use bun instead of npm
+## /private/tmp/claude-501/-Users-alex-projects-terraphim-terraphim-clients/7432e3b0-3d08-4734-9788-3ce9ab6f8ac3/scratchpad/exp204-home/data/terraphim/learnings/correction-f1db380b50364cda9c6b5daf4476f62a-1789210018903.md
+3:type: correction
+4:correction_type: tool-preference
+9:  - correction
+13:## Original
+15:`npm`
+17:## Corrected
+19:`e bun`
+23:Auto-captured from user prompt:   use bun instead of npm

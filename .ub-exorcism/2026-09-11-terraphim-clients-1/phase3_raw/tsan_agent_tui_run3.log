@@ -1,0 +1,305 @@
+=== RUN 3 START 2026-09-12 00:05:33 BST CFLAGS=unset
+warning: patch `rustls-webpki v0.103.12 (https://github.com/rustls/webpki.git?tag=v%2F0.103.12#27131d47)` was not used in the crate graph
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.84s
+     Running tests/tui_service_tests.rs (/private/tmp/claude-501/ubx-target-tsan/aarch64-apple-darwin/debug/deps/tui_service_tests-fc0edeccd24feb50)
+
+running 10 tests
+[2026-09-11T23:05:34Z INFO  terraphim_agent::service] Initializing TUI service
+[2026-09-11T23:05:34Z INFO  terraphim_settings] Loading device settings...
+[2026-09-11T23:05:34Z INFO  terraphim_settings] Initializing default config file at: "/var/folders/rb/l4_6j2nx0lnfhysk974ldpg40000gn/T/.tmpAO18Kb/Library/Application Support/com.aks.terraphim"
+[2026-09-11T23:05:34Z INFO  terraphim_settings] Loading device settings...
+[2026-09-11T23:05:34Z INFO  terraphim_persistence] Loaded settings: DeviceSettings { server_hostname: "127.0.0.1:8000", api_endpoint: "http://localhost:8000/api", initialized: false, default_data_path: "/var/folders/rb/l4_6j2nx0lnfhysk974ldpg40000gn/T/.tmpAO18Kb/.terraphim", profiles: {"sqlite": {"type": "sqlite", "connection_string": "/tmp/terraphim_sqlite/terraphim.db", "table": "terraphim_kv", "datadir": "/tmp/terraphim_sqlite"}, "dashmap": {"root": "/tmp/terraphim_dashmap", "type": "dashmap"}}, role_config: None, default_role: None }
+[2026-09-11T23:05:34Z INFO  terraphim_persistence] Pre-creating SQLite directory: /tmp/terraphim_sqlite
+[2026-09-11T23:05:34Z INFO  terraphim_persistence] Created SQLite directory: /tmp/terraphim_sqlite
+[2026-09-11T23:05:34Z INFO  terraphim_persistence] Pre-creating DashMap directory: /tmp/terraphim_dashmap
+[2026-09-11T23:05:34Z INFO  terraphim_persistence] Created DashMap directory: /tmp/terraphim_dashmap
+[2026-09-11T23:05:34Z INFO  terraphim_persistence::settings] 📁 Parsing profile: sqlite
+[2026-09-11T23:05:34Z INFO  terraphim_persistence::settings] 🔧 Profile 'sqlite' using scheme: Sqlite
+[2026-09-11T23:05:34Z INFO  terraphim_persistence::settings] Creating SQLite directory: /tmp/terraphim_sqlite
+[2026-09-11T23:05:34Z INFO  terraphim_persistence::settings] 🔧 Ensuring SQLite table 'terraphim_kv' exists in database: /tmp/terraphim_sqlite/terraphim.db
+[2026-09-11T23:05:34Z INFO  terraphim_persistence::settings] ✅ SQLite table 'terraphim_kv' ready
+[2026-09-11T23:05:34Z INFO  terraphim_config] Creating role Rust Engineer
+[2026-09-11T23:05:34Z INFO  terraphim_config] Creating role Default
+[2026-09-11T23:05:34Z INFO  terraphim_config] Creating role Terraphim Engineer
+[2026-09-11T23:05:34Z INFO  terraphim_config] Role Terraphim Engineer has no automata_path, building thesaurus from local KG files at "/Users/alex/Library/Application Support/com.aks.terraphim/kg"
+[2026-09-11T23:05:34Z INFO  terraphim_config] Creating role Terraphim Engineer
+[2026-09-11T23:05:34Z INFO  terraphim_config] Role Terraphim Engineer has no automata_path, building thesaurus from local KG files at "/Users/alex/Library/Application Support/com.aks.terraphim/kg"
+[2026-09-11T23:05:34Z INFO  terraphim_config] Creating role Rust Engineer
+[2026-09-11T23:05:34Z INFO  terraphim_config] Creating role Terraphim Engineer
+[2026-09-11T23:05:34Z INFO  terraphim_config] Role Terraphim Engineer has no automata_path, building thesaurus from local KG files at "/Users/alex/Library/Application Support/com.aks.terraphim/kg"
+[2026-09-11T23:05:34Z INFO  terraphim_config] Creating role Default
+[2026-09-11T23:05:34Z INFO  terraphim_config] Creating role Default
+[2026-09-11T23:05:34Z INFO  terraphim_config] Creating role Terraphim Engineer
+[2026-09-11T23:05:34Z INFO  terraphim_config] Role Terraphim Engineer has no automata_path, building thesaurus from local KG files at "/Users/alex/Library/Application Support/com.aks.terraphim/kg"
+[2026-09-11T23:05:34Z INFO  terraphim_config] Creating role Terraphim Engineer
+[2026-09-11T23:05:34Z INFO  terraphim_config] Role Terraphim Engineer has no automata_path, building thesaurus from local KG files at "/Users/alex/Library/Application Support/com.aks.terraphim/kg"
+[2026-09-11T23:05:34Z INFO  terraphim_persistence::settings] 📁 Parsing profile: dashmap
+[2026-09-11T23:05:34Z INFO  terraphim_persistence::settings] 🔧 Profile 'dashmap' using scheme: Dashmap
+[2026-09-11T23:05:34Z INFO  terraphim_persistence::settings] Got request for dashmap operator; initializing in-memory operator.
+[2026-09-11T23:05:34Z INFO  terraphim_config] Creating role Default
+[2026-09-11T23:05:34Z INFO  terraphim_config] Creating role Terraphim Engineer
+[2026-09-11T23:05:34Z INFO  terraphim_config] Role Terraphim Engineer has no automata_path, building thesaurus from local KG files at "/var/folders/rb/l4_6j2nx0lnfhysk974ldpg40000gn/T/.tmpAO18Kb/Library/Application Support/com.aks.terraphim/kg"
+[2026-09-11T23:05:34Z INFO  terraphim_config] Creating role Default
+[2026-09-11T23:05:34Z INFO  terraphim_config] Creating role Rust Engineer
+[2026-09-11T23:05:34Z INFO  terraphim_config] Creating role Terraphim Engineer
+[2026-09-11T23:05:34Z INFO  terraphim_config] Role Terraphim Engineer has no automata_path, building thesaurus from local KG files at "/var/folders/rb/l4_6j2nx0lnfhysk974ldpg40000gn/T/.tmpAO18Kb/Library/Application Support/com.aks.terraphim/kg"
+[2026-09-11T23:05:34Z INFO  terraphim_config] Creating role Default
+[2026-09-11T23:05:34Z INFO  terraphim_config] Creating role Rust Engineer
+[2026-09-11T23:05:34Z INFO  terraphim_config] Creating role Terraphim Engineer
+[2026-09-11T23:05:34Z INFO  terraphim_config] Role Terraphim Engineer has no automata_path, building thesaurus from local KG files at "/var/folders/rb/l4_6j2nx0lnfhysk974ldpg40000gn/T/.tmpAO18Kb/Library/Application Support/com.aks.terraphim/kg"
+[2026-09-11T23:05:34Z INFO  terraphim_config] Creating role Default
+[2026-09-11T23:05:34Z INFO  terraphim_config] Creating role Terraphim Engineer
+[2026-09-11T23:05:34Z INFO  terraphim_config] Role Terraphim Engineer has no automata_path, building thesaurus from local KG files at "/var/folders/rb/l4_6j2nx0lnfhysk974ldpg40000gn/T/.tmpAO18Kb/Library/Application Support/com.aks.terraphim/kg"
+[2026-09-11T23:05:34Z INFO  terraphim_config] Creating role Terraphim Engineer
+[2026-09-11T23:05:34Z INFO  terraphim_config] Role Terraphim Engineer has no automata_path, building thesaurus from local KG files at "/var/folders/rb/l4_6j2nx0lnfhysk974ldpg40000gn/T/.tmpAO18Kb/Library/Application Support/com.aks.terraphim/kg"
+rg: /var/folders/rb/l4_6j2nx0lnfhysk974ldpg40000gn/T/.tmpAO18Kb/Library/Application Support/com.aks.terraphim/kg: IO error for operation on /var/folders/rb/l4_6j2nx0lnfhysk974ldpg40000gn/T/.tmpAO18Kb/Library/Application Support/com.aks.terraphim/kg: No such file or directory (os error 2)
+rg: /var/folders/rb/l4_6j2nx0lnfhysk974ldpg40000gn/T/.tmpAO18Kb/Library/Application Support/com.aks.terraphim/kg: IO error for operation on /var/folders/rb/l4_6j2nx0lnfhysk974ldpg40000gn/T/.tmpAO18Kb/Library/Application Support/com.aks.terraphim/kg: rg: No such file or directory (os error 2)
+/var/folders/rb/l4_6j2nx0lnfhysk974ldpg40000gn/T/.tmpAO18Kb/Library/Application Support/com.aks.terraphim/kg: IO error for operation on /var/folders/rb/l4_6j2nx0lnfhysk974ldpg40000gn/T/.tmpAO18Kb/Library/Application Support/com.aks.terraphim/kg: No such file or directory (os error 2)
+[2026-09-11T23:05:34Z INFO  terraphim_config] Successfully built thesaurus from local KG for role Terraphim Engineer
+[2026-09-11T23:05:34Z INFO  terraphim_config] Successfully built thesaurus from local KG for role Terraphim Engineer
+rg: /var/folders/rb/l4_6j2nx0lnfhysk974ldpg40000gn/T/.tmpAO18Kb/Library/Application Support/com.aks.terraphim/kg: IO error for operation on /var/folders/rb/l4_6j2nx0lnfhysk974ldpg40000gn/T/.tmpAO18Kb/Library/Application Support/com.aks.terraphim/kg: No such file or directory (os error 2)
+[2026-09-11T23:05:34Z INFO  terraphim_config] Successfully built thesaurus from local KG for role Terraphim Engineer
+[2026-09-11T23:05:34Z INFO  terraphim_config] Successfully built thesaurus from local KG for role Terraphim Engineer
+test test_tui_service_summarize ... ok
+[2026-09-11T23:05:34Z INFO  terraphim_config] Creating role Rust Engineer
+[2026-09-11T23:05:34Z INFO  terraphim_service] 🎯 Selected role 'Default' → terraphim_it: DISABLED
+test test_tui_service_update_selected_role ... ok
+[2026-09-11T23:05:34Z INFO  terraphim_config] Creating role Rust Engineer
+[2026-09-11T23:05:34Z INFO  terraphim_middleware::indexer] Finding documents in haystack: Haystack {
+        location: "docs/src",
+        service: Ripgrep,
+        read_only: true,
+        fetch_content: false,
+        atomic_server_secret: None,
+        extra_parameters: {},
+    }
+[2026-09-11T23:05:34Z INFO  tracing::span] walk_filesystem;
+[2026-09-11T23:05:34Z INFO  fff_search::file_picker] SCAN: Starting filesystem walk and git status (async)
+[2026-09-11T23:05:34Z INFO  tracing::span] read_status_impl;
+rg: /var/folders/rb/l4_6j2nx0lnfhysk974ldpg40000gn/T/.tmpAO18Kb/Library/Application Support/com.aks.terraphim/kg: IO error for operation on /var/folders/rb/l4_6j2nx0lnfhysk974ldpg40000gn/T/.tmpAO18Kb/Library/Application Support/com.aks.terraphim/kg: No such file or directory (os error 2)
+[2026-09-11T23:05:34Z INFO  terraphim_config] Successfully built thesaurus from local KG for role Terraphim Engineer
+[2026-09-11T23:05:34Z INFO  terraphim_config] Creating role Rust Engineer
+[2026-09-11T23:05:34Z INFO  terraphim_config] Creating role Default
+test test_tui_service_new_uses_host_settings_path ... ok
+[2026-09-11T23:05:34Z INFO  tracing::span] walker_run;
+[2026-09-11T23:05:34Z INFO  fff_search::file_picker] SCAN: File walking completed in 51.380584ms for 15 files
+[2026-09-11T23:05:34Z INFO  fff_search::file_picker] SCAN: Walk completed in 132.738417ms (15 files, 2 dirs, chunked_store=0.00MB, files_vec=0.00MB, dirs=0.00MB, FileItem=96B)
+[2026-09-11T23:05:34Z INFO  fff_search::grep] grep_search; file_count=15
+[2026-09-11T23:05:34Z INFO  terraphim_persistence] Successfully loaded 'thesaurus_terraphim_engineer.json' from fallback profile 'sqlite'
+[2026-09-11T23:05:34Z INFO  terraphim_service::thesaurus] Rolegraph loaded: for role name RoleName { original: "Terraphim Engineer", lowercase: "terraphim engineer" }
+[2026-09-11T23:05:35Z INFO  terraphim_middleware::thesaurus] Thesaurus for role `Terraphim Engineer` saved to persistence
+[2026-09-11T23:05:35Z INFO  terraphim_middleware::thesaurus] Successfully updated rolegraph for role: Terraphim Engineer
+[2026-09-11T23:05:35Z INFO  terraphim_service::thesaurus] Rolegraph loaded: for role name RoleName { original: "Terraphim Engineer", lowercase: "terraphim engineer" }
+[2026-09-11T23:05:35Z INFO  terraphim_service::search] ✅ Indexed 11 new documents into rolegraph for role 'Terraphim Engineer'
+[2026-09-11T23:05:35Z INFO  terraphim_service::search] 🔄 Re-running TerraphimGraph search after indexing new documents
+[2026-09-11T23:05:35Z INFO  terraphim_service::search] TerraphimGraph returned no results for role 'Terraphim Engineer'; falling back to lexical haystack ranking
+test test_tui_service_replace_matches ... ok
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🧠 Starting KG preprocessing for document 'npm test' in role 'Terraphim Engineer' (terraphim_it enabled)
+[2026-09-11T23:05:36Z INFO  terraphim_service::thesaurus] Rolegraph loaded: for role name RoleName { original: "Terraphim Engineer", lowercase: "terraphim engineer" }
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 📋 KG thesaurus filtering: 42 → 8 terms (prioritizing: graph, haystack, service, terraphim, knowledge, embedding, search, automata, thesaurus, rolegraph, filters: len>5, hyphenated, or important KG terms)
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔍 KG terms selected for linking: 'security check' → kg:security check, 'audit rust' → kg:audit rust, 'cargo b' → kg:cargo b, 'docker buildx build' → kg:docker buildx build, 'podman build' → kg:podman build, 'cargo build' → kg:cargo build, 'cargo audit' → kg:cargo audit, 'docker build' → kg:docker build
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔧 Passing to replace_matches: 'security check' -> 'security check' (url: Some("kg:cargo audit")), 'audit rust' -> 'audit rust' (url: Some("kg:cargo audit")), 'cargo b' -> 'cargo b' (url: Some("kg:cargo build")) (total terms: 8)
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 📝 Document body preview (first 200 chars): # npm test
+    
+    Run JavaScript/TypeScript test suite. Use bun test for faster execution with built-in test runner.
+    
+    synonyms:: npm test, npm t, yarn test, pnpm test
+    related:: npm run build, npm install
+    tr...
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] ✅ Successfully preprocessed document 'npm test' with 8 KG terms → created [term](kg:concept) links
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔄 Content changed: false (original: 308 chars, processed: 308 chars)
+[2026-09-11T23:05:36Z WARN  terraphim_service::document] ⚠️ No KG links found in processed content despite successful replacement
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🧠 Starting KG preprocessing for document 'cargo test' in role 'Terraphim Engineer' (terraphim_it enabled)
+[2026-09-11T23:05:36Z INFO  terraphim_service::thesaurus] Rolegraph loaded: for role name RoleName { original: "Terraphim Engineer", lowercase: "terraphim engineer" }
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 📋 KG thesaurus filtering: 42 → 8 terms (prioritizing: graph, haystack, service, terraphim, knowledge, embedding, search, automata, thesaurus, rolegraph, filters: len>5, hyphenated, or important KG terms)
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔍 KG terms selected for linking: 'audit rust' → kg:audit rust, 'cargo b' → kg:cargo b, 'docker build' → kg:docker build, 'podman build' → kg:podman build, 'cargo audit' → kg:cargo audit, 'security check' → kg:security check, 'cargo build' → kg:cargo build, 'docker buildx build' → kg:docker buildx build
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔧 Passing to replace_matches: 'audit rust' -> 'audit rust' (url: Some("kg:cargo audit")), 'cargo b' -> 'cargo b' (url: Some("kg:cargo build")), 'docker build' -> 'docker build' (url: Some("kg:docker build")) (total terms: 8)
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 📝 Document body preview (first 200 chars): # cargo test
+    
+    Run Rust test suite. Supports filtering with test name patterns. For workspace testing use --workspace.
+    
+    synonyms:: cargo test, cargo t, test rust
+    related:: cargo clippy, cargo build
+    con...
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] ✅ Successfully preprocessed document 'cargo test' with 8 KG terms → created [term](kg:concept) links
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔄 Content changed: true (original: 224 chars, processed: 242 chars)
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔗 Found KG links in processed content: [cargo build](kg:...)
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 📄 Content snippet with KG link: ... t, test rust
+    related:: cargo clippy, [cargo build](kg:cargo build)
+    context:: test
+    cost:: high
+    ...
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🧠 Starting KG preprocessing for document 'rch' in role 'Terraphim Engineer' (terraphim_it enabled)
+[2026-09-11T23:05:36Z INFO  terraphim_service::thesaurus] Rolegraph loaded: for role name RoleName { original: "Terraphim Engineer", lowercase: "terraphim engineer" }
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 📋 KG thesaurus filtering: 42 → 8 terms (prioritizing: graph, haystack, service, terraphim, knowledge, embedding, search, automata, thesaurus, rolegraph, filters: len>5, hyphenated, or important KG terms)
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔍 KG terms selected for linking: 'podman build' → kg:podman build, 'cargo b' → kg:cargo b, 'audit rust' → kg:audit rust, 'docker buildx build' → kg:docker buildx build, 'cargo audit' → kg:cargo audit, 'docker build' → kg:docker build, 'security check' → kg:security check, 'cargo build' → kg:cargo build
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔧 Passing to replace_matches: 'podman build' -> 'podman build' (url: Some("kg:docker build")), 'cargo b' -> 'cargo b' (url: Some("kg:cargo build")), 'audit rust' -> 'audit rust' (url: Some("kg:cargo audit")) (total terms: 8)
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 📝 Document body preview (first 200 chars): # rch
+    
+    Remote compilation helper for Rust. Offloads cargo builds to remote workers for faster compilation. Use instead of cargo build when rch is configured.
+    
+    synonyms:: rch, remote cargo, cargo remot...
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] ✅ Successfully preprocessed document 'rch' with 8 KG terms → created [term](kg:concept) links
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔄 Content changed: true (original: 326 chars, processed: 398 chars)
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔗 Found KG links in processed content: [cargo build], [cargo build], [cargo build], [cargo build](kg:...)
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 📄 Content snippet with KG link: ...compilation helper for Rust. Offloads [cargo build](kg:cargo build)s to remote workers for faster compilation. Use instead of [cargo build](kg:cargo build)...
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🧠 Starting KG preprocessing for document 'cargo fmt' in role 'Terraphim Engineer' (terraphim_it enabled)
+[2026-09-11T23:05:36Z INFO  terraphim_service::thesaurus] Rolegraph loaded: for role name RoleName { original: "Terraphim Engineer", lowercase: "terraphim engineer" }
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 📋 KG thesaurus filtering: 42 → 8 terms (prioritizing: graph, haystack, service, terraphim, knowledge, embedding, search, automata, thesaurus, rolegraph, filters: len>5, hyphenated, or important KG terms)
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔍 KG terms selected for linking: 'cargo b' → kg:cargo b, 'docker build' → kg:docker build, 'security check' → kg:security check, 'audit rust' → kg:audit rust, 'docker buildx build' → kg:docker buildx build, 'podman build' → kg:podman build, 'cargo build' → kg:cargo build, 'cargo audit' → kg:cargo audit
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔧 Passing to replace_matches: 'cargo b' -> 'cargo b' (url: Some("kg:cargo build")), 'docker build' -> 'docker build' (url: Some("kg:docker build")), 'security check' -> 'security check' (url: Some("kg:cargo audit")) (total terms: 8)
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 📝 Document body preview (first 200 chars): # cargo fmt
+    
+    Format Rust code using rustfmt via cargo. Enforces consistent code style across the project. Always run before committing.
+    
+    synonyms:: cargo fmt, rustfmt, format rust
+    related:: cargo clip...
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] ✅ Successfully preprocessed document 'cargo fmt' with 8 KG terms → created [term](kg:concept) links
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔄 Content changed: false (original: 243 chars, processed: 243 chars)
+[2026-09-11T23:05:36Z WARN  terraphim_service::document] ⚠️ No KG links found in processed content despite successful replacement
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🧠 Starting KG preprocessing for document 'yarn build' in role 'Terraphim Engineer' (terraphim_it enabled)
+[2026-09-11T23:05:36Z INFO  terraphim_service::thesaurus] Rolegraph loaded: for role name RoleName { original: "Terraphim Engineer", lowercase: "terraphim engineer" }
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 📋 KG thesaurus filtering: 42 → 8 terms (prioritizing: graph, haystack, service, terraphim, knowledge, embedding, search, automata, thesaurus, rolegraph, filters: len>5, hyphenated, or important KG terms)
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔍 KG terms selected for linking: 'cargo b' → kg:cargo b, 'security check' → kg:security check, 'docker buildx build' → kg:docker buildx build, 'docker build' → kg:docker build, 'cargo audit' → kg:cargo audit, 'podman build' → kg:podman build, 'audit rust' → kg:audit rust, 'cargo build' → kg:cargo build
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔧 Passing to replace_matches: 'cargo b' -> 'cargo b' (url: Some("kg:cargo build")), 'security check' -> 'security check' (url: Some("kg:cargo audit")), 'docker buildx build' -> 'docker buildx build' (url: Some("kg:docker build")) (total terms: 8)
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 📝 Document body preview (first 200 chars): # yarn build
+    
+    Build JavaScript/TypeScript project using Yarn. Transform to bun run build for faster execution.
+    
+    synonyms:: yarn build, yarn run build
+    related:: yarn install, yarn test
+    transforms:: yar...
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] ✅ Successfully preprocessed document 'yarn build' with 8 KG terms → created [term](kg:concept) links
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔄 Content changed: false (original: 289 chars, processed: 289 chars)
+[2026-09-11T23:05:36Z WARN  terraphim_service::document] ⚠️ No KG links found in processed content despite successful replacement
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🧠 Starting KG preprocessing for document 'npm run build' in role 'Terraphim Engineer' (terraphim_it enabled)
+[2026-09-11T23:05:36Z INFO  terraphim_config] Successfully built thesaurus from local KG for role Terraphim Engineer
+[2026-09-11T23:05:36Z INFO  terraphim_service::thesaurus] Rolegraph loaded: for role name RoleName { original: "Terraphim Engineer", lowercase: "terraphim engineer" }
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 📋 KG thesaurus filtering: 42 → 8 terms (prioritizing: graph, haystack, service, terraphim, knowledge, embedding, search, automata, thesaurus, rolegraph, filters: len>5, hyphenated, or important KG terms)
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔍 KG terms selected for linking: 'cargo build' → kg:cargo build, 'cargo audit' → kg:cargo audit, 'docker buildx build' → kg:docker buildx build, 'cargo b' → kg:cargo b, 'security check' → kg:security check, 'audit rust' → kg:audit rust, 'docker build' → kg:docker build, 'podman build' → kg:podman build
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔧 Passing to replace_matches: 'cargo build' -> 'cargo build' (url: Some("kg:cargo build")), 'cargo audit' -> 'cargo audit' (url: Some("kg:cargo audit")), 'docker buildx build' -> 'docker buildx build' (url: Some("kg:docker build")) (total terms: 8)
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 📝 Document body preview (first 200 chars): # npm run build
+    
+    Build JavaScript/TypeScript project. Typically compiles to dist/ or build/. Use bun run build instead.
+    
+    synonyms:: npm run build, yarn build, pnpm build, npm build
+    related:: npm insta...
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] ✅ Successfully preprocessed document 'npm run build' with 8 KG terms → created [term](kg:concept) links
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔄 Content changed: false (original: 346 chars, processed: 346 chars)
+[2026-09-11T23:05:36Z WARN  terraphim_service::document] ⚠️ No KG links found in processed content despite successful replacement
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🧠 Starting KG preprocessing for document 'pnpm build' in role 'Terraphim Engineer' (terraphim_it enabled)
+[2026-09-11T23:05:36Z INFO  terraphim_service::thesaurus] Rolegraph loaded: for role name RoleName { original: "Terraphim Engineer", lowercase: "terraphim engineer" }
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 📋 KG thesaurus filtering: 42 → 8 terms (prioritizing: graph, haystack, service, terraphim, knowledge, embedding, search, automata, thesaurus, rolegraph, filters: len>5, hyphenated, or important KG terms)
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔍 KG terms selected for linking: 'docker buildx build' → kg:docker buildx build, 'cargo b' → kg:cargo b, 'security check' → kg:security check, 'cargo build' → kg:cargo build, 'cargo audit' → kg:cargo audit, 'podman build' → kg:podman build, 'audit rust' → kg:audit rust, 'docker build' → kg:docker build
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔧 Passing to replace_matches: 'docker buildx build' -> 'docker buildx build' (url: Some("kg:docker build")), 'cargo b' -> 'cargo b' (url: Some("kg:cargo build")), 'security check' -> 'security check' (url: Some("kg:cargo audit")) (total terms: 8)
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 📝 Document body preview (first 200 chars): # pnpm build
+    
+    Build JavaScript/TypeScript project using pnpm. Transform to bun run build for faster execution.
+    
+    synonyms:: pnpm build, pnpm run build
+    related:: pnpm install, pnpm test
+    transforms:: pnp...
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] ✅ Successfully preprocessed document 'pnpm build' with 8 KG terms → created [term](kg:concept) links
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔄 Content changed: false (original: 289 chars, processed: 289 chars)
+[2026-09-11T23:05:36Z WARN  terraphim_service::document] ⚠️ No KG links found in processed content despite successful replacement
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🧠 Starting KG preprocessing for document 'npm install' in role 'Terraphim Engineer' (terraphim_it enabled)
+[2026-09-11T23:05:36Z INFO  terraphim_config] Successfully built thesaurus from local KG for role Terraphim Engineer
+[2026-09-11T23:05:36Z INFO  terraphim_config] Successfully built thesaurus from local KG for role Terraphim Engineer
+[2026-09-11T23:05:36Z INFO  terraphim_service::thesaurus] Rolegraph loaded: for role name RoleName { original: "Terraphim Engineer", lowercase: "terraphim engineer" }
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 📋 KG thesaurus filtering: 42 → 8 terms (prioritizing: graph, haystack, service, terraphim, knowledge, embedding, search, automata, thesaurus, rolegraph, filters: len>5, hyphenated, or important KG terms)
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔍 KG terms selected for linking: 'cargo audit' → kg:cargo audit, 'docker buildx build' → kg:docker buildx build, 'docker build' → kg:docker build, 'security check' → kg:security check, 'audit rust' → kg:audit rust, 'cargo b' → kg:cargo b, 'cargo build' → kg:cargo build, 'podman build' → kg:podman build
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔧 Passing to replace_matches: 'cargo audit' -> 'cargo audit' (url: Some("kg:cargo audit")), 'docker buildx build' -> 'docker buildx build' (url: Some("kg:docker build")), 'docker build' -> 'docker build' (url: Some("kg:docker build")) (total terms: 8)
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 📝 Document body preview (first 200 chars): # npm install
+    
+    Install JavaScript/Node.js dependencies. Use bun install instead for faster installs.
+    
+    synonyms:: npm install, npm i, yarn install, pnpm install
+    related:: npm run, npm test
+    transforms::...
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] ✅ Successfully preprocessed document 'npm install' with 8 KG terms → created [term](kg:concept) links
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔄 Content changed: false (original: 317 chars, processed: 317 chars)
+[2026-09-11T23:05:36Z WARN  terraphim_service::document] ⚠️ No KG links found in processed content despite successful replacement
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🧠 Starting KG preprocessing for document 'cargo build' in role 'Terraphim Engineer' (terraphim_it enabled)
+[2026-09-11T23:05:36Z INFO  terraphim_config] Successfully built thesaurus from local KG for role Terraphim Engineer
+[2026-09-11T23:05:36Z INFO  terraphim_config] Successfully built thesaurus from local KG for role Terraphim Engineer
+[2026-09-11T23:05:36Z INFO  terraphim_service::thesaurus] Rolegraph loaded: for role name RoleName { original: "Terraphim Engineer", lowercase: "terraphim engineer" }
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 📋 KG thesaurus filtering: 42 → 8 terms (prioritizing: graph, haystack, service, terraphim, knowledge, embedding, search, automata, thesaurus, rolegraph, filters: len>5, hyphenated, or important KG terms)
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔍 KG terms selected for linking: 'docker build' → kg:docker build, 'security check' → kg:security check, 'docker buildx build' → kg:docker buildx build, 'audit rust' → kg:audit rust, 'cargo build' → kg:cargo build, 'cargo b' → kg:cargo b, 'podman build' → kg:podman build, 'cargo audit' → kg:cargo audit
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔧 Passing to replace_matches: 'docker build' -> 'docker build' (url: Some("kg:docker build")), 'security check' -> 'security check' (url: Some("kg:cargo audit")), 'docker buildx build' -> 'docker buildx build' (url: Some("kg:docker build")) (total terms: 8)
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 📝 Document body preview (first 200 chars): # cargo build
+    
+    Compile Rust project using cargo. For faster compilation with remote workers, see rch. For formatting see cargo fmt; for linting see cargo clippy; for testing see cargo test.
+    
+    synonyms:...
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] ✅ Successfully preprocessed document 'cargo build' with 8 KG terms → created [term](kg:concept) links
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔄 Content changed: true (original: 297 chars, processed: 355 chars)
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔗 Found KG links in processed content: [cargo build], [cargo build], [cargo build](kg:...)
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 📄 Content snippet with KG link: ...# [cargo build](kg:cargo build)
+    
+    Compile Rust project using cargo. For faster compilation with remote workers, see rch....
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🧠 Starting KG preprocessing for document 'cargo clippy' in role 'Terraphim Engineer' (terraphim_it enabled)
+[2026-09-11T23:05:36Z INFO  terraphim_service::thesaurus] Rolegraph loaded: for role name RoleName { original: "Terraphim Engineer", lowercase: "terraphim engineer" }
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 📋 KG thesaurus filtering: 42 → 8 terms (prioritizing: graph, haystack, service, terraphim, knowledge, embedding, search, automata, thesaurus, rolegraph, filters: len>5, hyphenated, or important KG terms)
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔍 KG terms selected for linking: 'audit rust' → kg:audit rust, 'cargo build' → kg:cargo build, 'cargo audit' → kg:cargo audit, 'cargo b' → kg:cargo b, 'docker build' → kg:docker build, 'podman build' → kg:podman build, 'security check' → kg:security check, 'docker buildx build' → kg:docker buildx build
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔧 Passing to replace_matches: 'audit rust' -> 'audit rust' (url: Some("kg:cargo audit")), 'cargo build' -> 'cargo build' (url: Some("kg:cargo build")), 'cargo audit' -> 'cargo audit' (url: Some("kg:cargo audit")) (total terms: 8)
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 📝 Document body preview (first 200 chars): # cargo clippy
+    
+    Run Rust linter with pedantic checks. Catches common mistakes and enforces idiomatic code. Run after fmt, before test.
+    
+    synonyms:: cargo clippy, clippy, lint rust
+    related:: cargo fmt, ...
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] ✅ Successfully preprocessed document 'cargo clippy' with 8 KG terms → created [term](kg:concept) links
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔄 Content changed: true (original: 253 chars, processed: 271 chars)
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔗 Found KG links in processed content: [cargo audit](kg:...)
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 📄 Content snippet with KG link: ...rust
+    related:: cargo fmt, cargo test, [cargo audit](kg:cargo audit)
+    context:: lint
+    cost:: medium
+    ...
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🧠 Starting KG preprocessing for document 'make' in role 'Terraphim Engineer' (terraphim_it enabled)
+[2026-09-11T23:05:36Z INFO  terraphim_service::thesaurus] Rolegraph loaded: for role name RoleName { original: "Terraphim Engineer", lowercase: "terraphim engineer" }
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 📋 KG thesaurus filtering: 42 → 8 terms (prioritizing: graph, haystack, service, terraphim, knowledge, embedding, search, automata, thesaurus, rolegraph, filters: len>5, hyphenated, or important KG terms)
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔍 KG terms selected for linking: 'audit rust' → kg:audit rust, 'security check' → kg:security check, 'docker buildx build' → kg:docker buildx build, 'podman build' → kg:podman build, 'docker build' → kg:docker build, 'cargo b' → kg:cargo b, 'cargo audit' → kg:cargo audit, 'cargo build' → kg:cargo build
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔧 Passing to replace_matches: 'audit rust' -> 'audit rust' (url: Some("kg:cargo audit")), 'security check' -> 'security check' (url: Some("kg:cargo audit")), 'docker buildx build' -> 'docker buildx build' (url: Some("kg:docker build")) (total terms: 8)
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 📝 Document body preview (first 200 chars): # make
+    
+    Build using Makefile. Common targets: all, build, test, clean, install. Check Makefile for project-specific targets.
+    
+    synonyms:: make, gmake, bmake
+    related:: make test, make clean, make instal...
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] ✅ Successfully preprocessed document 'make' with 8 KG terms → created [term](kg:concept) links
+[2026-09-11T23:05:36Z INFO  terraphim_service::document] 🔄 Content changed: false (original: 229 chars, processed: 229 chars)
+[2026-09-11T23:05:36Z WARN  terraphim_service::document] ⚠️ No KG links found in processed content despite successful replacement
+test test_tui_service_search ... ok
+[2026-09-11T23:05:41Z INFO  terraphim_config] Creating role Rust Engineer
+[2026-09-11T23:05:41Z INFO  terraphim_config] Creating role Default
+[2026-09-11T23:05:42Z INFO  terraphim_config] Creating role Rust Engineer
+test test_tui_service_list_roles_with_info ... ok
+[2026-09-11T23:05:42Z INFO  terraphim_service::thesaurus] Rolegraph loaded: for role name RoleName { original: "Terraphim Engineer", lowercase: "terraphim engineer" }
+[2026-09-11T23:05:42Z INFO  terraphim_config] Creating role Default
+test test_tui_service_creation ... ok
+[2026-09-11T23:05:42Z INFO  terraphim_config] Creating role Rust Engineer
+test test_tui_service_find_role_by_shortname ... ok
+[2026-09-11T23:05:42Z INFO  terraphim_service::thesaurus] Rolegraph loaded: for role name RoleName { original: "Terraphim Engineer", lowercase: "terraphim engineer" }
+[2026-09-11T23:05:42Z INFO  terraphim_service::thesaurus] Thesaurus cache stale for role 'Terraphim Engineer': hash mismatch (cached 025d7c97117ae1c28574247638611c69c86c2345aa4f58c89a426dc7a0e85af3 != current 8a6ac84a039e08082ee6c53e1e4d9bc6d97798790dab90424f5b354c43da9d90)
+[2026-09-11T23:05:42Z INFO  terraphim_service::thesaurus] Role Terraphim Engineer has no automata_path, building thesaurus from local KG files at "/Users/alex/Library/Application Support/com.aks.terraphim/kg"
+[2026-09-11T23:05:42Z INFO  terraphim_service::thesaurus] Thesaurus cache stale for role 'Terraphim Engineer': hash mismatch (cached 025d7c97117ae1c28574247638611c69c86c2345aa4f58c89a426dc7a0e85af3 != current 8a6ac84a039e08082ee6c53e1e4d9bc6d97798790dab90424f5b354c43da9d90)
+[2026-09-11T23:05:42Z INFO  terraphim_service::thesaurus] Role Terraphim Engineer has no automata_path, building thesaurus from local KG files at "/Users/alex/Library/Application Support/com.aks.terraphim/kg"
+[2026-09-11T23:05:44Z INFO  terraphim_service::thesaurus] Successfully built thesaurus from local KG for role Terraphim Engineer
+[2026-09-11T23:05:44Z INFO  terraphim_service::thesaurus] Local KG thesaurus for role `Terraphim Engineer` saved to persistence
+[2026-09-11T23:05:44Z INFO  terraphim_service::thesaurus] Successfully built thesaurus from local KG for role Terraphim Engineer
+[2026-09-11T23:05:44Z INFO  terraphim_service::thesaurus] Reloaded local KG thesaurus from persistence: 1461 entries
+[2026-09-11T23:05:45Z INFO  terraphim_service::thesaurus] Local KG thesaurus for role `Terraphim Engineer` saved to persistence
+[2026-09-11T23:05:45Z INFO  terraphim_service::thesaurus] Reloaded local KG thesaurus from persistence: 1461 entries
+[2026-09-11T23:05:46Z INFO  terraphim_service::thesaurus] Updated config_state with rebuilt rolegraph for role: Terraphim Engineer
+[2026-09-11T23:05:46Z INFO  terraphim_service::thesaurus] Updated config_state with rebuilt rolegraph for role: Terraphim Engineer
+test test_tui_service_autocomplete ... ok
+test test_tui_service_find_matches ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.90s
+
+=== RUN 3 END exit=0 wall=16s

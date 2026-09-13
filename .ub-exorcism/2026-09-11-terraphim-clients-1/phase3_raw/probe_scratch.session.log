@@ -1,0 +1,4 @@
+scratch widen=0: pre=4 call=102 ok=150 iters=150
+scratch widen=500: pre=298 call=0 ok=150 iters=150
+scratch widen=2000: pre=282 call=0 ok=150 iters=150
+=== PROBE scratch DONE

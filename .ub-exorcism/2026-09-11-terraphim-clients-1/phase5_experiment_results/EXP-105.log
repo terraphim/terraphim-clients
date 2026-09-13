@@ -1,0 +1,43 @@
+# EXP-105 run 2026-09-12 (bigbox, Linux x86_64 glibc, Ubuntu 20.04)
+Binary: /tmp/ubx-probe-target/release/terraphim-agent 1.21.14 built on bigbox from /tmp/ubx-probe-clients at ae06cd2 (git checkout --detach ae06cd2; cargo build --release -p terraphim_agent, 2m53s with kache).
+Shim: /tmp/ubx-probe/libenvprobe.so rebuilt from phase3_raw/envprobe/linux/envprobe_linux.c (gcc -O1 -g -shared -fPIC -ldl -lpthread); the earlier /tmp/ubx-probe deployment had been removed from bigbox.
+Driver: EXP-105_raw/run_exp105.sh (300 iterations at ENVPROBE_WIDEN_US=0, 100 at 2000, ENVPROBE_TRACE=1, env -u SSL_CERT_FILE -u SSL_CERT_DIR, command: terraphim-agent search "knowledge graph" --limit 1). SSL_CERT_FILE/SSL_CERT_DIR are not set at the host level on bigbox (env | rg ^SSL_CERT empty).
+Endpoint reachability: curl -sI https://downloads.terraphim.ai/terraphim-agent/stable.json -> HTTP/2 200; strace -f -e trace=connect of one unprobed run shows the connect to 2a06:98c1:3120::9:443 (EXP-105_raw/exp105_strace_r2.log), so the manifest fetch runs every invocation (main.rs:448-456 has no throttle or cache).
+
+## Static correction to the hypothesis
+check_update (crates/terraphim_update/src/lib.rs:242-251) dispatches on UpdateBackend, default R2 (manifest.rs test_backend_default_is_r2; env TERRAPHIM_UPDATE_BACKEND selects). check_update_r2 fetches {base}/{bin}/stable.json with ureq inside spawn_blocking and never touches self_update. self_update::backends::github::Update (and set_ssl_vars!(), macros.rs:12-24: set_var when SSL_CERT_FILE / SSL_CERT_DIR absent) is only reached via check_update_github (lib.rs:395-430), i.e. TERRAPHIM_UPDATE_BACKEND=github, or the install/update paths. So the writer is NOT on the default pre-dispatch path of the shipped binary; it is reachable by configuration.
+
+## Arm A: shipped default (R2 backend)
+r2 widen=0: iters=300 set_ssl_cert_file=0 pre=0 call=0 nonzero_exit=0
+r2 widen=2000: iters=100 set_ssl_cert_file=0 pre=0 call=0 nonzero_exit=0
+Per-process envprobe summaries: setenv=0 in every main process (the only env reads are TERRAPHIM_UPDATE_BACKEND / TERRAPHIM_UPDATE_BASE_URL at config time). The writer never fires on this path.
+
+## Arm B: TERRAPHIM_UPDATE_BACKEND=github (the self_update writer)
+gh widen=0: iters=300 set_ssl_cert_file=300 pre=0 call=0 nonzero_exit=0
+gh widen=2000: iters=100 set_ssl_cert_file=100 pre=0 call=0 nonzero_exit=0
+Every iteration fired the writer (set SSL_CERT_FILE then set SSL_CERT_DIR on the spawn_blocking thread; main-process summary "setenv=2 ... getenv=75 getenv_on_other_thread_after_first_write=68 overlaps_pre=0 overlaps_call=0" in all 400 iterations). The PLT-visible readers after the write are sequential: the reqwest client thread reads the proxy variables after the writer returned, and the main thread reads its config variables after block_on has completed the update check (see ITER 7 excerpt below). No OVERLAP(pre) or OVERLAP(call) in 400 iterations, including 100 with a 2 ms widened writer window, so no backtraces to symbolise.
+
+Excerpt (gh, widen=0, ITER 7; tid 2280830 = spawn_blocking writer, 2280831 = reqwest client thread, 2280805 = main thread):
+2280830 set SSL_CERT_FILE
+2280830 get SSL_CERT_DIR
+2280830 set SSL_CERT_DIR
+2280831 get REQUEST_METHOD
+2280831 get ALL_PROXY
+2280831 get all_proxy
+2280831 get HTTP_PROXY
+2280831 get http_proxy
+2280831 get HTTPS_PROXY
+2280831 get https_proxy
+2280831 get NO_PROXY
+2280831 get no_proxy
+2280805 get TOKIO_WORKER_THREADS
+2280805 get LOG_LEVEL
+2280805 get CLICOLOR
+2280805 get NO_COLOR
+Blind spot carried forward from EXP-010: the LD_PRELOAD shim only sees PLT getenv calls; glibc-internal getenv inside getaddrinfo (RES_OPTIONS, LOCALDOMAIN) is invisible, so "0 overlaps" means no PLT-visible overlap. In this binary the reqwest blocking client thread (2280831), which performs the api.github.com lookup, only starts after both set_var calls have returned (its first PLT reads follow the two set lines in every iteration), and the main thread is parked in block_on awaiting the spawn_blocking JoinHandle, so no other thread is resolving while the writer runs; the invisible reader class is not concurrent here either.
+
+Many additional summaries per iteration (setenv=0, getenv=7-8: RIPGREP_CONFIG_PATH, WSL_DISTRO_NAME, HOME, ...) come from child processes started after the update check (their env reads, RIPGREP_CONFIG_PATH first, are consistent with ripgrep haystack subprocesses); they are separate processes and carry no writer.
+
+## Verdict
+NO_EVIDENCE on bigbox: default path never runs the writer (0/400 setenv); the configured GitHub path runs it 400/400 times with 0 overlaps at widen 0 and 2000. The row stays LIKELY-UB by contract only (glibc setenv vs unlocked getenv), and the "production path" qualifier is narrowed to TERRAPHIM_UPDATE_BACKEND=github / explicit update commands.
+Raw logs: EXP-105_raw/ (exp105_{r2,gh}_widen{0,2000}us.log, smoke logs, strace, driver, shim source). Nothing was killed on bigbox; the build tmux session ubx105-build and loop session ubx105-loop exited on their own.

@@ -1,0 +1,38 @@
+=== EXP-302 SSE grep soak ===
+date: 2026-09-12T17:04:55Z
+host: Ubuntu-2004-focal-64-minimal-hwe  HEAD(clone): 46bbc43
+server: /tmp/ubx-r7/EXP-302/target/release/terraphim_mcp_server
+uptime:  19:04:55 up 125 days,  9:32, 45 users,  load average: 2.67, 2.03, 1.91
+orphans(terraphim_server): 51
+port: 18302 clients: 8 secs/arm: 30  tool: terraphim_grep limit=200
+tree built: /tmp/ubx-r8/EXP-302/tree bytes/file: 4194297 needle_lines_at_tail: 40
+server pid 1320217
+server listening on 18302
+=== arm: rewrite ===
+EXP-302 driver: clients=8 seconds=30 calls=1889061 invalid_utf8=0 json_parse_fail=338905 errors=1886956
+EXP-302 NO_EVIDENCE (writer arm): all response content was valid UTF-8
+mutator rewrite: 55292 writes over 30.0s
+arm rewrite: server ALIVE
+=== arm: truncate ===
+EXP-302 driver: clients=8 seconds=30 calls=4898345 invalid_utf8=0 json_parse_fail=92093 errors=4897772
+EXP-302 NO_EVIDENCE (writer arm): all response content was valid UTF-8
+/tmp/ubx-r8/EXP-302/run.sh: line 52: 1320217 Bus error               RUST_LOG=warn "$SRV" --sse --bind "127.0.0.1:$PORT" -p server > /tmp/ubx-r8/EXP-302/server.log 2>&1
+mutator truncate: 15704 writes over 30.0s
+arm truncate: server EXITED code=135 (135 => 128+7 SIGBUS)
+=== server.log tail (non-noise) ===
+[2m2026-09-12T17:05:26.845638Z[0m [32m INFO[0m [1mserve_inner[0m[2m:[0m[1mwalk_filesystem[0m[2m:[0m [2mfff_search::file_picker[0m[2m:[0m SCAN: Walk completed in 2.293845ms (4 files, 1 dirs, chunked_store=0.00MB, files_vec=0.00MB, dirs=0.00MB, FileItem=96B)
+[2m2026-09-12T17:05:26.845699Z[0m [32m INFO[0m [1mserve_inner[0m[2m:[0m[1mwalk_filesystem[0m[2m:[0m [2mfff_search::file_picker[0m[2m:[0m SCAN: File walking completed in 2.617461ms for 4 files
+[2m2026-09-12T17:05:26.845726Z[0m [32m INFO[0m [1mserve_inner[0m[2m:[0m[1mwalk_filesystem[0m[2m:[0m [2mfff_search::file_picker[0m[2m:[0m SCAN: Walk completed in 2.725786ms (4 files, 1 dirs, chunked_store=0.00MB, files_vec=0.00MB, dirs=0.00MB, FileItem=96B)
+[2m2026-09-12T17:05:26.846563Z[0m [32m INFO[0m [1mserve_inner[0m[2m:[0m[1mwalk_filesystem[0m[2m:[0m [2mfff_search::file_picker[0m[2m:[0m SCAN: File walking completed in 1.425674ms for 4 files
+[2m2026-09-12T17:05:26.846603Z[0m [32m INFO[0m [1mserve_inner[0m[2m:[0m[1mwalk_filesystem[0m[2m:[0m [2mfff_search::file_picker[0m[2m:[0m SCAN: Walk completed in 1.562358ms (4 files, 1 dirs, chunked_store=0.00MB, files_vec=0.00MB, dirs=0.00MB, FileItem=96B)
+[2m2026-09-12T17:05:26.846829Z[0m [33m WARN[0m [1mserve_inner[0m[2m:[0m [2mfff_search::file_picker[0m[2m:[0m No git repository found for path: /tmp/ubx-r8/EXP-302/tree
+[2m2026-09-12T17:05:26.846838Z[0m [32m INFO[0m [1mserve_inner[0m[2m:[0m[1mwalk_filesystem[0m[2m:[0m [2mfff_search::file_picker[0m[2m:[0m SCAN: Starting filesystem walk and git status (async)
+[2m2026-09-12T17:05:26.847063Z[0m [33m WARN[0m [1mserve_inner[0m[2m:[0m [2mfff_search::file_picker[0m[2m:[0m No git repository found for path: /tmp/ubx-r8/EXP-302/tree
+[2m2026-09-12T17:05:26.847069Z[0m [32m INFO[0m [1mserve_inner[0m[2m:[0m[1mwalk_filesystem[0m[2m:[0m [2mfff_search::file_picker[0m[2m:[0m SCAN: Starting filesystem walk and git status (async)
+[2m2026-09-12T17:05:26.847130Z[0m [33m WARN[0m [1mserve_inner[0m[2m:[0m [2mfff_search::file_picker[0m[2m:[0m No git repository found for path: /tmp/ubx-r8/EXP-302/tree
+[2m2026-09-12T17:05:26.847137Z[0m [32m INFO[0m [1mserve_inner[0m[2m:[0m[1mwalk_filesystem[0m[2m:[0m [2mfff_search::file_picker[0m[2m:[0m SCAN: Starting filesystem walk and git status (async)
+[2m2026-09-12T17:05:26.847331Z[0m [32m INFO[0m [1mserve_inner[0m[2m:[0m[1mwalk_filesystem[0m[2m:[0m [2mfff_search::file_picker[0m[2m:[0m SCAN: File walking completed in 2.323881ms for 4 files
+[2m2026-09-12T17:05:26.847369Z[0m [32m INFO[0m [1mserve_inner[0m[2m:[0m[1mwalk_filesystem[0m[2m:[0m [2mfff_search::file_picker[0m[2m:[0m SCAN: Walk completed in 2.513953ms (4 files, 1 dirs, chunked_store=0.00MB, files_vec=0.00MB, dirs=0.00MB, FileItem=96B)
+[2m2026-09-12T17:05:26.847497Z[0m [33m WARN[0m [1mserve_inner[0m[2m:[0m [2mfff_search::file_picker[0m[2m:[0m No git repository found for path: /tmp/ubx-r8/EXP-302/tree
+[2m2026-09-12T17:05:26.847507Z[0m [32m INFO[0m [1mserve_inner[0m[2m:[0m[1mwalk_filesystem[0m[2m:[0m [2mfff_search::file_picker[0m[2m:[0m SCAN: Starting filesystem walk and git status (async)
+DONE_EXP302 rewrite_alive=0 truncate_alive=1

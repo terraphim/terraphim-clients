@@ -1,0 +1,18 @@
+=== RUN filtered START 2026-09-12 00:04:56 BST
+warning: patch `rustls-webpki v0.103.12 (https://github.com/rustls/webpki.git?tag=v%2F0.103.12#27131d47)` was not used in the crate graph
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.47s
+     Running unittests src/lib.rs (/private/tmp/claude-501/ubx-target-tsan/aarch64-apple-darwin/debug/deps/terraphim_grep-c20f6268f6f81f63)
+
+running 4 tests
+test openrouter_client::tests::test_openrouter_client_base_url_resolution ... ok
+test hybrid_searcher::tests::default_build_greps_populated_directory ... ok
+test tests::search_without_thesaurus_uses_fff_mode ... ok
+test hybrid_searcher::tests::multiple_search_paths_merge_results ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 53 filtered out; finished in 0.21s
+
+=== RUN filtered END exit=0 wall=5s

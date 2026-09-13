@@ -1,0 +1,13 @@
+[package]
+name = "exp301_memmem_diff"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+fff-search = "=0.8.4"
+
+[profile.release]
+debug = true
+
+[workspace]

@@ -1,0 +1,151 @@
+# EXP-104 run 2026-09-12 11:18:54 BST HEAD=ae06cd2 host=Darwin arm64 fff-search=0.8.4 binary=/private/tmp/claude-501/ubx-exp-target/release/exp104_mmap_grep
+----- arm: rewrite fuzzy 60 11:18:54
+EXP-104 arm=rewrite mode=fuzzy iters=60 files=4 bytes/file=4194288 (MMAP_THRESHOLD aarch64=16384)
+warm grep: 932064 matches, 0 violations; vmmap: 4 region(s) naming the temp dir; first: Some("mapped file                 109908000-109d08000    [ 4096K  4096K     0K     0K] r--/r-x SM=ALI          /private/var/folders/rb/l4_6j2nx0lnfhysk974ldpg40000gn/T/.tmpP564Ey/big0.txt")
+cache budget after warm grep: cached_count=4 cached_bytes=16777152
+EXP-104 arm=rewrite mode=fuzzy: iterations=60 returned_lines=23528460 invalid_utf8_lines=11552323 empty_results=1 writer_writes=11152 elapsed=9.3s
+first invalid line bytes: [110, 101, 101, 100, 108, 101, 32, 99, 97, 102, 195, 255, 32, 108, 105, 110, 101]...
+EXP-104 CONFIRMED: String with invalid UTF-8 returned from grep (arm=rewrite mode=fuzzy)
+exit=0
+----- arm: rewrite plain 200 11:19:05
+EXP-104 arm=rewrite mode=plain iters=200 files=4 bytes/file=4194288 (MMAP_THRESHOLD aarch64=16384)
+warm grep: 932064 matches, 0 violations; vmmap: 4 region(s) naming the temp dir; first: Some("mapped file                 105e44000-106244000    [ 4096K  4096K     0K     0K] r--/r-x SM=ALI          /private/var/folders/rb/l4_6j2nx0lnfhysk974ldpg40000gn/T/.tmpXVbYnq/big2.txt")
+cache budget after warm grep: cached_count=4 cached_bytes=16777152
+EXP-104 arm=rewrite mode=plain: iterations=200 returned_lines=186412800 invalid_utf8_lines=440 empty_results=0 writer_writes=33216 elapsed=34.6s
+first invalid line bytes: [110, 101, 101, 100, 108, 101, 32, 99, 97, 102, 195, 255, 32, 108, 105, 110, 101]...
+EXP-104 CONFIRMED: String with invalid UTF-8 returned from grep (arm=rewrite mode=plain)
+exit=0
+----- arm: control fuzzy 200 11:19:41
+EXP-104 arm=control mode=fuzzy iters=200 files=4 bytes/file=8190 (MMAP_THRESHOLD aarch64=16384)
+warm grep: 1820 matches, 0 violations; vmmap: 0 region(s) naming the temp dir; first: None
+cache budget after warm grep: cached_count=0 cached_bytes=0
+EXP-104 arm=control mode=fuzzy: iterations=200 returned_lines=153335 invalid_utf8_lines=0 empty_results=34 writer_writes=11636 elapsed=0.3s
+EXP-104 NO_EVIDENCE: no invalid UTF-8 observed (arm=control mode=fuzzy)
+exit=0
+----- arm: control plain 200 11:19:42
+EXP-104 arm=control mode=plain iters=200 files=4 bytes/file=8190 (MMAP_THRESHOLD aarch64=16384)
+warm grep: 1820 matches, 0 violations; vmmap: 0 region(s) naming the temp dir; first: None
+cache budget after warm grep: cached_count=0 cached_bytes=0
+EXP-104 arm=control mode=plain: iterations=200 returned_lines=364000 invalid_utf8_lines=0 empty_results=0 writer_writes=8768 elapsed=0.2s
+EXP-104 NO_EVIDENCE: no invalid UTF-8 observed (arm=control mode=plain)
+exit=0
+----- arm: truncate plain 200 11:19:43
+EXP-104 arm=child-truncate mode=plain iters=200 files=4 bytes/file=4194288 (MMAP_THRESHOLD aarch64=16384)
+warm grep: 932064 matches, 0 violations; vmmap: 4 region(s) naming the temp dir; first: Some("mapped file                 1099b8000-109db8000    [ 4096K  4096K     0K     0K] r--/r-x SM=ALI          /private/var/folders/rb/l4_6j2nx0lnfhysk974ldpg40000gn/T/.tmp9GXNTp/big0.txt")
+cache budget after warm grep: cached_count=4 cached_bytes=16777152
+EXP-104 truncate/plain: child exit code=None signal=Some(10) (SIGBUS=10 SIGSEGV=11 on macOS)
+EXP-104 truncate/plain: CONFIRMED fault (mapped file shrunk under a live grep)
+exit=0
+----- arm: truncate fuzzy 60 11:19:44
+EXP-104 arm=child-truncate mode=fuzzy iters=60 files=4 bytes/file=4194288 (MMAP_THRESHOLD aarch64=16384)
+warm grep: 932064 matches, 0 violations; vmmap: 4 region(s) naming the temp dir; first: Some("mapped file                 109e5c000-10a25c000    [ 4096K  4096K     0K     0K] r--/r-x SM=ALI          /private/var/folders/rb/l4_6j2nx0lnfhysk974ldpg40000gn/T/.tmp6eV4K6/big3.txt")
+cache budget after warm grep: cached_count=4 cached_bytes=16777152
+EXP-104 truncate/fuzzy: child exit code=None signal=Some(10) (SIGBUS=10 SIGSEGV=11 on macOS)
+EXP-104 truncate/fuzzy: CONFIRMED fault (mapped file shrunk under a live grep)
+exit=0
+EXP104_DONE
+# EXP-104 ASan run 2026-09-12 11:21:13 BST RUSTFLAGS=-Zsanitizer=address -Zbuild-std nightly aarch64-apple-darwin binary=/private/tmp/claude-501/ubx-exp-target-asan/aarch64-apple-darwin/release/exp104_mmap_grep
+----- asan arm: rewrite plain 100 11:21:13
+EXP-104 arm=rewrite mode=plain iters=100 files=4 bytes/file=4194288 (MMAP_THRESHOLD aarch64=16384)
+warm grep: 932064 matches, 0 violations; vmmap: 4 region(s) naming the temp dir; first: Some("mapped file                 10a84c000-10ac4c000    [ 4096K  4096K     0K     0K] r--/r-x SM=ALI          /private/var/folders/rb/l4_6j2nx0lnfhysk974ldpg40000gn/T/.tmpQMXJI0/big0.txt")
+cache budget after warm grep: cached_count=4 cached_bytes=16777152
+EXP-104 arm=rewrite mode=plain: iterations=100 returned_lines=93206400 invalid_utf8_lines=2039 empty_results=0 writer_writes=42896 elapsed=40.1s
+EXP-104 CONFIRMED: String with invalid UTF-8 returned from grep (arm=rewrite mode=plain)
+exit=0
+----- asan arm: rewrite fuzzy 30 11:21:55
+EXP-104 arm=rewrite mode=fuzzy iters=30 files=4 bytes/file=4194288 (MMAP_THRESHOLD aarch64=16384)
+warm grep: 932064 matches, 0 violations; vmmap: 4 region(s) naming the temp dir; first: Some("mapped file                 10ae44000-10b244000    [ 4096K  4096K     0K     0K] r--/r-x SM=ALI          /private/var/folders/rb/l4_6j2nx0lnfhysk974ldpg40000gn/T/.tmpnb8crb/big0.txt")
+cache budget after warm grep: cached_count=4 cached_bytes=16777152
+EXP-104 arm=rewrite mode=fuzzy: iterations=30 returned_lines=14239667 invalid_utf8_lines=7096305 empty_results=0 writer_writes=15224 elapsed=12.9s
+EXP-104 CONFIRMED: String with invalid UTF-8 returned from grep (arm=rewrite mode=fuzzy)
+exit=0
+----- asan arm: truncate plain 100 11:22:10
+EXP-104 arm=child-truncate mode=plain iters=100 files=4 bytes/file=4194288 (MMAP_THRESHOLD aarch64=16384)
+warm grep: 932064 matches, 0 violations; vmmap: 4 region(s) naming the temp dir; first: Some("mapped file                 10ce8c000-10d28c000    [ 4096K  4096K     0K     0K] r--/r-x SM=ALI          /private/var/folders/rb/l4_6j2nx0lnfhysk974ldpg40000gn/T/.tmpy7bZR8/big0.txt")
+cache budget after warm grep: cached_count=4 cached_bytes=16777152
+AddressSanitizer:DEADLYSIGNAL
+=================================================================
+==53617==ERROR: AddressSanitizer: BUS on unknown address (pc 0x0001046436d0 bp 0x00016c4481f0 sp 0x00016c4481f0 T11)
+==53617==The signal is caused by a READ memory access.
+==53617==Hint: this fault was caused by a dereference of a high value address (see register values below).  Disassemble the provided pc to learn which register was used.
+AddressSanitizer:DEADLYSIGNAL
+AddressSanitizer:DEADLYSIGNAL
+AddressSanitizer:DEADLYSIGNAL
+    #0 0x0001046436d0 in _RNvMNtNtNtNtCs7c51YpKX6PQ_6memchr4arch7aarch644neon6memchrNtB2_3One8find_raw+0x190 (exp104_mmap_grep:arm64+0x10004b6d0)
+    #1 0x000104642ca8 in _RNvMNtNtCsa6eWTyAgnrd_8fff_grep8searcher4glueINtB2_11SliceByLineRNtNtCs78S607c8Kur_10fff_search4grep16PlainTextMatcherQNtB13_13PlainTextSinkE3runB15_+0x5f0 (exp104_mmap_grep:arm64+0x10004aca8)
+    #2 0x00010464f330 in _RINvMs3_NtCsa6eWTyAgnrd_8fff_grep8searcherNtB6_8Searcher12search_sliceRNtNtCs78S607c8Kur_10fff_search4grep16PlainTextMatcherQNtB19_13PlainTextSinkEB1b_+0x140 (exp104_mmap_grep:arm64+0x100057330)
+    #3 0x0001046f5290 in _RNvXNtNtNtCskEYADKe2HLm_4core3ops8function5implsRNCINvNtCs78S607c8Kur_10fff_search4grep12perform_grepNCNvBQ_11grep_searchs6_0Es_0INtB4_2FnTQINtNtCs1vH6uTNGErt_5alloc3vec3VechETjRRNtNtBS_5types8FileItemEEE4callBS_+0x8b8 (exp104_mmap_grep:arm64+0x1000fd290)
+    #4 0x00010463b648 in _RINvYINtNtNtCshKfubfvUbjH_5rayon4iter7flatten13FlattenFolderNtNtB8_6extend15ListVecConsumerINtNtNtCs1vH6uTNGErt_5alloc11collections11linked_list10LinkedListINtNtB1y_3vec3VecTjRNtNtCs78S607c8Kur_10fff_search5types8FileItemIB2v_NtNtB2S_4grep9GrepMatchEEEEEINtNtB8_8plumbing6FolderINtNtCskEYADKe2HLm_4core6option6OptionB2L_EE12consume_iterINtNtNtNtB4x_4iter8adapters3map3MapINtNtB5t_3zip3ZipINtNtNtB4x_3ops5range5RangejEINtNtNtB4x_5slice4iter4IterB2N_EENCINvNvXs9_NtB8_8map_withINtB7p_13MapWithFolderpppEIB45_pE12consume_iter4withTjRB2N_EIB2v_hEB4s_RNCINvB3E_12perform_grepNCNvB3E_11grep_searchs6_0Es_0E0EEB2S_+0x154 (exp104_mmap_grep:arm64+0x100043648)
+    #5 0x000104686b10 in _RINvXs9_NtNtCshKfubfvUbjH_5rayon4iter8map_withINtB6_13MapWithFolderINtNtB8_7flatten13FlattenFolderNtNtB8_6extend15ListVecConsumerINtNtNtCs1vH6uTNGErt_5alloc11collections11linked_list10LinkedListINtNtB2a_3vec3VecTjRNtNtCs78S607c8Kur_10fff_search5types8FileItemIB37_NtNtB3u_4grep9GrepMatchEEEEEIB37_hENCINvB4g_12perform_grepNCNvB4g_11grep_searchs6_0Es_0EINtNtB8_8plumbing6FolderTjRB3p_EE12consume_iterINtNtNtNtCskEYADKe2HLm_4core4iter8adapters3zip3ZipINtNtNtB6y_3ops5range5RangejEINtNtNtB6y_5slice4iter4IterB3p_EEEB3u_+0x12c (exp104_mmap_grep:arm64+0x10008eb10)
+    #6 0x0001046394a8 in _RINvNvNtNtCshKfubfvUbjH_5rayon4iter8plumbing24bridge_producer_consumer6helperINtNtB6_9enumerate17EnumerateProducerINtNtB8_5slice12IterProducerRNtNtCs78S607c8Kur_10fff_search5types8FileItemEEINtNtB6_8map_with15MapInitConsumerINtNtB6_7flatten15FlattenConsumerNtNtB6_6extend15ListVecConsumerENCINvNtB2l_4grep12perform_grepNCNvB4I_11grep_searchs6_0E0NCB4F_s_0EEB2l_+0x204 (exp104_mmap_grep:arm64+0x1000414a8)
+    #7 0x0001046860d0 in _RINvNvNtCsc3NLQV5XDnX_3std9panicking12catch_unwind7do_callINtNtNtCskEYADKe2HLm_4core5panic11unwind_safe16AssertUnwindSafeNCINvNvNtCs8nYcYDqlPke_10rayon_core4join12join_context6call_aINtNtNtCs1vH6uTNGErt_5alloc11collections11linked_list10LinkedListINtNtB31_3vec3VecTjRNtNtCs78S607c8Kur_10fff_search5types8FileItemIB3Y_NtNtB4l_4grep9GrepMatchEEEENCINvNvNtNtCshKfubfvUbjH_5rayon4iter8plumbing24bridge_producer_consumer6helperINtNtB5F_9enumerate17EnumerateProducerINtNtB5H_5slice12IterProducerB4g_EEINtNtB5F_8map_with15MapInitConsumerINtNtB5F_7flatten15FlattenConsumerNtNtB5F_6extend15ListVecConsumerENCINvB57_12perform_grepNCNvB57_11grep_searchs6_0E0NCB9D_s_0EE0E0EB2U_EB4l_+0x128 (exp104_mmap_grep:arm64+0x10008e0d0)
+    #8 0x00010468cbf4 in __rust_try+0x1c (exp104_mmap_grep:arm64+0x100094bf4)
+    #9 0x000104688428 in _RNCINvNtCs8nYcYDqlPke_10rayon_core4join12join_contextNCINvNvNtNtCshKfubfvUbjH_5rayon4iter8plumbing24bridge_producer_consumer6helperINtNtBY_9enumerate17EnumerateProducerINtNtB10_5slice12IterProducerRNtNtCs78S607c8Kur_10fff_search5types8FileItemEEINtNtBY_8map_with15MapInitConsumerINtNtBY_7flatten15FlattenConsumerNtNtBY_6extend15ListVecConsumerENCINvNtB3e_4grep12perform_grepNCNvB5B_11grep_searchs6_0E0NCB5y_s_0EE0NCBR_s_0INtNtNtCs1vH6uTNGErt_5alloc11collections11linked_list10LinkedListINtNtB6S_3vec3VecTjB39_IB7P_NtB5B_9GrepMatchEEEEB6L_E0B3e_+0x250 (exp104_mmap_grep:arm64+0x100090428)
+    #10 0x000104639684 in _RINvNvNtNtCshKfubfvUbjH_5rayon4iter8plumbing24bridge_producer_consumer6helperINtNtB6_9enumerate17EnumerateProducerINtNtB8_5slice12IterProducerRNtNtCs78S607c8Kur_10fff_search5types8FileItemEEINtNtB6_8map_with15MapInitConsumerINtNtB6_7flatten15FlattenConsumerNtNtB6_6extend15ListVecConsumerENCINvNtB2l_4grep12perform_grepNCNvB4I_11grep_searchs6_0E0NCB4F_s_0EEB2l_+0x3e0 (exp104_mmap_grep:arm64+0x100041684)
+    #11 0x0001046cd308 in _RINvNvNtCsc3NLQV5XDnX_3std9panicking12catch_unwind7do_callINtNtNtCskEYADKe2HLm_4core5panic11unwind_safe16AssertUnwindSafeNCINvNvNtCs8nYcYDqlPke_10rayon_core4join12join_context6call_aINtNtNtCs1vH6uTNGErt_5alloc11collections11linked_list10LinkedListINtNtB31_3vec3VecTjRNtNtCs78S607c8Kur_10fff_search5types8FileItemIB3Y_NtNtB4l_4grep9GrepMatchEEEENCINvNvNtNtCshKfubfvUbjH_5rayon4iter8plumbing24bridge_producer_consumer6helperINtNtB5F_9enumerate17EnumerateProducerINtNtB5H_5slice12IterProducerB4g_EEINtNtB5F_8map_with15MapInitConsumerINtNtB5F_7flatten15FlattenConsumerNtNtB5F_6extend15ListVecConsumerENCINvB57_12perform_grepNCNvB57_11grep_searchs6_0E0NCB9D_s_0EE0E0EB2U_EB4l_+0x128 (exp104_mmap_grep:arm64+0x1000d5308)
+    #12 0x0001046dadd8 in __rust_try+0x1c (exp104_mmap_grep:arm64+0x1000e2dd8)
+    #13 0x0001046cf0c8 in _RNCINvNtCs8nYcYDqlPke_10rayon_core4join12join_contextNCINvNvNtNtCshKfubfvUbjH_5rayon4iter8plumbing24bridge_producer_consumer6helperINtNtBY_9enumerate17EnumerateProducerINtNtB10_5slice12IterProducerRNtNtCs78S607c8Kur_10fff_search5types8FileItemEEINtNtBY_8map_with15MapInitConsumerINtNtBY_7flatten15FlattenConsumerNtNtBY_6extend15ListVecConsumerENCINvNtB3e_4grep12perform_grepNCNvB5B_11grep_searchs6_0E0NCB5y_s_0EE0NCBR_s_0INtNtNtCs1vH6uTNGErt_5alloc11collections11linked_list10LinkedListINtNtB6S_3vec3VecTjB39_IB7P_NtB5B_9GrepMatchEEEEB6L_E0B3e_+0x268 (exp104_mmap_grep:arm64+0x1000d70c8)
+    #14 0x0001046cc0fc in _RINvNvNtCsc3NLQV5XDnX_3std9panicking12catch_unwind7do_callINtNtNtCskEYADKe2HLm_4core5panic11unwind_safe16AssertUnwindSafeNCINvMs7_NtCs8nYcYDqlPke_10rayon_core3jobINtB24_9JobResultTINtNtNtCs1vH6uTNGErt_5alloc11collections11linked_list10LinkedListINtNtB2Z_3vec3VecTjRNtNtCs78S607c8Kur_10fff_search5types8FileItemIB3W_NtNtB4j_4grep9GrepMatchEEEEB2S_EE4callNCNCINvMs4_NtB26_8registryNtB5Q_8Registry14in_worker_coldNCINvNtB26_4join12join_contextNCINvNvNtNtCshKfubfvUbjH_5rayon4iter8plumbing24bridge_producer_consumer6helperINtNtB7d_9enumerate17EnumerateProducerINtNtB7f_5slice12IterProducerB4e_EEINtNtB7d_8map_with15MapInitConsumerINtNtB7d_7flatten15FlattenConsumerNtNtB7d_6extend15ListVecConsumerENCINvB55_12perform_grepNCNvB55_11grep_searchs6_0E0NCBbb_s_0EE0NCB76_s_0B2S_B2S_E0B2R_E00E0EB2R_EB4j_+0x40 (exp104_mmap_grep:arm64+0x1000d40fc)
+    #15 0x0001046dadd8 in __rust_try+0x1c (exp104_mmap_grep:arm64+0x1000e2dd8)
+    #16 0x0001046d3a34 in _RNvXs2_NtCs8nYcYDqlPke_10rayon_core3jobINtB5_8StackJobINtNtB7_5latch8LatchRefNtBT_9LockLatchENCNCINvMs4_NtB7_8registryNtB1E_8Registry14in_worker_coldNCINvNtB7_4join12join_contextNCINvNvNtNtCshKfubfvUbjH_5rayon4iter8plumbing24bridge_producer_consumer6helperINtNtB2Z_9enumerate17EnumerateProducerINtNtB31_5slice12IterProducerRNtNtCs78S607c8Kur_10fff_search5types8FileItemEEINtNtB2Z_8map_with15MapInitConsumerINtNtB2Z_7flatten15FlattenConsumerNtNtB2Z_6extend15ListVecConsumerENCINvNtB5g_4grep12perform_grepNCNvB7G_11grep_searchs6_0E0NCB7D_s_0EE0NCB2S_s_0INtNtNtCs1vH6uTNGErt_5alloc11collections11linked_list10LinkedListINtNtB8Y_3vec3VecTjB5b_IB9V_NtB7G_9GrepMatchEEEEB8R_E0TB8R_B8R_EE00BaM_ENtB5_3Job7executeB5g_+0x114 (exp104_mmap_grep:arm64+0x1000dba34)
+    #17 0x000104ae9d4c in _RNvMs8_NtCs8nYcYDqlPke_10rayon_core8registryNtB5_12WorkerThread15wait_until_cold+0x2d0 (exp104_mmap_grep:arm64+0x1004f1d4c)
+    #18 0x0001049868d8 in _RNvMNtCs8nYcYDqlPke_10rayon_core8registryNtB2_13ThreadBuilder3run+0x4b8 (exp104_mmap_grep:arm64+0x10038e8d8)
+    #19 0x000104981214 in _RINvNtNtCsc3NLQV5XDnX_3std3sys9backtrace28___rust_begin_short_backtraceNCNvXs0_NtCs8nYcYDqlPke_10rayon_core8registryNtB1f_12DefaultSpawnNtB1f_11ThreadSpawn5spawn0uEB1h_+0x8c (exp104_mmap_grep:arm64+0x100389214)
+    #20 0x00010498f620 in _RINvNvNtCsc3NLQV5XDnX_3std9panicking12catch_unwind7do_callINtNtNtCskEYADKe2HLm_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCs8nYcYDqlPke_10rayon_core8registryNtB2P_12DefaultSpawnNtB2P_11ThreadSpawn5spawn0uEs_00EuEB2R_+0x148 (exp104_mmap_grep:arm64+0x100397620)
+    #21 0x000104991108 in __rust_try+0x1c (exp104_mmap_grep:arm64+0x100399108)
+    #22 0x00010498f9ac in _RNSNvYNCINvNtNtCsc3NLQV5XDnX_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCs8nYcYDqlPke_10rayon_core8registryNtB1b_12DefaultSpawnNtB1b_11ThreadSpawn5spawn0uEs_0INtNtNtCskEYADKe2HLm_4core3ops8function6FnOnceuE9call_once6vtableB1d_+0x12c (exp104_mmap_grep:arm64+0x1003979ac)
+    #23 0x000104a656d4 in _RNvXst_NtCs1vH6uTNGErt_5alloc5boxedINtB5_3BoxDINtNtNtCskEYADKe2HLm_4core3ops8function6FnOnceuEp6OutputuNtNtBP_6marker4SendEL_EIBJ_uE9call_onceCsc3NLQV5XDnX_3std+0x3c (exp104_mmap_grep:arm64+0x10046d6d4)
+    #24 0x000104a31fc8 in _RNvNvMs0_NtNtNtCsc3NLQV5XDnX_3std3sys6thread4unixNtB7_6Thread3new12thread_start+0x3ac (exp104_mmap_grep:arm64+0x100439fc8)
+    #25 0x000105766f58 in asan_thread_start(void*)+0x48 (librustc-nightly_rt.asan.dylib:arm64+0x3af58)
+    #26 0x0001873afc54 in _pthread_start+0x84 (libsystem_pthread.dylib:arm64e+0x6c54)
+    #27 0x0001873aac18 in thread_start+0x4 (libsystem_pthread.dylib:arm64e+0x1c18)
+
+==53617==Register values:
+ x[0] = 0x000000016c4483c0   x[1] = 0x000000010ce8fff6   x[2] = 0x000000010d28bff0   x[3] = 0x000000010ce8cff7  
+ x[4] = 0x0000000000000006   x[5] = 0x0000000000000065   x[6] = 0x0000000000000006   x[7] = 0x000000016c447cf0  
+ x[8] = 0x0000000000000006   x[9] = 0x000000010d28bfb0  x[10] = 0x0000008000020000  x[11] = 0x000000010ce8fff6  
+x[12] = 0xfffffffffffffffa  x[13] = 0x00000080219f2000  x[14] = 0x000000010ce8fff0  x[15] = 0x000000010ce8fff0  
+x[16] = 0x0000000000000000  x[17] = 0x0000000000000000  x[18] = 0x0000000000000000  x[19] = 0x000000016c4482c0  
+x[20] = 0x0000000000000ff6  x[21] = 0x0000008000020000  x[22] = 0x000000010ce8c000  x[23] = 0x00000000003ffff0  
+x[24] = 0x000000010ce8cff6  x[25] = 0x0000000000000ff6  x[26] = 0x000000016b8016a2  x[27] = 0x0000000000000ff6  
+x[28] = 0x000000002d7002d4     fp = 0x000000016c4481f0     lr = 0x0000000104642cac     sp = 0x000000016c4481f0  
+AddressSanitizer can not provide additional info.
+SUMMARY: AddressSanitizer: BUS (exp104_mmap_grep:arm64+0x10004b6d0) in _RNvMNtNtNtNtCs7c51YpKX6PQ_6memchr4arch7aarch644neon6memchrNtB2_3One8find_raw+0x190
+Thread T11 created by T0 here:
+    #0 0x000105761e3c in pthread_create+0x58 (librustc-nightly_rt.asan.dylib:arm64+0x35e3c)
+    #1 0x000104a30490 in _RNvMs0_NtNtNtCsc3NLQV5XDnX_3std3sys6thread4unixNtB5_6Thread3new+0x1e8 (exp104_mmap_grep:arm64+0x100438490)
+    #2 0x00010498ef84 in _RINvNtNtCsc3NLQV5XDnX_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCs8nYcYDqlPke_10rayon_core8registryNtB14_12DefaultSpawnNtB14_11ThreadSpawn5spawn0uEB16_+0x4a4 (exp104_mmap_grep:arm64+0x100396f84)
+    #3 0x00010498b75c in _RINvMNtNtCsc3NLQV5XDnX_3std6thread7builderNtB3_7Builder15spawn_uncheckedNCNvXs0_NtCs8nYcYDqlPke_10rayon_core8registryNtB1g_12DefaultSpawnNtB1g_11ThreadSpawn5spawn0uEB1i_+0x134 (exp104_mmap_grep:arm64+0x10039375c)
+    #4 0x00010498789c in _RNvXs0_NtCs8nYcYDqlPke_10rayon_core8registryNtB5_12DefaultSpawnNtB5_11ThreadSpawn5spawn+0x2e8 (exp104_mmap_grep:arm64+0x10038f89c)
+    #5 0x000104983e78 in _RINvMs4_NtCs8nYcYDqlPke_10rayon_core8registryNtB6_8Registry3newNtB6_12DefaultSpawnEB8_+0x7b8 (exp104_mmap_grep:arm64+0x10038be78)
+    #6 0x000104986164 in _RNCINvMs0_NtNtCsc3NLQV5XDnX_3std4sync4onceNtB8_4Once9call_onceNCINvNtCs8nYcYDqlPke_10rayon_core8registry19set_global_registryNvB13_23default_global_registryE0E0B15_+0x150 (exp104_mmap_grep:arm64+0x10038e164)
+    #7 0x000104af41e8 in _RNvMNtNtNtNtCsc3NLQV5XDnX_3std3sys4sync4once5queueNtB2_4Once4call+0x180 (exp104_mmap_grep:arm64+0x1004fc1e8)
+    #8 0x0001049874c8 in _RNvNtCs8nYcYDqlPke_10rayon_core8registry15global_registry+0x1a4 (exp104_mmap_grep:arm64+0x10038f4c8)
+    #9 0x000104986bf0 in _RNvMs4_NtCs8nYcYDqlPke_10rayon_core8registryNtB5_8Registry19current_num_threads+0x5c (exp104_mmap_grep:arm64+0x10038ebf0)
+    #10 0x00010463ac30 in _RINvXs_NtNtCshKfubfvUbjH_5rayon4iter7flattenINtB5_7FlattenINtNtB7_8map_with7MapInitINtNtB7_9enumerate9EnumerateINtNtB9_5slice4IterRNtNtCs78S607c8Kur_10fff_search5types8FileItemEENCINvNtB29_4grep12perform_grepNCNvB2V_11grep_searchs6_0E0NCB2S_s_0EENtB7_16ParallelIterator15drive_unindexedNtNtB7_6extend15ListVecConsumerEB29_+0x108 (exp104_mmap_grep:arm64+0x100042c30)
+    #11 0x00010461858c in _RINvXsv_NtNtCshKfubfvUbjH_5rayon4iter6extendINtNtCs1vH6uTNGErt_5alloc3vec3VecTjRNtNtCs78S607c8Kur_10fff_search5types8FileItemIBH_NtNtB1k_4grep9GrepMatchEEEINtB8_14ParallelExtendB1d_E10par_extendINtNtB8_7flatten7FlattenINtNtB8_8map_with7MapInitINtNtB8_9enumerate9EnumerateINtNtBa_5slice4IterB1f_EENCINvB25_12perform_grepNCNvB25_11grep_searchs6_0E0NCB4M_s_0EEEB1k_+0xec (exp104_mmap_grep:arm64+0x10002058c)
+    #12 0x0001046f18fc in _RNvNtCs78S607c8Kur_10fff_search4grep11grep_search+0x54e0 (exp104_mmap_grep:arm64+0x1000f98fc)
+    #13 0x0001046e188c in _RNvMs4_NtCs78S607c8Kur_10fff_search11file_pickerNtB5_10FilePicker4grep+0x230 (exp104_mmap_grep:arm64+0x1000e988c)
+    #14 0x0001045fe074 in _RNvCs88Hwk8B7CV0_16exp104_mmap_grep9grep_loop+0x1fc (exp104_mmap_grep:arm64+0x100006074)
+    #15 0x0001045fbb90 in _RNvCs88Hwk8B7CV0_16exp104_mmap_grep4main+0xbf8 (exp104_mmap_grep:arm64+0x100003b90)
+    #16 0x00010460c05c in _RINvNtNtCsc3NLQV5XDnX_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs88Hwk8B7CV0_16exp104_mmap_grep+0x8 (exp104_mmap_grep:arm64+0x10001405c)
+    #17 0x00010460d674 in _RNCINvNtCsc3NLQV5XDnX_3std2rt10lang_startuE0Cs88Hwk8B7CV0_16exp104_mmap_grep+0x24 (exp104_mmap_grep:arm64+0x100015674)
+    #18 0x000104a47544 in _RINvNvNtCsc3NLQV5XDnX_3std9panicking12catch_unwind7do_callRDINtNtNtCskEYADKe2HLm_4core3ops8function2FnuEp6OutputlNtNtNtB13_5panic11unwind_safe13RefUnwindSafeNtNtB13_6marker4SyncEL_lEB6_+0x5c (exp104_mmap_grep:arm64+0x10044f544)
+    #19 0x000104a4cf60 in __rust_try+0x1c (exp104_mmap_grep:arm64+0x100454f60)
+    #20 0x000104a47358 in _RINvNvNtCsc3NLQV5XDnX_3std9panicking12catch_unwind7do_callNCNvNtB6_2rt19lang_start_internal0iEB6_+0x1ac (exp104_mmap_grep:arm64+0x10044f358)
+    #21 0x000104a4cf60 in __rust_try+0x1c (exp104_mmap_grep:arm64+0x100454f60)
+    #22 0x000104a49474 in _RNvNtCsc3NLQV5XDnX_3std2rt19lang_start_internal+0xf4 (exp104_mmap_grep:arm64+0x100451474)
+    #23 0x00010460b440 in _RINvNtCsc3NLQV5XDnX_3std2rt10lang_startuECs88Hwk8B7CV0_16exp104_mmap_grep+0xd0 (exp104_mmap_grep:arm64+0x100013440)
+    #24 0x0001046001fc in main+0x1c (exp104_mmap_grep:arm64+0x1000081fc)
+    #25 0x000186fe44e0 in start+0x1b4c (dyld:arm64e+0x204e0)
+
+==53617==ABORTING
+EXP-104 truncate/plain: child exit code=None signal=Some(6) (SIGBUS=10 SIGSEGV=11 on macOS)
+EXP-104 truncate/plain: NO fault observed
+exit=0
+EXP104_ASAN_DONE
+
+# Executor notes (2026-09-12)
+- Classification of the ASan truncate arm: the child died with SIGABRT (signal 6) because AddressSanitizer aborts after printing its DEADLYSIGNAL report; the report itself is "AddressSanitizer: BUS on unknown address ... The signal is caused by a READ memory access" in memchr::arch::aarch64::neon::memchr::One::find_raw called from fff_grep::searcher::glue::SliceByLine<PlainTextMatcher, PlainTextSink>::run <- Searcher::search_slice <- fff_search::grep::perform_grep (rayon worker). The harness line "NO fault observed" under ASan is therefore a misclassification by the harness (it only checks for 10/11); the non-ASan truncate arms above died with SIGBUS (signal 10) directly.
+- Mechanism of the PlainText (workspace) violations: PlainTextSink::matched builds line_content with String::from_utf8_lossy(display_bytes).into_owned() (grep.rs:750; RegexSink :832, AhoCorasickSink :909 are identical). from_utf8_lossy validates the slice and returns Cow::Borrowed when valid; into_owned then copies the bytes a second time. Both reads go through a &[u8] over the live mapping, so a write(2) landing between the validation read and the copy yields a String whose bytes fail from_utf8. The from_utf8_unchecked route (grep.rs:1710, fuzzy_grep_search) only widens the window (whole-file validation once, per-line copies later), which is why the fuzzy arm shows ~49% invalid lines and the plain arm ~0.0002%.
+- Mapping confirmed live in-process by vmmap ("mapped file ... r--/r-x SM=ALI .../big2.txt", 4 regions) and by the picker's cache budget (cached_count=4, cached_bytes=16777152) after the first grep; the below-threshold control (8190-byte files, slow read path) stayed clean in both modes with the same writer.

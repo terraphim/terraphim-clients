@@ -1,0 +1,23 @@
+# Standalone scratch workspace for Phase 5 experiments. Nothing here is part of
+# the repository workspace; the crates path-depend on ../../crates/* and the
+# patch table mirrors the repository root so dependency resolution is identical.
+[workspace]
+resolver = "2"
+members = ["EXP-003c", "EXP-011", "EXP-012", "EXP-013", "EXP-014", "EXP-103", "EXP-104", "EXP-202", "EXP-203", "EXP-204"]
+exclude = ["EXP-201"]
+
+[patch.crates-io]
+terraphim_types = { version = "1.21.0", registry = "terraphim" }
+terraphim_automata = { version = "1.21.0", registry = "terraphim" }
+terraphim_file_search = { version = "1.21.0", registry = "terraphim" }
+terraphim_middleware = { version = "1.21.0", registry = "terraphim" }
+terraphim_rolegraph = { version = "1.20.2", registry = "terraphim" }
+terraphim_config = { version = "=1.20.2", registry = "terraphim" }
+terraphim_persistence = { version = "=1.20.2", registry = "terraphim" }
+terraphim_service = { version = "1.21.1", registry = "terraphim" }
+terraphim_orchestrator = { version = "1.21.0", registry = "terraphim" }
+terraphim_settings = { version = "1.20.2", registry = "terraphim" }
+terraphim_router = { version = "1.20.2", registry = "terraphim" }
+terraphim_tracker = { version = "1.20.2", registry = "terraphim" }
+terraphim-markdown-parser = { version = "1.20.2", registry = "terraphim" }
+rustls-webpki = { git = "https://github.com/rustls/webpki.git", tag = "v/0.103.12" }

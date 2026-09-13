@@ -1,0 +1,234 @@
+=== EXP-301 x86_64 AVX2 ASan run ===
+date: 2026-09-12T15:26:42Z
+host: Ubuntu-2004-focal-64-minimal-hwe x86_64 glibc ldd (Ubuntu GLIBC 2.39-0ubuntu8.7) 2.39
+HEAD(clone): 46bbc43c524a71b08a4557d7be956ce2ef9c72ad
+cpu-flags avx2: avx2
+uptime:  17:26:42 up 125 days,  7:54, 45 users,  load average: 3.98, 2.20, 2.21
+orphans(terraphim_server): 51
+toolchain: cargo 1.100.0-nightly (3c0b53475 2026-09-04)
+=== build (RUSTFLAGS asan, -Zbuild-std) ===
+warning: binary `exp301_memmem_diff` should have a kebab-case name
+   |
+ 1 | /tmp/ubx-r7/EXP-301/target/.../exp301_memmem_diff
+   |                                ^^^^^^^^^^^^^^^^^^
+   |
+   = note: `cargo::non_kebab_case_bins` is set to `warn` by default
+help: to change the binary name to `exp301-memmem-diff`, convert `package.name`
+  --> Cargo.toml:2:8
+   |
+ 2 - name = "exp301_memmem_diff"
+ 2 + name = "exp301-memmem-diff"
+   |
+help: to change the binary name to `exp301-memmem-diff`, specify `bin.name`
+  --> Cargo.toml:11:14
+   |
+11 ~ debug = true
+12 + [[bin]]
+13 + name = "exp301-memmem-diff"
+14 + path = "src/main.rs"
+   |
+warning: `exp301_memmem_diff` (manifest) generated 1 warning
+   Compiling compiler_builtins v0.1.160 (/home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins)
+   Compiling core v0.0.0 (/home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core)
+   Compiling libc v0.2.189
+   Compiling object v0.39.1
+   Compiling std v0.0.0 (/home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std)
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.24
+   Compiling shlex v2.0.1
+   Compiling serde_core v1.0.229
+   Compiling find-msvc-tools v0.1.12
+   Compiling crossbeam-utils v0.8.23
+   Compiling rand_core v0.6.4
+   Compiling siphasher v1.0.3
+   Compiling pkg-config v0.3.34
+   Compiling icu_properties_data v2.3.0
+   Compiling icu_normalizer_data v2.3.0
+   Compiling crossbeam-epoch v0.9.21
+   Compiling vcpkg v0.2.15
+   Compiling crossbeam-deque v0.8.8
+   Compiling inotify-sys v0.1.8
+   Compiling serde v1.0.229
+   Compiling zmij v1.0.23
+   Compiling serde_json v1.0.151
+   Compiling thiserror v2.0.20
+   Compiling rand v0.8.8
+   Compiling rayon-core v1.13.0
+   Compiling notify v9.0.0-rc.5
+   Compiling version_check v0.9.5
+   Compiling getrandom v0.3.4
+   Compiling phf_shared v0.11.3
+   Compiling parking_lot_core v0.9.12
+   Compiling zerocopy v0.8.57
+   Compiling heed v0.22.1
+   Compiling fff-search v0.8.4
+   Compiling ahash v0.8.12
+   Compiling phf_generator v0.11.3
+   Compiling syn v2.0.119
+   Compiling syn v3.0.5
+   Compiling jobserver v0.1.35
+   Compiling cc v1.4.5
+   Compiling libz-sys v1.1.29
+   Compiling libgit2-sys v0.18.8+1.9.7
+   Compiling blake3 v1.8.7
+   Compiling zerovec-derive v0.11.6
+   Compiling displaydoc v0.2.7
+   Compiling serde_derive v1.0.229
+   Compiling thiserror-impl v2.0.20
+   Compiling synstructure v0.13.2
+   Compiling phf_macros v0.11.3
+   Compiling tracing-attributes v0.1.31
+   Compiling zerofrom-derive v0.1.7
+   Compiling yoke-derive v0.8.2
+   Compiling phf v0.11.3
+   Compiling doxygen-rs v0.4.2
+   Compiling lmdb-master-sys v0.2.6
+   Compiling rustc-std-workspace-core v1.99.0 (/home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/rustc-std-workspace-core)
+   Compiling alloc v0.0.0 (/home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc)
+   Compiling memchr v2.8.3
+   Compiling adler2 v2.0.1
+   Compiling cfg-if v1.0.4
+   Compiling rustc-demangle v0.1.28
+   Compiling rustc-literal-escaper v0.0.8
+   Compiling unwind v0.0.0 (/home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/unwind)
+   Compiling rustc-std-workspace-alloc v1.99.0 (/home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/rustc-std-workspace-alloc)
+   Compiling panic_unwind v0.0.0 (/home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/panic_unwind)
+   Compiling panic_abort v0.0.0 (/home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/panic_abort)
+   Compiling gimli v0.34.0
+   Compiling std_detect v0.1.5 (/home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std_detect)
+   Compiling miniz_oxide v0.9.1
+   Compiling hashbrown v0.17.1
+   Compiling addr2line v0.27.1
+   Compiling proc_macro v0.0.0 (/home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/proc_macro)
+   Compiling stable_deref_trait v1.2.1
+   Compiling zerofrom v0.1.8
+   Compiling log v0.4.34
+   Compiling smallvec v1.16.1
+   Compiling writeable v0.6.4
+   Compiling litemap v0.8.3
+   Compiling once_cell v1.21.4
+   Compiling utf8_iter v1.0.4
+   Compiling regex-syntax v0.8.11
+   Compiling same-file v1.0.6
+   Compiling pin-project-lite v0.2.17
+   Compiling itoa v1.0.18
+   Compiling either v1.18.0
+   Compiling lazy_static v1.5.0
+   Compiling percent-encoding v2.3.2
+   Compiling scopeguard v1.2.0
+   Compiling thread_local v1.1.10
+   Compiling heed-traits v0.20.0
+   Compiling num-conv v0.2.2
+   Compiling xxhash-rust v0.8.18
+   Compiling sharded-slab v0.1.7
+   Compiling powerfmt v0.2.0
+   Compiling deranged v0.5.8
+   Compiling yoke v0.8.3
+   Compiling walkdir v2.5.0
+   Compiling byteorder v1.5.0
+   Compiling option-ext v0.2.0
+   Compiling time-core v0.1.9
+   Compiling nu-ansi-term v0.50.3
+   Compiling lock_api v0.4.14
+   Compiling tracing-core v0.1.36
+   Compiling itertools v0.14.0
+   Compiling file-id v0.2.3
+   Compiling cpufeatures v0.3.1
+   Compiling symlink v0.1.0
+   Compiling zerovec v0.11.8
+   Compiling zerotrie v0.2.5
+   Compiling form_urlencoded v1.2.2
+   Compiling arrayvec v0.7.8
+   Compiling constant_time_eq v0.4.2
+   Compiling rustc-hash v2.1.3
+   Compiling pathdiff v0.2.3
+   Compiling fff-query-parser v0.8.4
+   Compiling glidesort v0.1.2
+   Compiling crossbeam-queue v0.3.14
+   Compiling crossbeam-channel v0.5.17
+   Compiling synchronoise v1.0.1
+   Compiling mio v1.2.3
+   Compiling dirs-sys v0.4.1
+   Compiling page_size v0.6.0
+   Compiling memmap2 v0.9.11
+   Compiling tinystr v0.8.4
+   Compiling potential_utf v0.1.6
+   Compiling aho-corasick v1.1.5
+   Compiling bstr v1.13.1
+   Compiling tracing-log v0.2.0
+   Compiling tracing v0.1.44
+   Compiling time v0.3.55
+   Compiling icu_collections v2.3.0
+   Compiling icu_locale_core v2.3.0
+   Compiling parking_lot v0.12.5
+   Compiling dirs v5.0.1
+   Compiling fff-grep v0.8.4
+   Compiling rayon v1.12.0
+   Compiling bitflags v2.13.2
+   Compiling notify-types v2.1.0
+   Compiling inotify v0.11.5
+   Compiling raw-cpuid v11.6.0
+   Compiling bincode v1.3.3
+   Compiling icu_provider v2.3.1
+   Compiling icu_normalizer v2.3.0
+   Compiling icu_properties v2.3.0
+   Compiling heed-types v0.21.0
+   Compiling neo_frizbee v0.10.4
+   Compiling idna_adapter v1.2.2
+   Compiling fff-notify-debouncer-full v0.9.4
+   Compiling idna v1.1.0
+   Compiling regex-automata v0.4.18
+   Compiling url v2.5.8
+   Compiling git2 v0.20.4
+   Compiling matchers v0.2.0
+   Compiling globset v0.4.20
+   Compiling regex v1.13.1
+   Compiling tracing-subscriber v0.3.23
+   Compiling ignore v0.4.33
+   Compiling tracing-appender v0.2.5
+   Compiling exp301_memmem_diff v0.0.0 (/tmp/ubx-r7/EXP-301)
+    Finished `release` profile [optimized + debuginfo] target(s) in 49.22s
+=== admissibility: __asan_ symbols in the harness binary ===
+asan symbols in binary: 118
+=== run ===
+=================================================================
+==601581==ERROR: AddressSanitizer: odr-violation (0x650bbdaec6c0):
+  [1] size=256 'lookup_table' libgit2/deps/llhttp/llhttp.c:3906:22 in /tmp/ubx-r7/EXP-301/target/x86_64-unknown-linux-gnu/release/exp301_memmem_diff
+  [2] size=256 'lookup_table' libgit2/deps/llhttp/llhttp.c:3965:22 in /tmp/ubx-r7/EXP-301/target/x86_64-unknown-linux-gnu/release/exp301_memmem_diff
+These globals were registered at these points:
+  [1]:
+    #0 0x650bbdbaeff9 in __asan_register_globals (/tmp/ubx-r7/EXP-301/target/x86_64-unknown-linux-gnu/release/exp301_memmem_diff+0x196ff9) (BuildId: f1580193b652eed25f546ef54c0b74454c1df9c9)
+    #1 0x70bd1522a303 in __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x2a303) (BuildId: 8e9fd827446c24067541ac5390e6f527fb5947bb)
+    #2 0x650bbdb9e364 in _start (/tmp/ubx-r7/EXP-301/target/x86_64-unknown-linux-gnu/release/exp301_memmem_diff+0x186364) (BuildId: f1580193b652eed25f546ef54c0b74454c1df9c9)
+
+  [2]:
+    #0 0x650bbdbaeff9 in __asan_register_globals (/tmp/ubx-r7/EXP-301/target/x86_64-unknown-linux-gnu/release/exp301_memmem_diff+0x196ff9) (BuildId: f1580193b652eed25f546ef54c0b74454c1df9c9)
+    #1 0x70bd1522a303 in __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x2a303) (BuildId: 8e9fd827446c24067541ac5390e6f527fb5947bb)
+    #2 0x650bbdb9e364 in _start (/tmp/ubx-r7/EXP-301/target/x86_64-unknown-linux-gnu/release/exp301_memmem_diff+0x186364) (BuildId: f1580193b652eed25f546ef54c0b74454c1df9c9)
+
+==601581==HINT: if you don't care about these errors you may set ASAN_OPTIONS=detect_odr_violation=0
+SUMMARY: AddressSanitizer: odr-violation: global 'lookup_table' at libgit2/deps/llhttp/llhttp.c:3906:22 in /tmp/ubx-r7/EXP-301/target/x86_64-unknown-linux-gnu/release/exp301_memmem_diff
+==601581==ABORTING
+=== run exit: 134 ===
+DONE_EXP301
+=== EXP-301 x86_64 re-run (detect_odr_violation=0; ODR fp in libgit2 llhttp suppressed) ===
+date: 2026-09-12T15:28:12Z
+EXP-301 start: arch=x86_64 seed=0x5eed1301abcdef01 random_cases=50000
+enumerated boundary cases: 1215 divergences=0
+EXP-301 done: arch=x86_64 seed=0x5eed1301abcdef01 total_cases=51215 total_divergences=0 fingerprint=0x90a0d98b9dbec243
+EXP-301 NO_EVIDENCE (this arm): zero kernel/oracle disagreements; ASan report separately
+=== run exit: 0 ===
+DONE_EXP301_RERUN
+
+=== EXP-301 aarch64 NEON arm (macOS audit host, host-divergence) ===
+date: 2026-09-12T15:33Z (BST 16:33)
+host: Darwin aarch64 (audit host)
+release differential run (same seed, 50000 random):
+  arch=aarch64 seed=0x5eed1301abcdef01 total_cases=51215 total_divergences=0 fingerprint=0x90a0d98b9dbec243
+  => IDENTICAL fingerprint to x86_64 AVX2 run (0x90a0d98b9dbec243): NO host divergence
+ASan run (aarch64-apple-darwin, -Zsanitizer=address -Zbuild-std, 1720 __asan_ syms, 20000 random):
+  arch=aarch64 total_cases=21215 total_divergences=0 fingerprint=0x576ed599163494ad exit=0
+  => zero ASan reports in the NEON path (verify_neon_dotprod / search_packed_pair_neon)
+VERDICT: NO_EVIDENCE
+DONE_EXP301_NEON

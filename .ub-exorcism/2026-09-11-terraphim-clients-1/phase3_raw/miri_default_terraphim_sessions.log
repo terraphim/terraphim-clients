@@ -1,0 +1,70 @@
+# CMD: MIRIFLAGS="-Zmiri-disable-isolation" cargo +nightly miri test -p terraphim_sessions --lib -- --test-threads=1 --skip connector::native --skip connector::cursor --skip service --skip test_import_from_tempdir_history_file
+# DATE: 2026-09-12 00:20 BST
+    Blocking waiting for file lock on package cache
+warning: patch `rustls-webpki v0.103.12 (https://github.com/rustls/webpki.git?tag=v%2F0.103.12#27131d47)` was not used in the crate graph
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on build directory
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.22s
+     Running unittests src/lib.rs (target/miri/aarch64-apple-darwin/debug/deps/terraphim_sessions-d1fdef330c2cb025)
+
+running 50 tests
+test cla::connector::tests::test_cla_claude_connector ... ok
+test connector::aider::tests::count_aider_history_files_respects_depth_cap ... ok
+test connector::aider::tests::count_aider_history_files_terminates_on_symlink_cycle ... ok
+test connector::aider::tests::test_parse_simple_chat ... ok
+test connector::aider::tests::test_parse_with_metadata ... ok
+test connector::tests::test_connector_registry_creation ... ok
+test connector::tests::test_import_options_builder ... ok
+test model::file_access_tests::test_file_access_creation ... ok
+test model::file_access_tests::test_file_access_serialization ... ok
+test model::file_access_tests::test_file_operation_display ... ok
+test model::tests::test_content_block_as_text ... ok
+test model::tests::test_message_has_tool_use ... ok
+test model::tests::test_message_role_display ... ok
+test model::tests::test_message_role_from_aliases ... ok
+test model::tests::test_message_role_from_str ... ok
+test model::tests::test_message_text ... ok
+test model::tests::test_message_tool_names ... ok
+test model::tests::test_session_counts ... ok
+test model::tests::test_session_duration_no_timestamps ... ok
+test model::tests::test_session_duration_with_timestamps ... ok
+test model::tests::test_session_extract_file_accesses_empty_session ... ok
+test model::tests::test_session_extract_file_accesses_read_tools ... ok
+test model::tests::test_session_extract_file_accesses_skips_unknown_tools ... ok
+test model::tests::test_session_extract_file_accesses_write_tools ... ok
+test model::tests::test_session_summary_long_message_truncated ... ok
+test model::tests::test_session_summary_no_user_messages ... ok
+test model::tests::test_session_summary_short_message ... ok
+test model::tests::test_session_tools_used ... ok
+test redaction::tests::redact_aws_key ... ok
+test redaction::tests::redact_bearer_token ... ok
+test redaction::tests::redact_connection_string ... ok
+test redaction::tests::redact_github_token ... ok
+test redaction::tests::redact_message_content_and_text_block ... ok
+test redaction::tests::redact_message_tool_result_content ... ok
+test redaction::tests::redact_openai_key ... ok
+test redaction::tests::safe_text_unchanged ... ok
+test search::tests::test_build_body_includes_metadata ... ok
+test search::tests::test_build_body_truncation ... ok
+test search::tests::test_build_body_truncation_multibyte_utf8 ... ok
+test search::tests::test_search_sessions_basic ... ok
+test search::tests::test_search_sessions_empty_query ... ok
+test search::tests::test_search_sessions_empty_sessions ... ok
+test search::tests::test_search_sessions_ranking_order ... ok
+test search::tests::test_session_to_document_basic ... ok
+test search::tests::test_session_to_document_no_title ... ok
+test search::tests::test_session_to_document_tags ... ok
+test search_tests_support::tests::aider_fixture_shape ... ok
+test search_tests_support::tests::claude_jsonl_fixture_is_parseable_json_per_line ... ok
+test search_tests_support::tests::make_session_defaults ... ok
+test search_tests_support::tests::make_session_empty_title_falls_back ... ok
+
+test result: ok. 50 passed; 0 failed; 0 ignored; 0 measured; 36 filtered out; finished in 497.18s
+
+MIRI_EXIT=0

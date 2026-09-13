@@ -1,0 +1,6 @@
+serialize(default, extra=Null) = Ok("{\"project_path\":null,\"model\":null,\"tags\":[]}")
+round-trip extra = Object {} (was Null) equal=false
+extra="str" -> Err("can only flatten structs and maps (got a string)")
+extra=1 -> Err("can only flatten structs and maps (got an integer)")
+extra=[1,2] -> Err("can only flatten structs and maps (got a sequence)")
+extra={"k":"v"} -> Ok("{\"project_path\":null,\"model\":null,\"tags\":[],\"k\":\"v\"}")

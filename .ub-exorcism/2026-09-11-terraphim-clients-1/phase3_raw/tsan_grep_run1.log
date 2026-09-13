@@ -1,0 +1,189 @@
+=== RUN 1 START 2026-09-12 00:00:43 BST CFLAGS=unset
+warning: patch `rustls-webpki v0.103.12 (https://github.com/rustls/webpki.git?tag=v%2F0.103.12#27131d47)` was not used in the crate graph
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+   Compiling aws-lc-sys v0.41.0
+   Compiling ring v0.17.14
+   Compiling zstd-sys v2.0.16+zstd.1.5.7
+   Compiling libsqlite3-sys v0.30.1
+   Compiling libz-sys v1.1.29
+   Compiling lmdb-master-sys v0.2.6
+   Compiling blake3 v1.8.5
+   Compiling pathdiff v0.2.3
+   Compiling minimal-lexical v0.2.1
+   Compiling paste v1.0.15
+   Compiling libgit2-sys v0.18.5+1.9.4
+   Compiling nom v7.1.3
+   Compiling selectors v0.33.0
+   Compiling heed v0.22.1
+   Compiling rustls v0.23.40
+   Compiling cipher v0.5.2
+   Compiling markup5ever_rcdom v0.3.0
+   Compiling html5ever v0.36.1
+   Compiling serde_with_macros v3.21.0
+   Compiling notify-debouncer-full v0.6.0
+   Compiling mime_guess v2.0.5
+   Compiling rustls-webpki v0.103.13
+   Compiling sha2 v0.11.0
+   Compiling xattr v1.6.1
+   Compiling hmac v0.13.0
+   Compiling getopts v0.2.24
+   Compiling console v0.15.11
+   Compiling strum_macros v0.28.0
+   Compiling half v2.7.1
+   Compiling jiff v0.2.28
+   Compiling filetime v0.2.29
+   Compiling encoding_rs v0.8.35
+   Compiling plotters-backend v0.3.7
+   Compiling ego-tree v0.10.0
+   Compiling libbz2-rs-sys v0.2.5
+   Compiling ciborium-io v0.2.2
+   Compiling unsafe-libyaml v0.2.11
+   Compiling unicase v2.9.0
+   Compiling number_prefix v0.4.0
+   Compiling bumpalo v3.20.3
+   Compiling cpubits v0.1.1
+   Compiling alloca v0.4.0
+   Compiling self_update v0.42.0
+   Compiling zopfli v0.8.3
+   Compiling aes v0.9.1
+   Compiling strum v0.28.0
+   Compiling indicatif v0.17.11
+   Compiling rusqlite v0.32.1
+   Compiling serde_yaml v0.9.34+deprecated
+   Compiling bzip2 v0.6.1
+   Compiling ciborium-ll v0.2.2
+   Compiling scraper v0.25.0
+   Compiling plotters-svg v0.3.7
+   Compiling tar v0.4.46
+   Compiling lzma-rust2 v0.16.4
+   Compiling pbkdf2 v0.13.0
+   Compiling serde_with v3.21.0
+   Compiling eventsource-stream v0.2.3
+   Compiling html2md v0.2.15
+   Compiling zip v7.2.0
+   Compiling self-replace v1.5.0
+   Compiling zipsign-api v0.1.5
+   Compiling sha1 v0.11.0
+   Compiling sqlx-core v0.8.6
+   Compiling value-ext v0.1.3
+   Compiling console v0.16.3
+   Compiling env_filter v1.0.1
+   Compiling itertools v0.13.0
+   Compiling quick-xml v0.37.5
+   Compiling shell-words v1.1.1
+   Compiling semver v1.0.28
+   Compiling deflate64 v0.1.12
+   Compiling ppmd-rust v1.4.0
+   Compiling cast v0.3.0
+   Compiling dialoguer v0.12.0
+   Compiling zipsign-api v0.2.1
+   Compiling env_logger v0.11.10
+   Compiling terraphim_router v1.20.2 (registry `terraphim`)
+   Compiling plotters v0.3.7
+   Compiling ciborium v0.2.2
+   Compiling tinytemplate v1.2.1
+   Compiling criterion-plot v0.8.2
+   Compiling anes v0.1.6
+   Compiling oorandom v11.1.5
+   Compiling tokio-test v0.4.5
+   Compiling criterion v0.8.2
+   Compiling sqlx-sqlite v0.8.6
+   Compiling zstd-safe v7.2.4
+   Compiling zstd v0.13.3
+   Compiling zip v8.6.0
+   Compiling sqlx-macros-core v0.8.6
+   Compiling git2 v0.20.4
+   Compiling sqlx-macros v0.8.6
+   Compiling aws-lc-rs v1.17.0
+   Compiling fff-search v0.8.4
+   Compiling tokio-rustls v0.26.4
+   Compiling rustls-platform-verifier v0.7.0
+   Compiling ureq v2.12.1
+   Compiling hyper-rustls v0.27.9
+   Compiling reqwest v0.12.28
+   Compiling reqwest v0.13.4
+   Compiling genai v0.6.5
+   Compiling terraphim_automata v1.21.0 (registry `terraphim`)
+   Compiling terraphim_rolegraph v1.20.2 (registry `terraphim`)
+   Compiling terraphim_file_search v1.21.0 (registry `terraphim`)
+   Compiling terraphim_update v1.20.2 (/Users/alex/projects/terraphim/terraphim-clients/crates/terraphim_update)
+   Compiling sqlx v0.8.6
+   Compiling opendal v0.54.1
+   Compiling terraphim_persistence v1.20.2 (registry `terraphim`)
+   Compiling terraphim_config v1.20.2 (registry `terraphim`)
+   Compiling terraphim_middleware v1.21.0 (registry `terraphim`)
+   Compiling terraphim_service v1.21.1 (registry `terraphim`)
+   Compiling terraphim_grep v1.21.14 (/Users/alex/projects/terraphim/terraphim-clients/crates/terraphim_grep)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2m 02s
+     Running unittests src/lib.rs (/private/tmp/claude-501/ubx-target-tsan/aarch64-apple-darwin/debug/deps/terraphim_grep-c20f6268f6f81f63)
+
+running 57 tests
+test hybrid_searcher::tests::kg_boost_does_not_match_concept_embedded_in_larger_word ... ok
+test hybrid_searcher::tests::kg_boost_keeps_author_only_chunk_below_real_auth_chunk ... ok
+test hybrid_searcher::tests::kg_boost_no_concepts_is_a_noop ... ok
+test hybrid_searcher::tests::test_grep_options_default ... ok
+test hybrid_searcher::tests::test_hybrid_results_empty ... ok
+test hybrid_searcher::tests::test_hybrid_results_to_chunks ... ok
+test hybrid_searcher::tests::kg_boost_matches_concept_at_identifier_boundary ... ok
+test kg_curation::tests::test_persist_concepts_empty_is_noop ... ok
+test kg_curation::tests::test_persist_concepts_skips_existing_files ... ok
+test kg_curation::tests::test_persist_concepts_writes_markdown_files ... ok
+test rlm_context::tests::test_build_prompt ... ok
+test rlm_context::tests::test_rlm_context_new ... ok
+test rlm_context::tests::test_rlm_context_with_chunks ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_expands_shared_normalised_term ... ok
+test hybrid_searcher::tests::thesaurus_query_concepts_uses_automata_not_substring_expansion ... ok
+test rlm_context::tests::test_rlm_context_with_concepts ... ok
+test rlm_context::tests::test_truncate ... ok
+test hybrid_searcher::tests::kg_boost_promotes_matching_chunks_to_top ... ok
+test signatures::tests::test_answer_signature_parse ... ok
+test openrouter_client::tests::test_into_llm_client_returns_trait_object ... ok
+test openrouter_client::tests::test_openrouter_client_timeout_is_120_seconds ... ok
+test openrouter_client::tests::test_openrouter_client_new_validates_inputs ... ok
+test signatures::tests::test_answer_signature_parse_markdown_wrapped ... ok
+test signatures::tests::test_concept_extraction_signature_parse ... ok
+test signatures::tests::test_extract_json_finds_array_in_prose ... ok
+test openrouter_client::tests::test_openrouter_client_base_url_resolution ... ok
+test signatures::tests::test_extract_json_finds_bare_json_in_prose ... ok
+test signatures::tests::test_extract_json_handles_unterminated_fence ... ok
+test signatures::tests::test_extract_json_prefers_json_fence_over_other_language ... ok
+test hybrid_searcher::tests::kg_boost_stacks_when_multiple_concepts_match ... ok
+test signatures::tests::test_extract_json_strips_generic_markdown_fence ... ok
+test signatures::tests::test_extract_json_strips_markdown_fences ... ok
+test signatures::tests::test_search_result_signature_invalid ... ok
+test signatures::tests::test_search_result_signature_parse ... ok
+test signatures::tests::test_signature_instructions ... ok
+test sufficiency_judge::tests::test_coverage_calculation ... ok
+test sufficiency_judge::tests::test_diversity_calculation ... ok
+test sufficiency_judge::tests::test_empty_results_insufficient ... ok
+test sufficiency_judge::tests::test_judge_delegates_to_judge_with_metrics ... ok
+test sufficiency_judge::tests::test_high_coverage_sufficient ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_empty_results ... ok
+test sufficiency_judge::tests::test_judge_with_metrics_reports_measurements ... ok
+test sufficiency_judge::tests::test_kg_confidence_calculation ... ok
+test sufficiency_judge::tests::test_low_results_insufficient ... ok
+test tests::grep_result_serialises_sufficiency_explanation ... ok
+test tests::rlm_requested_only_for_explicit_flags ... ok
+test tests::test_answer_prompt_includes_json_instructions ... ok
+test tests::test_grep_options_default ... ok
+test tests::test_list_prompt_excludes_json_instructions ... ok
+test hybrid_searcher::tests::default_build_greps_populated_directory ... ok
+test tests::search_without_llm_degrades_to_search_only ... ok
+test tests::insufficient_path_propagates_chunk_count ... ok
+test tests::search_without_thesaurus_uses_fff_mode ... ok
+test tests::force_rlm_without_answer_invokes_llm ... ok
+test hybrid_searcher::tests::multiple_search_paths_merge_results ... ok
+test tests::needs_synthesis_with_answer_invokes_llm ... ok
+test tests::needs_synthesis_without_answer_skips_llm ... ok
+
+test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.57s
+
+=== RUN 1 END exit=0 wall=126s

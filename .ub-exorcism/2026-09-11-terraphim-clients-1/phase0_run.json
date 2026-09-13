@@ -1,0 +1,27 @@
+{
+  "run_id": "2026-09-11-terraphim-clients-1",
+  "mode": "Exhaustive",
+  "source_path": "/Users/alex/projects/terraphim/terraphim-clients",
+  "started_at": "2026-09-11T21:51:00Z",
+  "archetype_hint": "pure-safe-with-env-unsafe",
+  "skipped_tools": [
+    "sbh (installer failed in --yes pass; recommended-only, unused by any phase)"
+  ],
+  "skipped_buckets": [],
+  "tracking": "gitea-gtr",
+  "offload": "local",
+  "convergence_floor_rounds": 10,
+  "convergence_floor_rationale": "CONVERGENCE.md Archetype-aware round floor: any unsafe in crate code (6 env-setter blocks, 3 files) => 10 rounds in Exhaustive, non-negotiable. The forbid-unsafe carve-out does not apply.",
+  "install_note": "user chose to install bv, ntm, sbh, dsr, cargo-afl via install-toolchain.sh --yes (tmux ubx-install)",
+  "tool_quirks": [
+    "slb smoke fails on --version (known quirk, tool works)"
+  ],
+  "phase0_user_acceptance": {
+    "accepted_at": "2026-09-11T22:05:00+01:00",
+    "partition": "accepted",
+    "preflight_nonfatal_no_fuzz_dir": "accepted; fuzz targets to be authored in Phase 3",
+    "degraded_tools": "accepted: sbh missing (unused), slb --version quirk",
+    "bucket_pruning": "accepted: 20 buckets closed NO_SURFACE with evidence (phase2_findings_*.md)"
+  },
+  "gitea_issue": "terraphim/terraphim-clients#252"
+}

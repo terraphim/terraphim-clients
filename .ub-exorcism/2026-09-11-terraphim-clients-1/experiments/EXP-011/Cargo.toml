@@ -1,0 +1,12 @@
+[package]
+name = "exp011_nan_comparators"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+terraphim_grep = { path = "../../../../crates/terraphim_grep" }
+terraphim_agent = { path = "../../../../crates/terraphim_agent" }
+terraphim_types = { version = "1.22.1", registry = "terraphim" }
+tokio = { version = "1", features = ["full"] }
+tempfile = "3"

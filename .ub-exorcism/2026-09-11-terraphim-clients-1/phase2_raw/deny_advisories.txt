@@ -1,0 +1,950 @@
+2026-09-11 21:58:02 [WARN] unable to find a config path, falling back to default config
+error[unsound]: Unsoundness in `Error::downcast_mut()`
+   ┌─ /Users/alex/projects/terraphim/terraphim-clients/Cargo.lock:15:1
+   │
+15 │ anyhow 1.0.102 registry+https://github.com/rust-lang/crates.io-index
+   │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ unsound advisory detected
+   │
+   ├ ID: RUSTSEC-2026-0190
+   ├ Advisory: https://rustsec.org/advisories/RUSTSEC-2026-0190
+   ├ Affected versions of this crate violate borrow rules, resulting in undefined behavior, when the user adds context to an error via `Error::context` and then later calls `Error::downcast_mut` on the returned `Error`.
+     
+     The flaw was corrected in commit `6e8c000` by revising how the mutable reference is constructed, avoiding inclusion of a shared reference in the resulting borrow chain.
+     
+     ## Example
+     
+     ```rust
+     use anyhow::Error;
+     use std::fmt;
+     
+     #[derive(Debug)]
+     struct ErrorContext(&'static str);
+     
+     impl fmt::Display for ErrorContext {
+         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+             fmt::Display::fmt(&self.0, f)
+         }
+     }
+     
+     fn main() {
+         let mut error = Error::msg("inner error").context(ErrorContext("old context"));
+         let context: &mut ErrorContext = error.downcast_mut().unwrap();
+         context.0 = "new context";
+         println!("{:?}", error);
+     }
+     ```
+     
+     ## Miri output
+     
+     ```
+     error: Undefined Behavior: trying to retag from <1538> for Unique permission at alloc602[0x38], but that tag only grants SharedReadOnly permission for this location
+        --> src/ptr.rs:170:18
+         |
+     170 |         unsafe { &mut *self.ptr.as_ptr() }
+         |                  ^^^^^^^^^^^^^^^^^^^^^^^ this error occurs as part of retag at alloc602[0x38..0x48]
+         |
+         = help: this indicates a potential bug in the program: it performed an invalid operation, but the Stacked Borrows rules it violated are still experimental
+         = help: see https://github.com/rust-lang/unsafe-code-guidelines/blob/master/wip/stacked-borrows.md for further information
+     help: <1538> was created by a SharedReadOnly retag at offsets [0x38..0x48]
+        --> src/ptr.rs:89:18
+         |
+      89 |             ptr: NonNull::from(ptr),
+         |                  ^^^^^^^^^^^^^^^^^^
+         = note: stack backtrace:
+                 0: anyhow::ptr::Mut::<'_, ErrorContext>::deref_mut
+                     at src/ptr.rs:170:18: 170:41
+                 1: anyhow::error::<impl anyhow::Error>::downcast_mut::<ErrorContext>
+                     at src/error.rs:560:18: 560:46
+                 2: main
+                     at examples/downcast_mut.rs:15:38: 15:58
+     ```
+   ├ Announcement: https://github.com/dtolnay/anyhow/issues/451
+   ├ Solution: Upgrade to >=1.0.103 (try `cargo update -p anyhow`)
+   ├ anyhow v1.0.102
+     ├── opendal v0.54.1
+     │   ├── terraphim_config v1.20.2
+     │   │   ├── terraphim-cli v1.21.14
+     │   │   ├── terraphim_agent v1.21.14
+     │   │   │   └── (dev) terraphim_agent v1.21.14 (*)
+     │   │   ├── terraphim_command_runtime v0.1.0
+     │   │   │   ├── terraphim-cli v1.21.14 (*)
+     │   │   │   └── terraphim_agent v1.21.14 (*)
+     │   │   ├── terraphim_grep v1.21.14
+     │   │   ├── (dev) terraphim_mcp_server v1.0.0
+     │   │   ├── terraphim_middleware v1.21.0
+     │   │   │   ├── terraphim_agent v1.21.14 (*)
+     │   │   │   ├── (dev) terraphim_mcp_server v1.0.0 (*)
+     │   │   │   └── terraphim_service v1.21.1
+     │   │   │       ├── terraphim-cli v1.21.14 (*)
+     │   │   │       ├── terraphim_agent v1.21.14 (*)
+     │   │   │       ├── terraphim_grep v1.21.14 (*)
+     │   │   │       └── terraphim_mcp_server v1.0.0 (*)
+     │   │   └── terraphim_service v1.21.1 (*)
+     │   ├── terraphim_orchestrator v1.21.0
+     │   │   └── terraphim_agent v1.21.14 (*)
+     │   ├── terraphim_persistence v1.20.2
+     │   │   ├── terraphim-cli v1.21.14 (*)
+     │   │   ├── terraphim_agent v1.21.14 (*)
+     │   │   ├── terraphim_agent_evolution v1.20.2
+     │   │   │   ├── terraphim_agent v1.21.14 (*)
+     │   │   │   └── terraphim_orchestrator v1.21.0 (*)
+     │   │   ├── terraphim_command_runtime v0.1.0 (*)
+     │   │   ├── terraphim_config v1.20.2 (*)
+     │   │   ├── (dev) terraphim_mcp_server v1.0.0 (*)
+     │   │   ├── terraphim_middleware v1.21.0 (*)
+     │   │   ├── terraphim_orchestrator v1.21.0 (*)
+     │   │   ├── terraphim_service v1.21.1 (*)
+     │   │   └── terraphim_usage v1.20.3
+     │   │       └── terraphim-cli v1.21.14 (*)
+     │   ├── terraphim_service v1.21.1 (*)
+     │   └── terraphim_usage v1.20.3 (*)
+     ├── reqwest-middleware v0.4.2
+     │   ├── reqwest-retry v0.7.0
+     │   │   └── terraphim_orchestrator v1.21.0 (*)
+     │   └── terraphim_orchestrator v1.21.0 (*)
+     ├── reqwest-retry v0.7.0 (*)
+     ├── terraphim-cli v1.21.14 (*)
+     ├── terraphim-session-analyzer v1.21.14
+     │   └── terraphim_sessions v1.21.2
+     │       └── terraphim_agent v1.21.14 (*)
+     ├── terraphim_agent v1.21.14 (*)
+     ├── terraphim_command_runtime v0.1.0 (*)
+     ├── terraphim_config v1.20.2 (*)
+     ├── terraphim_grep v1.21.14 (*)
+     ├── (dev) terraphim_mcp_server v1.0.0 (*)
+     ├── terraphim_orchestrator v1.21.0 (*)
+     ├── terraphim_sessions v1.21.2 (*)
+     ├── terraphim_types v1.22.1
+     │   ├── terraphim-cli v1.21.14 (*)
+     │   ├── terraphim-markdown-parser v1.20.2
+     │   │   ├── terraphim_automata v1.21.0
+     │   │   │   ├── terraphim-cli v1.21.14 (*)
+     │   │   │   ├── terraphim_agent v1.21.14 (*)
+     │   │   │   ├── terraphim_config v1.20.2 (*)
+     │   │   │   ├── terraphim_file_search v1.21.0
+     │   │   │   │   ├── (dev) terraphim_mcp_server v1.0.0 (*)
+     │   │   │   │   └── terraphim_middleware v1.21.0 (*)
+     │   │   │   ├── terraphim_grep v1.21.14 (*)
+     │   │   │   ├── terraphim_hooks v1.21.14
+     │   │   │   │   ├── terraphim-cli v1.21.14 (*)
+     │   │   │   │   ├── terraphim_agent v1.21.14 (*)
+     │   │   │   │   └── terraphim_mcp_server v1.0.0 (*)
+     │   │   │   ├── terraphim_lsp v1.21.14
+     │   │   │   ├── terraphim_mcp_search v0.1.3
+     │   │   │   │   └── terraphim_agent v1.21.14 (*)
+     │   │   │   ├── terraphim_mcp_server v1.0.0 (*)
+     │   │   │   ├── terraphim_middleware v1.21.0 (*)
+     │   │   │   ├── terraphim_negative_contribution v1.21.14
+     │   │   │   │   └── terraphim_lsp v1.21.14 (*)
+     │   │   │   ├── terraphim_orchestrator v1.21.0 (*)
+     │   │   │   ├── terraphim_rolegraph v1.20.2
+     │   │   │   │   ├── terraphim-cli v1.21.14 (*)
+     │   │   │   │   ├── terraphim_agent v1.21.14 (*)
+     │   │   │   │   ├── terraphim_config v1.20.2 (*)
+     │   │   │   │   ├── terraphim_grep v1.21.14 (*)
+     │   │   │   │   ├── terraphim_mcp_server v1.0.0 (*)
+     │   │   │   │   ├── terraphim_middleware v1.21.0 (*)
+     │   │   │   │   └── terraphim_service v1.21.1 (*)
+     │   │   │   └── terraphim_service v1.21.1 (*)
+     │   │   └── terraphim_sessions v1.21.2 (*)
+     │   ├── terraphim_agent v1.21.14 (*)
+     │   ├── terraphim_agent_evolution v1.20.2 (*)
+     │   ├── terraphim_automata v1.21.0 (*)
+     │   ├── terraphim_command_runtime v0.1.0 (*)
+     │   ├── terraphim_config v1.20.2 (*)
+     │   ├── terraphim_file_search v1.21.0 (*)
+     │   ├── terraphim_grep v1.21.14 (*)
+     │   ├── terraphim_hooks v1.21.14 (*)
+     │   ├── terraphim_lsp v1.21.14 (*)
+     │   ├── terraphim_mcp_search v0.1.3 (*)
+     │   ├── terraphim_mcp_server v1.0.0 (*)
+     │   ├── terraphim_middleware v1.21.0 (*)
+     │   ├── terraphim_negative_contribution v1.21.14 (*)
+     │   ├── terraphim_orchestrator v1.21.0 (*)
+     │   ├── terraphim_persistence v1.20.2 (*)
+     │   ├── terraphim_rolegraph v1.20.2 (*)
+     │   ├── terraphim_router v1.20.2
+     │   │   ├── (dev) terraphim_grep v1.21.14 (*)
+     │   │   ├── terraphim_orchestrator v1.21.0 (*)
+     │   │   └── terraphim_service v1.21.1 (*)
+     │   ├── terraphim_service v1.21.1 (*)
+     │   ├── terraphim_sessions v1.21.2 (*)
+     │   ├── terraphim_spawner v1.21.0
+     │   │   └── terraphim_orchestrator v1.21.0 (*)
+     │   └── terraphim_usage v1.20.3 (*)
+     ├── terraphim_update v1.20.2
+     │   ├── terraphim-cli v1.21.14 (*)
+     │   ├── terraphim_agent v1.21.14 (*)
+     │   └── terraphim_grep v1.21.14 (*)
+     └── terraphim_usage v1.20.3 (*)
+
+error[unmaintained]: Bincode is unmaintained
+   ┌─ /Users/alex/projects/terraphim/terraphim-clients/Cargo.lock:34:1
+   │
+34 │ bincode 1.3.3 registry+https://github.com/rust-lang/crates.io-index
+   │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ unmaintained advisory detected
+   │
+   ├ ID: RUSTSEC-2025-0141
+   ├ Advisory: https://rustsec.org/advisories/RUSTSEC-2025-0141
+   ├ Due to a doxxing and harassment incident, the bincode team has taken the decision to cease development permanently.
+     
+     The team considers version 1.3.3 a complete version of bincode that is not in need of any updates.
+     
+     ## Alternatives to consider
+     
+     * [wincode](https://crates.io/crates/wincode)
+     * [postcard](https://crates.io/crates/postcard)
+     * [bitcode](https://crates.io/crates/bitcode)
+     * [rkyv](https://crates.io/crates/rkyv)
+   ├ Announcement: https://git.sr.ht/~stygianentity/bincode/tree/v3.0/item/README.md
+   ├ Solution: No safe upgrade is available!
+   ├ bincode v1.3.3
+     ├── heed-types v0.21.0
+     │   └── heed v0.22.1
+     │       └── fff-search v0.8.4
+     │           ├── terraphim_file_search v1.21.0
+     │           │   ├── (dev) terraphim_mcp_server v1.0.0
+     │           │   └── terraphim_middleware v1.21.0
+     │           │       ├── terraphim_agent v1.21.14
+     │           │       │   └── (dev) terraphim_agent v1.21.14 (*)
+     │           │       ├── (dev) terraphim_mcp_server v1.0.0 (*)
+     │           │       └── terraphim_service v1.21.1
+     │           │           ├── terraphim-cli v1.21.14
+     │           │           ├── terraphim_agent v1.21.14 (*)
+     │           │           ├── terraphim_grep v1.21.14
+     │           │           └── terraphim_mcp_server v1.0.0 (*)
+     │           ├── terraphim_grep v1.21.14 (*)
+     │           ├── terraphim_mcp_server v1.0.0 (*)
+     │           └── terraphim_middleware v1.21.0 (*)
+     └── terraphim_automata v1.21.0
+         ├── terraphim-cli v1.21.14 (*)
+         ├── terraphim_agent v1.21.14 (*)
+         ├── terraphim_config v1.20.2
+         │   ├── terraphim-cli v1.21.14 (*)
+         │   ├── terraphim_agent v1.21.14 (*)
+         │   ├── terraphim_command_runtime v0.1.0
+         │   │   ├── terraphim-cli v1.21.14 (*)
+         │   │   └── terraphim_agent v1.21.14 (*)
+         │   ├── terraphim_grep v1.21.14 (*)
+         │   ├── (dev) terraphim_mcp_server v1.0.0 (*)
+         │   ├── terraphim_middleware v1.21.0 (*)
+         │   └── terraphim_service v1.21.1 (*)
+         ├── terraphim_file_search v1.21.0 (*)
+         ├── terraphim_grep v1.21.14 (*)
+         ├── terraphim_hooks v1.21.14
+         │   ├── terraphim-cli v1.21.14 (*)
+         │   ├── terraphim_agent v1.21.14 (*)
+         │   └── terraphim_mcp_server v1.0.0 (*)
+         ├── terraphim_lsp v1.21.14
+         ├── terraphim_mcp_search v0.1.3
+         │   └── terraphim_agent v1.21.14 (*)
+         ├── terraphim_mcp_server v1.0.0 (*)
+         ├── terraphim_middleware v1.21.0 (*)
+         ├── terraphim_negative_contribution v1.21.14
+         │   └── terraphim_lsp v1.21.14 (*)
+         ├── terraphim_orchestrator v1.21.0
+         │   └── terraphim_agent v1.21.14 (*)
+         ├── terraphim_rolegraph v1.20.2
+         │   ├── terraphim-cli v1.21.14 (*)
+         │   ├── terraphim_agent v1.21.14 (*)
+         │   ├── terraphim_config v1.20.2 (*)
+         │   ├── terraphim_grep v1.21.14 (*)
+         │   ├── terraphim_mcp_server v1.0.0 (*)
+         │   ├── terraphim_middleware v1.21.0 (*)
+         │   └── terraphim_service v1.21.1 (*)
+         └── terraphim_service v1.21.1 (*)
+
+error[vulnerability]: Invalid pointer dereference in `fmt::Pointer` impl for `Atomic` and `Shared` when the underlying pointer is invalid
+    ┌─ /Users/alex/projects/terraphim/terraphim-clients/Cargo.lock:100:1
+    │
+100 │ crossbeam-epoch 0.9.18 registry+https://github.com/rust-lang/crates.io-index
+    │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ security vulnerability detected
+    │
+    ├ ID: RUSTSEC-2026-0204
+    ├ Advisory: https://rustsec.org/advisories/RUSTSEC-2026-0204
+    ├ Affected versions of `fmt::Display` dereference the underlying pointer. This causes a invalid pointer dereference e.g., when a pointer created with `Atomic::null` or `Shared::null`. `fmt::Debug` impls and pre-0.9 `fmt::Display` impls, which do not dereference pointers, are not affected by this issue.
+    ├ Announcement: https://github.com/crossbeam-rs/crossbeam/pull/1276
+    ├ Solution: Upgrade to >=0.9.20 (try `cargo update -p crossbeam-epoch`)
+    ├ crossbeam-epoch v0.9.18
+      └── crossbeam-deque v0.8.6
+          ├── ignore v0.4.26
+          │   └── fff-search v0.8.4
+          │       ├── terraphim_file_search v1.21.0
+          │       │   ├── (dev) terraphim_mcp_server v1.0.0
+          │       │   └── terraphim_middleware v1.21.0
+          │       │       ├── terraphim_agent v1.21.14
+          │       │       │   └── (dev) terraphim_agent v1.21.14 (*)
+          │       │       ├── (dev) terraphim_mcp_server v1.0.0 (*)
+          │       │       └── terraphim_service v1.21.1
+          │       │           ├── terraphim-cli v1.21.14
+          │       │           ├── terraphim_agent v1.21.14 (*)
+          │       │           ├── terraphim_grep v1.21.14
+          │       │           └── terraphim_mcp_server v1.0.0 (*)
+          │       ├── terraphim_grep v1.21.14 (*)
+          │       ├── terraphim_mcp_server v1.0.0 (*)
+          │       └── terraphim_middleware v1.21.0 (*)
+          └── rayon-core v1.13.0
+              └── rayon v1.12.0
+                  ├── criterion v0.8.2
+                  │   ├── (dev) terraphim-session-analyzer v1.21.14
+                  │   │   └── terraphim_sessions v1.21.2
+                  │   │       └── terraphim_agent v1.21.14 (*)
+                  │   ├── (dev) terraphim_grep v1.21.14 (*)
+                  │   └── (dev) terraphim_sessions v1.21.2 (*)
+                  ├── fff-search v0.8.4 (*)
+                  └── terraphim-session-analyzer v1.21.14 (*)
+
+error[vulnerability]: h2 unbounded empty DATA frames
+    ┌─ /Users/alex/projects/terraphim/terraphim-clients/Cargo.lock:212:1
+    │
+212 │ h2 0.4.15 registry+https://github.com/rust-lang/crates.io-index
+    │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ security vulnerability detected
+    │
+    ├ ID: RUSTSEC-2026-0258
+    ├ Advisory: https://rustsec.org/advisories/RUSTSEC-2026-0258
+    ├ The h2 crate, used internally by hyper, had a flaw that would accept and queue empty DATA frames without limit.
+      If streams were not actively drained, this could lead to unbounded memory usage, or a panic if the length overflows.
+      
+      Low severity.
+      
+      Patched in v0.4.16.
+    ├ Announcement: https://github.com/hyperium/hyper/security/advisories/GHSA-q83h-524g-xf6h
+    ├ Solution: Upgrade to >=0.4.16 (try `cargo update -p h2`)
+    ├ h2 v0.4.15
+      ├── hyper v1.10.1
+      │   ├── axum v0.8.9
+      │   │   ├── rmcp v0.9.1
+      │   │   │   └── (dev) terraphim_mcp_server v1.0.0
+      │   │   ├── terraphim_mcp_server v1.0.0 (*)
+      │   │   └── terraphim_orchestrator v1.21.0
+      │   │       └── terraphim_agent v1.21.14
+      │   │           └── (dev) terraphim_agent v1.21.14 (*)
+      │   ├── hyper-rustls v0.27.9
+      │   │   ├── reqwest v0.12.28
+      │   │   │   ├── opendal v0.54.1
+      │   │   │   │   ├── terraphim_config v1.20.2
+      │   │   │   │   │   ├── terraphim-cli v1.21.14
+      │   │   │   │   │   ├── terraphim_agent v1.21.14 (*)
+      │   │   │   │   │   ├── terraphim_command_runtime v0.1.0
+      │   │   │   │   │   │   ├── terraphim-cli v1.21.14 (*)
+      │   │   │   │   │   │   └── terraphim_agent v1.21.14 (*)
+      │   │   │   │   │   ├── terraphim_grep v1.21.14
+      │   │   │   │   │   ├── (dev) terraphim_mcp_server v1.0.0 (*)
+      │   │   │   │   │   ├── terraphim_middleware v1.21.0
+      │   │   │   │   │   │   ├── terraphim_agent v1.21.14 (*)
+      │   │   │   │   │   │   ├── (dev) terraphim_mcp_server v1.0.0 (*)
+      │   │   │   │   │   │   └── terraphim_service v1.21.1
+      │   │   │   │   │   │       ├── terraphim-cli v1.21.14 (*)
+      │   │   │   │   │   │       ├── terraphim_agent v1.21.14 (*)
+      │   │   │   │   │   │       ├── terraphim_grep v1.21.14 (*)
+      │   │   │   │   │   │       └── terraphim_mcp_server v1.0.0 (*)
+      │   │   │   │   │   └── terraphim_service v1.21.1 (*)
+      │   │   │   │   ├── terraphim_orchestrator v1.21.0 (*)
+      │   │   │   │   ├── terraphim_persistence v1.20.2
+      │   │   │   │   │   ├── terraphim-cli v1.21.14 (*)
+      │   │   │   │   │   ├── terraphim_agent v1.21.14 (*)
+      │   │   │   │   │   ├── terraphim_agent_evolution v1.20.2
+      │   │   │   │   │   │   ├── terraphim_agent v1.21.14 (*)
+      │   │   │   │   │   │   └── terraphim_orchestrator v1.21.0 (*)
+      │   │   │   │   │   ├── terraphim_command_runtime v0.1.0 (*)
+      │   │   │   │   │   ├── terraphim_config v1.20.2 (*)
+      │   │   │   │   │   ├── (dev) terraphim_mcp_server v1.0.0 (*)
+      │   │   │   │   │   ├── terraphim_middleware v1.21.0 (*)
+      │   │   │   │   │   ├── terraphim_orchestrator v1.21.0 (*)
+      │   │   │   │   │   ├── terraphim_service v1.21.1 (*)
+      │   │   │   │   │   └── terraphim_usage v1.20.3
+      │   │   │   │   │       └── terraphim-cli v1.21.14 (*)
+      │   │   │   │   ├── terraphim_service v1.21.1 (*)
+      │   │   │   │   └── terraphim_usage v1.20.3 (*)
+      │   │   │   ├── reqwest-middleware v0.4.2
+      │   │   │   │   ├── reqwest-retry v0.7.0
+      │   │   │   │   │   └── terraphim_orchestrator v1.21.0 (*)
+      │   │   │   │   └── terraphim_orchestrator v1.21.0 (*)
+      │   │   │   ├── reqwest-retry v0.7.0 (*)
+      │   │   │   ├── self_update v0.42.0
+      │   │   │   │   └── terraphim_update v1.20.2
+      │   │   │   │       ├── terraphim-cli v1.21.14 (*)
+      │   │   │   │       ├── terraphim_agent v1.21.14 (*)
+      │   │   │   │       └── terraphim_grep v1.21.14 (*)
+      │   │   │   ├── terraphim_agent v1.21.14 (*)
+      │   │   │   ├── terraphim_automata v1.21.0
+      │   │   │   │   ├── terraphim-cli v1.21.14 (*)
+      │   │   │   │   ├── terraphim_agent v1.21.14 (*)
+      │   │   │   │   ├── terraphim_config v1.20.2 (*)
+      │   │   │   │   ├── terraphim_file_search v1.21.0
+      │   │   │   │   │   ├── (dev) terraphim_mcp_server v1.0.0 (*)
+      │   │   │   │   │   └── terraphim_middleware v1.21.0 (*)
+      │   │   │   │   ├── terraphim_grep v1.21.14 (*)
+      │   │   │   │   ├── terraphim_hooks v1.21.14
+      │   │   │   │   │   ├── terraphim-cli v1.21.14 (*)
+      │   │   │   │   │   ├── terraphim_agent v1.21.14 (*)
+      │   │   │   │   │   └── terraphim_mcp_server v1.0.0 (*)
+      │   │   │   │   ├── terraphim_lsp v1.21.14
+      │   │   │   │   ├── terraphim_mcp_search v0.1.3
+      │   │   │   │   │   └── terraphim_agent v1.21.14 (*)
+      │   │   │   │   ├── terraphim_mcp_server v1.0.0 (*)
+      │   │   │   │   ├── terraphim_middleware v1.21.0 (*)
+      │   │   │   │   ├── terraphim_negative_contribution v1.21.14
+      │   │   │   │   │   └── terraphim_lsp v1.21.14 (*)
+      │   │   │   │   ├── terraphim_orchestrator v1.21.0 (*)
+      │   │   │   │   ├── terraphim_rolegraph v1.20.2
+      │   │   │   │   │   ├── terraphim-cli v1.21.14 (*)
+      │   │   │   │   │   ├── terraphim_agent v1.21.14 (*)
+      │   │   │   │   │   ├── terraphim_config v1.20.2 (*)
+      │   │   │   │   │   ├── terraphim_grep v1.21.14 (*)
+      │   │   │   │   │   ├── terraphim_mcp_server v1.0.0 (*)
+      │   │   │   │   │   ├── terraphim_middleware v1.21.0 (*)
+      │   │   │   │   │   └── terraphim_service v1.21.1 (*)
+      │   │   │   │   └── terraphim_service v1.21.1 (*)
+      │   │   │   ├── terraphim_grep v1.21.14 (*)
+      │   │   │   ├── terraphim_middleware v1.21.0 (*)
+      │   │   │   ├── terraphim_orchestrator v1.21.0 (*)
+      │   │   │   ├── terraphim_service v1.21.1 (*)
+      │   │   │   ├── terraphim_tracker v1.20.2
+      │   │   │   │   ├── terraphim_agent v1.21.14 (*)
+      │   │   │   │   └── terraphim_orchestrator v1.21.0 (*)
+      │   │   │   └── terraphim_usage v1.20.3 (*)
+      │   │   └── reqwest v0.13.4
+      │   │       └── genai v0.6.5
+      │   │           └── terraphim_service v1.21.1 (*)
+      │   ├── hyper-util v0.1.20
+      │   │   ├── axum v0.8.9 (*)
+      │   │   ├── hyper-rustls v0.27.9 (*)
+      │   │   ├── reqwest v0.12.28 (*)
+      │   │   ├── reqwest v0.13.4 (*)
+      │   │   └── wiremock v0.6.5
+      │   │       └── (dev) terraphim_agent v1.21.14 (*)
+      │   ├── reqwest v0.12.28 (*)
+      │   ├── reqwest v0.13.4 (*)
+      │   ├── reqwest-retry v0.7.0 (*)
+      │   ├── self_update v0.42.0 (*)
+      │   └── wiremock v0.6.5 (*)
+      ├── reqwest v0.12.28 (*)
+      └── reqwest v0.13.4 (*)
+
+error[unmaintained]: `instant` is unmaintained
+    ┌─ /Users/alex/projects/terraphim/terraphim-clients/Cargo.lock:265:1
+    │
+265 │ instant 0.1.13 registry+https://github.com/rust-lang/crates.io-index
+    │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ unmaintained advisory detected
+    │
+    ├ ID: RUSTSEC-2024-0384
+    ├ Advisory: https://rustsec.org/advisories/RUSTSEC-2024-0384
+    ├ This crate is no longer maintained, and the author recommends using the maintained [`web-time`] crate instead.
+      
+      [`web-time`]: https://crates.io/crates/web-time
+    ├ Solution: No safe upgrade is available!
+    ├ instant v0.1.13
+      ├── parking_lot v0.11.2
+      │   ├── reqwest-retry v0.7.0
+      │   │   └── terraphim_orchestrator v1.21.0
+      │   │       └── terraphim_agent v1.21.14
+      │   │           └── (dev) terraphim_agent v1.21.14 (*)
+      │   └── wasm-timer v0.2.5
+      │       └── reqwest-retry v0.7.0 (*)
+      └── parking_lot_core v0.8.6
+          └── parking_lot v0.11.2 (*)
+
+error[unmaintained]: number_prefix crate is unmaintained
+    ┌─ /Users/alex/projects/terraphim/terraphim-clients/Cargo.lock:336:1
+    │
+336 │ number_prefix 0.4.0 registry+https://github.com/rust-lang/crates.io-index
+    │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ unmaintained advisory detected
+    │
+    ├ ID: RUSTSEC-2025-0119
+    ├ Advisory: https://rustsec.org/advisories/RUSTSEC-2025-0119
+    ├ The `number_prefix` crate is no longer actively maintained.  If you rely on this crate, consider switching to a recommended alternative.
+      
+      ## Recommended alternatives
+      
+      - [`unit-prefix`](https://crates.io/crates/unit-prefix)
+    ├ Announcement: https://github.com/ogham/rust-number-prefix/pull/8
+    ├ Solution: No safe upgrade is available!
+    ├ number_prefix v0.4.0
+      └── indicatif v0.17.11
+          ├── self_update v0.42.0
+          │   └── terraphim_update v1.20.2
+          │       ├── terraphim-cli v1.21.14
+          │       ├── terraphim_agent v1.21.14
+          │       │   └── (dev) terraphim_agent v1.21.14 (*)
+          │       └── terraphim_grep v1.21.14
+          └── terraphim_usage v1.20.3
+              └── terraphim-cli v1.21.14 (*)
+
+error[unmaintained]: paste - no longer maintained
+    ┌─ /Users/alex/projects/terraphim/terraphim-clients/Cargo.lock:354:1
+    │
+354 │ paste 1.0.15 registry+https://github.com/rust-lang/crates.io-index
+    │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ unmaintained advisory detected
+    │
+    ├ ID: RUSTSEC-2024-0436
+    ├ Advisory: https://rustsec.org/advisories/RUSTSEC-2024-0436
+    ├ The creator of the crate `paste` has stated in the [`README.md`](https://github.com/dtolnay/paste/blob/master/README.md) 
+      that this project is not longer maintained as well as archived the repository
+      
+      ## Possible Alternative(s)
+      
+      - [`pastey`]: a fork of paste and is aimed to be a drop-in replacement with additional features for paste crate
+      - [`with_builtin_macros`]: crate providing a [superset of `paste`'s functionality including general `macro_rules!` eager expansions](https://docs.rs/with_builtin_macros/0.1.0/with_builtin_macros/macro.with_eager_expansions.html)  and `concat!`/`concat_idents!` macros
+      
+      [`pastey`]: https://crates.io/crates/pastey
+      [`with_builtin_macros`]: https://crates.io/crates/with_builtin_macros
+    ├ Announcement: https://github.com/dtolnay/paste
+    ├ Solution: No safe upgrade is available!
+    ├ paste v1.0.15
+      ├── genai v0.6.5
+      │   └── terraphim_service v1.21.1
+      │       ├── terraphim-cli v1.21.14
+      │       ├── terraphim_agent v1.21.14
+      │       │   └── (dev) terraphim_agent v1.21.14 (*)
+      │       ├── terraphim_grep v1.21.14
+      │       └── terraphim_mcp_server v1.0.0
+      └── rmcp v0.9.1
+          └── (dev) terraphim_mcp_server v1.0.0 (*)
+
+error[unmaintained]: proc-macro-error is unmaintained
+    ┌─ /Users/alex/projects/terraphim/terraphim-clients/Cargo.lock:391:1
+    │
+391 │ proc-macro-error 1.0.4 registry+https://github.com/rust-lang/crates.io-index
+    │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ unmaintained advisory detected
+    │
+    ├ ID: RUSTSEC-2024-0370
+    ├ Advisory: https://rustsec.org/advisories/RUSTSEC-2024-0370
+    ├ proc-macro-error's maintainer seems to be unreachable, with no commits for 2 years, no releases pushed for 4 years, and no activity on the GitLab repo or response to email.
+      
+      proc-macro-error also depends on `syn 1.x`, which may be bringing duplicate dependencies into dependant build trees.
+      
+      ## Possible Alternative(s)
+      
+      - [manyhow](https://crates.io/crates/manyhow)
+      - [proc-macro2-diagnostics](https://github.com/SergioBenitez/proc-macro2-diagnostics)
+    ├ Announcement: https://gitlab.com/CreepySkeleton/proc-macro-error/-/issues/20
+    ├ Solution: No safe upgrade is available!
+    ├ proc-macro-error v1.0.4
+      └── tabled_derive v0.7.0
+          └── tabled v0.15.0
+              └── terraphim-session-analyzer v1.21.14
+                  └── terraphim_sessions v1.21.2
+                      └── terraphim_agent v1.21.14
+                          └── (dev) terraphim_agent v1.21.14 (*)
+
+error[vulnerability]: Quadratic run time when checking a start tag for duplicate attribute names
+    ┌─ /Users/alex/projects/terraphim/terraphim-clients/Cargo.lock:400:1
+    │
+400 │ quick-xml 0.37.5 registry+https://github.com/rust-lang/crates.io-index
+    │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ security vulnerability detected
+    │
+    ├ ID: RUSTSEC-2026-0194
+    ├ Advisory: https://rustsec.org/advisories/RUSTSEC-2026-0194
+    ├ `BytesStart::attributes()` returns an `Attributes` iterator which, by default
+      (`with_checks(true)`), rejects a start tag that repeats an attribute name. For
+      each attribute yielded, the iterator compared the new name against every name
+      seen so far in the same tag using a linear scan, so a start tag with `N`
+      distinct attribute names cost `O(N²)` byte comparisons. There was no bound on
+      `N` other than the size of the buffered start tag.
+      
+      ## Impact
+      
+      Any code that parses untrusted XML and iterates a start tag's attributes with
+      the default duplicate check enabled can be made to spend CPU time quadratic in
+      the number of attributes on a single tag. Because the check is pure computation
+      with no `.await`/I/O, an I/O-based timeout on the consumer (for example a read
+      or request timeout) cannot interrupt it while it runs.
+      
+      Measured cost of a single start tag, release build:
+      
+      | Attributes on one tag | Time |
+      |---|---|
+      | 80,000  | ~6 s   |
+      | 800,000 | ~10 min |
+      
+      The cost grows with the square of the attribute count, so a start tag of a few
+      tens of megabytes can stall a parsing thread for hours. No memory is exhausted
+      and the parser does not crash; the effect is CPU exhaustion on the thread doing
+      the parsing: a single crafted start tag can pin a CPU core for minutes to hours,
+      denying service to that worker. A deployment that places a wall-clock bound on
+      parsing, or confines it to a non-critical thread, may consider the availability
+      impact lower.
+      
+      ## Affected code paths
+      
+      * `BytesStart::attributes()` / `Attributes` iterated with checks enabled (the
+        default), and `BytesStart::try_get_attribute`.
+      * `NsReader`, which resolves namespaces by iterating a tag's attributes and so
+        reaches the same check internally.
+      
+      Consumers that iterate attributes with `.attributes().with_checks(false)` and do
+      not use `NsReader` are not affected.
+      
+      This was reported as reachable by a remote, unauthenticated attacker in a
+      real-world RPKI relying party (NLnet Labs Routinator) via a crafted RRDP
+      `snapshot.xml`.
+      
+      ## Remediation
+      
+      Upgrade to `quick-xml >= 0.41.0`, where the duplicate check keeps the linear
+      scan for start tags with a small number of attributes and switches to an `O(1)`
+      hash pre-filter above a threshold, making the whole tag `O(N)`. The reported
+      `AttrError::Duplicated` positions are unchanged.
+      
+      If upgrading is not possible and duplicate-name detection is not required,
+      disable it with `.attributes().with_checks(false)` (this does not help
+      `NsReader` consumers, which have no equivalent opt-out before 0.41.0).
+    ├ Announcement: https://github.com/tafia/quick-xml/issues/969
+    ├ Solution: Upgrade to >=0.41.0 (try `cargo update -p quick-xml`)
+    ├ quick-xml v0.37.5
+      └── self_update v0.42.0
+          └── terraphim_update v1.20.2
+              ├── terraphim-cli v1.21.14
+              ├── terraphim_agent v1.21.14
+              │   └── (dev) terraphim_agent v1.21.14 (*)
+              └── terraphim_grep v1.21.14
+
+error[vulnerability]: Unbounded namespace-declaration allocation in `NsReader` enables memory-exhaustion denial of service
+    ┌─ /Users/alex/projects/terraphim/terraphim-clients/Cargo.lock:400:1
+    │
+400 │ quick-xml 0.37.5 registry+https://github.com/rust-lang/crates.io-index
+    │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ security vulnerability detected
+    │
+    ├ ID: RUSTSEC-2026-0195
+    ├ Advisory: https://rustsec.org/advisories/RUSTSEC-2026-0195
+    ├ `NsReader` resolves namespaces by calling `NamespaceResolver::push` for every
+      `Start`/`Empty` event *before* the event is returned to the caller. `push`
+      iterated all `xmlns` / `xmlns:*` attributes on the start tag and, for each one,
+      appended the prefix bytes to an internal buffer and pushed a `NamespaceBinding`
+      (32 bytes on 64-bit) to an internal `Vec`, with no upper bound on the number of
+      declarations.
+      
+      ## Impact
+      
+      A start tag with `N` namespace declarations drove roughly `3×` the tag's byte
+      size in `NamespaceResolver` heap, allocated *inside* `quick-xml` before the
+      `NsReader` consumer ever received the event and could inspect or reject it. A
+      consumer that bounds its *input* size therefore still cannot bound this
+      allocation: an `M`-byte start tag yields on the order of `3 × M` bytes of
+      resolver heap the caller never sees.
+      
+      On untrusted XML this lets a remote, unauthenticated attacker force large heap
+      allocations with a single start tag. With several `NsReader`s running
+      concurrently on independent inputs (a common server pattern), the allocations
+      stack and can exhaust process memory, causing the operating system to kill the
+      process (OOM). This was confirmed against a real-world RPKI relying party (NLnet
+      Labs Routinator), where concurrent RRDP validation workers parsing a crafted
+      `snapshot.xml` exceeded the memory limit and the process was OOM-killed.
+      
+      ## Affected code paths
+      
+      Consumers using `NsReader` (which always calls `NamespaceResolver::push` before
+      yielding `Start`/`Empty`), or calling `NamespaceResolver::push` directly. A plain
+      `Reader` that does not perform namespace resolution is not affected.
+      
+      ## Remediation
+      
+      Upgrade to `quick-xml >= 0.41.0`. `NamespaceResolver::push` now rejects a start
+      tag that declares more than `DEFAULT_MAX_DECLARATIONS_PER_ELEMENT` (256)
+      namespace bindings, returning the new `NamespaceError::TooManyDeclarations`
+      instead of allocating without limit. The limit is configurable via
+      `NamespaceResolver::set_max_declarations_per_element` (use `usize::MAX` to
+      restore the previous unbounded behavior), and `NsReader::resolver_mut()` is
+      provided to reach it.
+      
+      There is no clean workaround for `NsReader` consumers before 0.41.0, as the
+      allocation happens inside the reader with no configuration knob to cap it.
+    ├ Announcement: https://github.com/tafia/quick-xml/issues/970
+    ├ Solution: Upgrade to >=0.41.0 (try `cargo update -p quick-xml`)
+    ├ quick-xml v0.37.5
+      └── self_update v0.42.0
+          └── terraphim_update v1.20.2
+              ├── terraphim-cli v1.21.14
+              ├── terraphim_agent v1.21.14
+              │   └── (dev) terraphim_agent v1.21.14 (*)
+              └── terraphim_grep v1.21.14
+
+error[vulnerability]: Quadratic run time when checking a start tag for duplicate attribute names
+    ┌─ /Users/alex/projects/terraphim/terraphim-clients/Cargo.lock:401:1
+    │
+401 │ quick-xml 0.38.4 registry+https://github.com/rust-lang/crates.io-index
+    │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ security vulnerability detected
+    │
+    ├ ID: RUSTSEC-2026-0194
+    ├ Advisory: https://rustsec.org/advisories/RUSTSEC-2026-0194
+    ├ `BytesStart::attributes()` returns an `Attributes` iterator which, by default
+      (`with_checks(true)`), rejects a start tag that repeats an attribute name. For
+      each attribute yielded, the iterator compared the new name against every name
+      seen so far in the same tag using a linear scan, so a start tag with `N`
+      distinct attribute names cost `O(N²)` byte comparisons. There was no bound on
+      `N` other than the size of the buffered start tag.
+      
+      ## Impact
+      
+      Any code that parses untrusted XML and iterates a start tag's attributes with
+      the default duplicate check enabled can be made to spend CPU time quadratic in
+      the number of attributes on a single tag. Because the check is pure computation
+      with no `.await`/I/O, an I/O-based timeout on the consumer (for example a read
+      or request timeout) cannot interrupt it while it runs.
+      
+      Measured cost of a single start tag, release build:
+      
+      | Attributes on one tag | Time |
+      |---|---|
+      | 80,000  | ~6 s   |
+      | 800,000 | ~10 min |
+      
+      The cost grows with the square of the attribute count, so a start tag of a few
+      tens of megabytes can stall a parsing thread for hours. No memory is exhausted
+      and the parser does not crash; the effect is CPU exhaustion on the thread doing
+      the parsing: a single crafted start tag can pin a CPU core for minutes to hours,
+      denying service to that worker. A deployment that places a wall-clock bound on
+      parsing, or confines it to a non-critical thread, may consider the availability
+      impact lower.
+      
+      ## Affected code paths
+      
+      * `BytesStart::attributes()` / `Attributes` iterated with checks enabled (the
+        default), and `BytesStart::try_get_attribute`.
+      * `NsReader`, which resolves namespaces by iterating a tag's attributes and so
+        reaches the same check internally.
+      
+      Consumers that iterate attributes with `.attributes().with_checks(false)` and do
+      not use `NsReader` are not affected.
+      
+      This was reported as reachable by a remote, unauthenticated attacker in a
+      real-world RPKI relying party (NLnet Labs Routinator) via a crafted RRDP
+      `snapshot.xml`.
+      
+      ## Remediation
+      
+      Upgrade to `quick-xml >= 0.41.0`, where the duplicate check keeps the linear
+      scan for start tags with a small number of attributes and switches to an `O(1)`
+      hash pre-filter above a threshold, making the whole tag `O(N)`. The reported
+      `AttrError::Duplicated` positions are unchanged.
+      
+      If upgrading is not possible and duplicate-name detection is not required,
+      disable it with `.attributes().with_checks(false)` (this does not help
+      `NsReader` consumers, which have no equivalent opt-out before 0.41.0).
+    ├ Announcement: https://github.com/tafia/quick-xml/issues/969
+    ├ Solution: Upgrade to >=0.41.0 (try `cargo update -p quick-xml`)
+    ├ quick-xml v0.38.4
+      └── opendal v0.54.1
+          ├── terraphim_config v1.20.2
+          │   ├── terraphim-cli v1.21.14
+          │   ├── terraphim_agent v1.21.14
+          │   │   └── (dev) terraphim_agent v1.21.14 (*)
+          │   ├── terraphim_command_runtime v0.1.0
+          │   │   ├── terraphim-cli v1.21.14 (*)
+          │   │   └── terraphim_agent v1.21.14 (*)
+          │   ├── terraphim_grep v1.21.14
+          │   ├── (dev) terraphim_mcp_server v1.0.0
+          │   ├── terraphim_middleware v1.21.0
+          │   │   ├── terraphim_agent v1.21.14 (*)
+          │   │   ├── (dev) terraphim_mcp_server v1.0.0 (*)
+          │   │   └── terraphim_service v1.21.1
+          │   │       ├── terraphim-cli v1.21.14 (*)
+          │   │       ├── terraphim_agent v1.21.14 (*)
+          │   │       ├── terraphim_grep v1.21.14 (*)
+          │   │       └── terraphim_mcp_server v1.0.0 (*)
+          │   └── terraphim_service v1.21.1 (*)
+          ├── terraphim_orchestrator v1.21.0
+          │   └── terraphim_agent v1.21.14 (*)
+          ├── terraphim_persistence v1.20.2
+          │   ├── terraphim-cli v1.21.14 (*)
+          │   ├── terraphim_agent v1.21.14 (*)
+          │   ├── terraphim_agent_evolution v1.20.2
+          │   │   ├── terraphim_agent v1.21.14 (*)
+          │   │   └── terraphim_orchestrator v1.21.0 (*)
+          │   ├── terraphim_command_runtime v0.1.0 (*)
+          │   ├── terraphim_config v1.20.2 (*)
+          │   ├── (dev) terraphim_mcp_server v1.0.0 (*)
+          │   ├── terraphim_middleware v1.21.0 (*)
+          │   ├── terraphim_orchestrator v1.21.0 (*)
+          │   ├── terraphim_service v1.21.1 (*)
+          │   └── terraphim_usage v1.20.3
+          │       └── terraphim-cli v1.21.14 (*)
+          ├── terraphim_service v1.21.1 (*)
+          └── terraphim_usage v1.20.3 (*)
+
+error[vulnerability]: Unbounded namespace-declaration allocation in `NsReader` enables memory-exhaustion denial of service
+    ┌─ /Users/alex/projects/terraphim/terraphim-clients/Cargo.lock:401:1
+    │
+401 │ quick-xml 0.38.4 registry+https://github.com/rust-lang/crates.io-index
+    │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ security vulnerability detected
+    │
+    ├ ID: RUSTSEC-2026-0195
+    ├ Advisory: https://rustsec.org/advisories/RUSTSEC-2026-0195
+    ├ `NsReader` resolves namespaces by calling `NamespaceResolver::push` for every
+      `Start`/`Empty` event *before* the event is returned to the caller. `push`
+      iterated all `xmlns` / `xmlns:*` attributes on the start tag and, for each one,
+      appended the prefix bytes to an internal buffer and pushed a `NamespaceBinding`
+      (32 bytes on 64-bit) to an internal `Vec`, with no upper bound on the number of
+      declarations.
+      
+      ## Impact
+      
+      A start tag with `N` namespace declarations drove roughly `3×` the tag's byte
+      size in `NamespaceResolver` heap, allocated *inside* `quick-xml` before the
+      `NsReader` consumer ever received the event and could inspect or reject it. A
+      consumer that bounds its *input* size therefore still cannot bound this
+      allocation: an `M`-byte start tag yields on the order of `3 × M` bytes of
+      resolver heap the caller never sees.
+      
+      On untrusted XML this lets a remote, unauthenticated attacker force large heap
+      allocations with a single start tag. With several `NsReader`s running
+      concurrently on independent inputs (a common server pattern), the allocations
+      stack and can exhaust process memory, causing the operating system to kill the
+      process (OOM). This was confirmed against a real-world RPKI relying party (NLnet
+      Labs Routinator), where concurrent RRDP validation workers parsing a crafted
+      `snapshot.xml` exceeded the memory limit and the process was OOM-killed.
+      
+      ## Affected code paths
+      
+      Consumers using `NsReader` (which always calls `NamespaceResolver::push` before
+      yielding `Start`/`Empty`), or calling `NamespaceResolver::push` directly. A plain
+      `Reader` that does not perform namespace resolution is not affected.
+      
+      ## Remediation
+      
+      Upgrade to `quick-xml >= 0.41.0`. `NamespaceResolver::push` now rejects a start
+      tag that declares more than `DEFAULT_MAX_DECLARATIONS_PER_ELEMENT` (256)
+      namespace bindings, returning the new `NamespaceError::TooManyDeclarations`
+      instead of allocating without limit. The limit is configurable via
+      `NamespaceResolver::set_max_declarations_per_element` (use `usize::MAX` to
+      restore the previous unbounded behavior), and `NsReader::resolver_mut()` is
+      provided to reach it.
+      
+      There is no clean workaround for `NsReader` consumers before 0.41.0, as the
+      allocation happens inside the reader with no configuration knob to cap it.
+    ├ Announcement: https://github.com/tafia/quick-xml/issues/970
+    ├ Solution: Upgrade to >=0.41.0 (try `cargo update -p quick-xml`)
+    ├ quick-xml v0.38.4
+      └── opendal v0.54.1
+          ├── terraphim_config v1.20.2
+          │   ├── terraphim-cli v1.21.14
+          │   ├── terraphim_agent v1.21.14
+          │   │   └── (dev) terraphim_agent v1.21.14 (*)
+          │   ├── terraphim_command_runtime v0.1.0
+          │   │   ├── terraphim-cli v1.21.14 (*)
+          │   │   └── terraphim_agent v1.21.14 (*)
+          │   ├── terraphim_grep v1.21.14
+          │   ├── (dev) terraphim_mcp_server v1.0.0
+          │   ├── terraphim_middleware v1.21.0
+          │   │   ├── terraphim_agent v1.21.14 (*)
+          │   │   ├── (dev) terraphim_mcp_server v1.0.0 (*)
+          │   │   └── terraphim_service v1.21.1
+          │   │       ├── terraphim-cli v1.21.14 (*)
+          │   │       ├── terraphim_agent v1.21.14 (*)
+          │   │       ├── terraphim_grep v1.21.14 (*)
+          │   │       └── terraphim_mcp_server v1.0.0 (*)
+          │   └── terraphim_service v1.21.1 (*)
+          ├── terraphim_orchestrator v1.21.0
+          │   └── terraphim_agent v1.21.14 (*)
+          ├── terraphim_persistence v1.20.2
+          │   ├── terraphim-cli v1.21.14 (*)
+          │   ├── terraphim_agent v1.21.14 (*)
+          │   ├── terraphim_agent_evolution v1.20.2
+          │   │   ├── terraphim_agent v1.21.14 (*)
+          │   │   └── terraphim_orchestrator v1.21.0 (*)
+          │   ├── terraphim_command_runtime v0.1.0 (*)
+          │   ├── terraphim_config v1.20.2 (*)
+          │   ├── (dev) terraphim_mcp_server v1.0.0 (*)
+          │   ├── terraphim_middleware v1.21.0 (*)
+          │   ├── terraphim_orchestrator v1.21.0 (*)
+          │   ├── terraphim_service v1.21.1 (*)
+          │   └── terraphim_usage v1.20.3
+          │       └── terraphim-cli v1.21.14 (*)
+          ├── terraphim_service v1.21.1 (*)
+          └── terraphim_usage v1.20.3 (*)
+
+error[vulnerability]: DNS rebinding vulnerability in rmcp Streamable HTTP server transport
+    ┌─ /Users/alex/projects/terraphim/terraphim-clients/Cargo.lock:436:1
+    │
+436 │ rmcp 0.9.1 registry+https://github.com/rust-lang/crates.io-index
+    │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ security vulnerability detected
+    │
+    ├ ID: RUSTSEC-2026-0189
+    ├ Advisory: https://rustsec.org/advisories/RUSTSEC-2026-0189
+    ├ Prior to version 1.4.0, the `rmcp` crate's Streamable HTTP server transport did
+      not validate the incoming `Host` header.
+      
+      This allowed a malicious public website, via a DNS rebinding attack, to send
+      requests to an MCP server running on the victim's loopback or private-network
+      interface.
+      
+      An attacker who convinced a victim to visit a malicious page could enumerate and
+      invoke tools exposed by a locally running rmcp-based MCP server, read resources
+      and prompts, and trigger side effects limited by the tools exposed by that
+      server.
+      
+      Non-HTTP transports such as stdio and child-process transports are not affected.
+      
+      ## Patches
+      
+      The issue was fixed in `rmcp` 1.4.0 by adding default loopback-only host
+      allowlist validation for the Streamable HTTP server transport. Incoming HTTP
+      requests now validate the `Host` header and return HTTP 403 when the host is not
+      allowed.
+      
+      Users should upgrade to `rmcp >= 1.4.0`.
+      
+      ## Workarounds
+      
+      If upgrading is not possible, place the MCP server behind a reverse proxy
+      configured to reject requests whose `Host` header is not one of the expected
+      hostnames. Do not bind the MCP server to `0.0.0.0` without such validation.
+    ├ Announcement: https://github.com/modelcontextprotocol/rust-sdk/security/advisories/GHSA-89vp-x53w-74fx
+    ├ Solution: Upgrade to >=1.4.0 (try `cargo update -p rmcp`)
+    ├ rmcp v0.9.1
+      └── (dev) terraphim_mcp_server v1.0.0
+
+warning[yanked]: detected yanked crate (try `cargo update -p spin`)
+    ┌─ /Users/alex/projects/terraphim/terraphim-clients/Cargo.lock:501:1
+    │
+501 │ spin 0.9.8 registry+https://github.com/rust-lang/crates.io-index
+    │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ yanked version
+    │
+    ├ spin v0.9.8
+      └── flume v0.11.1
+          └── sqlx-sqlite v0.8.6
+              ├── sqlx v0.8.6
+              │   └── opendal v0.54.1
+              │       ├── terraphim_config v1.20.2
+              │       │   ├── terraphim-cli v1.21.14
+              │       │   ├── terraphim_agent v1.21.14
+              │       │   │   └── (dev) terraphim_agent v1.21.14 (*)
+              │       │   ├── terraphim_command_runtime v0.1.0
+              │       │   │   ├── terraphim-cli v1.21.14 (*)
+              │       │   │   └── terraphim_agent v1.21.14 (*)
+              │       │   ├── terraphim_grep v1.21.14
+              │       │   ├── (dev) terraphim_mcp_server v1.0.0
+              │       │   ├── terraphim_middleware v1.21.0
+              │       │   │   ├── terraphim_agent v1.21.14 (*)
+              │       │   │   ├── (dev) terraphim_mcp_server v1.0.0 (*)
+              │       │   │   └── terraphim_service v1.21.1
+              │       │   │       ├── terraphim-cli v1.21.14 (*)
+              │       │   │       ├── terraphim_agent v1.21.14 (*)
+              │       │   │       ├── terraphim_grep v1.21.14 (*)
+              │       │   │       └── terraphim_mcp_server v1.0.0 (*)
+              │       │   └── terraphim_service v1.21.1 (*)
+              │       ├── terraphim_orchestrator v1.21.0
+              │       │   └── terraphim_agent v1.21.14 (*)
+              │       ├── terraphim_persistence v1.20.2
+              │       │   ├── terraphim-cli v1.21.14 (*)
+              │       │   ├── terraphim_agent v1.21.14 (*)
+              │       │   ├── terraphim_agent_evolution v1.20.2
+              │       │   │   ├── terraphim_agent v1.21.14 (*)
+              │       │   │   └── terraphim_orchestrator v1.21.0 (*)
+              │       │   ├── terraphim_command_runtime v0.1.0 (*)
+              │       │   ├── terraphim_config v1.20.2 (*)
+              │       │   ├── (dev) terraphim_mcp_server v1.0.0 (*)
+              │       │   ├── terraphim_middleware v1.21.0 (*)
+              │       │   ├── terraphim_orchestrator v1.21.0 (*)
+              │       │   ├── terraphim_service v1.21.1 (*)
+              │       │   └── terraphim_usage v1.20.3
+              │       │       └── terraphim-cli v1.21.14 (*)
+              │       ├── terraphim_service v1.21.1 (*)
+              │       └── terraphim_usage v1.20.3 (*)
+              └── sqlx-macros-core v0.8.6
+                  └── sqlx-macros v0.8.6
+                      └── sqlx v0.8.6 (*)
+
+advisories FAILED
+deny exit=1

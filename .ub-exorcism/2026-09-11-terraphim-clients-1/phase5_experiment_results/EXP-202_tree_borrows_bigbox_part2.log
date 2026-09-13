@@ -1,0 +1,59 @@
+EXP-202 Tree Borrows axis, re-run on bigbox (the 16 GB macOS audit host could not complete it)
+DATE=2026-09-13 03:27 CEST
+HOST=Ubuntu-2004-focal-64-minimal-hwe / Ubuntu 24.04.4 LTS / 24 cores
+SOURCE_HEAD=e90b193 (harness copied verbatim from WORKSPACE/experiments/EXP-202; only change: standalone [workspace] table in Cargo.toml and an env-gated corpus cap, inactive unless EXP202_SKIP/EXP202_MAX is set)
+TOOLCHAIN=rustc 1.100.0-nightly (67eda617e 2026-09-10) binary: rustc commit-hash: 67eda617e6a8f8ecec01e1ba7fafe2072a64adcc commit-date: 2026-09-10 host: x86_64-unknown-linux-gnu release: 1.100.0-nightly LLVM version: 23.1.1 
+MIRI=miri 0.1.0 (67eda617e6 2026-09-10)
+DRIVER=/tmp/ubx-r9/drivers/exp202tb.sh (bash -c driver; exit captured via PIPESTATUS[0])
+DF_BEFORE= 281G
+CORPUS_CAP=none
+===== MIRIFLAGS=-Zmiri-disable-isolation -Zmiri-tree-borrows
+exp202_yaml_frontmatter v0.0.0 (/tmp/ubx-r9/EXP-202)
+├── serde v1.0.229
+│   ├── serde_core v1.0.229
+│   └── serde_derive v1.0.229 (proc-macro)
+│       ├── proc-macro2 v1.0.107
+│       │   └── unicode-ident v1.0.24
+│       ├── quote v1.0.47
+│       │   └── proc-macro2 v1.0.107 (*)
+│       └── syn v3.0.5
+│           ├── proc-macro2 v1.0.107 (*)
+│           ├── quote v1.0.47 (*)
+│           └── unicode-ident v1.0.24
+└── serde_yaml v0.9.34+deprecated
+    ├── indexmap v2.14.2
+    │   ├── equivalent v1.0.2
+    │   └── hashbrown v0.17.1
+    ├── itoa v1.0.18
+    ├── ryu v1.0.23
+    ├── serde v1.0.229 (*)
+    └── unsafe-libyaml v0.2.11
+warning: binary `exp202_yaml_frontmatter` should have a kebab-case name
+   |
+ 1 | /tmp/ubx-r9/EXP-202/target/miri/.../exp202_yaml_frontmatter
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `cargo::non_kebab_case_bins` is set to `warn` by default
+help: to change the binary name to `exp202-yaml-frontmatter`, convert `package.name`
+  --> Cargo.toml:2:8
+   |
+ 2 - name = "exp202_yaml_frontmatter"
+ 2 + name = "exp202-yaml-frontmatter"
+   |
+help: to change the binary name to `exp202-yaml-frontmatter`, specify `bin.name`
+  --> Cargo.toml:11:13
+   |
+11 ~ [workspace]
+12 + [[bin]]
+13 + name = "exp202-yaml-frontmatter"
+14 + path = "src/main.rs"
+   |
+warning: `exp202_yaml_frontmatter` (manifest) generated 1 warning
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.02s
+     Running `/home/alex/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/bin/cargo-miri runner target/miri/x86_64-unknown-linux-gnu/debug/exp202_yaml_frontmatter`
+EXP-202 CAP: skipped inputs ["control", "alias-fanout", "alias-undefined", "alias-self", "merge-key-bomb", "deep-flow-seq-300", "deep-flow-map-300", "deep-block-300", "deep-block-seq-300", "lone-surrogate", "surrogate-pair-split", "bad-escape", "truncated-escape-eof", "truncated-quote-eof", "truncated-unicode-escape", "invalid-utf8-plain", "invalid-utf8-block-scalar", "invalid-utf8-in-quoted", "utf16-bom", "utf8-bom-tabs", "nul-bytes", "oversized-tag", "oversized-tag-handle", "many-directives", "long-anchor", "plain-scalar-40k", "dq-scalar-40k-escapes", "sq-scalar-40k", "block-literal-40k-lines", "folded-40k", "indent-indicator-bad", "explicit-key-deep", "complex-key", "multi-doc-with-alias"]
+EXP-202: 9 inputs, serde_yaml 0.9.34 / unsafe-libyaml 0.2.11
+MIRI_EXIT=143
+DF_AFTER= 290G
+EXP202_TB_DONE
+TREE-BORROWS PART 2 ABORTED 2026-09-13 06:19 CEST after 2h52m by the executor. It covered only the 9 inputs part 1 did not reach (EXP202_SKIP listed the 34 completed ones) and spent the whole time inside the first of them, many-keys-4k (4096 YAML keys), without completing it or producing any Miri diagnostic. This is an aborted run, not a verdict.

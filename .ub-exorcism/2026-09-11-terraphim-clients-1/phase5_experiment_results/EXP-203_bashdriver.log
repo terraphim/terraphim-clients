@@ -1,0 +1,90 @@
+EXP-203 full re-run under a bash driver (lead, 2026-09-12 18:40 BST); supersedes the zsh-driven log whose exit capture was empty
+HEAD=e90b1938e02fe650cec88728771b9809bcacb3be rustc 1.98.0-nightly (bd08c9e71 2026-06-25)
+===== MIRIFLAGS=-Zmiri-disable-isolation 
+warning: patch `rustls-webpki v0.103.12 (https://github.com/rustls/webpki.git?tag=v%2F0.103.12#27131d47)` was not used in the crate graph
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+    Finished `dev` profile [optimized] target(s) in 0.10s
+     Running `/Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/bin/cargo-miri runner /private/tmp/claude-501/ubx-exp-target/miri/aarch64-apple-darwin/debug/exp203_semver_version`
+warning: Miri does not support optimizations: the opt-level is ignored. The only effect of selecting a Cargo profile that enables optimizations (such as --release) is to apply its remaining settings, such as whether debug assertions and overflow checks are enabled.
+
+err len=15: Invalid version '1.21.15-0000000': invalid leading zero in pre-release identifier
+err len=16: Invalid version '1.21.15-00000000': invalid leading zero in pre-release identifier
+err len=17: Invalid version '1.21.15-000000000': invalid leading zero in pre-release identifier
+err len=30: Invalid version '1.21.15-0000000000000000000000': invalid leading zero in pre-release identifier
+err len=26: Invalid version '9999999999999999999999.0.0': value of major version number exceeds u64::MAX
+err len=31: Invalid version '1.21.15-00000000000000000000000': invalid leading zero in pre-release identifier
+err len=27: Invalid version '99999999999999999999999.0.0': value of major version number exceeds u64::MAX
+err len=32: Invalid version '1.21.15-000000000000000000000000': invalid leading zero in pre-release identifier
+err len=28: Invalid version '999999999999999999999999.0.0': value of major version number exceeds u64::MAX
+err len=71: Invalid version '1.21.15-000000000000000000000000000000000000000000000000000000000000000': invalid l
+err len=67: Invalid version '999999999999999999999999999999999999999999999999999999999999999.0.0': value of majo
+err len=72: Invalid version '1.21.15-0000000000000000000000000000000000000000000000000000000000000000': invalid 
+err len=68: Invalid version '9999999999999999999999999999999999999999999999999999999999999999.0.0': value of maj
+err len=73: Invalid version '1.21.15-00000000000000000000000000000000000000000000000000000000000000000': invalid
+err len=69: Invalid version '99999999999999999999999999999999999999999999999999999999999999999.0.0': value of ma
+err len=135: Invalid version '1.21.15-000000000000000000000000000000000000000000000000000000000000000000000000000
+err len=131: Invalid version '99999999999999999999999999999999999999999999999999999999999999999999999999999999999
+err len=136: Invalid version '1.21.15-000000000000000000000000000000000000000000000000000000000000000000000000000
+err len=132: Invalid version '99999999999999999999999999999999999999999999999999999999999999999999999999999999999
+err len=137: Invalid version '1.21.15-000000000000000000000000000000000000000000000000000000000000000000000000000
+err len=133: Invalid version '99999999999999999999999999999999999999999999999999999999999999999999999999999999999
+err len=263: Invalid version '1.21.15-000000000000000000000000000000000000000000000000000000000000000000000000000
+err len=259: Invalid version '99999999999999999999999999999999999999999999999999999999999999999999999999999999999
+err len=264: Invalid version '1.21.15-000000000000000000000000000000000000000000000000000000000000000000000000000
+err len=260: Invalid version '99999999999999999999999999999999999999999999999999999999999999999999999999999999999
+err len=4104: Invalid version '1.21.15-000000000000000000000000000000000000000000000000000000000000000000000000000
+err len=4100: Invalid version '99999999999999999999999999999999999999999999999999999999999999999999999999999999999
+err len=16392: Invalid version '1.21.15-000000000000000000000000000000000000000000000000000000000000000000000000000
+err len=16388: Invalid version '99999999999999999999999999999999999999999999999999999999999999999999999999999999999
+err len=65544: Invalid version '1.21.15-000000000000000000000000000000000000000000000000000000000000000000000000000
+err len=65540: Invalid version '99999999999999999999999999999999999999999999999999999999999999999999999999999999999
+err len=8: Invalid version '1.0.0-01': invalid leading zero in pre-release identifier
+err len=8: Invalid version '1.0.0-00': invalid leading zero in pre-release identifier
+err len=6: Invalid version '1.0.0-': empty identifier segment in pre-release identifier
+err len=6: Invalid version '1.0.0+': empty identifier segment in build metadata
+err len=7: Invalid version '1.0.0-+': empty identifier segment in pre-release identifier
+err len=7: Invalid version '1.0.0-.': empty identifier segment in pre-release identifier
+err len=10: Invalid version '1.0.0-a..b': empty identifier segment in pre-release identifier
+err len=8: Invalid version '1.0.0-a.': empty identifier segment in pre-release identifier
+err len=8: Invalid version '1.0.0-.a': empty identifier segment in pre-release identifier
+err len=8: Invalid version '1.0.0-': empty identifier segment in pre-release identifier
+err len=8: Invalid version '1.0.0-İ': empty identifier segment in pre-release identifier
+err len=8: Invalid version '1.0.0-é': empty identifier segment in pre-release identifier
+err len=9: Invalid version '1.0.0+￿': empty identifier segment in build metadata
+err len=9: Invalid version '1.0.0-ab': unexpected character '\0' after pre-release identifier
+err len=9: Invalid version '1.0.0-a b': unexpected character ' ' after pre-release identifier
+err len=0: Invalid version '': empty string, expected a semver version
+err len=1: Invalid version 'v': empty string, expected a semver version
+err len=1: Invalid version '1': unexpected end of input while parsing major version number
+err len=3: Invalid version '1.0': unexpected end of input while parsing minor version number
+err len=7: Invalid version '1.0.0.0': unexpected character '.' after patch version number
+err len=24: Invalid version '18446744073709551616.0.0': value of major version number exceeds u64::MAX
+err len=6: Invalid version ' 1.0.0': unexpected character ' ' while parsing major version number
+err len=6: Invalid version '1.0.0 ': unexpected character ' ' after patch version number
+err len=6: Invalid version '1.0.0
+': unexpected character '\n' after patch version number
+err len=6: Invalid version '01.0.0': invalid leading zero in major version number
+err len=6006: Invalid version '1.0.0-ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé
+err len=14: Invalid version '1.0.0-aaaaaaé': unexpected character 'é' after pre-release identifier
+err len=15: Invalid version '1.0.0-aaaaaaaé': unexpected character 'é' after pre-release identifier
+err len=16: Invalid version '1.0.0-aaaaaaaaé': unexpected character 'é' after pre-release identifier
+err len=2008: Invalid version '1.0.0-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+EXP-203: inputs=308 ok=247 err=61 panics=0 newer_than_current=235 kept_unique=246
+EXP-203 DONE: inspect the Miri log for any semver-frame UB report
+MIRI_EXIT=0
+===== MIRIFLAGS=-Zmiri-disable-isolation -Zmiri-tree-borrows
+TREE-BORROWS AXIS ABORTED (second attempt) by the lead 2026-09-12 20:31 BST: RSS reached 8.2 GB after 92 minutes with 61 MB of host memory free, the same runaway that forced the first abort at 4.6 GB. Killed deliberately to protect the host; this is an aborted run, not a verdict. The Stacked Borrows axis above is complete and admissible (MIRI_EXIT=0, 308 inputs, 0 panics, no diagnostics) and carries the experiment's verdict.
+warning: patch `rustls-webpki v0.103.12 (https://github.com/rustls/webpki.git?tag=v%2F0.103.12#27131d47)` was not used in the crate graph
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+    Finished `dev` profile [optimized] target(s) in 0.07s
+     Running `/Users/alex/.rustup/toolchains/nightly-aarch64-apple-darwin/bin/cargo-miri runner /private/tmp/claude-501/ubx-exp-target/miri/aarch64-apple-darwin/debug/exp203_semver_version`
+warning: Miri does not support optimizations: the opt-level is ignored. The only effect of selecting a Cargo profile that enables optimizations (such as --release) is to apply its remaining settings, such as whether debug assertions and overflow checks are enabled.
+
+MIRI_EXIT=137
+EXP203B_DONE
