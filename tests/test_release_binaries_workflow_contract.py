@@ -33,6 +33,36 @@ def job_block(job_name: str) -> str:
 
 
 class ReleaseBinariesWorkflowContract(unittest.TestCase):
+    def test_dispatch_requires_safe_correlation_identity(self) -> None:
+        text = workflow_text()
+
+        self.assertRegex(
+            text,
+            r"correlation_id:\n\s+description:.*\n\s+required: true\n\s+type: string",
+        )
+
+    def test_run_name_contains_exact_dispatch_identity(self) -> None:
+        text = workflow_text()
+
+        self.assertIn(
+            "run-name: Release ${{ inputs.release_tag }} from "
+            "${{ inputs.expected_source_sha }} "
+            "(correlation ${{ inputs.correlation_id }})",
+            text,
+        )
+
+    def test_dispatch_publication_mode_is_boolean_and_defaults_true(self) -> None:
+        text = workflow_text()
+
+        self.assertRegex(
+            text,
+            r"publish_to_target_release:\n"
+            r"\s+description:.*\n"
+            r"\s+required: false\n"
+            r"\s+default: true\n"
+            r"\s+type: boolean",
+        )
+
     def test_dispatch_requires_immutable_source_inputs(self) -> None:
         text = workflow_text()
 
@@ -69,6 +99,8 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
                         "EXPECTED_SOURCE_SHA": "e080475ac26f44ad4674a438d753f6ab185fb787",
                         "WORKFLOW_SHA": "8bc89a9d22f14cb4cecd066ec4a148f413771fa3",
                         "TARGET_REPO": target_repo,
+                        "CORRELATION_ID": "release-322/attempt_1:abc@123",
+                        "PUBLISH_TO_TARGET_RELEASE": "true",
                     }
                 )
 
@@ -91,6 +123,8 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
                 "EXPECTED_SOURCE_SHA": "e080475ac26f44ad4674a438d753f6ab185fb787",
                 "WORKFLOW_SHA": "8bc89a9d22f14cb4cecd066ec4a148f413771fa3",
                 "TARGET_REPO": "terraphim-clients",
+                "CORRELATION_ID": "release-322/attempt_1:abc@123",
+                "PUBLISH_TO_TARGET_RELEASE": "true",
             }
         )
         cases = (
@@ -106,6 +140,109 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
             with self.subTest(key=key):
                 env = base_env.copy()
                 env[key] = value
+                result = subprocess.run(
+                    ["python3", "-c", preflight_python_validator()],
+                    env=env,
+                    text=True,
+                    capture_output=True,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(error, result.stderr)
+
+    def test_preflight_python_validator_accepts_stage_only_ai_contract(self) -> None:
+        env = os.environ.copy()
+        env.update(
+            {
+                "VERSION": "1.21.12",
+                "RELEASE_TAG": "v1.21.12",
+                "SOURCE_REF": "v1.21.12",
+                "EXPECTED_SOURCE_SHA": "e080475ac26f44ad4674a438d753f6ab185fb787",
+                "WORKFLOW_SHA": "8bc89a9d22f14cb4cecd066ec4a148f413771fa3",
+                "TARGET_REPO": "terraphim-ai",
+                "CORRELATION_ID": "terraphim-ai/release-1.21.12:123456",
+                "PUBLISH_TO_TARGET_RELEASE": "false",
+            }
+        )
+
+        result = subprocess.run(
+            ["python3", "-c", preflight_python_validator()],
+            env=env,
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_preflight_python_validator_rejects_unsafe_correlation_ids(self) -> None:
+        base_env = os.environ.copy()
+        base_env.update(
+            {
+                "VERSION": "1.21.12",
+                "RELEASE_TAG": "v1.21.12",
+                "SOURCE_REF": "v1.21.12",
+                "EXPECTED_SOURCE_SHA": "e080475ac26f44ad4674a438d753f6ab185fb787",
+                "WORKFLOW_SHA": "8bc89a9d22f14cb4cecd066ec4a148f413771fa3",
+                "TARGET_REPO": "terraphim-ai",
+                "CORRELATION_ID": "release-322",
+                "PUBLISH_TO_TARGET_RELEASE": "false",
+            }
+        )
+        cases = (
+            ("", "must not be empty"),
+            (" leading", "leading or trailing whitespace"),
+            ("trailing ", "leading or trailing whitespace"),
+            ("line\nbreak", "safe deterministic text"),
+            ("control\x1fcharacter", "safe deterministic text"),
+            ("space inside", "safe deterministic text"),
+            ("a" * 129, "must not exceed 128 characters"),
+        )
+
+        for correlation_id, error in cases:
+            with self.subTest(correlation_id=repr(correlation_id)):
+                env = base_env.copy()
+                env["CORRELATION_ID"] = correlation_id
+                result = subprocess.run(
+                    ["python3", "-c", preflight_python_validator()],
+                    env=env,
+                    text=True,
+                    capture_output=True,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(error, result.stderr)
+
+    def test_preflight_rejects_invalid_publication_mode_repo_combinations(self) -> None:
+        base_env = os.environ.copy()
+        base_env.update(
+            {
+                "VERSION": "1.21.12",
+                "RELEASE_TAG": "v1.21.12",
+                "SOURCE_REF": "v1.21.12",
+                "EXPECTED_SOURCE_SHA": "e080475ac26f44ad4674a438d753f6ab185fb787",
+                "WORKFLOW_SHA": "8bc89a9d22f14cb4cecd066ec4a148f413771fa3",
+                "TARGET_REPO": "terraphim-ai",
+                "CORRELATION_ID": "release-322",
+                "PUBLISH_TO_TARGET_RELEASE": "false",
+            }
+        )
+        cases = (
+            (
+                {"TARGET_REPO": "terraphim-clients"},
+                "stage-only mode requires target_repo 'terraphim-ai'",
+            ),
+            (
+                {"PUBLISH_TO_TARGET_RELEASE": "False"},
+                "publish_to_target_release must be exactly 'true' or 'false'",
+            ),
+            (
+                {"PUBLISH_TO_TARGET_RELEASE": "1"},
+                "publish_to_target_release must be exactly 'true' or 'false'",
+            ),
+        )
+
+        for updates, error in cases:
+            with self.subTest(updates=updates):
+                env = base_env.copy()
+                env.update(updates)
                 result = subprocess.run(
                     ["python3", "-c", preflight_python_validator()],
                     env=env,
@@ -249,6 +386,9 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
         self.assertIn("needs.preflight.result == 'success'", upload)
         self.assertIn("needs.build-binaries.result == 'success'", upload)
         self.assertIn("needs.sign-and-notarize-macos.result == 'success'", upload)
+        self.assertIn(
+            "needs.preflight.outputs.publish_to_target_release == 'true'", upload
+        )
         self.assertIn("RELEASE_TAG: ${{ needs.preflight.outputs.release_tag }}", upload)
         self.assertIn("TARGET_REPO: ${{ needs.preflight.outputs.target_repo }}", upload)
         self.assertIn("VERSION: ${{ needs.preflight.outputs.version }}", upload)
@@ -256,7 +396,46 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
         self.assertIn("exit 1", upload)
         self.assertNotIn("WARN: CLOUDFLARE_API_TOKEN not set; skipping R2 publish", upload)
 
+    def test_stage_only_keeps_all_build_signing_artifacts_reachable(self) -> None:
+        build = job_block("build-binaries")
+        universal = job_block("create-universal-macos")
+        signing = job_block("sign-and-notarize-macos")
+
+        for block in (build, universal, signing):
+            self.assertNotIn("publish_to_target_release", block)
+            self.assertIn("actions/upload-artifact@v4", block)
+
+        self.assertIn("name: client-binaries-${{ matrix.target }}", build)
+        self.assertIn("name: client-binaries-universal-apple-darwin", universal)
+        self.assertIn(
+            "name: client-binaries-signed-universal-apple-darwin", signing
+        )
+
+    def test_public_mutations_are_inside_publish_true_job_guard(self) -> None:
+        text = workflow_text()
+        upload = job_block("upload-to-target-release")
+        job_guard = upload[: upload.index("    runs-on:")]
+
+        self.assertIn("inputs.publish_to_target_release == true", job_guard)
+        self.assertIn(
+            "needs.preflight.outputs.publish_to_target_release == 'true'", job_guard
+        )
+        for mutation in (
+            "gh release upload",
+            "TERRAPHIM_AI_RELEASE_TOKEN",
+            "ZIPSIGN_PRIVATE_KEY",
+            "CLOUDFLARE_API_TOKEN",
+            "oven-sh/setup-bun",
+            "wrangler r2 object put",
+        ):
+            with self.subTest(mutation=mutation):
+                self.assertIn(mutation, upload)
+                self.assertEqual(text.count(mutation), upload.count(mutation))
+
     def test_restricted_jobs_have_read_only_contents_permissions(self) -> None:
+        workflow_header = workflow_text().split("jobs:", 1)[0]
+        self.assertIn("permissions:\n  contents: read", workflow_header)
+
         for name in (
             "preflight",
             "build-binaries",
@@ -268,7 +447,7 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
                 self.assertIn("permissions:\n      contents: read", block)
 
         upload = job_block("upload-to-target-release")
-        self.assertNotIn("permissions:\n      contents: read", upload)
+        self.assertIn("permissions:\n      contents: write", upload)
 
     def test_signing_credentials_are_masked_and_never_persisted_to_github_env(self) -> None:
         signing = job_block("sign-and-notarize-macos")

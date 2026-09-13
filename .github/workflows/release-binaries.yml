@@ -1,4 +1,5 @@
 name: Release Client Binaries
+run-name: Release ${{ inputs.release_tag }} from ${{ inputs.expected_source_sha }} (correlation ${{ inputs.correlation_id }})
 
 on:
   workflow_dispatch:
@@ -19,14 +20,23 @@ on:
         description: 'Expected peeled 40-character source commit SHA'
         required: true
         type: string
+      correlation_id:
+        description: 'Safe caller-provided identity used to resolve this exact run'
+        required: true
+        type: string
       target_repo:
         description: 'GitHub repo to attach binaries to'
         required: false
         default: terraphim-clients
         type: string
+      publish_to_target_release:
+        description: 'Upload to the target GitHub release and publish to R2'
+        required: false
+        default: true
+        type: boolean
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -44,6 +54,7 @@ jobs:
       source_sha: ${{ steps.contract.outputs.source_sha }}
       workflow_sha: ${{ steps.contract.outputs.workflow_sha }}
       target_repo: ${{ steps.contract.outputs.target_repo }}
+      publish_to_target_release: ${{ steps.contract.outputs.publish_to_target_release }}
     steps:
       - name: Validate inputs and peel source tag
         id: contract
@@ -56,6 +67,8 @@ jobs:
           EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
           WORKFLOW_SHA: ${{ github.sha }}
           TARGET_REPO: ${{ inputs.target_repo }}
+          CORRELATION_ID: ${{ inputs.correlation_id }}
+          PUBLISH_TO_TARGET_RELEASE: ${{ inputs.publish_to_target_release }}
         run: |
           set -euo pipefail
 
@@ -68,6 +81,8 @@ jobs:
           expected_source_sha = os.environ["EXPECTED_SOURCE_SHA"]
           workflow_sha = os.environ["WORKFLOW_SHA"]
           target_repo = os.environ["TARGET_REPO"]
+          correlation_id = os.environ["CORRELATION_ID"]
+          publish_to_target_release = os.environ["PUBLISH_TO_TARGET_RELEASE"]
 
           semver = re.compile(
               r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
@@ -91,6 +106,23 @@ jobs:
               )
           if target_repo not in {"terraphim-clients", "terraphim-ai"}:
               sys.exit(f"target_repo {target_repo!r} is not allowed")
+          if not correlation_id:
+              sys.exit("correlation_id must not be empty")
+          if correlation_id != correlation_id.strip():
+              sys.exit("correlation_id must not have leading or trailing whitespace")
+          if len(correlation_id) > 128:
+              sys.exit("correlation_id must not exceed 128 characters")
+          if not re.fullmatch(r"[A-Za-z0-9._:/@+-]+", correlation_id):
+              sys.exit(
+                  "correlation_id must be safe deterministic text using only "
+                  "ASCII letters, digits, '.', '_', ':', '/', '@', '+', or '-'"
+              )
+          if publish_to_target_release not in {"true", "false"}:
+              sys.exit(
+                  "publish_to_target_release must be exactly 'true' or 'false'"
+              )
+          if publish_to_target_release == "false" and target_repo != "terraphim-ai":
+              sys.exit("stage-only mode requires target_repo 'terraphim-ai'")
           PY
 
           peel_tag_ref() {
@@ -129,6 +161,7 @@ jobs:
             echo "source_sha=$source_sha"
             echo "workflow_sha=$WORKFLOW_SHA"
             echo "target_repo=$TARGET_REPO"
+            echo "publish_to_target_release=$PUBLISH_TO_TARGET_RELEASE"
           } >> "$GITHUB_OUTPUT"
 
   build-binaries:
@@ -433,13 +466,17 @@ jobs:
   upload-to-target-release:
     name: Sign + attach to GitHub release + publish to R2
     needs: [preflight, build-binaries, sign-and-notarize-macos]
+    permissions:
+      contents: write
     # Fail closed: attach only when every build target and macOS signing succeeded.
     if: >-
       always() &&
       !cancelled() &&
       needs.preflight.result == 'success' &&
       needs.sign-and-notarize-macos.result == 'success' &&
-      needs.build-binaries.result == 'success'
+      needs.build-binaries.result == 'success' &&
+      inputs.publish_to_target_release == true &&
+      needs.preflight.outputs.publish_to_target_release == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
