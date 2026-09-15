@@ -190,6 +190,12 @@ jobs:
                 "$APPLE_APP_PASSWORD" "$CERT_BASE64" "$CERT_PASSWORD"
             done
           done
+          # Re-verify after every temporary signing keychain has been deleted.
+          # This proves the embedded signatures are portable, rather than
+          # accidentally depending on credentials left in the runner keychain.
+          for binary in inputs/*-apple-darwin; do
+            codesign --verify --deep --strict --verbose=2 "$binary"
+          done
 
       - name: Package and archive-sign release assets
         shell: bash
@@ -235,6 +241,9 @@ jobs:
           done
           cargo install zipsign --version 0.2.1 --locked
           scripts/sign-release-archives.sh release-assets
+          for binary in release-assets/*-apple-darwin; do
+            codesign --verify --deep --strict --verbose=2 "$binary"
+          done
 
       - name: Generate manifests and final checksums
         shell: bash
@@ -272,6 +281,11 @@ jobs:
               exit 1
             }
             cmp "$local_asset" "$remote_asset"
+          done
+          # GitHub is the distribution boundary. Verify downloaded Mach-O
+          # signatures, not only local bytes, before allowing publication.
+          for binary in remote-assets/*-apple-darwin; do
+            codesign --verify --deep --strict --verbose=2 "$binary"
           done
           expected_draft="$(mktemp)"
           actual_draft="$(mktemp)"
