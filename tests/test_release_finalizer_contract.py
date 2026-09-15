@@ -66,12 +66,32 @@ class ReleaseFinalizerContractTests(unittest.TestCase):
         self.assertIn("digest mismatch", VALIDATOR_SOURCE)
 
         action_refs = re.findall(r"^\s*- uses: [^@\s]+@([^\s]+)", workflow, re.MULTILINE)
-        self.assertGreaterEqual(len(action_refs), 3)
+        self.assertGreaterEqual(len(action_refs), 2)
         self.assertTrue(all(re.fullmatch(r"[0-9a-f]{40}", ref) for ref in action_refs))
+        self.assertNotIn("OP_SERVICE_ACCOUNT_TOKEN", workflow)
+        for secret in (
+            "APPLE_ID",
+            "APPLE_TEAM_ID",
+            "APPLE_APP_PASSWORD",
+            "CERT_BASE64",
+            "CERT_PASSWORD",
+            "ZIPSIGN_PRIVATE_KEY",
+        ):
+            self.assertIn(f"secrets.{secret}", workflow)
         self.assertLess(
             workflow.index("unexpected draft release inventory before publication"),
             workflow.index('gh release edit "$RELEASE_TAG" --draft=false'),
         )
+        failed_publish = workflow.index('if ! gh release edit "$RELEASE_TAG" --draft=false')
+        state_query = workflow.index('if ! publication_state="$(gh api', failed_publish)
+        restore_staging = workflow.index(
+            'gh release upload "$RELEASE_TAG" "staging/$STAGING_ASSET" --clobber',
+            failed_publish,
+        )
+        self.assertLess(state_query, restore_staging)
+        self.assertIn("publication result is ambiguous; no recovery mutation attempted", workflow)
+        self.assertIn("publication state is unknown; no recovery mutation attempted", workflow)
+        self.assertIn("publish command failed after GitHub committed publication", workflow)
 
     def test_archive_signer_uses_the_client_trusted_primary_key(self):
         pinned = PINNED_KEY.read_text().strip()

@@ -166,32 +166,23 @@ jobs:
           inputs/terraphim-agent-universal-apple-darwin memory --help >/dev/null
           inputs/terraphim-agent-universal-apple-darwin sessions expand --help >/dev/null
 
-      - uses: 1password/install-cli-action@c1b138d5779f64eda6936d5caa8e754b9f3996c0 # v2
-
-      - name: Load Apple credentials without exposing them
-        shell: bash
-        env:
-          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-        run: |
-          set -euo pipefail
-          [ -n "${OP_SERVICE_ACCOUNT_TOKEN:-}" ] || {
-            echo "ERROR: OP_SERVICE_ACCOUNT_TOKEN is unavailable" >&2
-            exit 1
-          }
-          {
-            echo "APPLE_ID=$(op read 'op://TerraphimPlatform/apple.developer.credentials/username' --no-newline)"
-            echo "APPLE_TEAM_ID=$(op read 'op://TerraphimPlatform/apple.developer.credentials/APPLE_TEAM_ID' --no-newline)"
-            echo "APPLE_APP_PASSWORD=$(op read 'op://TerraphimPlatform/apple.developer.credentials/APPLE_APP_SPECIFIC_PASSWORD' --no-newline)"
-            echo "CERT_BASE64=$(op read 'op://TerraphimPlatform/apple.developer.certificate/base64' --no-newline)"
-            echo "CERT_PASSWORD=$(op read 'op://TerraphimPlatform/apple.developer.certificate/password' --no-newline)"
-          } >> "$GITHUB_ENV"
-
       - name: Apple-sign and notarize every shipped macOS binary
         shell: bash
         env:
           RUNNER_TEMP: ${{ runner.temp }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          CERT_BASE64: ${{ secrets.CERT_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.CERT_PASSWORD }}
         run: |
           set -euo pipefail
+          for required in APPLE_ID APPLE_TEAM_ID APPLE_APP_PASSWORD CERT_BASE64 CERT_PASSWORD; do
+            [ -n "${!required:-}" ] || {
+              echo "ERROR: environment-scoped secret $required is unavailable" >&2
+              exit 1
+            }
+          done
           for target in aarch64-apple-darwin x86_64-apple-darwin universal-apple-darwin; do
             for bin in terraphim-agent terraphim-cli terraphim-grep; do
               scripts/sign-macos-binary.sh \
@@ -316,12 +307,32 @@ jobs:
             echo "ERROR: final inventory changed; staging restored and release kept draft" >&2
             exit 1
           fi
+          publication_state=""
           if ! gh release edit "$RELEASE_TAG" --draft=false; then
-            gh release upload "$RELEASE_TAG" "staging/$STAGING_ASSET" --clobber
-            echo "ERROR: publication failed; staging asset restored for a safe retry" >&2
-            exit 1
+            if ! publication_state="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"; then
+              echo "ERROR: publication result is ambiguous; no recovery mutation attempted" >&2
+              exit 1
+            fi
+            case "$(jq -r '.draft' <<<"$publication_state")" in
+              true)
+                gh release upload "$RELEASE_TAG" "staging/$STAGING_ASSET" --clobber
+                echo "ERROR: publication definitively failed; staging restored" >&2
+                exit 1
+                ;;
+              false)
+                echo "WARN: publish command failed after GitHub committed publication; verifying state" >&2
+                ;;
+              *)
+                echo "ERROR: publication state is unknown; no recovery mutation attempted" >&2
+                exit 1
+                ;;
+            esac
           fi
-          release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+          if [ -n "$publication_state" ]; then
+            release_json="$publication_state"
+          else
+            release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+          fi
           [ "$(jq -r '.draft' <<<"$release_json")" = false ]
           jq -r '.assets[].name' <<<"$release_json" | LC_ALL=C sort > "$actual"
           diff -u "$expected" "$actual"
