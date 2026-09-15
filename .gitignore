@@ -7,3 +7,14 @@
 
 # cachebro SQLite caches -- agent exploration tool, transient
 .cachebro/
+
+# Insta snapshot diff artefacts (transient; insta's own tooling
+# promotes them with `cargo insta accept` when wanted).
+**/*.snap.new
+
+# Runtime test logs from MCP server harness runs.
+crates/terraphim_mcp_server/server_output.log
+crates/terraphim_mcp_server/logs/
+
+# Ad-hoc test backups (manual `cp file.rs file.rs.backup`).
+*.rs.backup
