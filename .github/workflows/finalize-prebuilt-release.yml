@@ -226,7 +226,7 @@ jobs:
             echo "ERROR: ZIPSIGN_PRIVATE_KEY is unavailable" >&2
             exit 1
           }
-          mkdir -p release-assets
+          mkdir -p release-assets package-root
           unix_targets=(
             aarch64-apple-darwin
             x86_64-apple-darwin
@@ -238,16 +238,20 @@ jobs:
           for target in "${unix_targets[@]}"; do
             for bin in "${bins[@]}"; do
               cp "inputs/$bin-$target" "release-assets/$bin-$target"
+              cp "inputs/$bin-$target" "package-root/$bin"
               tar -czf "release-assets/$bin-$VERSION-$target.tar.gz" \
-                -C inputs "$bin-$target"
+                -C package-root "$bin"
+              rm -f "package-root/$bin"
             done
           done
           for bin in "${bins[@]}"; do
             cp "inputs/$bin-x86_64-pc-windows-msvc.exe" \
               "release-assets/$bin-x86_64-pc-windows-msvc.exe"
+            cp "inputs/$bin-x86_64-pc-windows-msvc.exe" "package-root/$bin.exe"
             ditto -c -k --keepParent \
-              "inputs/$bin-x86_64-pc-windows-msvc.exe" \
+              "package-root/$bin.exe" \
               "release-assets/$bin-$VERSION-x86_64-pc-windows-msvc.zip"
+            rm -f "package-root/$bin.exe"
           done
           cp inputs/terraphim-agent-universal-apple-darwin release-assets/
           cp inputs/terraphim-grep-universal-apple-darwin release-assets/
