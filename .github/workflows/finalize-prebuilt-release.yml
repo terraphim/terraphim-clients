@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   finalize:
-    name: Verify, Apple-sign, archive-sign, and publish
+    name: Verify, Apple-sign, archive-sign, and stage
     if: >-
       github.repository == 'terraphim/terraphim-clients' &&
       github.ref == 'refs/heads/main'
@@ -302,25 +302,143 @@ jobs:
             exit 1
           }
 
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: client-release-finalization-evidence-${{ inputs.version }}
+          path: |
+            staging/file-inventory.txt
+            release-assets/SHA256SUMS
+            release-assets/*-stable.json
+          if-no-files-found: warn
+
+  consumer-verify-and-publish:
+    name: Fresh-consumer verify and publish
+    needs: finalize
+    if: >-
+      github.repository == 'terraphim/terraphim-clients' &&
+      github.ref == 'refs/heads/main'
+    environment: tsm-production-release
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Load review-bound release contract
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          [ "$GITHUB_REF" = refs/heads/main ]
+          [ "$(git rev-parse HEAD)" = "$GITHUB_SHA" ]
+          python3 - <<'PY'
+          import os, re, sys
+
+          version = os.environ["VERSION"]
+          if not re.fullmatch(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)", version):
+              sys.exit(f"invalid stable version: {version!r}")
+          PY
+
+          contract=".github/release-inputs/v$VERSION.json"
+          [ -f "$contract" ]
+          jq -e --arg version "$VERSION" '
+            .schema_version == 1 and
+            .version == $version and
+            .release_tag == ("v" + $version) and
+            (.source_sha | test("^[0-9a-f]{40}$")) and
+            (.staging_asset == ("terraphim-clients-" + $version + "-release-inputs.tar.gz")) and
+            (.staging_sha256 | test("^[0-9a-f]{64}$"))
+          ' "$contract" >/dev/null
+          {
+            echo "RELEASE_TAG=$(jq -r '.release_tag' "$contract")"
+            echo "EXPECTED_SOURCE_SHA=$(jq -r '.source_sha' "$contract")"
+            echo "STAGING_ASSET=$(jq -r '.staging_asset' "$contract")"
+            echo "STAGING_SHA256=$(jq -r '.staging_sha256' "$contract")"
+          } >> "$GITHUB_ENV"
+
+      - name: Fresh-consumer verify downloaded release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ref_json="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG")"
+          object_sha="$(jq -r '.object.sha' <<<"$ref_json")"
+          object_type="$(jq -r '.object.type' <<<"$ref_json")"
+          while [ "$object_type" != commit ]; do
+            [ "$object_type" = tag ]
+            tag_json="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$object_sha")"
+            object_type="$(jq -r '.object.type' <<<"$tag_json")"
+            object_sha="$(jq -r '.object.sha' <<<"$tag_json")"
+          done
+          [ "$object_sha" = "$EXPECTED_SOURCE_SHA" ]
+
+          release_json="$(scripts/get-release-by-tag.sh "$RELEASE_TAG")"
+          [ "$(jq -r '.draft' <<<"$release_json")" = true ] || {
+            echo "ERROR: release ceased to be a draft before fresh-consumer verification" >&2
+            exit 1
+          }
+          mkdir -p candidate-assets
+          gh release download "$RELEASE_TAG" --dir candidate-assets
+          printf '%s  %s\n' "$STAGING_SHA256" \
+            "candidate-assets/$STAGING_ASSET" | shasum -a 256 -c -
+          (
+            cd candidate-assets
+            shasum -a 256 -c SHA256SUMS
+          )
+
+          shopt -s nullglob
+          mac_binaries=(candidate-assets/*-apple-darwin)
+          [ "${#mac_binaries[@]}" -eq 9 ] || {
+            echo "ERROR: expected 9 raw macOS binaries, found ${#mac_binaries[@]}" >&2
+            exit 1
+          }
+          for binary in "${mac_binaries[@]}"; do
+            codesign --verify --deep --strict --verbose=2 "$binary"
+          done
+
+          expected_payloads="$(mktemp)"
+          expected_draft="$(mktemp)"
+          actual_draft="$(mktemp)"
+          trap 'rm -f "$expected_payloads" "$expected_draft" "$actual_draft"' EXIT
+          awk '{sub(/^\.\//, "", $2); print $2}' \
+            candidate-assets/SHA256SUMS | LC_ALL=C sort -u > "$expected_payloads"
+          [ "$(wc -l < "$expected_payloads" | tr -d ' ')" -eq 45 ] || {
+            echo "ERROR: checksum manifest must contain exactly 45 payloads" >&2
+            exit 1
+          }
+          {
+            cat "$expected_payloads"
+            printf '%s\n' SHA256SUMS "$STAGING_ASSET"
+          } | LC_ALL=C sort > "$expected_draft"
+          jq -r '.assets[].name' <<<"$release_json" | LC_ALL=C sort > "$actual_draft"
+          diff -u "$expected_draft" "$actual_draft"
+
       - name: Publish atomically and verify final inventory
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          gh release delete-asset "$RELEASE_TAG" "$STAGING_ASSET" --yes
           expected="$(mktemp)"
           actual="$(mktemp)"
           trap 'rm -f "$expected" "$actual"' EXIT
-          for asset in release-assets/*; do basename "$asset"; done | LC_ALL=C sort > "$expected"
+          awk '{sub(/^\.\//, "", $2); print $2}' \
+            candidate-assets/SHA256SUMS | LC_ALL=C sort -u > "$expected"
+          printf '%s\n' SHA256SUMS >> "$expected"
+          LC_ALL=C sort -o "$expected" "$expected"
+
+          gh release delete-asset "$RELEASE_TAG" "$STAGING_ASSET" --yes
           release_json="$(scripts/get-release-by-tag.sh "$RELEASE_TAG")"
           [ "$(jq -r '.draft' <<<"$release_json")" = true ]
           jq -r '.assets[].name' <<<"$release_json" | LC_ALL=C sort > "$actual"
           if ! diff -u "$expected" "$actual"; then
-            gh release upload "$RELEASE_TAG" "staging/$STAGING_ASSET" --clobber
+            gh release upload "$RELEASE_TAG" \
+              "candidate-assets/$STAGING_ASSET" --clobber
             echo "ERROR: final inventory changed; staging restored and release kept draft" >&2
             exit 1
           fi
+
           publication_state=""
           if ! gh release edit "$RELEASE_TAG" --draft=false; then
             if ! publication_state="$(scripts/get-release-by-tag.sh "$RELEASE_TAG")"; then
@@ -329,7 +447,8 @@ jobs:
             fi
             case "$(jq -r '.draft' <<<"$publication_state")" in
               true)
-                gh release upload "$RELEASE_TAG" "staging/$STAGING_ASSET" --clobber
+                gh release upload "$RELEASE_TAG" \
+                  "candidate-assets/$STAGING_ASSET" --clobber
                 echo "ERROR: publication definitively failed; staging restored" >&2
                 exit 1
                 ;;
@@ -350,13 +469,3 @@ jobs:
           [ "$(jq -r '.draft' <<<"$release_json")" = false ]
           jq -r '.assets[].name' <<<"$release_json" | LC_ALL=C sort > "$actual"
           diff -u "$expected" "$actual"
-
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: always()
-        with:
-          name: client-release-finalization-evidence-${{ inputs.version }}
-          path: |
-            staging/file-inventory.txt
-            release-assets/SHA256SUMS
-            release-assets/*-stable.json
-          if-no-files-found: warn

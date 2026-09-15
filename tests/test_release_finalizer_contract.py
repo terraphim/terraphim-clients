@@ -59,6 +59,10 @@ class ReleaseFinalizerContractTests(unittest.TestCase):
             "Apple-sign and notarize every shipped macOS binary",
             "Upload and byte-verify draft assets",
             "unexpected draft release inventory before publication",
+            "consumer-verify-and-publish:",
+            "needs: finalize",
+            "Fresh-consumer verify downloaded release",
+            "expected 9 raw macOS binaries",
             "Publish atomically and verify final inventory",
         )
         for fragment in required_fragments:
@@ -81,14 +85,19 @@ class ReleaseFinalizerContractTests(unittest.TestCase):
             self.assertIn(f"secrets.{secret}", workflow)
         self.assertLess(
             workflow.index("unexpected draft release inventory before publication"),
+            workflow.index("Fresh-consumer verify downloaded release"),
+        )
+        self.assertLess(
+            workflow.index("Fresh-consumer verify downloaded release"),
             workflow.index('gh release edit "$RELEASE_TAG" --draft=false'),
         )
+        self.assertEqual(workflow.count('gh release edit "$RELEASE_TAG" --draft=false'), 1)
         failed_publish = workflow.index('if ! gh release edit "$RELEASE_TAG" --draft=false')
         state_query = workflow.index(
             'if ! publication_state="$(scripts/get-release-by-tag.sh', failed_publish
         )
         restore_staging = workflow.index(
-            'gh release upload "$RELEASE_TAG" "staging/$STAGING_ASSET" --clobber',
+            '"candidate-assets/$STAGING_ASSET" --clobber',
             failed_publish,
         )
         self.assertLess(state_query, restore_staging)
