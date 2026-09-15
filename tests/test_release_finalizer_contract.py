@@ -57,6 +57,7 @@ class ReleaseFinalizerContractTests(unittest.TestCase):
             "scripts/validate-release-inputs.py",
             "Apple-sign and notarize every shipped macOS binary",
             "Upload and byte-verify draft assets",
+            "unexpected draft release inventory before publication",
             "Publish atomically and verify final inventory",
         )
         for fragment in required_fragments:
@@ -67,6 +68,10 @@ class ReleaseFinalizerContractTests(unittest.TestCase):
         action_refs = re.findall(r"^\s*- uses: [^@\s]+@([^\s]+)", workflow, re.MULTILINE)
         self.assertGreaterEqual(len(action_refs), 3)
         self.assertTrue(all(re.fullmatch(r"[0-9a-f]{40}", ref) for ref in action_refs))
+        self.assertLess(
+            workflow.index("unexpected draft release inventory before publication"),
+            workflow.index('gh release edit "$RELEASE_TAG" --draft=false'),
+        )
 
     def test_archive_signer_uses_the_client_trusted_primary_key(self):
         pinned = PINNED_KEY.read_text().strip()

@@ -282,6 +282,20 @@ jobs:
             }
             cmp "$local_asset" "$remote_asset"
           done
+          expected_draft="$(mktemp)"
+          actual_draft="$(mktemp)"
+          trap 'rm -f "$expected_draft" "$actual_draft"' EXIT
+          {
+            for asset in release-assets/*; do basename "$asset"; done
+            printf '%s\n' "$STAGING_ASSET"
+          } | LC_ALL=C sort > "$expected_draft"
+          release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+          [ "$(jq -r '.draft' <<<"$release_json")" = true ]
+          jq -r '.assets[].name' <<<"$release_json" | LC_ALL=C sort > "$actual_draft"
+          diff -u "$expected_draft" "$actual_draft" || {
+            echo "ERROR: unexpected draft release inventory before publication" >&2
+            exit 1
+          }
 
       - name: Publish atomically and verify final inventory
         shell: bash
@@ -290,6 +304,18 @@ jobs:
         run: |
           set -euo pipefail
           gh release delete-asset "$RELEASE_TAG" "$STAGING_ASSET" --yes
+          expected="$(mktemp)"
+          actual="$(mktemp)"
+          trap 'rm -f "$expected" "$actual"' EXIT
+          for asset in release-assets/*; do basename "$asset"; done | LC_ALL=C sort > "$expected"
+          release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+          [ "$(jq -r '.draft' <<<"$release_json")" = true ]
+          jq -r '.assets[].name' <<<"$release_json" | LC_ALL=C sort > "$actual"
+          if ! diff -u "$expected" "$actual"; then
+            gh release upload "$RELEASE_TAG" "staging/$STAGING_ASSET" --clobber
+            echo "ERROR: final inventory changed; staging restored and release kept draft" >&2
+            exit 1
+          fi
           if ! gh release edit "$RELEASE_TAG" --draft=false; then
             gh release upload "$RELEASE_TAG" "staging/$STAGING_ASSET" --clobber
             echo "ERROR: publication failed; staging asset restored for a safe retry" >&2
@@ -297,10 +323,6 @@ jobs:
           fi
           release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
           [ "$(jq -r '.draft' <<<"$release_json")" = false ]
-          expected="$(mktemp)"
-          actual="$(mktemp)"
-          trap 'rm -f "$expected" "$actual"' EXIT
-          for asset in release-assets/*; do basename "$asset"; done | LC_ALL=C sort > "$expected"
           jq -r '.assets[].name' <<<"$release_json" | LC_ALL=C sort > "$actual"
           diff -u "$expected" "$actual"
 
