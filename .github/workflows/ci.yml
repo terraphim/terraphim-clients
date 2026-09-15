@@ -1,4 +1,10 @@
 name: CI
+# Public mirror of .gitea/workflows/native-ci.yml (Refs #254). Same gate
+# order and the same cargo invocations; differences are limited to
+# provisioning (GitHub actions instead of cargo install on a self-hosted
+# runner), the multi-platform matrix, and the absence of the terraphim_server
+# backed integration lane, which needs the private registry. See
+# docs/ci-gap-analysis.md "Sync rule".
 on:
   push:
     branches: [main]
@@ -9,17 +15,105 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # The 1.21.x terraphim family resolves from the private Gitea registry
+  # (see [patch.crates-io] in Cargo.toml). Same secret release-binaries uses.
+  CARGO_REGISTRIES_TERRAPHIM_TOKEN: ${{ secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN }}
 
 jobs:
-  build:
+  # Stage 1: fast checks
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: 1.97.1
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo clippy -p terraphim_sessions --features enrichment -- -D warnings
+      - uses: taiki-e/install-action@cargo-deny
+      - run: cargo deny check
+
+  # Stage 2: tests on every release platform
+  test:
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.97.1
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@nextest
       - run: cargo build --workspace
-      - run: cargo test --workspace --lib --no-fail-fast
+      # Lib and doc tests on all platforms. Integration tests that need a
+      # terraphim_server binary run only on native-ci.
+      - run: cargo nextest run --workspace --lib --profile ci
+      - run: cargo test --workspace --doc --no-fail-fast
+      # #2171: enrichment-feature test invocation.
+      - run: cargo nextest run -p terraphim_sessions --features enrichment --lib --profile ci
+      # #4325: zero-chunk smoke for terraphim_grep default features.
+      - run: cargo nextest run -p terraphim_grep --test default_feature_smoke --profile ci
+      # #95: isolated packaged install-graph regression.
+      - run: cargo nextest run -p terraphim_agent --test packaged_install_graph_regression --profile ci
+
+  # Stage 3: coverage gate (Linux only; threshold only ever increases).
+  # --ignore-run-fail: the test job owns test failures; this job owns the number.
+  coverage:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.97.1
+          components: llvm-tools
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - run: cargo llvm-cov --workspace --lib --lcov --output-path lcov.info --ignore-run-fail
+      - run: cargo llvm-cov report --fail-under-lines 65
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lcov
+          path: lcov.info
+
+  # Stage 4: UB gates on nightly (from the #252 UB_RUNBOOK)
+  ub-gates:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri, rust-src
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo +nightly miri setup
+      - run: MIRIFLAGS="-Zmiri-disable-isolation" cargo +nightly miri test -p terraphim_negative_contribution -p terraphim_command_runtime -p terraphim_hooks --lib -- --skip discovery --skip latency
+      - run: MIRIFLAGS="-Zmiri-disable-isolation -Zmiri-tree-borrows" cargo +nightly miri test -p terraphim_negative_contribution -p terraphim_command_runtime -p terraphim_hooks --lib -- --skip discovery --skip latency
+
+  # Stage 5: benchmark regression, informational on PRs (baselines from #253)
+  benchmarks:
+    if: github.event_name == 'pull_request'
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.97.1
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo bench -p terraphim_grep --features code-search --bench hybrid_search -- --output-format bencher | tee bench-output.txt
+      - uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: cargo
+          output-file-path: bench-output.txt
+          alert-threshold: "120%"
+          comment-on-alert: true
+          fail-on-alert: false
+          auto-push: false

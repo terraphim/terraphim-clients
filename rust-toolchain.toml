@@ -1,0 +1,8 @@
+# Pinned toolchain for reproducible CI and local builds (Refs #254).
+# Matches the active stable on the terraphim-native runner host and on
+# developer machines as of 2026-09-11. Bump deliberately, in its own commit,
+# and re-run the full native-ci gate before merging.
+[toolchain]
+channel = "1.97.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

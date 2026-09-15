@@ -33,7 +33,7 @@ pub trait PatternMatcher: Send + Sync {
     ///
     /// Trait method consumed only by in-file unit tests in this module.
     /// External callers don't currently use it, hence the conditional allow.
-        /// Trait method consumed only by in-file unit tests in this module. External callers do not currently invoke it.
+    /// Trait method consumed only by in-file unit tests in this module. External callers do not currently invoke it.
     #[allow(dead_code)]
     fn matcher_type(&self) -> &'static str;
 }
