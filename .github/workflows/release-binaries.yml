@@ -200,11 +200,10 @@ jobs:
         env:
           VERSION: ${{ needs.preflight.outputs.version }}
         run: |
-          # Bump the workspace version AND terraphim_agent's explicit package
-          # version (#95: the agent pins its own version ahead of the
-          # workspace) to the release input so CARGO_PKG_VERSION baked into
-          # the binaries matches the git tag. Not committed to main (the bump
-          # lives only in this CI checkout, like the tag itself).
+          # Bump the workspace version to the release input so
+          # CARGO_PKG_VERSION baked into every workspace-inheriting binary
+          # matches the git tag. The metadata assertion below fails closed if
+          # any shipped binary stops inheriting the workspace version.
           python3 - <<'PY'
           import os, pathlib, re, sys
 
@@ -229,7 +228,6 @@ jobs:
               print(f"{path}: [{section}] version -> {VERSION}")
 
           set_section_version("Cargo.toml", "workspace.package")
-          set_section_version("crates/terraphim_agent/Cargo.toml", "package")
           PY
           # Assert the release input propagated to every shipped binary crate.
           cargo metadata --no-deps --format-version 1 | python3 -c '

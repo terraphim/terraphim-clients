@@ -1,6 +1,7 @@
-import re
 import os
+import re
 import subprocess
+import tempfile
 import textwrap
 import unittest
 from pathlib import Path
@@ -18,6 +19,17 @@ def workflow_text() -> str:
 def preflight_python_validator() -> str:
     text = workflow_text()
     start = text.index("          python3 - <<'PY'\n") + len("          python3 - <<'PY'\n")
+    end = text.index("          PY\n", start)
+    lines = text[start:end].splitlines()
+    return textwrap.dedent("\n".join(line[10:] for line in lines) + "\n")
+
+
+def version_rewrite_python() -> str:
+    text = workflow_text()
+    block_start = text.index("      - name: Set release version")
+    start = text.index("          python3 - <<'PY'\n", block_start) + len(
+        "          python3 - <<'PY'\n"
+    )
     end = text.index("          PY\n", start)
     lines = text[start:end].splitlines()
     return textwrap.dedent("\n".join(line[10:] for line in lines) + "\n")
@@ -127,7 +139,7 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
         self.assertIn("source_sha=", text)
         self.assertNotIn("release_sha=", text)
 
-    def test_build_mutation_trusts_preflight_and_only_rewrites_versions(self) -> None:
+    def test_build_mutation_trusts_preflight_and_only_rewrites_workspace_version(self) -> None:
         text = workflow_text()
         start = text.index("      - name: Set release version")
         end = text.index("      - name: Assert host binary reports", start)
@@ -135,7 +147,7 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
 
         self.assertIn('VERSION = os.environ["VERSION"]', block)
         self.assertIn('set_section_version("Cargo.toml", "workspace.package")', block)
-        self.assertIn(
+        self.assertNotIn(
             'set_section_version("crates/terraphim_agent/Cargo.toml", "package")',
             block,
         )
@@ -144,6 +156,33 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
         self.assertNotIn("RELEASE_TAG", block)
         self.assertNotIn("SOURCE_REF", block)
         self.assertNotIn("TARGET_REPO", block)
+
+    def test_version_rewrite_accepts_workspace_inherited_agent_version(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            agent_dir = root / "crates" / "terraphim_agent"
+            agent_dir.mkdir(parents=True)
+            (root / "Cargo.toml").write_text(
+                '[workspace.package]\nversion = "1.21.13"\n'
+            )
+            agent_manifest = agent_dir / "Cargo.toml"
+            agent_manifest.write_text(
+                '[package]\nname = "terraphim_agent"\nversion.workspace = true\n'
+            )
+            env = os.environ.copy()
+            env["VERSION"] = "1.21.14"
+
+            result = subprocess.run(
+                ["python3", "-c", version_rewrite_python()],
+                cwd=root,
+                env=env,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('version = "1.21.14"', (root / "Cargo.toml").read_text())
+            self.assertIn("version.workspace = true", agent_manifest.read_text())
 
     def test_source_and_recovery_tooling_checkouts_are_distinct_and_immutable(self) -> None:
         text = workflow_text()
