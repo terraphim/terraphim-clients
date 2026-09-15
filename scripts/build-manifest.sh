@@ -17,14 +17,28 @@ artifacts_dir="$3"
 
 release_url="https://github.com/terraphim/terraphim-clients/releases/tag/v${version}"
 
-# Build the assets JSON object: { "<target>": "<bin>/<filename>", ... }
-assets=$(cd "$artifacts_dir" && ls -1 "${bin}-${version}-"*.tar.gz 2>/dev/null | while read -r f; do
-    # strip prefix "<bin>-<version>-" and suffix ".tar.gz" to get the target
-    tgt="${f#"${bin}-${version}-"}"
-    tgt="${tgt%.tar.gz}"
-    # escape for JSON
-    printf '    "%s": "%s/%s"' "$tgt" "$bin" "$f"
-done | paste -sd, -)
+unix_targets=(
+  aarch64-apple-darwin
+  x86_64-apple-darwin
+  universal-apple-darwin
+  x86_64-unknown-linux-gnu
+  x86_64-unknown-linux-musl
+  aarch64-unknown-linux-musl
+)
+
+assets=""
+for target in "${unix_targets[@]}"; do
+    filename="${bin}-${version}-${target}.tar.gz"
+    [ -f "$artifacts_dir/$filename" ] || {
+        echo "ERROR: missing manifest asset: $artifacts_dir/$filename" >&2
+        exit 1
+    }
+    entry=$(printf '    "%s": "%s/%s"' "$target" "$bin" "$filename")
+    if [ -n "$assets" ]; then
+        assets="$assets,"$'\n'
+    fi
+    assets="$assets$entry"
+done
 
 cat <<EOF
 {

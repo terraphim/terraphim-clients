@@ -1,0 +1,348 @@
+name: Finalize Prebuilt Client Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Reviewed release version without the v prefix
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: terraphim-client-release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    name: Verify, Apple-sign, archive-sign, and publish
+    if: >-
+      github.repository == 'terraphim/terraphim-clients' &&
+      github.ref == 'refs/heads/main'
+    environment: tsm-production-release
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Load review-bound release contract
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          [ "$GITHUB_REF" = refs/heads/main ] || {
+            echo "ERROR: releases may run only from refs/heads/main" >&2
+            exit 1
+          }
+          [ "$(git rev-parse HEAD)" = "$GITHUB_SHA" ] || {
+            echo "ERROR: checkout does not match the reviewed workflow commit" >&2
+            exit 1
+          }
+          python3 - <<'PY'
+          import os, re, sys
+
+          version = os.environ["VERSION"]
+          if not re.fullmatch(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)", version):
+              sys.exit(f"invalid stable version: {version!r}")
+          PY
+
+          contract=".github/release-inputs/v$VERSION.json"
+          [ -f "$contract" ] || {
+            echo "ERROR: no reviewed release contract for v$VERSION" >&2
+            exit 1
+          }
+          jq -e --arg version "$VERSION" '
+            .schema_version == 1 and
+            .version == $version and
+            .release_tag == ("v" + $version) and
+            (.source_sha | test("^[0-9a-f]{40}$")) and
+            (.staging_asset == ("terraphim-clients-" + $version + "-release-inputs.tar.gz")) and
+            (.staging_sha256 | test("^[0-9a-f]{64}$")) and
+            (.builder.cargo_lock_sha256 | test("^[0-9a-f]{64}$")) and
+            (.binaries | length == 18) and
+            ([.binaries[].name] | unique | length == 18) and
+            all(.binaries[];
+              (.name | test("^terraphim-(agent|cli|grep)-(aarch64-apple-darwin|x86_64-apple-darwin|x86_64-unknown-linux-gnu|x86_64-unknown-linux-musl|aarch64-unknown-linux-musl)$|^terraphim-(agent|cli|grep)-x86_64-pc-windows-msvc\\.exe$")) and
+              (.sha256 | test("^[0-9a-f]{64}$"))
+            )
+          ' "$contract" >/dev/null
+
+          {
+            echo "RELEASE_CONTRACT=$contract"
+            echo "RELEASE_TAG=$(jq -r '.release_tag' "$contract")"
+            echo "EXPECTED_SOURCE_SHA=$(jq -r '.source_sha' "$contract")"
+            echo "STAGING_ASSET=$(jq -r '.staging_asset' "$contract")"
+            echo "STAGING_SHA256=$(jq -r '.staging_sha256' "$contract")"
+          } >> "$GITHUB_ENV"
+
+      - name: Validate immutable source and draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ref_json="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG")"
+          object_sha="$(jq -r '.object.sha' <<<"$ref_json")"
+          object_type="$(jq -r '.object.type' <<<"$ref_json")"
+          while [ "$object_type" != commit ]; do
+            [ "$object_type" = tag ] || {
+              echo "ERROR: unsupported tag object type: $object_type" >&2
+              exit 1
+            }
+            tag_json="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$object_sha")"
+            object_type="$(jq -r '.object.type' <<<"$tag_json")"
+            object_sha="$(jq -r '.object.sha' <<<"$tag_json")"
+          done
+          [ "$object_sha" = "$EXPECTED_SOURCE_SHA" ] || {
+            echo "ERROR: tag resolves to $object_sha, expected $EXPECTED_SOURCE_SHA" >&2
+            exit 1
+          }
+          release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+          [ "$(jq -r '.draft' <<<"$release_json")" = true ] || {
+            echo "ERROR: release $RELEASE_TAG must remain a draft until finalization succeeds" >&2
+            exit 1
+          }
+
+      - name: Download, securely extract, and hash-check build inputs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p staging
+          gh release download "$RELEASE_TAG" --pattern "$STAGING_ASSET" --dir staging
+          printf '%s  %s\n' "$STAGING_SHA256" "staging/$STAGING_ASSET" | shasum -a 256 -c -
+          scripts/validate-release-inputs.py \
+            --contract "$RELEASE_CONTRACT" \
+            --archive "staging/$STAGING_ASSET" \
+            --destination inputs
+
+      - name: Validate every binary format and native command surface
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          bins=(terraphim-agent terraphim-cli terraphim-grep)
+          for bin in "${bins[@]}"; do
+            [ "$(lipo -archs "inputs/$bin-aarch64-apple-darwin")" = arm64 ]
+            [ "$(lipo -archs "inputs/$bin-x86_64-apple-darwin")" = x86_64 ]
+            for target in x86_64-unknown-linux-gnu x86_64-unknown-linux-musl; do
+              description="$(file -b "inputs/$bin-$target")"
+              [[ "$description" == *"ELF 64-bit"* && "$description" == *"x86-64"* ]] || {
+                echo "ERROR: unexpected $target format for $bin: $description" >&2
+                exit 1
+              }
+            done
+            description="$(file -b "inputs/$bin-aarch64-unknown-linux-musl")"
+            [[ "$description" == *"ELF 64-bit"* && "$description" == *"ARM aarch64"* ]] || {
+              echo "ERROR: unexpected aarch64 Linux format for $bin: $description" >&2
+              exit 1
+            }
+            description="$(file -b "inputs/$bin-x86_64-pc-windows-msvc.exe")"
+            [[ "$description" == *"PE32+ executable"* && "$description" == *"x86-64"* ]] || {
+              echo "ERROR: unexpected Windows format for $bin: $description" >&2
+              exit 1
+            }
+          done
+          file inputs/* | tee staging/file-inventory.txt
+
+          for bin in "${bins[@]}"; do
+            lipo -create \
+              "inputs/$bin-x86_64-apple-darwin" \
+              "inputs/$bin-aarch64-apple-darwin" \
+              -output "inputs/$bin-universal-apple-darwin"
+            chmod 0755 "inputs/$bin-universal-apple-darwin"
+            reported="$("inputs/$bin-universal-apple-darwin" --version | tail -n 1 | awk '{print $NF}')"
+            [ "$reported" = "$VERSION" ] || {
+              echo "ERROR: $bin reports $reported, expected $VERSION" >&2
+              exit 1
+            }
+          done
+          inputs/terraphim-agent-universal-apple-darwin learn --help >/dev/null
+          inputs/terraphim-agent-universal-apple-darwin memory --help >/dev/null
+          inputs/terraphim-agent-universal-apple-darwin sessions expand --help >/dev/null
+
+      - name: Apple-sign and notarize every shipped macOS binary
+        shell: bash
+        env:
+          RUNNER_TEMP: ${{ runner.temp }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          CERT_BASE64: ${{ secrets.CERT_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for required in APPLE_ID APPLE_TEAM_ID APPLE_APP_PASSWORD CERT_BASE64 CERT_PASSWORD; do
+            [ -n "${!required:-}" ] || {
+              echo "ERROR: environment-scoped secret $required is unavailable" >&2
+              exit 1
+            }
+          done
+          for target in aarch64-apple-darwin x86_64-apple-darwin universal-apple-darwin; do
+            for bin in terraphim-agent terraphim-cli terraphim-grep; do
+              scripts/sign-macos-binary.sh \
+                "inputs/$bin-$target" "$APPLE_ID" "$APPLE_TEAM_ID" \
+                "$APPLE_APP_PASSWORD" "$CERT_BASE64" "$CERT_PASSWORD"
+            done
+          done
+
+      - name: Package and archive-sign release assets
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          ZIPSIGN_PRIVATE_KEY: ${{ secrets.ZIPSIGN_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "${ZIPSIGN_PRIVATE_KEY:-}" ] || {
+            echo "ERROR: ZIPSIGN_PRIVATE_KEY is unavailable" >&2
+            exit 1
+          }
+          mkdir -p release-assets package-root
+          unix_targets=(
+            aarch64-apple-darwin
+            x86_64-apple-darwin
+            universal-apple-darwin
+            x86_64-unknown-linux-gnu
+            x86_64-unknown-linux-musl
+            aarch64-unknown-linux-musl
+          )
+          bins=(terraphim-agent terraphim-cli terraphim-grep)
+          for target in "${unix_targets[@]}"; do
+            for bin in "${bins[@]}"; do
+              cp "inputs/$bin-$target" "release-assets/$bin-$target"
+              cp "inputs/$bin-$target" "package-root/$bin"
+              tar -czf "release-assets/$bin-$VERSION-$target.tar.gz" \
+                -C package-root "$bin"
+              rm -f "package-root/$bin"
+            done
+          done
+          # Windows v1.21.14 artifacts are manual-download packages. The tagged
+          # updater cannot verify ZIP signatures, so Windows is deliberately
+          # omitted from stable manifests until that source defect is fixed.
+          for bin in "${bins[@]}"; do
+            cp "inputs/$bin-x86_64-pc-windows-msvc.exe" \
+              "release-assets/$bin-x86_64-pc-windows-msvc.exe"
+            cp "inputs/$bin-x86_64-pc-windows-msvc.exe" "package-root/$bin.exe"
+            ditto -c -k --keepParent \
+              "package-root/$bin.exe" \
+              "release-assets/$bin-$VERSION-x86_64-pc-windows-msvc.zip"
+            rm -f "package-root/$bin.exe"
+          done
+          cargo install zipsign --version 0.2.1 --locked
+          scripts/sign-release-archives.sh release-assets
+
+      - name: Generate manifests and final checksums
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          for bin in terraphim-agent terraphim-cli terraphim-grep; do
+            scripts/build-manifest.sh "$VERSION" "$bin" release-assets \
+              > "release-assets/$bin-stable.json"
+          done
+          (
+            cd release-assets
+            shasum -a 256 ./* > SHA256SUMS
+          )
+
+      - name: Upload and byte-verify draft assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+          [ "$(jq -r '.draft' <<<"$release_json")" = true ] || {
+            echo "ERROR: release ceased to be a draft before mutation" >&2
+            exit 1
+          }
+          gh release upload "$RELEASE_TAG" release-assets/* --clobber
+          mkdir -p remote-assets
+          gh release download "$RELEASE_TAG" --dir remote-assets
+          for local_asset in release-assets/*; do
+            remote_asset="remote-assets/$(basename "$local_asset")"
+            [ -f "$remote_asset" ] || {
+              echo "ERROR: remote asset missing: $(basename "$local_asset")" >&2
+              exit 1
+            }
+            cmp "$local_asset" "$remote_asset"
+          done
+          expected_draft="$(mktemp)"
+          actual_draft="$(mktemp)"
+          trap 'rm -f "$expected_draft" "$actual_draft"' EXIT
+          {
+            for asset in release-assets/*; do basename "$asset"; done
+            printf '%s\n' "$STAGING_ASSET"
+          } | LC_ALL=C sort > "$expected_draft"
+          release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+          [ "$(jq -r '.draft' <<<"$release_json")" = true ]
+          jq -r '.assets[].name' <<<"$release_json" | LC_ALL=C sort > "$actual_draft"
+          diff -u "$expected_draft" "$actual_draft" || {
+            echo "ERROR: unexpected draft release inventory before publication" >&2
+            exit 1
+          }
+
+      - name: Publish atomically and verify final inventory
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release delete-asset "$RELEASE_TAG" "$STAGING_ASSET" --yes
+          expected="$(mktemp)"
+          actual="$(mktemp)"
+          trap 'rm -f "$expected" "$actual"' EXIT
+          for asset in release-assets/*; do basename "$asset"; done | LC_ALL=C sort > "$expected"
+          release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+          [ "$(jq -r '.draft' <<<"$release_json")" = true ]
+          jq -r '.assets[].name' <<<"$release_json" | LC_ALL=C sort > "$actual"
+          if ! diff -u "$expected" "$actual"; then
+            gh release upload "$RELEASE_TAG" "staging/$STAGING_ASSET" --clobber
+            echo "ERROR: final inventory changed; staging restored and release kept draft" >&2
+            exit 1
+          fi
+          publication_state=""
+          if ! gh release edit "$RELEASE_TAG" --draft=false; then
+            if ! publication_state="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"; then
+              echo "ERROR: publication result is ambiguous; no recovery mutation attempted" >&2
+              exit 1
+            fi
+            case "$(jq -r '.draft' <<<"$publication_state")" in
+              true)
+                gh release upload "$RELEASE_TAG" "staging/$STAGING_ASSET" --clobber
+                echo "ERROR: publication definitively failed; staging restored" >&2
+                exit 1
+                ;;
+              false)
+                echo "WARN: publish command failed after GitHub committed publication; verifying state" >&2
+                ;;
+              *)
+                echo "ERROR: publication state is unknown; no recovery mutation attempted" >&2
+                exit 1
+                ;;
+            esac
+          fi
+          if [ -n "$publication_state" ]; then
+            release_json="$publication_state"
+          else
+            release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+          fi
+          [ "$(jq -r '.draft' <<<"$release_json")" = false ]
+          jq -r '.assets[].name' <<<"$release_json" | LC_ALL=C sort > "$actual"
+          diff -u "$expected" "$actual"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: client-release-finalization-evidence-${{ inputs.version }}
+          path: |
+            staging/file-inventory.txt
+            release-assets/SHA256SUMS
+            release-assets/*-stable.json
+          if-no-files-found: warn
