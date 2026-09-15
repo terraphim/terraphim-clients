@@ -100,7 +100,7 @@ jobs:
             echo "ERROR: tag resolves to $object_sha, expected $EXPECTED_SOURCE_SHA" >&2
             exit 1
           }
-          release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+          release_json="$(scripts/get-release-by-tag.sh "$RELEASE_TAG")"
           [ "$(jq -r '.draft' <<<"$release_json")" = true ] || {
             echo "ERROR: release $RELEASE_TAG must remain a draft until finalization succeeds" >&2
             exit 1
@@ -257,7 +257,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+          release_json="$(scripts/get-release-by-tag.sh "$RELEASE_TAG")"
           [ "$(jq -r '.draft' <<<"$release_json")" = true ] || {
             echo "ERROR: release ceased to be a draft before mutation" >&2
             exit 1
@@ -280,7 +280,7 @@ jobs:
             for asset in release-assets/*; do basename "$asset"; done
             printf '%s\n' "$STAGING_ASSET"
           } | LC_ALL=C sort > "$expected_draft"
-          release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+          release_json="$(scripts/get-release-by-tag.sh "$RELEASE_TAG")"
           [ "$(jq -r '.draft' <<<"$release_json")" = true ]
           jq -r '.assets[].name' <<<"$release_json" | LC_ALL=C sort > "$actual_draft"
           diff -u "$expected_draft" "$actual_draft" || {
@@ -299,7 +299,7 @@ jobs:
           actual="$(mktemp)"
           trap 'rm -f "$expected" "$actual"' EXIT
           for asset in release-assets/*; do basename "$asset"; done | LC_ALL=C sort > "$expected"
-          release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+          release_json="$(scripts/get-release-by-tag.sh "$RELEASE_TAG")"
           [ "$(jq -r '.draft' <<<"$release_json")" = true ]
           jq -r '.assets[].name' <<<"$release_json" | LC_ALL=C sort > "$actual"
           if ! diff -u "$expected" "$actual"; then
@@ -309,7 +309,7 @@ jobs:
           fi
           publication_state=""
           if ! gh release edit "$RELEASE_TAG" --draft=false; then
-            if ! publication_state="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"; then
+            if ! publication_state="$(scripts/get-release-by-tag.sh "$RELEASE_TAG")"; then
               echo "ERROR: publication result is ambiguous; no recovery mutation attempted" >&2
               exit 1
             fi
@@ -331,7 +331,7 @@ jobs:
           if [ -n "$publication_state" ]; then
             release_json="$publication_state"
           else
-            release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+            release_json="$(scripts/get-release-by-tag.sh "$RELEASE_TAG")"
           fi
           [ "$(jq -r '.draft' <<<"$release_json")" = false ]
           jq -r '.assets[].name' <<<"$release_json" | LC_ALL=C sort > "$actual"
