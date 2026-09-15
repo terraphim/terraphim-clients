@@ -131,9 +131,38 @@ jobs:
             echo "target_repo=$TARGET_REPO"
           } >> "$GITHUB_OUTPUT"
 
+  vendor-dependencies:
+    name: Vendor locked Cargo dependencies
+    needs: preflight
+    permissions:
+      contents: read
+    runs-on: [self-hosted, Linux, X64, terraphim-skills, cloudflare]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.source_sha }}
+      - name: Assert checkout source SHA
+        shell: bash
+        run: |
+          if [ "$(git rev-parse HEAD)" != "${{ needs.preflight.outputs.source_sha }}" ]; then
+            echo "ERROR: checkout HEAD $(git rev-parse HEAD) does not match expected source SHA ${{ needs.preflight.outputs.source_sha }}" >&2
+            exit 1
+          fi
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Vendor locked dependencies from the Terraphim network
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo vendor --locked vendor > vendor-config.toml
+          tar -czf vendor-dependencies.tar.gz vendor vendor-config.toml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: locked-cargo-vendor
+          path: vendor-dependencies.tar.gz
+
   build-binaries:
     name: Build client binaries for ${{ matrix.target }}
-    needs: preflight
+    needs: [preflight, vendor-dependencies]
     permissions:
       contents: read
     strategy:
@@ -171,6 +200,16 @@ jobs:
             echo "ERROR: checkout HEAD $(git rev-parse HEAD) does not match expected source SHA ${{ needs.preflight.outputs.source_sha }}" >&2
             exit 1
           fi
+      - uses: actions/download-artifact@v4
+        with:
+          name: locked-cargo-vendor
+          path: .release-vendor
+      - name: Configure locked vendored dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -xzf .release-vendor/vendor-dependencies.tar.gz
+          cp vendor-config.toml .cargo/config.toml
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}

@@ -236,6 +236,23 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
         self.assertNotIn("CARGO_REGISTRIES_TERRAPHIM_TOKEN", block)
         self.assertNotIn("secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN", block)
 
+    def test_dependencies_are_vendored_on_terraphim_runner_for_hosted_matrix(self) -> None:
+        vendor = job_block("vendor-dependencies")
+        build = job_block("build-binaries")
+
+        self.assertIn(
+            "runs-on: [self-hosted, Linux, X64, terraphim-skills, cloudflare]",
+            vendor,
+        )
+        self.assertIn("needs: preflight", vendor)
+        self.assertIn("cargo vendor --locked vendor > vendor-config.toml", vendor)
+        self.assertIn("tar -czf vendor-dependencies.tar.gz", vendor)
+        self.assertIn("name: locked-cargo-vendor", vendor)
+        self.assertIn("needs: [preflight, vendor-dependencies]", build)
+        self.assertIn("uses: actions/download-artifact@v4", build)
+        self.assertIn("tar -xzf .release-vendor/vendor-dependencies.tar.gz", build)
+        self.assertIn("cp vendor-config.toml .cargo/config.toml", build)
+
     def test_windows_builds_and_asserts_the_actual_release_binary(self) -> None:
         block = job_block("build-binaries")
 
@@ -304,6 +321,7 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
     def test_restricted_jobs_have_read_only_contents_permissions(self) -> None:
         for name in (
             "preflight",
+            "vendor-dependencies",
             "build-binaries",
             "create-universal-macos",
             "sign-and-notarize-macos",
