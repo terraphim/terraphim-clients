@@ -1,0 +1,262 @@
+name: Finalize Prebuilt Client Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version without the v prefix
+        required: true
+        type: string
+      release_tag:
+        description: Existing draft release tag
+        required: true
+        type: string
+      expected_source_sha:
+        description: Expected peeled source commit SHA
+        required: true
+        type: string
+      staging_asset:
+        description: Tar archive containing the prebuilt raw binaries
+        required: true
+        type: string
+      staging_sha256:
+        description: Expected SHA-256 of the staging archive
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    name: Verify, Apple-sign, archive-sign, and publish
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate immutable release contract
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
+          STAGING_ASSET: ${{ inputs.staging_asset }}
+          STAGING_SHA256: ${{ inputs.staging_sha256 }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, re, sys
+
+          version = os.environ["VERSION"]
+          release_tag = os.environ["RELEASE_TAG"]
+          expected_sha = os.environ["EXPECTED_SOURCE_SHA"]
+          staging_asset = os.environ["STAGING_ASSET"]
+          staging_sha = os.environ["STAGING_SHA256"]
+
+          if not re.fullmatch(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)", version):
+              sys.exit(f"invalid stable version: {version!r}")
+          if release_tag != f"v{version}":
+              sys.exit("release_tag must be v plus version")
+          if not re.fullmatch(r"[0-9a-f]{40}", expected_sha):
+              sys.exit("expected_source_sha must be lowercase 40-character hex")
+          if staging_asset != f"terraphim-clients-{version}-release-inputs.tar.gz":
+              sys.exit("staging_asset does not match the release version")
+          if not re.fullmatch(r"[0-9a-f]{64}", staging_sha):
+              sys.exit("staging_sha256 must be lowercase 64-character hex")
+          PY
+
+          ref_json="$(gh api "repos/${{ github.repository }}/git/ref/tags/$RELEASE_TAG")"
+          object_sha="$(jq -r '.object.sha' <<<"$ref_json")"
+          object_type="$(jq -r '.object.type' <<<"$ref_json")"
+          while [ "$object_type" != commit ]; do
+            [ "$object_type" = tag ] || {
+              echo "ERROR: unsupported tag object type: $object_type" >&2
+              exit 1
+            }
+            tag_json="$(gh api "repos/${{ github.repository }}/git/tags/$object_sha")"
+            object_type="$(jq -r '.object.type' <<<"$tag_json")"
+            object_sha="$(jq -r '.object.sha' <<<"$tag_json")"
+          done
+          [ "$object_sha" = "$EXPECTED_SOURCE_SHA" ] || {
+            echo "ERROR: tag resolves to $object_sha, expected $EXPECTED_SOURCE_SHA" >&2
+            exit 1
+          }
+
+      - name: Download and verify staging inputs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          STAGING_ASSET: ${{ inputs.staging_asset }}
+          STAGING_SHA256: ${{ inputs.staging_sha256 }}
+        run: |
+          set -euo pipefail
+          mkdir -p staging inputs
+          gh release download "$RELEASE_TAG" --pattern "$STAGING_ASSET" --dir staging
+          printf '%s  %s\n' "$STAGING_SHA256" "staging/$STAGING_ASSET" | shasum -a 256 -c -
+          tar -xzf "staging/$STAGING_ASSET" -C inputs
+
+      - name: Validate complete platform inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          targets=(
+            aarch64-apple-darwin
+            x86_64-apple-darwin
+            x86_64-unknown-linux-gnu
+            x86_64-unknown-linux-musl
+            aarch64-unknown-linux-musl
+          )
+          bins=(terraphim-agent terraphim-cli terraphim-grep)
+          for target in "${targets[@]}"; do
+            for bin in "${bins[@]}"; do
+              path="inputs/$bin-$target"
+              [ -f "$path" ] || { echo "ERROR: missing $path" >&2; exit 1; }
+              [ -x "$path" ] || { echo "ERROR: not executable: $path" >&2; exit 1; }
+            done
+          done
+          for bin in "${bins[@]}"; do
+            path="inputs/$bin-x86_64-pc-windows-msvc.exe"
+            [ -f "$path" ] || { echo "ERROR: missing $path" >&2; exit 1; }
+          done
+          [ "$(lipo -archs inputs/terraphim-agent-aarch64-apple-darwin)" = arm64 ]
+          [ "$(lipo -archs inputs/terraphim-agent-x86_64-apple-darwin)" = x86_64 ]
+          file inputs/* | tee staging/file-inventory.txt
+          files=(inputs/*)
+          [ "${#files[@]}" = 18 ] || {
+            echo "ERROR: staging archive must contain exactly 18 binaries" >&2
+            exit 1
+          }
+
+      - name: Create macOS universal binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          lipo -create \
+            inputs/terraphim-agent-x86_64-apple-darwin \
+            inputs/terraphim-agent-aarch64-apple-darwin \
+            -output inputs/terraphim-agent-universal-apple-darwin
+          lipo -create \
+            inputs/terraphim-grep-x86_64-apple-darwin \
+            inputs/terraphim-grep-aarch64-apple-darwin \
+            -output inputs/terraphim-grep-universal-apple-darwin
+          chmod 0755 inputs/terraphim-*-universal-apple-darwin
+
+      - uses: 1password/install-cli-action@v2
+
+      - name: Load Apple credentials without exposing them
+        shell: bash
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+        run: |
+          set -euo pipefail
+          [ -n "${OP_SERVICE_ACCOUNT_TOKEN:-}" ] || {
+            echo "ERROR: OP_SERVICE_ACCOUNT_TOKEN is unavailable" >&2
+            exit 1
+          }
+          {
+            echo "APPLE_ID=$(op read 'op://TerraphimPlatform/apple.developer.credentials/username' --no-newline)"
+            echo "APPLE_TEAM_ID=$(op read 'op://TerraphimPlatform/apple.developer.credentials/APPLE_TEAM_ID' --no-newline)"
+            echo "APPLE_APP_PASSWORD=$(op read 'op://TerraphimPlatform/apple.developer.credentials/APPLE_APP_SPECIFIC_PASSWORD' --no-newline)"
+            echo "CERT_BASE64=$(op read 'op://TerraphimPlatform/apple.developer.certificate/base64' --no-newline)"
+            echo "CERT_PASSWORD=$(op read 'op://TerraphimPlatform/apple.developer.certificate/password' --no-newline)"
+          } >> "$GITHUB_ENV"
+
+      - name: Apple-sign and notarize every shipped macOS binary
+        shell: bash
+        env:
+          RUNNER_TEMP: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          mac_binaries=(
+            inputs/terraphim-agent-aarch64-apple-darwin
+            inputs/terraphim-agent-x86_64-apple-darwin
+            inputs/terraphim-agent-universal-apple-darwin
+            inputs/terraphim-cli-aarch64-apple-darwin
+            inputs/terraphim-cli-x86_64-apple-darwin
+            inputs/terraphim-grep-aarch64-apple-darwin
+            inputs/terraphim-grep-x86_64-apple-darwin
+            inputs/terraphim-grep-universal-apple-darwin
+          )
+          for binary in "${mac_binaries[@]}"; do
+            scripts/sign-macos-binary.sh \
+              "$binary" "$APPLE_ID" "$APPLE_TEAM_ID" "$APPLE_APP_PASSWORD" \
+              "$CERT_BASE64" "$CERT_PASSWORD"
+          done
+
+      - name: Package and archive-sign release assets
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          ZIPSIGN_PRIVATE_KEY: ${{ secrets.ZIPSIGN_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "${ZIPSIGN_PRIVATE_KEY:-}" ] || {
+            echo "ERROR: ZIPSIGN_PRIVATE_KEY is unavailable" >&2
+            exit 1
+          }
+          mkdir -p release-assets
+          unix_targets=(
+            aarch64-apple-darwin
+            x86_64-apple-darwin
+            x86_64-unknown-linux-gnu
+            x86_64-unknown-linux-musl
+            aarch64-unknown-linux-musl
+          )
+          bins=(terraphim-agent terraphim-cli terraphim-grep)
+          for target in "${unix_targets[@]}"; do
+            for bin in "${bins[@]}"; do
+              cp "inputs/$bin-$target" "release-assets/$bin-$target"
+              tar -czf "release-assets/$bin-$VERSION-$target.tar.gz" \
+                -C inputs "$bin-$target"
+            done
+          done
+          for bin in "${bins[@]}"; do
+            cp "inputs/$bin-x86_64-pc-windows-msvc.exe" \
+              "release-assets/$bin-x86_64-pc-windows-msvc.exe"
+            ditto -c -k --keepParent \
+              "inputs/$bin-x86_64-pc-windows-msvc.exe" \
+              "release-assets/$bin-$VERSION-x86_64-pc-windows-msvc.zip"
+          done
+          cp inputs/terraphim-agent-universal-apple-darwin release-assets/
+          cp inputs/terraphim-grep-universal-apple-darwin release-assets/
+          cargo install zipsign --locked
+          scripts/sign-release-archives.sh release-assets
+          (
+            cd release-assets
+            shasum -a 256 ./* > SHA256SUMS
+          )
+
+      - name: Generate stable manifests
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          for bin in terraphim-agent terraphim-cli terraphim-grep; do
+            scripts/build-manifest.sh "$VERSION" "$bin" release-assets \
+              > "release-assets/$bin-stable.json"
+          done
+
+      - name: Publish final assets and remove staging input
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          STAGING_ASSET: ${{ inputs.staging_asset }}
+        run: |
+          set -euo pipefail
+          gh release upload "$RELEASE_TAG" release-assets/* --clobber
+          gh release delete-asset "$RELEASE_TAG" "$STAGING_ASSET" --yes
+          gh release edit "$RELEASE_TAG" --draft=false
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: client-release-finalization-evidence-${{ inputs.version }}
+          path: |
+            staging/file-inventory.txt
+            release-assets/SHA256SUMS
+            release-assets/*-stable.json
+          if-no-files-found: warn
