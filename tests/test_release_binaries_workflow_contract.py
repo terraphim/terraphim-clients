@@ -230,6 +230,12 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
         self.assertEqual(expected_lanes, actual_lanes)
         self.assertIn("fail-fast: false", text)
 
+    def test_build_uses_public_registry_without_stale_token(self) -> None:
+        block = job_block("build-binaries")
+
+        self.assertNotIn("CARGO_REGISTRIES_TERRAPHIM_TOKEN", block)
+        self.assertNotIn("secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN", block)
+
     def test_windows_builds_and_asserts_the_actual_release_binary(self) -> None:
         block = job_block("build-binaries")
 

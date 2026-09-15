@@ -160,8 +160,6 @@ jobs:
             target: x86_64-pc-windows-msvc
             use_cross: false
     runs-on: ${{ matrix.os }}
-    env:
-      CARGO_REGISTRIES_TERRAPHIM_TOKEN: ${{ secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -411,7 +409,7 @@ jobs:
             fi
             printf '::add-mask::%s\n' "$value"
             printf -v "$name" '%s' "$value"
-            export "$name"
+            export "${name?}"
           }
 
           load_masked APPLE_ID 'op://TerraphimPlatform/apple.developer.credentials/username'
@@ -522,12 +520,12 @@ jobs:
           for f in release-assets/*.tar.gz; do
             base="$(basename "$f")"
             # asset filename pattern: <bin>-<version>-<target>.tar.gz
-            bin="${base%%-$VERSION-*}"
+            bin="${base%%-"$VERSION"-*}"
             bunx wrangler r2 object put "terraphim-releases/${bin}/${base}" --file "$f" --remote
           done
           # Publish manifests LAST (atomicity: never point at a missing asset).
           # One manifest per binary that appears in release-assets.
-          bins="$(ls -1 release-assets/*.tar.gz | sed -E "s|^release-assets/||;s/-${VERSION}-.*//" | sort -u)"
+          bins="$(find release-assets -maxdepth 1 -type f -name '*.tar.gz' -print | sed -E "s|^release-assets/||;s/-${VERSION}-.*//" | sort -u)"
           for bin in $bins; do
             recovery-tooling/scripts/build-manifest.sh "$VERSION" "$bin" release-assets > "/tmp/${bin}.stable.json"
             bunx wrangler r2 object put "terraphim-releases/${bin}/stable.json" \
