@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "version": "1.21.14",
+  "release_tag": "v1.21.14",
+  "source_sha": "6161df6e550ead762da186b6beda36f0299eb4d7",
+  "staging_asset": "terraphim-clients-1.21.14-release-inputs.tar.gz",
+  "staging_sha256": "69457dde3e588f192a12b989db76705bb5c48a49a636d5506305a566565a7e41",
+  "builder": {
+    "build_checkout_sha": "f4afcdae653e476a1f6336b804323a080e2f313e",
+    "product_source_delta_from_tag": "none; post-tag commits changed release workflow and tests only",
+    "cargo_lock_sha256": "d3d0965ac068e1cc7a645f72edbd46c7a42bc932aa84942842223f85268324d1",
+    "apple_rust_toolchain": "rustc 1.98.1",
+    "windows_rust_toolchain": "rustc 1.98.1",
+    "cargo_xwin": "0.23.1",
+    "windows_sdk": "17",
+    "cross": "0.2.5 (65fe72b 2026-04-23)",
+    "cross_rust_toolchain": "rustc 1.95.0 (59807616e 2026-04-14)",
+    "x86_64_unknown_linux_gnu_image": "ghcr.io/cross-rs/x86_64-unknown-linux-gnu:main@sha256:e3f7d4ee29f4198c22f84a8d05ab52ec209e7900bd394888b40ea81ca364ec6c",
+    "x86_64_unknown_linux_musl_image": "ghcr.io/cross-rs/x86_64-unknown-linux-musl:main@sha256:d54fdde7f1b680901a0bb21a2952e4921172b94c17e48603ccbbaeca8b5ef7e8",
+    "aarch64_unknown_linux_musl_image": "ghcr.io/cross-rs/aarch64-unknown-linux-musl:main@sha256:10304ec1a8b013544193a403a98b4547e959af1fbc22d1dad88e9ce2b3a9dde0"
+  },
+  "binaries": [
+    {"name": "terraphim-agent-aarch64-apple-darwin", "sha256": "441e3d0794d03b5fb14de714148e62d194b6da6aefe033acad2ca3434a8e3693"},
+    {"name": "terraphim-agent-aarch64-unknown-linux-musl", "sha256": "4894123f0e2c969ab5275806ab02fbc4078cc6231669c1cb810f2ce45f74dd96"},
+    {"name": "terraphim-agent-x86_64-apple-darwin", "sha256": "e9a958d0a8e342106575a90e239afcbf85466debe9691e958e4b8b8e87999f5c"},
+    {"name": "terraphim-agent-x86_64-pc-windows-msvc.exe", "sha256": "e121dacd978d781fb690b6b7c8acaf6b290f51ceaca4b77e0934b476098167f2"},
+    {"name": "terraphim-agent-x86_64-unknown-linux-gnu", "sha256": "4fa4a989fc8ce5be30ee5d83c73a8faa8752408a5e5875498772bad7ce402c17"},
+    {"name": "terraphim-agent-x86_64-unknown-linux-musl", "sha256": "142135e7be634c774b32f9197ed746868447531352a080b1f9ee7992869a2aab"},
+    {"name": "terraphim-cli-aarch64-apple-darwin", "sha256": "6089cd4ebb626ef00a62a4d49371134a99723de0fb784804c55e586d6dd8fde7"},
+    {"name": "terraphim-cli-aarch64-unknown-linux-musl", "sha256": "402aeaf1217008715ab7042221e29e65d4b069373bd56fe879622c9f3eab0565"},
+    {"name": "terraphim-cli-x86_64-apple-darwin", "sha256": "e16626f43cf6620c2d5acdb341c3c0d10b959952a832128535582940afa02c5c"},
+    {"name": "terraphim-cli-x86_64-pc-windows-msvc.exe", "sha256": "b284c3281df3ac41db2bbc9d9d96625ea0ba6e382d29e5208b708080fa8c5354"},
+    {"name": "terraphim-cli-x86_64-unknown-linux-gnu", "sha256": "090bc9798c449ddee38a219e9be3ced2b77dbff1944e135a4c12d4293771b218"},
+    {"name": "terraphim-cli-x86_64-unknown-linux-musl", "sha256": "4eec28f4d0c84af8270307df9ab24a48ff5689acfd21a5b6cc5bfd372fe0c4d0"},
+    {"name": "terraphim-grep-aarch64-apple-darwin", "sha256": "be5fb9eea90c2a5dc7d70875e891e2fe318d841fd42a2a196a14508c31841107"},
+    {"name": "terraphim-grep-aarch64-unknown-linux-musl", "sha256": "1c8cb493052f4b483c52163e81fb12412e23b8a961e5eb0763d490b86696a9c3"},
+    {"name": "terraphim-grep-x86_64-apple-darwin", "sha256": "33bbf7d0c632f069b130810e41238880bb4e1ac8e1b20b57b5ad2bb29aa9cf74"},
+    {"name": "terraphim-grep-x86_64-pc-windows-msvc.exe", "sha256": "66dd5350bbc6ac9bcac69d45f3f6b31c284eba5815ceb82951d7649de4df8f45"},
+    {"name": "terraphim-grep-x86_64-unknown-linux-gnu", "sha256": "f9896c54a95add5b915b6c79b99bb425b0ed7ae4d6677d624b4d6164679de96c"},
+    {"name": "terraphim-grep-x86_64-unknown-linux-musl", "sha256": "532696f1805a18243a811b57cc4f509623720f02cbf9de482c8e1d8c9ffe1934"}
+  ]
+}

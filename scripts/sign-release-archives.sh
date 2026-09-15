@@ -12,8 +12,9 @@
 #   ZIPSIGN_PRIVATE_KEY=<base64> scripts/sign-release-archives.sh <artifacts_dir>
 #
 # Signs every *.tar.gz in <artifacts_dir> in place (zipsign appends the
-# signature trailer to the archive) and verifies each with the public half of
-# the same key. Exits non-zero on any failure so CI fails closed.
+# signature trailer to the archive) and verifies each with the public key
+# pinned in this repository and embedded by released clients. Exits non-zero
+# on any failure so CI fails closed.
 #
 set -euo pipefail
 
@@ -23,6 +24,8 @@ if [ "$#" -lt 1 ]; then
 fi
 
 ARTIFACTS_DIR="$1"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PINNED_PUBLIC_KEY_FILE="$SCRIPT_DIR/../.github/release-signing/zipsign-primary-public-key.base64"
 if [ -z "${ZIPSIGN_PRIVATE_KEY:-}" ]; then
     echo "ERROR: ZIPSIGN_PRIVATE_KEY env var is not set" >&2
     exit 2
@@ -37,16 +40,27 @@ fi
 # to the raw 64-byte zipsign format). Cleaned up on exit.
 KEY_FILE="$(mktemp)"
 PUB_FILE="$(mktemp)"
-trap 'rm -f "$KEY_FILE" "$PUB_FILE"' EXIT
+TRUSTED_PUB_FILE="$(mktemp)"
+trap 'rm -f "$KEY_FILE" "$PUB_FILE" "$TRUSTED_PUB_FILE"' EXIT
 chmod 600 "$KEY_FILE"
 
 base64 -d <<< "$ZIPSIGN_PRIVATE_KEY" > "$KEY_FILE"
-# Derive the matching public key (last 32 bytes of the 64-byte private key) so
-# verification always uses the exact counterpart of the signing key.
+# Derive the public key (last 32 bytes of the 64-byte private key) only to prove
+# that the supplied signing secret matches the separately pinned trust root.
 tail -c 32 "$KEY_FILE" > "$PUB_FILE"
 
 if [ "$(stat -c %s "$KEY_FILE" 2>/dev/null || stat -f %z "$KEY_FILE")" -ne 64 ]; then
     echo "ERROR: decoded ZIPSIGN_PRIVATE_KEY is not 64 bytes" >&2
+    exit 2
+fi
+
+[ -f "$PINNED_PUBLIC_KEY_FILE" ] || {
+    echo "ERROR: pinned zipsign public key is missing" >&2
+    exit 2
+}
+base64 -d < "$PINNED_PUBLIC_KEY_FILE" > "$TRUSTED_PUB_FILE"
+if ! cmp -s "$PUB_FILE" "$TRUSTED_PUB_FILE"; then
+    echo "ERROR: ZIPSIGN_PRIVATE_KEY does not match the client-trusted primary key" >&2
     exit 2
 fi
 
@@ -66,7 +80,7 @@ for archive in "${archives[@]}"; do
         exit 1
     fi
     # Fail-closed: verify the just-signed archive before accepting it.
-    if ! zipsign verify tar "$archive" "$PUB_FILE"; then
+    if ! zipsign verify tar "$archive" "$TRUSTED_PUB_FILE"; then
         echo "ERROR: post-sign verification failed for $name" >&2
         exit 1
     fi
