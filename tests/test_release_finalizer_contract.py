@@ -17,6 +17,7 @@ PINNED_KEY = ROOT / ".github/release-signing/zipsign-primary-public-key.base64"
 UPDATER_SIGNATURES = ROOT / "crates/terraphim_update/src/signature.rs"
 VALIDATOR_PATH = ROOT / "scripts/validate-release-inputs.py"
 VALIDATOR_SOURCE = VALIDATOR_PATH.read_text()
+RELEASE_LOOKUP = ROOT / "scripts/get-release-by-tag.sh"
 
 SPEC = importlib.util.spec_from_file_location("release_input_validator", VALIDATOR_PATH)
 assert SPEC is not None and SPEC.loader is not None
@@ -83,7 +84,9 @@ class ReleaseFinalizerContractTests(unittest.TestCase):
             workflow.index('gh release edit "$RELEASE_TAG" --draft=false'),
         )
         failed_publish = workflow.index('if ! gh release edit "$RELEASE_TAG" --draft=false')
-        state_query = workflow.index('if ! publication_state="$(gh api', failed_publish)
+        state_query = workflow.index(
+            'if ! publication_state="$(scripts/get-release-by-tag.sh', failed_publish
+        )
         restore_staging = workflow.index(
             'gh release upload "$RELEASE_TAG" "staging/$STAGING_ASSET" --clobber',
             failed_publish,
@@ -92,6 +95,18 @@ class ReleaseFinalizerContractTests(unittest.TestCase):
         self.assertIn("publication result is ambiguous; no recovery mutation attempted", workflow)
         self.assertIn("publication state is unknown; no recovery mutation attempted", workflow)
         self.assertIn("publish command failed after GitHub committed publication", workflow)
+        self.assertNotIn("/releases/tags/$RELEASE_TAG", workflow)
+        self.assertGreaterEqual(
+            workflow.count('scripts/get-release-by-tag.sh "$RELEASE_TAG"'), 6
+        )
+
+    def test_draft_release_lookup_is_paginated_and_exact(self):
+        lookup = RELEASE_LOOKUP.read_text()
+        self.assertIn("gh api --paginate --slurp", lookup)
+        self.assertIn("select(.tag_name == $tag)", lookup)
+        self.assertIn('length == 1 then .[0]', lookup)
+        self.assertIn('error("release tag not found: " + $tag)', lookup)
+        self.assertIn('error("duplicate release tag: " + $tag)', lookup)
 
     def test_archive_signer_uses_the_client_trusted_primary_key(self):
         pinned = PINNED_KEY.read_text().strip()
