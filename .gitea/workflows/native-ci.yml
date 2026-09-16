@@ -109,11 +109,21 @@ jobs:
       # coverage. --workspace --all-targets mirrors the existing cargo
       # test lane; --no-fail-fast matches it. GITEA_TOKEN is inherited
       # from the runner env so the [patch.crates-io] registry fetch works.
+      # #328: the command MUST stay on one line. The runner's policy
+      # classifier strips leading VAR=value assignments token-wise
+      # (policy::strip_env_assignments); a trailing "\" continuation
+      # leaves the backslash as the program name and the entire workflow
+      # is rejected before any step runs with
+      # "program `\` is not on the allowlist" (renders as an empty
+      # program name in the UI).
       - name: Coverage (cargo llvm-cov nextest)
-        run: |
-          TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server \
-            cargo llvm-cov nextest --workspace --all-targets --no-fail-fast --lcov --output-path lcov.info
-      - uses: actions/upload-artifact@v4
-        with:
-          name: lcov-native
-          path: lcov.info
+        run: TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo llvm-cov nextest --workspace --all-targets --no-fail-fast --lcov --output-path lcov.info
+      # #328: the Gitea native runner does not execute `uses:` marketplace
+      # steps (workflow/parser.rs skips them), so actions/upload-artifact
+      # silently uploads nothing on this lane. Print lcov totals into the
+      # run log instead, via the allowlisted repo-script interpreter
+      # convention (`bash ./scripts/...`; Refs #118). Restore an artefact
+      # upload once the runner supports `uses:` steps
+      # (terraphim/gitea-infrastructure#2).
+      - name: Coverage summary (lcov totals)
+        run: bash ./scripts/ci/lcov_totals.sh lcov.info

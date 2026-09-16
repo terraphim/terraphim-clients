@@ -25,8 +25,12 @@ host (see gitea-infrastructure HANDOVER.md, 'Host Tooling'). Refs #313.
 cargo install cargo-llvm-cov --locked --root /usr/local
 cargo install cargo-nextest --locked --root /usr/local
 rustup component add llvm-tools-preview
-TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server \
-  cargo llvm-cov nextest --workspace --all-targets --no-fail-fast --lcov --output-path lcov.info
+# Keep the invocation on ONE line: the runner's command policy classifies
+# the step by its first token after stripping VAR=value assignments, and a
+# trailing "\" continuation survives that strip as the program name,
+# rejecting the whole workflow. Refs #328.
+TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo llvm-cov nextest --workspace --all-targets --no-fail-fast --lcov --output-path lcov.info
+bash ./scripts/ci/lcov_totals.sh lcov.info
 
 # ubuntu-latest (GitHub Actions)
 cargo llvm-cov nextest --workspace --lib --no-fail-fast --lcov --output-path lcov.info
