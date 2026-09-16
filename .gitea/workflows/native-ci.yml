@@ -47,14 +47,17 @@ jobs:
       # (sudo install by an admin), not available to workflow steps.
       # ~/.cargo/bin is not reliably on the VM PATH, so the coverage step
       # below prepends this root's bin dir to PATH instead.
-      # --locked pins cargo-llvm-cov to the crates.io latest matching the
-      # workspace's Cargo.lock hash. Three separate steps so a transient
-      # network failure on one install can be retried without rerunning
-      # the others; cargo install --locked is idempotent on warm caches.
-      - name: Install cargo-llvm-cov (pinned via Cargo.lock)
-        run: cargo install cargo-llvm-cov --locked --root /tmp/cov-tools
-      - name: Install cargo-nextest (pinned via Cargo.lock)
-        run: cargo install cargo-nextest --locked --root /tmp/cov-tools
+      # #328: --version pins match the GH lane's `with: tool:` block
+      # exactly (ci.yml pins cargo-llvm-cov@v0.8.5,nextest@v0.9.144);
+      # installing "latest" drifts on every upstream release and trips
+      # the coverage_tool_pinning_matches_local_toolchain ci_guard
+      # (run 522: "local toolchain has 0.9.1, but ci.yml pins 0.8.5").
+      # Three separate steps so a transient network failure on one
+      # install can be retried without rerunning the others.
+      - name: Install cargo-llvm-cov (pinned to GH ci.yml version)
+        run: cargo install cargo-llvm-cov --version 0.8.5 --locked --root /tmp/cov-tools
+      - name: Install cargo-nextest (pinned to GH ci.yml version)
+        run: cargo install cargo-nextest --version 0.9.144 --locked --root /tmp/cov-tools
       - name: Add llvm-tools-preview component
         run: rustup component add llvm-tools-preview
       - run: cargo fmt --all -- --check

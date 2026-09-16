@@ -21,9 +21,11 @@ preserved. `SSL_CERT_FILE` must point at a real CA bundle path on the runner
 host (see gitea-infrastructure HANDOVER.md, 'Host Tooling'). Refs #313.
 
 ```bash
-# terraphim-native (Gitea Actions)
-cargo install cargo-llvm-cov --locked --root /tmp/cov-tools
-cargo install cargo-nextest --locked --root /tmp/cov-tools
+# terraphim-native (Gitea Actions). Versions mirror the GH lane's
+# `with: tool:` pin (cargo-llvm-cov@v0.8.5, nextest@v0.9.144); installing
+# "latest" drifts and trips the coverage_tool_pinning ci_guard. Refs #328.
+cargo install cargo-llvm-cov --version 0.8.5 --locked --root /tmp/cov-tools
+cargo install cargo-nextest --version 0.9.144 --locked --root /tmp/cov-tools
 rustup component add llvm-tools-preview
 # Keep the invocation on ONE line: the runner's command policy classifies
 # the step by its first token after stripping VAR=value assignments, and a
