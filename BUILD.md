@@ -28,8 +28,9 @@ rustup component add llvm-tools-preview
 # Keep the invocation on ONE line: the runner's command policy classifies
 # the step by its first token after stripping VAR=value assignments, and a
 # trailing "\" continuation survives that strip as the program name,
-# rejecting the whole workflow. Refs #328.
-TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo llvm-cov nextest --workspace --all-targets --no-fail-fast --lcov --output-path lcov.info
+# rejecting the whole workflow. Job-level env: is not applied by the
+# runner either, so SSL vars are inlined. Refs #328.
+SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt SSL_CERT_DIR=/etc/ssl/certs TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo llvm-cov nextest --workspace --all-targets --no-fail-fast --lcov --output-path lcov.info
 bash ./scripts/ci/lcov_totals.sh lcov.info
 
 # ubuntu-latest (GitHub Actions)

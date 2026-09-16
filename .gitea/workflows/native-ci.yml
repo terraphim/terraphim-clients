@@ -8,7 +8,11 @@ jobs:
     env:
       # #313: preset SSL cert env so instrumented subprocesses can reach
       # git.terraphim.cloud over HTTPS (EXP-102 Lead addendum 2).
-      # Inherited by every step; see "Check host CA bundle" below.
+      # #328: NOT applied by the current terraphim-gitea-runner (the
+      # workflow parser has no `env:` handling and each step is a
+      # standalone bash POST into a Firecracker VM), so the values are
+      # ALSO inlined where they matter. This block becomes effective if
+      # the runner gains job-env support.
       SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
       SSL_CERT_DIR: /etc/ssl/certs
     steps:
@@ -25,13 +29,16 @@ jobs:
         # `||` chaining instead. Refs #106.
         run: |
           test -x /usr/local/bin/zipsign && /usr/local/bin/zipsign --version || { echo "::error::zipsign not found on PATH. Install on the runner host: sudo install -m 0755 ~/.cargo/bin/zipsign /usr/local/bin/zipsign (see gitea-infrastructure HANDOVER.md, 'Host Tooling'). Refs #106"; exit 1; }
-      # #313: guard the CA bundle path the workflow just exported.
+      # #313: guard the CA bundle path used below. #328: the check uses
+      # the literal path, not $SSL_CERT_FILE -- the runner does not apply
+      # job-level `env:` (parser has no env: handling), so the variable
+      # would be empty and `test -f ""` fails unconditionally.
       # The runner command policy rejects shell `if`/`then`/`fi` as the
       # literal first token; use `test` (the only conditional primitive on
       # the allowlist) with `||` chaining. Never SSL_CERT_FILE=/dev/null.
       - name: Check host CA bundle
         run: |
-          test -f "$SSL_CERT_FILE" || { echo "::error::CA bundle not found at $SSL_CERT_FILE (EXP-102). Install ca-certificates on the runner host or set SSL_CERT_FILE to a real path. Refs #313"; exit 1; }
+          test -f /etc/ssl/certs/ca-certificates.crt || { echo "::error::CA bundle not found at /etc/ssl/certs/ca-certificates.crt (EXP-102). Install ca-certificates on the runner host. Refs #313, #328"; exit 1; }
       # #313: install coverage toolchain to /usr/local (mirrors the zipsign
       # precedent above; ~/.cargo/bin is not always on the runner PATH).
       # --locked pins cargo-llvm-cov to the crates.io latest matching the
@@ -109,15 +116,19 @@ jobs:
       # coverage. --workspace --all-targets mirrors the existing cargo
       # test lane; --no-fail-fast matches it. GITEA_TOKEN is inherited
       # from the runner env so the [patch.crates-io] registry fetch works.
-      # #328: the command MUST stay on one line. The runner's policy
-      # classifier strips leading VAR=value assignments token-wise
-      # (policy::strip_env_assignments); a trailing "\" continuation
-      # leaves the backslash as the program name and the entire workflow
-      # is rejected before any step runs with
-      # "program `\` is not on the allowlist" (renders as an empty
-      # program name in the UI).
+      # #328: two runner constraints shape this step:
+      # 1. The command MUST stay on one line. The policy classifier strips
+      #    leading VAR=value assignments token-wise
+      #    (policy::strip_env_assignments); a trailing "\" continuation
+      #    leaves the backslash as the program name and the entire workflow
+      #    is rejected before any step runs with
+      #    "program `\` is not on the allowlist" (renders as an empty
+      #    program name in the UI).
+      # 2. Job-level `env:` is not applied (see the env: block above), so
+      #    the SSL vars are inlined here as leading assignments instead.
+      #    Multiple leading assignments are stripped correctly.
       - name: Coverage (cargo llvm-cov nextest)
-        run: TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo llvm-cov nextest --workspace --all-targets --no-fail-fast --lcov --output-path lcov.info
+        run: SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt SSL_CERT_DIR=/etc/ssl/certs TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo llvm-cov nextest --workspace --all-targets --no-fail-fast --lcov --output-path lcov.info
       # #328: the Gitea native runner does not execute `uses:` marketplace
       # steps (workflow/parser.rs skips them), so actions/upload-artifact
       # silently uploads nothing on this lane. Print lcov totals into the
