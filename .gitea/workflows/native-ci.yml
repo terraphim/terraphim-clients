@@ -5,6 +5,12 @@ on:
 jobs:
   build:
     runs-on: terraphim-native
+    env:
+      # #313: preset SSL cert env so instrumented subprocesses can reach
+      # git.terraphim.cloud over HTTPS (EXP-102 Lead addendum 2).
+      # Inherited by every step; see "Check host CA bundle" below.
+      SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
+      SSL_CERT_DIR: /etc/ssl/certs
     steps:
       # #106: the terraphim_update signed-archive tests shell out to the
       # `zipsign` binary on the host. It is installed at /usr/local/bin/zipsign
@@ -19,6 +25,25 @@ jobs:
         # `||` chaining instead. Refs #106.
         run: |
           test -x /usr/local/bin/zipsign && /usr/local/bin/zipsign --version || { echo "::error::zipsign not found on PATH. Install on the runner host: sudo install -m 0755 ~/.cargo/bin/zipsign /usr/local/bin/zipsign (see gitea-infrastructure HANDOVER.md, 'Host Tooling'). Refs #106"; exit 1; }
+      # #313: guard the CA bundle path the workflow just exported.
+      # The runner command policy rejects shell `if`/`then`/`fi` as the
+      # literal first token; use `test` (the only conditional primitive on
+      # the allowlist) with `||` chaining. Never SSL_CERT_FILE=/dev/null.
+      - name: Check host CA bundle
+        run: |
+          test -f "$SSL_CERT_FILE" || { echo "::error::CA bundle not found at $SSL_CERT_FILE (EXP-102). Install ca-certificates on the runner host or set SSL_CERT_FILE to a real path. Refs #313"; exit 1; }
+      # #313: install coverage toolchain to /usr/local (mirrors the zipsign
+      # precedent above; ~/.cargo/bin is not always on the runner PATH).
+      # --locked pins cargo-llvm-cov to the crates.io latest matching the
+      # workspace's Cargo.lock hash. Three separate steps so a transient
+      # network failure on one install can be retried without rerunning
+      # the others; cargo install --locked is idempotent on warm caches.
+      - name: Install cargo-llvm-cov (pinned via Cargo.lock)
+        run: cargo install cargo-llvm-cov --locked --root /usr/local
+      - name: Install cargo-nextest (pinned via Cargo.lock)
+        run: cargo install cargo-nextest --locked --root /usr/local
+      - name: Add llvm-tools-preview component
+        run: rustup component add llvm-tools-preview
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo build --workspace
@@ -79,3 +104,16 @@ jobs:
       # allowlist"), which is what took CI down from #112 until now. Also
       # covered by --all-targets above; kept for fast failure attribution.
       - run: cargo test -p terraphim_agent --test ci_guards -- --nocapture
+      # #313: first coverage lane in the monorepo. nextest runs each test
+      # binary in its own process so llvm-cov can attribute per-test
+      # coverage. --workspace --all-targets mirrors the existing cargo
+      # test lane; --no-fail-fast matches it. GITEA_TOKEN is inherited
+      # from the runner env so the [patch.crates-io] registry fetch works.
+      - name: Coverage (cargo llvm-cov nextest)
+        run: |
+          TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server \
+            cargo llvm-cov nextest --workspace --all-targets --no-fail-fast --lcov --output-path lcov.info
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lcov-native
+          path: lcov.info

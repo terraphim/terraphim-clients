@@ -9,6 +9,10 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # #313: preset SSL cert env. ubuntu-latest's default bundle lives at
+  # this path; presetting is harmless and uniform with native-ci.yml.
+  SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
+  SSL_CERT_DIR: /etc/ssl/certs
 
 jobs:
   build:
@@ -18,13 +22,46 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      # #313: install cargo-llvm-cov and cargo-nextest via taiki-e's
+      # install-action, pinned to the v2 action tag and specific tool
+      # versions so a transitive regression on the crates we depend on
+      # cannot silently flip the coverage lane (matches the
+      # cargo install --locked discipline on the native lane). The pin
+      # values must match the locally-installed toolchain on the dev box;
+      # coverage_tool_pinning_matches_local_toolchain in
+      # crates/terraphim_agent/tests/ci_guards.rs fires if they drift.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov@v0.8.5,nextest@v0.9.144
       - uses: Swatinem/rust-cache@v2
+      # #313: guard the CA bundle path the workflow just exported. Same
+      # shape as the native lane (test -f ... || { echo ::error::...; exit 1; })
+      # but with the ubuntu-latest default bundle path. cargo-llvm-cov
+      # installs llvm-tools-preview via rustup on first run.
+      - name: Check host CA bundle
+        run: |
+          test -f "$SSL_CERT_FILE" || { echo "::error::CA bundle not found at $SSL_CERT_FILE (EXP-102). Install ca-certificates on the runner host or set SSL_CERT_FILE to a real path. Refs #313"; exit 1; }
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo clippy -p terraphim_sessions --features enrichment -- -D warnings
       - run: cargo build --workspace
+      # #313: the existing --workspace --lib cargo test lane stays in
+      # place so the test signal is visible even if the coverage
+      # toolchain breaks; the design's "Avoid At All Cost" rule
+      # (docs/plans/design-coverage-nextest.md:55) explicitly forbids
+      # replacing it.
       - run: cargo test --workspace --lib --no-fail-fast
-# #2171: enrichment-feature test invocation.
+      # #313: additive coverage lane. nextest runs each test binary in
+      # its own process so llvm-cov can attribute per-test coverage;
+      # --workspace --lib matches the test lane above; --no-fail-fast
+      # matches the prior lane. GH has no Gitea registry creds so --lib
+      # is the safe target set.
+      - name: Coverage (cargo llvm-cov nextest)
+        run: cargo llvm-cov nextest --workspace --lib --no-fail-fast --lcov --output-path lcov.info
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lcov-gh
+          path: lcov.info
       - run: cargo test -p terraphim_sessions --features enrichment --lib --no-fail-fast
       # #4325: zero-chunk smoke for terraphim_grep default features.
       - run: cargo test -p terraphim_grep --test default_feature_smoke
