@@ -92,7 +92,11 @@ jobs:
       # integration_tests and kg_ranking_integration_test all fail without it.
       # Binaries built by this workspace (terraphim-agent, terraphim_mcp_server)
       # are resolved by the tests via CARGO_BIN_EXE_*, so they need no env.
-      - run: TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo test --workspace --all-targets --no-fail-fast
+      # #328: PATH prefix exposes the /tmp/cov-tools pins to the
+      # coverage_tool_pinning ci_guard (the VM image ships a
+      # different cargo-llvm-cov on the default PATH; run 523 saw
+      # 0.9.1 there while the lane pins 0.8.5).
+      - run: PATH=/tmp/cov-tools/bin:$PATH TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo test --workspace --all-targets --no-fail-fast
       # #113: focused re-runs of the integration tests that require a real
       # terraphim_server binary (also covered by --all-targets above; kept for
       # fast failure attribution). ensure_server_binary() (in
@@ -119,7 +123,9 @@ jobs:
       # program that is not cargo ("policy rejected command: ... not on the
       # allowlist"), which is what took CI down from #112 until now. Also
       # covered by --all-targets above; kept for fast failure attribution.
-      - run: cargo test -p terraphim_agent --test ci_guards -- --nocapture
+      # #328: PATH prefix as above, so the pinning guard compares
+      # against the lane's pinned tools, not the VM image defaults.
+      - run: PATH=/tmp/cov-tools/bin:$PATH cargo test -p terraphim_agent --test ci_guards -- --nocapture
       # #313: first coverage lane in the monorepo. nextest runs each test
       # binary in its own process so llvm-cov can attribute per-test
       # coverage. --workspace --all-targets mirrors the existing cargo
