@@ -88,11 +88,7 @@ fn coverage_tool_pinning_matches_local_toolchain() {
 
     // The GH ci.yml `with: tool:` line we want to keep in sync with.
     let ci_yml = root.join(".github/workflows/ci.yml");
-    assert!(
-        ci_yml.is_file(),
-        "missing {}",
-        ci_yml.display()
-    );
+    assert!(ci_yml.is_file(), "missing {}", ci_yml.display());
     let ci_text = std::fs::read_to_string(&ci_yml).expect("read ci.yml");
 
     // Extract the `tool: cargo-llvm-cov@vX.Y.Z,nextest@vX.Y.Z` value.
@@ -118,10 +114,16 @@ fn coverage_tool_pinning_matches_local_toolchain() {
         pinned.insert(name, version);
     }
     let gh_cov = pinned.get("cargo-llvm-cov").copied().unwrap_or_else(|| {
-        panic!("ci.yml `tool:` block does not pin cargo-llvm-cov; got `{}`", pinned_block)
+        panic!(
+            "ci.yml `tool:` block does not pin cargo-llvm-cov; got `{}`",
+            pinned_block
+        )
     });
     let gh_nextest = pinned.get("nextest").copied().unwrap_or_else(|| {
-        panic!("ci.yml `tool:` block does not pin nextest; got `{}`", pinned_block)
+        panic!(
+            "ci.yml `tool:` block does not pin nextest; got `{}`",
+            pinned_block
+        )
     });
 
     // Resolve the locally-installed versions.
