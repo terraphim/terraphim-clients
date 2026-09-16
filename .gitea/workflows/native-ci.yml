@@ -52,12 +52,17 @@ jobs:
       # installing "latest" drifts on every upstream release and trips
       # the coverage_tool_pinning_matches_local_toolchain ci_guard
       # (run 522: "local toolchain has 0.9.1, but ci.yml pins 0.8.5").
+      # No --root: installs go to the session's default CARGO_HOME/bin,
+      # which cargo searches for subcommands BEFORE PATH -- a separate
+      # root leaves the image's own 0.9.1 in CARGO_HOME/bin shadowing
+      # the pins (run 524) and /usr/local is not VM-writable (run 518).
+      # The overwrite puts the pinned version first for every lookup.
       # Three separate steps so a transient network failure on one
       # install can be retried without rerunning the others.
       - name: Install cargo-llvm-cov (pinned to GH ci.yml version)
-        run: cargo install cargo-llvm-cov --version 0.8.5 --locked --root /tmp/cov-tools
+        run: cargo install cargo-llvm-cov --version 0.8.5 --locked
       - name: Install cargo-nextest (pinned to GH ci.yml version)
-        run: cargo install cargo-nextest --version 0.9.144 --locked --root /tmp/cov-tools
+        run: cargo install cargo-nextest --version 0.9.144 --locked
       - name: Add llvm-tools-preview component
         run: rustup component add llvm-tools-preview
       - run: cargo fmt --all -- --check
@@ -92,11 +97,7 @@ jobs:
       # integration_tests and kg_ranking_integration_test all fail without it.
       # Binaries built by this workspace (terraphim-agent, terraphim_mcp_server)
       # are resolved by the tests via CARGO_BIN_EXE_*, so they need no env.
-      # #328: PATH prefix exposes the /tmp/cov-tools pins to the
-      # coverage_tool_pinning ci_guard (the VM image ships a
-      # different cargo-llvm-cov on the default PATH; run 523 saw
-      # 0.9.1 there while the lane pins 0.8.5).
-      - run: PATH=/tmp/cov-tools/bin:$PATH TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo test --workspace --all-targets --no-fail-fast
+      - run: TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo test --workspace --all-targets --no-fail-fast
       # #113: focused re-runs of the integration tests that require a real
       # terraphim_server binary (also covered by --all-targets above; kept for
       # fast failure attribution). ensure_server_binary() (in
@@ -123,9 +124,7 @@ jobs:
       # program that is not cargo ("policy rejected command: ... not on the
       # allowlist"), which is what took CI down from #112 until now. Also
       # covered by --all-targets above; kept for fast failure attribution.
-      # #328: PATH prefix as above, so the pinning guard compares
-      # against the lane's pinned tools, not the VM image defaults.
-      - run: PATH=/tmp/cov-tools/bin:$PATH cargo test -p terraphim_agent --test ci_guards -- --nocapture
+      - run: cargo test -p terraphim_agent --test ci_guards -- --nocapture
       # #313: first coverage lane in the monorepo. nextest runs each test
       # binary in its own process so llvm-cov can attribute per-test
       # coverage. --workspace --all-targets mirrors the existing cargo
@@ -142,11 +141,11 @@ jobs:
       # 2. Job-level `env:` is not applied (see the env: block above), so
       #    the SSL vars are inlined here as leading assignments instead.
       #    Multiple leading assignments are stripped correctly.
-      # 3. The toolchain installs to /tmp/cov-tools (see above); its bin
-      #    dir is prepended to PATH so `cargo llvm-cov` / `cargo nextest`
-      #    resolve their subcommand binaries.
+      # 3. The toolchain installs into the session's default
+      #    CARGO_HOME/bin (see the install steps above), so the
+      #    subcommand lookups resolve the pinned versions.
       - name: Coverage (cargo llvm-cov nextest)
-        run: PATH=/tmp/cov-tools/bin:$PATH SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt SSL_CERT_DIR=/etc/ssl/certs TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo llvm-cov nextest --workspace --all-targets --no-fail-fast --lcov --output-path lcov.info
+        run: SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt SSL_CERT_DIR=/etc/ssl/certs TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo llvm-cov nextest --workspace --all-targets --no-fail-fast --lcov --output-path lcov.info
       # #328: the Gitea native runner does not execute `uses:` marketplace
       # steps (workflow/parser.rs skips them), so actions/upload-artifact
       # silently uploads nothing on this lane. Print lcov totals into the
