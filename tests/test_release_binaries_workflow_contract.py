@@ -1,7 +1,8 @@
-import re
 import os
+import re
 import subprocess
 import textwrap
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -32,478 +33,324 @@ def job_block(job_name: str) -> str:
     return text[start : start + 1 + match.start()]
 
 
-class ReleaseBinariesWorkflowContract(unittest.TestCase):
-    def test_dispatch_requires_safe_correlation_identity(self) -> None:
-        text = workflow_text()
+def stage_env(**updates: str) -> dict[str, str]:
+    env = os.environ.copy()
+    env.update(
+        {
+            "VERSION": "1.21.15",
+            "RELEASE_TAG": "v1.21.15",
+            "SOURCE_REF": "v1.21.15",
+            "EXPECTED_SOURCE_SHA": "b" * 40,
+            "TARGET_REPO": "terraphim-ai",
+            "CORRELATION_ID": "terraphim-ai/release-1.21.15:248",
+            "PUBLISH_TO_TARGET_RELEASE": "false",
+        }
+    )
+    env.update(updates)
+    return env
 
+
+class ReleaseBinariesWorkflowContract(unittest.TestCase):
+    def test_run_name_preserves_exact_correlation_identity(self) -> None:
+        self.assertIn(
+            "run-name: Release ${{ inputs.release_tag }} from "
+            "${{ inputs.expected_source_sha }} "
+            "(correlation ${{ inputs.correlation_id }})",
+            workflow_text(),
+        )
+
+    def test_dispatch_is_stage_only_by_default(self) -> None:
+        text = workflow_text()
+        self.assertRegex(
+            text,
+            r"publish_to_target_release:\n"
+            r"\s+description:.*\n\s+required: false\n\s+default: false\n\s+type: boolean",
+        )
+        self.assertRegex(
+            text,
+            r"expected_source_sha:\n\s+description:.*\n\s+required: true\n\s+type: string",
+        )
         self.assertRegex(
             text,
             r"correlation_id:\n\s+description:.*\n\s+required: true\n\s+type: string",
         )
 
-    def test_run_name_contains_exact_dispatch_identity(self) -> None:
-        text = workflow_text()
-
-        self.assertIn(
-            "run-name: Release ${{ inputs.release_tag }} from "
-            "${{ inputs.expected_source_sha }} "
-            "(correlation ${{ inputs.correlation_id }})",
-            text,
-        )
-
-    def test_dispatch_publication_mode_is_boolean_and_defaults_true(self) -> None:
-        text = workflow_text()
-
-        self.assertRegex(
-            text,
-            r"publish_to_target_release:\n"
-            r"\s+description:.*\n"
-            r"\s+required: false\n"
-            r"\s+default: true\n"
-            r"\s+type: boolean",
-        )
-
-    def test_dispatch_requires_immutable_source_inputs(self) -> None:
-        text = workflow_text()
-
-        self.assertRegex(text, r"source_ref:\n\s+description:")
-        self.assertRegex(text, r"expected_source_sha:\n\s+description:")
-        self.assertIn("required: true", text)
-
-    def test_preflight_validates_hostile_inputs_before_checkout(self) -> None:
-        text = workflow_text()
-        preflight_index = text.index("  preflight:")
-        first_checkout_index = text.index("actions/checkout@v4")
-
-        self.assertLess(preflight_index, first_checkout_index)
-        self.assertIn("input version", text)
-        self.assertIn("release_tag", text)
-        self.assertIn("source_ref", text)
-        self.assertIn("target_repo", text)
-        self.assertIn("expected_source_sha", text)
-        self.assertIn("is not valid semver", text)
-        self.assertIn("must equal source_ref", text)
-        self.assertIn("is not allowed", text)
-        self.assertIn("is not a 40-character lowercase hex SHA", text)
-        self.assertIn("does not match expected_source_sha", text)
-
-    def test_preflight_python_validator_accepts_recovery_contract(self) -> None:
-        for target_repo in ("terraphim-clients", "terraphim-ai"):
-            with self.subTest(target_repo=target_repo):
-                env = os.environ.copy()
-                env.update(
-                    {
-                        "VERSION": "1.21.12",
-                        "RELEASE_TAG": "v1.21.12",
-                        "SOURCE_REF": "v1.21.12",
-                        "EXPECTED_SOURCE_SHA": "e080475ac26f44ad4674a438d753f6ab185fb787",
-                        "WORKFLOW_SHA": "8bc89a9d22f14cb4cecd066ec4a148f413771fa3",
-                        "TARGET_REPO": target_repo,
-                        "CORRELATION_ID": "release-322/attempt_1:abc@123",
-                        "PUBLISH_TO_TARGET_RELEASE": "true",
-                    }
-                )
-
-                result = subprocess.run(
-                    ["python3", "-c", preflight_python_validator()],
-                    env=env,
-                    text=True,
-                    capture_output=True,
-                )
-
-                self.assertEqual(result.returncode, 0, result.stderr)
-
-    def test_preflight_python_validator_rejects_hostile_inputs(self) -> None:
-        base_env = os.environ.copy()
-        base_env.update(
-            {
-                "VERSION": "1.21.12",
-                "RELEASE_TAG": "v1.21.12",
-                "SOURCE_REF": "v1.21.12",
-                "EXPECTED_SOURCE_SHA": "e080475ac26f44ad4674a438d753f6ab185fb787",
-                "WORKFLOW_SHA": "8bc89a9d22f14cb4cecd066ec4a148f413771fa3",
-                "TARGET_REPO": "terraphim-clients",
-                "CORRELATION_ID": "release-322/attempt_1:abc@123",
-                "PUBLISH_TO_TARGET_RELEASE": "true",
-            }
-        )
-        cases = (
-            ("VERSION", "v1.21.12", "is not valid semver"),
-            ("RELEASE_TAG", "v1.21.13", "must equal 'v' plus version"),
-            ("SOURCE_REF", "main", "must equal source_ref"),
-            ("EXPECTED_SOURCE_SHA", "E080475AC26F44AD4674A438D753F6AB185FB787", "40-character lowercase hex SHA"),
-            ("WORKFLOW_SHA", "main", "workflow_sha"),
-            ("TARGET_REPO", "terraphim", "is not allowed"),
-        )
-
-        for key, value, error in cases:
-            with self.subTest(key=key):
-                env = base_env.copy()
-                env[key] = value
-                result = subprocess.run(
-                    ["python3", "-c", preflight_python_validator()],
-                    env=env,
-                    text=True,
-                    capture_output=True,
-                )
-                self.assertNotEqual(result.returncode, 0)
-                self.assertIn(error, result.stderr)
-
-    def test_preflight_python_validator_accepts_stage_only_ai_contract(self) -> None:
-        env = os.environ.copy()
-        env.update(
-            {
-                "VERSION": "1.21.12",
-                "RELEASE_TAG": "v1.21.12",
-                "SOURCE_REF": "v1.21.12",
-                "EXPECTED_SOURCE_SHA": "e080475ac26f44ad4674a438d753f6ab185fb787",
-                "WORKFLOW_SHA": "8bc89a9d22f14cb4cecd066ec4a148f413771fa3",
-                "TARGET_REPO": "terraphim-ai",
-                "CORRELATION_ID": "terraphim-ai/release-1.21.12:123456",
-                "PUBLISH_TO_TARGET_RELEASE": "false",
-            }
-        )
-
-        result = subprocess.run(
+    def test_preflight_validator_accepts_only_stage_identity(self) -> None:
+        accepted = subprocess.run(
             ["python3", "-c", preflight_python_validator()],
-            env=env,
+            env=stage_env(),
             text=True,
             capture_output=True,
         )
+        self.assertEqual(accepted.returncode, 0, accepted.stderr)
 
-        self.assertEqual(result.returncode, 0, result.stderr)
-
-    def test_preflight_python_validator_rejects_unsafe_correlation_ids(self) -> None:
-        base_env = os.environ.copy()
-        base_env.update(
-            {
-                "VERSION": "1.21.12",
-                "RELEASE_TAG": "v1.21.12",
-                "SOURCE_REF": "v1.21.12",
-                "EXPECTED_SOURCE_SHA": "e080475ac26f44ad4674a438d753f6ab185fb787",
-                "WORKFLOW_SHA": "8bc89a9d22f14cb4cecd066ec4a148f413771fa3",
-                "TARGET_REPO": "terraphim-ai",
-                "CORRELATION_ID": "release-322",
-                "PUBLISH_TO_TARGET_RELEASE": "false",
-            }
-        )
         cases = (
-            ("", "must not be empty"),
-            (" leading", "leading or trailing whitespace"),
-            ("trailing ", "leading or trailing whitespace"),
-            ("line\nbreak", "safe deterministic text"),
-            ("control\x1fcharacter", "safe deterministic text"),
-            ("space inside", "safe deterministic text"),
-            ("a" * 129, "must not exceed 128 characters"),
+            ({"VERSION": "v1.21.15"}, "stable semantic version"),
+            ({"RELEASE_TAG": "v1.21.14"}, "must equal 'v' plus version"),
+            ({"SOURCE_REF": "main"}, "must equal source_ref"),
+            ({"EXPECTED_SOURCE_SHA": "B" * 40}, "lowercase hex SHA"),
+            ({"TARGET_REPO": "terraphim-clients"}, "stage-only mode"),
+            ({"PUBLISH_TO_TARGET_RELEASE": "true"}, "stage-only producer"),
+            ({"CORRELATION_ID": "unsafe value"}, "unsafe characters"),
         )
-
-        for correlation_id, error in cases:
-            with self.subTest(correlation_id=repr(correlation_id)):
-                env = base_env.copy()
-                env["CORRELATION_ID"] = correlation_id
-                result = subprocess.run(
-                    ["python3", "-c", preflight_python_validator()],
-                    env=env,
-                    text=True,
-                    capture_output=True,
-                )
-                self.assertNotEqual(result.returncode, 0)
-                self.assertIn(error, result.stderr)
-
-    def test_preflight_rejects_invalid_publication_mode_repo_combinations(self) -> None:
-        base_env = os.environ.copy()
-        base_env.update(
-            {
-                "VERSION": "1.21.12",
-                "RELEASE_TAG": "v1.21.12",
-                "SOURCE_REF": "v1.21.12",
-                "EXPECTED_SOURCE_SHA": "e080475ac26f44ad4674a438d753f6ab185fb787",
-                "WORKFLOW_SHA": "8bc89a9d22f14cb4cecd066ec4a148f413771fa3",
-                "TARGET_REPO": "terraphim-ai",
-                "CORRELATION_ID": "release-322",
-                "PUBLISH_TO_TARGET_RELEASE": "false",
-            }
-        )
-        cases = (
-            (
-                {"TARGET_REPO": "terraphim-clients"},
-                "stage-only mode requires target_repo 'terraphim-ai'",
-            ),
-            (
-                {"PUBLISH_TO_TARGET_RELEASE": "False"},
-                "publish_to_target_release must be exactly 'true' or 'false'",
-            ),
-            (
-                {"PUBLISH_TO_TARGET_RELEASE": "1"},
-                "publish_to_target_release must be exactly 'true' or 'false'",
-            ),
-        )
-
-        for updates, error in cases:
+        for updates, message in cases:
             with self.subTest(updates=updates):
-                env = base_env.copy()
-                env.update(updates)
                 result = subprocess.run(
                     ["python3", "-c", preflight_python_validator()],
-                    env=env,
+                    env=stage_env(**updates),
                     text=True,
                     capture_output=True,
                 )
                 self.assertNotEqual(result.returncode, 0)
-                self.assertIn(error, result.stderr)
+                self.assertIn(message, result.stderr)
 
-    def test_preflight_recursively_peels_tag_to_commit(self) -> None:
+    def test_preflight_recursively_peels_to_exact_expected_sha(self) -> None:
+        block = job_block("preflight")
+        self.assertIn("while [ \"$object_type\" != \"commit\" ]", block)
+        self.assertIn("/git/ref/tags/${ref_name}", block)
+        self.assertIn("/git/tags/${object_sha}", block)
+        self.assertIn('[ "$source_sha" = "$EXPECTED_SOURCE_SHA" ]', block)
+
+    def test_release_uses_checked_in_version_and_never_mutates_source(self) -> None:
         text = workflow_text()
+        workspace = tomllib.loads((ROOT / "Cargo.toml").read_text())
+        self.assertEqual(workspace["workspace"]["package"]["version"], "1.21.15")
+        for forbidden in (
+            "Set release version",
+            "set_section_version",
+            'p.write_text(',
+            "cargo update",
+        ):
+            self.assertNotIn(forbidden, text)
+        self.assertIn("cargo metadata --locked --no-deps --format-version 1", text)
+        self.assertGreaterEqual(text.count("git diff --exit-code -- Cargo.toml Cargo.lock"), 4)
+        self.assertGreaterEqual(text.count("git status --porcelain"), 4)
+        self.assertIn('release_tag != f"v{workspace_version}"', text)
+        self.assertIn('version != workspace_version', text)
 
-        self.assertIn("gh api", text)
-        self.assertIn("repos/${{ github.repository }}/git/ref/tags/", text)
-        self.assertIn("repos/${{ github.repository }}/git/tags/", text)
-        self.assertIn('ref_json="$(gh api "repos/${{ github.repository }}/git/ref/tags/${ref_name}")"', text)
-        self.assertIn('tag_json="$(gh api "repos/${{ github.repository }}/git/tags/${object_sha}")"', text)
-        self.assertIn("while object_type != \"commit\"", text)
-        self.assertIn("source_sha=", text)
-        self.assertNotIn("release_sha=", text)
-
-    def test_build_mutation_trusts_preflight_and_only_rewrites_versions(self) -> None:
+    def test_every_source_checkout_consumes_the_peeled_sha(self) -> None:
         text = workflow_text()
-        start = text.index("      - name: Set release version")
-        end = text.index("      - name: Assert host binary reports", start)
-        block = text[start:end]
+        checkout_refs = re.findall(r"uses: actions/checkout@[0-9a-f]{40}[^\n]*\n\s+with:\n\s+ref: ([^\n]+)", text)
+        self.assertGreaterEqual(len(checkout_refs), 4)
+        for ref in checkout_refs:
+            self.assertIn("source_sha", ref)
+        self.assertNotIn("recovery-tooling", text)
+        self.assertNotIn("workflow_sha", text)
 
-        self.assertIn('VERSION = os.environ["VERSION"]', block)
-        self.assertIn('set_section_version("Cargo.toml", "workspace.package")', block)
-        self.assertIn(
-            'set_section_version("crates/terraphim_agent/Cargo.toml", "package")',
-            block,
-        )
-        self.assertIn("cargo metadata --no-deps --format-version 1", block)
-        self.assertNotIn("SEMVER", block)
-        self.assertNotIn("RELEASE_TAG", block)
-        self.assertNotIn("SOURCE_REF", block)
-        self.assertNotIn("TARGET_REPO", block)
-
-    def test_source_and_recovery_tooling_checkouts_are_distinct_and_immutable(self) -> None:
+    def test_matrix_is_the_exact_six_lane_contract(self) -> None:
         text = workflow_text()
-
-        checkout_blocks = re.findall(
-            r"- (?:name: Checkout reviewed recovery tooling\n\s+)?uses: actions/checkout@v4\n(?:\s+with:\n(?:\s{10,}.+\n)+)?",
-            text,
-        )
-        source_blocks = [block for block in checkout_blocks if "path: recovery-tooling" not in block]
-        tooling_blocks = [block for block in checkout_blocks if "path: recovery-tooling" in block]
-        self.assertGreaterEqual(len(source_blocks), 3)
-        self.assertEqual(len(tooling_blocks), 2)
-        for block in source_blocks:
-            self.assertIn("ref: ${{ needs.preflight.outputs.source_sha }}", block)
-        for block in tooling_blocks:
-            self.assertIn("ref: ${{ needs.preflight.outputs.workflow_sha }}", block)
-            self.assertIn("sparse-checkout: scripts", block)
-
-        self.assertGreaterEqual(
-            text.count('git rev-parse HEAD)" != "${{ needs.preflight.outputs.source_sha }}"'),
-            3,
-        )
-        self.assertIn("recovery-tooling/scripts/sign-macos-binary.sh", text)
-        self.assertIn("recovery-tooling/scripts/sign-release-archives.sh", text)
-        self.assertIn("recovery-tooling/scripts/build-manifest.sh", text)
-
-    def test_matrix_preserves_six_mandatory_lanes(self) -> None:
-        text = workflow_text()
-
-        expected_lanes = {
+        expected = {
             ("ubuntu-22.04", "x86_64-unknown-linux-gnu", "false"),
             ("ubuntu-22.04", "x86_64-unknown-linux-musl", "true"),
             ("ubuntu-22.04", "aarch64-unknown-linux-musl", "true"),
-            ("macos-latest", "x86_64-apple-darwin", "false"),
-            ("macos-latest", "aarch64-apple-darwin", "false"),
+            ("macos-15-intel", "x86_64-apple-darwin", "false"),
+            ("macos-15", "aarch64-apple-darwin", "false"),
             ("windows-latest", "x86_64-pc-windows-msvc", "false"),
         }
-        actual_lanes = set(
+        actual = set(
             re.findall(
                 r"- os: ([^\n]+)\n\s+target: ([^\n]+)\n\s+use_cross: (true|false)",
                 text,
             )
         )
-
-        self.assertEqual(expected_lanes, actual_lanes)
+        self.assertEqual(actual, expected)
         self.assertIn("fail-fast: false", text)
 
-    def test_windows_builds_and_asserts_the_actual_release_binary(self) -> None:
+    def test_builds_are_locked_and_grep_features_are_preserved(self) -> None:
         block = job_block("build-binaries")
-
-        self.assertIn(
-            "Assert Windows release binary reports the release version (#67, #95, #103)",
-            block,
-        )
-        self.assertIn(
-            "cargo build --release --target ${{ matrix.target }} -p terraphim_agent --bin terraphim-agent",
-            block,
-        )
-        self.assertIn("target/${{ matrix.target }}/release/terraphim-agent.exe", block)
-        self.assertIn("--version", block)
-        self.assertIn("awk '{print $NF}'", block)
-        self.assertIn('if [ "$reported" != "$VERSION" ]; then', block)
-        self.assertIn("Build client binaries (Windows)", block)
-        self.assertNotIn("/STACK:8388608", block)
-        self.assertNotIn("windows-no-stack-diagnostic", block)
-        self.assertNotIn("set +e", block)
-
-    def test_non_windows_builds_do_not_set_empty_rustflags(self) -> None:
-        text = workflow_text()
-
-        self.assertNotIn("|| ''", text)
-        self.assertNotIn("RUSTFLAGS: ${{ matrix.os == 'windows-latest'", text)
-        self.assertRegex(
-            text,
-            r"- name: Build client binaries\n\s+if: matrix\.os != 'windows-latest'\n\s+shell: bash\n\s+run:",
-        )
-        self.assertRegex(
-            text,
-            r"- name: Build client binaries \(Windows\)\n\s+if: matrix\.os == 'windows-latest'\n\s+shell: bash\n\s+run:",
-        )
-
-    def test_job_gates_and_r2_are_fail_closed_on_specific_needs(self) -> None:
-        create_universal = job_block("create-universal-macos")
-        sign_and_notarize = job_block("sign-and-notarize-macos")
-        upload = job_block("upload-to-target-release")
-
-        self.assertIn("needs: [preflight, build-binaries]", create_universal)
-        self.assertIn("always() &&", create_universal)
-        self.assertIn("!cancelled() &&", create_universal)
-        self.assertIn("needs.preflight.result == 'success'", create_universal)
-        self.assertIn("needs.build-binaries.result == 'success'", create_universal)
-        self.assertNotIn("needs.build-binaries.result != 'cancelled'", create_universal)
-
-        self.assertIn("needs: [preflight, create-universal-macos]", sign_and_notarize)
-        self.assertIn("always() &&", sign_and_notarize)
-        self.assertIn("!cancelled() &&", sign_and_notarize)
-        self.assertIn("needs.preflight.result == 'success'", sign_and_notarize)
-        self.assertIn("needs.create-universal-macos.result == 'success'", sign_and_notarize)
-
-        self.assertIn("needs: [preflight, build-binaries, sign-and-notarize-macos]", upload)
-        self.assertIn("always() &&", upload)
-        self.assertIn("!cancelled() &&", upload)
-        self.assertIn("needs.preflight.result == 'success'", upload)
-        self.assertIn("needs.build-binaries.result == 'success'", upload)
-        self.assertIn("needs.sign-and-notarize-macos.result == 'success'", upload)
-        self.assertIn(
-            "needs.preflight.outputs.publish_to_target_release == 'true'", upload
-        )
-        self.assertIn("RELEASE_TAG: ${{ needs.preflight.outputs.release_tag }}", upload)
-        self.assertIn("TARGET_REPO: ${{ needs.preflight.outputs.target_repo }}", upload)
-        self.assertIn("VERSION: ${{ needs.preflight.outputs.version }}", upload)
-        self.assertIn("ERROR: CLOUDFLARE_API_TOKEN not set; failing R2 publish closed", upload)
-        self.assertIn("exit 1", upload)
-        self.assertNotIn("WARN: CLOUDFLARE_API_TOKEN not set; skipping R2 publish", upload)
-
-    def test_stage_only_keeps_all_build_signing_artifacts_reachable(self) -> None:
-        build = job_block("build-binaries")
-        universal = job_block("create-universal-macos")
-        signing = job_block("sign-and-notarize-macos")
-
-        for block in (build, universal, signing):
-            self.assertNotIn("publish_to_target_release", block)
-            self.assertIn("actions/upload-artifact@v4", block)
-
-        self.assertIn("name: client-binaries-${{ matrix.target }}", build)
-        self.assertIn("name: client-binaries-universal-apple-darwin", universal)
-        self.assertIn(
-            "name: client-binaries-signed-universal-apple-darwin", signing
-        )
-
-    def test_public_mutations_are_inside_publish_true_job_guard(self) -> None:
-        text = workflow_text()
-        upload = job_block("upload-to-target-release")
-        job_guard = upload[: upload.index("    runs-on:")]
-
-        self.assertIn("inputs.publish_to_target_release == true", job_guard)
-        self.assertIn(
-            "needs.preflight.outputs.publish_to_target_release == 'true'", job_guard
-        )
-        for mutation in (
-            "gh release upload",
-            "TERRAPHIM_AI_RELEASE_TOKEN",
-            "ZIPSIGN_PRIVATE_KEY",
-            "CLOUDFLARE_API_TOKEN",
-            "oven-sh/setup-bun",
-            "wrangler r2 object put",
+        for package, binary in (
+            ("terraphim_agent", "terraphim-agent"),
+            ("terraphim-cli", "terraphim-cli"),
         ):
-            with self.subTest(mutation=mutation):
-                self.assertIn(mutation, upload)
-                self.assertEqual(text.count(mutation), upload.count(mutation))
+            self.assertIn(
+                f'build --locked --release --target "${{{{ matrix.target }}}}" -p {package} --bin {binary}',
+                block,
+            )
+        self.assertIn(
+            '-p terraphim_grep --bin terraphim-grep --features "code-search openrouter"',
+            block,
+        )
 
-    def test_restricted_jobs_have_read_only_contents_permissions(self) -> None:
-        workflow_header = workflow_text().split("jobs:", 1)[0]
-        self.assertIn("permissions:\n  contents: read", workflow_header)
+    def test_all_binaries_get_exact_version_and_architecture_checks(self) -> None:
+        block = job_block("build-binaries")
+        self.assertIn("for binary in terraphim-agent terraphim-cli terraphim-grep", block)
+        self.assertIn("qemu-aarch64-static", block)
+        self.assertIn('scripts/validate_release_binary.py "$TARGET" "$path"', block)
+        self.assertIn("--version", block)
+        self.assertIn('[ "$reported" = "$VERSION" ]', block)
 
-        for name in (
+    def test_omarchy_targets_are_required_for_agent_and_grep(self) -> None:
+        stage = job_block("seal-release-stage")
+        self.assertIn("x86_64-unknown-linux-musl", stage)
+        self.assertIn("aarch64-unknown-linux-musl", stage)
+        self.assertIn("for binary in terraphim-agent terraphim-cli terraphim-grep", stage)
+        self.assertIn('if [ "$binary" != "terraphim-cli" ]; then targets+=(universal-apple-darwin); fi', stage)
+        self.assertIn('test "$(wc -l < expected-assets.txt | tr -d \' \')" = 20', stage)
+
+    def test_macos_is_signed_before_deterministic_packaging(self) -> None:
+        text = workflow_text()
+        signing = job_block("sign-and-notarize-macos")
+        stage = job_block("seal-release-stage")
+        self.assertIn("scripts/sign-macos-binary.sh", signing)
+        self.assertIn("codesign --verify --strict", signing)
+        self.assertIn("signed-client-binaries-apple-darwin", signing)
+        self.assertIn("name: signed-client-binaries-apple-darwin", stage)
+        self.assertLess(text.index("  sign-and-notarize-macos:"), text.index("  seal-release-stage:"))
+
+    def test_archives_are_deterministic_and_have_exact_layout(self) -> None:
+        stage = job_block("seal-release-stage")
+        for token in (
+            "SOURCE_DATE_EPOCH",
+            "tar --sort=name",
+            '--owner=0 --group=0 --numeric-owner',
+            "gzip -n -9",
+            "scripts/create-deterministic-zip.py",
+            "LICENSE-Apache-2.0",
+            "LICENSE-MIT",
+            "expected-assets.txt",
+            "diff -u expected-assets.txt actual-assets.txt",
+            "scripts/validate-release-archive.py",
+        ):
+            self.assertIn(token, stage)
+
+    def test_final_bytes_are_signed_before_checksums_and_manifests(self) -> None:
+        stage = job_block("seal-release-stage")
+        sign = stage.index("scripts/sign-release-archives.sh release-assets")
+        verify = stage.index("--verify-only release-assets", sign)
+        validate = stage.index("scripts/validate-release-archive.py", verify)
+        sums = stage.index("../SHA256SUMS", validate)
+        manifests = stage.index("scripts/build-manifest.sh", sums)
+        self.assertLess(sign, verify)
+        self.assertLess(verify, validate)
+        self.assertLess(validate, sums)
+        self.assertLess(sums, manifests)
+        self.assertNotIn("../SHA256SUMS", stage[:sign])
+
+    def test_producer_is_stage_only_and_has_no_public_writer(self) -> None:
+        text = workflow_text()
+        for forbidden in (
+            "upload-to-target-release:",
+            "gh release upload",
+            "wrangler r2 object put",
+            "contents: write",
+            "--clobber",
+            "CLOUDFLARE_API_TOKEN",
+            "TERRAPHIM_AI_RELEASE_TOKEN",
+        ):
+            self.assertNotIn(forbidden, text)
+        self.assertIn("  seal-release-stage:", text)
+        self.assertIn("overwrite: false", text)
+
+    def test_every_job_has_read_only_contents_permission(self) -> None:
+        text = workflow_text()
+        self.assertIn("permissions:\n  contents: read", text.split("jobs:", 1)[0])
+        for job in (
             "preflight",
             "build-binaries",
             "create-universal-macos",
             "sign-and-notarize-macos",
+            "seal-release-stage",
         ):
-            with self.subTest(job=name):
-                block = job_block(name)
-                self.assertIn("permissions:\n      contents: read", block)
+            self.assertIn("permissions:\n      contents: read", job_block(job))
 
-        upload = job_block("upload-to-target-release")
-        self.assertIn("permissions:\n      contents: write", upload)
-
-    def test_signing_credentials_are_masked_and_never_persisted_to_github_env(self) -> None:
-        signing = job_block("sign-and-notarize-macos")
-
-        self.assertIn("printf '::add-mask::%s\\n' \"$value\"", signing)
-        self.assertNotIn("$GITHUB_ENV", workflow_text())
-        self.assertNotIn("- name: Load signing credentials", signing)
-        normalize_cr = "value=\"${value//$'\\r'/}\""
-        normalize_lf = "value=\"${value//$'\\n'/}\""
-        mask = "printf '::add-mask::%s\\n' \"$value\""
-        self.assertIn(normalize_cr, signing)
-        self.assertIn(normalize_lf, signing)
-        self.assertIn("multiline signing credential is not allowed", signing)
-        self.assertLess(signing.index(normalize_cr), signing.index(mask))
-        self.assertLess(signing.index(normalize_lf), signing.index(mask))
-        for name in (
-            "APPLE_ID",
-            "APPLE_TEAM_ID",
-            "APPLE_APP_PASSWORD",
-            "CERT_BASE64",
-            "CERT_PASSWORD",
+    def test_final_stage_artifact_is_immutable_and_complete(self) -> None:
+        stage = job_block("seal-release-stage")
+        self.assertIn(
+            "name: client-release-stage-${{ needs.preflight.outputs.version }}-${{ needs.preflight.outputs.source_sha }}",
+            stage,
+        )
+        for path in (
+            "release-assets/*",
+            "canonical-binaries/*",
+            "manifests/*.candidate.json",
+            "SHA256SUMS",
+            "BINARY_SHA256SUMS",
+            "expected-assets.txt",
+            "provenance.json",
         ):
-            self.assertIn(f"load_masked {name} ", signing)
+            self.assertIn(path, stage)
+        self.assertIn('"stage_identity": f"client-release-stage-', stage)
+        self.assertIn("if-no-files-found: error", stage)
+        self.assertIn("overwrite: false", stage)
 
     def test_macos_notarization_binds_exact_submission_and_fails_closed(self) -> None:
         text = SIGN_MACOS_BINARY.read_text()
-
         self.assertIn("--output-format json", text)
         self.assertIn('data["id"], data["status"]', text)
         self.assertIn('if [ "$SUBMISSION_STATUS" != "Accepted" ]; then', text)
         self.assertIn('notarytool log "$SUBMISSION_ID"', text)
-        self.assertIn("for attempt in 1 2 3 4 5", text)
         self.assertNotIn("notarytool history", text)
-        self.assertNotIn("spctl --assess", text)
 
-    def test_upload_downloads_platform_artifacts_and_only_signed_universal(self) -> None:
+    def test_toolchains_actions_and_secret_scopes_are_pinned(self) -> None:
         text = workflow_text()
-        start = text.index("  upload-to-target-release:")
-        end = text.index("      - name: Install zipsign", start)
-        block = text[start:end]
-
-        expected_artifacts = (
-            "client-binaries-x86_64-unknown-linux-gnu",
-            "client-binaries-x86_64-unknown-linux-musl",
-            "client-binaries-aarch64-unknown-linux-musl",
-            "client-binaries-x86_64-apple-darwin",
-            "client-binaries-aarch64-apple-darwin",
-            "client-binaries-x86_64-pc-windows-msvc",
-            "client-binaries-signed-universal-apple-darwin",
+        for mutable in (
+            "actions/checkout@v4", "actions/upload-artifact@v4",
+            "actions/download-artifact@v4", "Swatinem/rust-cache@v2",
+            "dtolnay/rust-toolchain@stable", "cargo install zipsign --locked",
+        ):
+            self.assertNotIn(mutable, text)
+        self.assertIn("rustup toolchain install 1.96.0", text)
+        self.assertIn("cargo install zipsign --version 0.2.1 --locked", text)
+        self.assertIn("--rev 88f49ff79e777bef6d3564531636ee4d3cc2f8d2", text)
+        self.assertIn(
+            "1password/install-cli-action@9a0c9dd934086b7ab1d90115d455bda1c53c2bdb",
+            text,
         )
-        for artifact in expected_artifacts:
-            self.assertIn(f"name: {artifact}", block)
+        for job in ("preflight", "build-binaries", "sign-and-notarize-macos", "seal-release-stage"):
+            uses = re.findall(r"^\s*- uses:\s+([^\s#]+)", job_block(job), re.MULTILINE)
+            for action in uses:
+                self.assertRegex(
+                    action,
+                    r"^[^@]+@[0-9a-f]{40}$",
+                    f"{job} contains a mutable action reference: {action}",
+                )
+        build = job_block("build-binaries")
+        prefix = build[: build.index("steps:")]
+        self.assertNotIn("CARGO_REGISTRIES_TERRAPHIM_TOKEN", prefix)
+        install_cross = build[build.index("Install cross") : build.index("Install QEMU")]
+        self.assertNotIn("secrets.", install_cross)
+        signer = job_block("seal-release-stage")
+        install_signer = signer[signer.index("Install archive signer") : signer.index("Sign every")]
+        self.assertNotIn("secrets.", install_signer)
 
-        self.assertNotIn("pattern: client-binaries", block)
-        self.assertNotIn("merge-multiple", block)
-        self.assertNotIn("name: client-binaries-universal-apple-darwin", block)
+    def test_linux_canonical_bytes_are_stripped_before_all_qualification_and_hashing(self) -> None:
+        build = job_block("build-binaries")
+        built = build.index("Build all shipped binaries")
+        strip = build.index("Reject unstripped final Linux package bytes", built)
+        qualify = build.index("Verify exact binary versions and architectures", strip)
+        collect = build.index("Collect canonical binaries without byte mutation", qualify)
+        upload = build.index("upload-artifact@", collect)
+        self.assertLess(built, strip)
+        self.assertLess(strip, qualify)
+        self.assertLess(qualify, collect)
+        self.assertLess(collect, upload)
+        self.assertIn("CARGO_PROFILE_RELEASE_STRIP: symbols", build)
+
+        stage = job_block("seal-release-stage")
+        canonical = stage.index("Stage and hash canonical Linux package bytes")
+        binary_sums = stage.index("BINARY_SHA256SUMS", canonical)
+        archive = stage.index("Create deterministic archives", binary_sums)
+        self.assertLess(canonical, binary_sums)
+        self.assertLess(binary_sums, archive)
+        self.assertIn("scripts/stage-canonical-linux.py raw canonical-binaries BINARY_SHA256SUMS", stage)
+        self.assertIn('source="canonical-binaries/$binary-$target"', stage)
+
+    def test_macos_thin_execution_has_deterministic_runner_semantics(self) -> None:
+        text = workflow_text()
+        self.assertIn("os: macos-15-intel\n            target: x86_64-apple-darwin", text)
+        self.assertIn("os: macos-15\n            target: aarch64-apple-darwin", text)
+        signing = job_block("sign-and-notarize-macos")
+        self.assertIn("runs-on: macos-15", signing)
+        provision = signing.index("softwareupdate --install-rosetta --agree-to-license")
+        execute = signing.index('arch -x86_64 "$path" --version')
+        self.assertLess(provision, execute)
+        self.assertNotIn("skip", signing.lower())
+
+    def test_workflow_is_parsed_by_actionlint(self) -> None:
+        result = subprocess.run(
+            ["actionlint", str(WORKFLOW)], text=True, capture_output=True
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 if __name__ == "__main__":

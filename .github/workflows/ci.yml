@@ -41,6 +41,14 @@ jobs:
       - name: Check host CA bundle
         run: |
           test -f "$SSL_CERT_FILE" || { echo "::error::CA bundle not found at $SSL_CERT_FILE (EXP-102). Install ca-certificates on the runner host or set SSL_CERT_FILE to a real path. Refs #313"; exit 1; }
+      - name: Install release signature verifier
+        run: cargo install zipsign --version 0.2.1 --locked
+      - name: Release workflow and sealing contracts
+        run: |
+          python3 -m unittest discover -s tests -p 'test_*release*contract.py' -v
+          python3 -m unittest tests.test_build_manifest_contract -v
+          python3 -m unittest tests.test_promotion_contract -v
+          python3 -m unittest tests.test_package_metadata_contract -v
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo clippy -p terraphim_sessions --features enrichment -- -D warnings

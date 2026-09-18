@@ -6315,7 +6315,7 @@ dependencies = [
 
 [[package]]
 name = "terraphim-cli"
-version = "1.21.14"
+version = "1.21.15"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -6356,7 +6356,7 @@ dependencies = [
 
 [[package]]
 name = "terraphim-session-analyzer"
-version = "1.21.14"
+version = "1.21.15"
 dependencies = [
  "aho-corasick",
  "anyhow",
@@ -6395,7 +6395,7 @@ dependencies = [
 
 [[package]]
 name = "terraphim_agent"
-version = "1.21.14"
+version = "1.21.15"
 dependencies = [
  "ahash",
  "anyhow",
@@ -6580,7 +6580,7 @@ dependencies = [
 
 [[package]]
 name = "terraphim_grep"
-version = "1.21.14"
+version = "1.21.15"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6609,7 +6609,7 @@ dependencies = [
 
 [[package]]
 name = "terraphim_hooks"
-version = "1.21.14"
+version = "1.21.15"
 dependencies = [
  "dirs 5.0.1",
  "serde",
@@ -6623,7 +6623,7 @@ dependencies = [
 
 [[package]]
 name = "terraphim_lsp"
-version = "1.21.14"
+version = "1.21.15"
 dependencies = [
  "log",
  "serde",
@@ -6713,7 +6713,7 @@ dependencies = [
 
 [[package]]
 name = "terraphim_negative_contribution"
-version = "1.21.14"
+version = "1.21.15"
 dependencies = [
  "log",
  "terraphim_automata",
