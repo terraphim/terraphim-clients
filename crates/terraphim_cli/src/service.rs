@@ -390,7 +390,7 @@ impl CliService {
         let thesaurus = self.get_thesaurus(role_name).await?;
 
         // Find matches
-        Ok(terraphim_automata::find_matches(text, thesaurus, true)?)
+        Ok(terraphim_automata::find_matches(text, &thesaurus, true)?)
     }
 
     /// Extract matches with grounding metadata
@@ -400,7 +400,7 @@ impl CliService {
         text: &str,
     ) -> Result<Vec<ExtractedEntity>> {
         let thesaurus = self.get_thesaurus(role_name).await?;
-        let matches = terraphim_automata::find_matches(text, thesaurus, true)?;
+        let matches = terraphim_automata::find_matches(text, &thesaurus, true)?;
 
         let entities: Vec<ExtractedEntity> = matches
             .iter()
@@ -427,7 +427,7 @@ impl CliService {
     /// Extract entities using ontology schema, returning SchemaSignal
     pub fn extract_with_schema(&self, schema: &OntologySchema, text: &str) -> Result<SchemaSignal> {
         let thesaurus = Self::build_thesaurus_from_schema(schema);
-        let matches = terraphim_automata::find_matches(text, thesaurus, true)?;
+        let matches = terraphim_automata::find_matches(text, &thesaurus, true)?;
 
         // Build a lookup from NormalizedTermValue -> entity_type_id
         let entry_lookup: std::collections::HashMap<String, String> = schema
@@ -530,7 +530,7 @@ impl CliService {
         let thesaurus = self.get_thesaurus(role_name).await?;
 
         // Replace matches
-        let result = terraphim_automata::replace_matches(text, thesaurus, link_type)?;
+        let result = terraphim_automata::replace_matches(text, &thesaurus, link_type)?;
         Ok(String::from_utf8(result).unwrap_or_else(|_| text.to_string()))
     }
 }

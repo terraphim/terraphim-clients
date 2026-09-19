@@ -865,7 +865,7 @@ pub fn annotate_with_entities(text: &str) -> Vec<String> {
         None => return Vec::new(),
     };
 
-    match terraphim_automata::matcher::find_matches(text, thesaurus, false) {
+    match terraphim_automata::matcher::find_matches(text, &thesaurus, false) {
         Ok(matches) => {
             let mut seen = std::collections::HashSet::new();
             let mut entities = Vec::new();
@@ -889,8 +889,8 @@ pub fn annotate_with_entities(text: &str) -> Vec<String> {
 /// This is useful for testing or when a pre-built thesaurus is available.
 // Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
-pub fn annotate_with_thesaurus(text: &str, thesaurus: terraphim_types::Thesaurus) -> Vec<String> {
-    match terraphim_automata::matcher::find_matches(text, thesaurus, false) {
+pub fn annotate_with_thesaurus(text: &str, thesaurus: &terraphim_types::Thesaurus) -> Vec<String> {
+    match terraphim_automata::matcher::find_matches(text, &thesaurus, false) {
         Ok(matches) => {
             let mut seen = std::collections::HashSet::new();
             let mut entities = Vec::new();
@@ -2544,7 +2544,7 @@ mod tests {
         thesaurus.insert(NormalizedTermValue::from("cargo"), cargo_term);
 
         let entities =
-            annotate_with_thesaurus("npm install failed, try cargo build instead", thesaurus);
+            annotate_with_thesaurus("npm install failed, try cargo build instead", &thesaurus);
 
         assert!(!entities.is_empty(), "Should find at least one entity");
         assert!(
@@ -2569,7 +2569,7 @@ mod tests {
         thesaurus.insert(NormalizedTermValue::from("rust"), term);
 
         // Text mentions "rust" twice
-        let entities = annotate_with_thesaurus("rust is great, rust is fast", thesaurus);
+        let entities = annotate_with_thesaurus("rust is great, rust is fast", &thesaurus);
 
         // Should only appear once
         assert_eq!(
@@ -2584,7 +2584,7 @@ mod tests {
     #[test]
     fn test_annotate_with_empty_thesaurus() {
         let thesaurus = terraphim_types::Thesaurus::new("empty".to_string());
-        let entities = annotate_with_thesaurus("some text", thesaurus);
+        let entities = annotate_with_thesaurus("some text", &thesaurus);
         assert!(entities.is_empty());
     }
 

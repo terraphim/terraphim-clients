@@ -187,7 +187,7 @@ impl MarkdownCommandParser {
     fn analyze_content(&self, content: &str) -> Result<EnrichedContent, CommandRegistryError> {
         // Extract technical terms using available thesaurus
         let matched_terms = if let Some(ref thesaurus) = self.technical_thesaurus {
-            find_matches(content, thesaurus.clone(), true)
+            find_matches(content, thesaurus, true)
                 .map_err(|e| CommandRegistryError::AutomataError(e.to_string()))?
         } else {
             Vec::new()

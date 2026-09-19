@@ -5,6 +5,7 @@
 //! are real tar.gz files built in-test via flate2 + tar.
 
 use base64::Engine;
+use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::thread;
@@ -95,9 +96,25 @@ fn current_target() -> String {
     terraphim_update::manifest::current_target_triples()[0].clone()
 }
 
+fn archive_extension(target: &str) -> &'static str {
+    if target == "x86_64-pc-windows-msvc" {
+        ".zip"
+    } else {
+        ".tar.gz"
+    }
+}
+
+fn sha256(bytes: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(bytes))
+}
+
 /// Build a config pointing `terraphim-test` at a local server with R2 backend.
 fn r2_config(base_url: String, current_version: &str) -> UpdaterConfig {
-    UpdaterConfig::new("terraphim-test")
+    r2_config_for("terraphim-test", base_url, current_version)
+}
+
+fn r2_config_for(bin: &str, base_url: String, current_version: &str) -> UpdaterConfig {
+    UpdaterConfig::new(bin)
         .with_version(current_version)
         .with_backend(UpdateBackend::R2)
         .with_manifest_base_url(base_url)
@@ -118,13 +135,15 @@ async fn test_update_r2_installs_from_local_server() {
     let bin = "terraphim-test";
     let target = current_target();
     let archive = make_archive(bin, b"#!/bin/sh\necho fake updated binary\n");
-    let asset_key = format!("{bin}/{bin}-2.0.0-{target}.tar.gz");
+    let asset_key = format!("{bin}/{bin}-2.0.0-{target}{}", archive_extension(&target));
     let manifest = format!(
-        r#"{{"version":"2.0.0","released_at":"2026-07-07T00:00:00Z","assets":{{"{target}":"{asset_key}"}}}}"#
+        r#"{{"version":"2.0.0","released_at":"2026-07-07T00:00:00Z","assets":{{"{target}":{{"path":"{asset_key}","sha256":"{}","size":{}}}}},"notes_url":"https://example.invalid/v2.0.0"}}"#,
+        sha256(&archive),
+        archive.len()
     );
     let mut routes = std::collections::HashMap::new();
     routes.insert(
-        format!("/{bin}/stable.json"),
+        format!("/{bin}/stable-v2.json"),
         (200, manifest.into_bytes(), "application/json".to_string()),
     );
     routes.insert(
@@ -152,6 +171,100 @@ async fn test_update_r2_installs_from_local_server() {
 }
 
 #[tokio::test]
+async fn test_update_r2_checksum_mismatch_preserves_installed_binary() {
+    let bin = "terraphim-integrity-test";
+    let target = current_target();
+    let archive = make_archive(bin, b"#!/bin/sh\necho replacement\n");
+    let asset_key = format!("{bin}/{bin}-2.0.0-{target}{}", archive_extension(&target));
+    let manifest = format!(
+        r#"{{"version":"2.0.0","released_at":"2026-09-18T00:00:00Z","assets":{{"{target}":{{"path":"{asset_key}","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","size":{}}}}},"notes_url":"https://example.invalid/v2.0.0"}}"#,
+        archive.len()
+    );
+    let mut routes = std::collections::HashMap::new();
+    routes.insert(
+        format!("/{bin}/stable-v2.json"),
+        (200, manifest.into_bytes(), "application/json".to_string()),
+    );
+    routes.insert(
+        format!("/{asset_key}"),
+        (200, archive, "application/gzip".to_string()),
+    );
+    let server = MultiPathServer::new(routes);
+    let updater = TerraphimUpdater::new(r2_config_for(
+        bin,
+        format!("http://{}", server.addr),
+        "1.0.0",
+    ));
+
+    let target_path = install_dir().join(bin);
+    std::fs::write(&target_path, b"installed-sentinel").expect("write sentinel");
+    let status = updater
+        .update_r2()
+        .await
+        .expect("definitive integrity failure");
+
+    match status {
+        UpdateStatus::Failed(message) => assert!(
+            message.contains("checksum"),
+            "failure should identify checksum mismatch: {message}"
+        ),
+        other => panic!("expected checksum failure, got {other:?}"),
+    }
+    assert_eq!(
+        std::fs::read(&target_path).expect("read sentinel"),
+        b"installed-sentinel"
+    );
+    std::fs::remove_file(target_path).expect("remove sentinel");
+}
+
+#[tokio::test]
+async fn test_update_r2_size_mismatch_preserves_installed_binary() {
+    let bin = "terraphim-size-test";
+    let target = current_target();
+    let archive = make_archive(bin, b"#!/bin/sh\necho replacement\n");
+    let asset_key = format!("{bin}/{bin}-2.0.0-{target}{}", archive_extension(&target));
+    let manifest = format!(
+        r#"{{"version":"2.0.0","released_at":"2026-09-18T00:00:00Z","assets":{{"{target}":{{"path":"{asset_key}","sha256":"{}","size":{}}}}},"notes_url":"https://example.invalid/v2.0.0"}}"#,
+        sha256(&archive),
+        archive.len() + 1
+    );
+    let mut routes = std::collections::HashMap::new();
+    routes.insert(
+        format!("/{bin}/stable-v2.json"),
+        (200, manifest.into_bytes(), "application/json".to_string()),
+    );
+    routes.insert(
+        format!("/{asset_key}"),
+        (200, archive, "application/gzip".to_string()),
+    );
+    let server = MultiPathServer::new(routes);
+    let updater = TerraphimUpdater::new(r2_config_for(
+        bin,
+        format!("http://{}", server.addr),
+        "1.0.0",
+    ));
+
+    let target_path = install_dir().join(bin);
+    std::fs::write(&target_path, b"installed-sentinel").expect("write sentinel");
+    let status = updater
+        .update_r2()
+        .await
+        .expect("definitive integrity failure");
+    match status {
+        UpdateStatus::Failed(message) => assert!(
+            message.contains("size mismatch"),
+            "failure should identify size mismatch: {message}"
+        ),
+        other => panic!("expected size failure, got {other:?}"),
+    }
+    assert_eq!(
+        std::fs::read(&target_path).expect("read sentinel"),
+        b"installed-sentinel"
+    );
+    std::fs::remove_file(target_path).expect("remove sentinel");
+}
+
+#[tokio::test]
 async fn test_update_r2_manifest_404_returns_err_for_fallback() {
     // No routes -> every path 404. update_r2 must return Err so the update()
     // dispatcher can fall back to GitHub.
@@ -175,15 +288,15 @@ async fn test_update_r2_manifest_404_returns_err_for_fallback() {
 #[tokio::test]
 async fn test_update_r2_uptodate_when_manifest_not_newer() {
     let bin = "terraphim-test";
-    let manifest = r#"{"version":"1.0.0","released_at":"x","assets":{}}"#;
+    let target = current_target();
+    let asset_key = format!("{bin}/{bin}-1.0.0-{target}{}", archive_extension(&target));
+    let manifest = format!(
+        r#"{{"version":"1.0.0","released_at":"2026-09-18T00:00:00Z","assets":{{"{target}":{{"path":"{asset_key}","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","size":1}}}},"notes_url":"https://example.invalid/v1.0.0"}}"#
+    );
     let mut routes = std::collections::HashMap::new();
     routes.insert(
-        format!("/{bin}/stable.json"),
-        (
-            200,
-            manifest.as_bytes().to_vec(),
-            "application/json".to_string(),
-        ),
+        format!("/{bin}/stable-v2.json"),
+        (200, manifest.into_bytes(), "application/json".to_string()),
     );
     let server = MultiPathServer::new(routes);
     // current_version 2.0.0 > manifest 1.0.0 -> not newer.
@@ -198,10 +311,10 @@ async fn test_update_r2_uptodate_when_manifest_not_newer() {
 async fn test_update_r2_no_asset_returns_definitive_failed() {
     let bin = "terraphim-test";
     // Manifest advertises a target that is NOT the current platform's triple.
-    let manifest = r#"{"version":"9.9.9","released_at":"x","assets":{"wasm32-unknown-unknown":"nope.tar.gz"}}"#;
+    let manifest = r#"{"version":"9.9.9","released_at":"2026-09-18T00:00:00Z","assets":{"wasm32-unknown-unknown":{"path":"terraphim-test/terraphim-test-9.9.9-wasm32-unknown-unknown.tar.gz","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","size":1}},"notes_url":"https://example.invalid/v9.9.9"}"#;
     let mut routes = std::collections::HashMap::new();
     routes.insert(
-        format!("/{bin}/stable.json"),
+        format!("/{bin}/stable-v2.json"),
         (
             200,
             manifest.as_bytes().to_vec(),
@@ -225,6 +338,25 @@ async fn test_update_r2_no_asset_returns_definitive_failed() {
         }
         other => panic!("expected Failed, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn test_check_update_r2_parse_failure_is_fallback_eligible() {
+    let bin = "terraphim-test";
+    let mut routes = std::collections::HashMap::new();
+    routes.insert(
+        format!("/{bin}/stable-v2.json"),
+        (
+            200,
+            br#"{"version":"2.0.0","assets":{"x":"legacy-string"}}"#.to_vec(),
+            "application/json".to_string(),
+        ),
+    );
+    let server = MultiPathServer::new(routes);
+    let updater = TerraphimUpdater::new(r2_config(format!("http://{}", server.addr), "1.0.0"));
+
+    let result = updater.check_update_r2().await;
+    assert!(result.is_err(), "parse failures must reach GitHub fallback");
 }
 
 #[test]

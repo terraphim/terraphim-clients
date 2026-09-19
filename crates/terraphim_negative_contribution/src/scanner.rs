@@ -32,7 +32,7 @@ impl NegativeContributionScanner {
 
         let line_starts = build_line_starts(content);
 
-        let matches = match find_matches(content, self.thesaurus.clone(), true) {
+        let matches = match find_matches(content, &self.thesaurus, true) {
             Ok(m) => m,
             Err(e) => {
                 log::warn!("EDM scan failed for {}: {e}", path);
