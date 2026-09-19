@@ -53,6 +53,7 @@ jobs:
       source_sha: ${{ steps.contract.outputs.source_sha }}
       source_date_epoch: ${{ steps.metadata.outputs.source_date_epoch }}
       correlation_id: ${{ steps.contract.outputs.correlation_id }}
+      stable_version: ${{ steps.contract.outputs.stable_version }}
     steps:
       - name: Validate dispatch identity and peel source tag
         id: contract
@@ -115,11 +116,23 @@ jobs:
             echo "peeled source SHA does not match expected_source_sha" >&2
             exit 1
           }
+
+          # Keep the package-stage eligibility explicit at the job boundary.
+          # The immutable #248 producer currently accepts stable versions only,
+          # but this output keeps the narrower managed-package policy fail-closed
+          # if the top-level release contract is broadened in the future.
+          if [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            stable_version=true
+          else
+            stable_version=false
+          fi
+
           {
             echo "version=$VERSION"
             echo "release_tag=$RELEASE_TAG"
             echo "source_sha=$source_sha"
             echo "correlation_id=$CORRELATION_ID"
+            echo "stable_version=$stable_version"
           } >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -281,6 +294,179 @@ jobs:
           if-no-files-found: error
           overwrite: false
 
+  stage-canonical-linux:
+    name: Stage and hash canonical Linux binaries
+    needs: [preflight, build-binaries]
+    if: >-
+      always() && !cancelled() &&
+      needs.preflight.result == 'success' &&
+      needs.build-binaries.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.preflight.outputs.source_sha }}
+      - name: Assert clean exact source checkout
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ needs.preflight.outputs.source_sha }}"
+          test -z "$(git status --porcelain)"
+          git diff --exit-code -- Cargo.toml Cargo.lock
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: raw-client-binaries-x86_64-unknown-linux-gnu
+          path: raw
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: raw-client-binaries-x86_64-unknown-linux-musl
+          path: raw
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: raw-client-binaries-aarch64-unknown-linux-musl
+          path: raw
+      - name: Stage and hash canonical Linux package bytes
+        run: |
+          set -euo pipefail
+          scripts/stage-canonical-linux.py raw canonical-binaries BINARY_SHA256SUMS
+          (cd canonical-binaries && sha256sum -c ../BINARY_SHA256SUMS)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: canonical-linux-binaries-${{ needs.preflight.outputs.version }}-${{ needs.preflight.outputs.source_sha }}
+          path: |
+            canonical-binaries/*
+            BINARY_SHA256SUMS
+          if-no-files-found: error
+          overwrite: false
+
+  build-client-packages:
+    name: Build client managed packages for ${{ matrix.target }}
+    needs: [preflight, stage-canonical-linux]
+    permissions:
+      contents: read
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.preflight.outputs.source_date_epoch }}
+    # Fail closed: package only the final canonical Linux stage, and only for
+    # the stable-version channel supported by the managed-package contract.
+    if: >-
+      always() &&
+      !cancelled() &&
+      needs.preflight.result == 'success' &&
+      needs.stage-canonical-linux.result == 'success' &&
+      needs.preflight.outputs.stable_version == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-22.04
+            runner_arch: X64
+            nfpm_arch: x86_64
+            nfpm_archive_sha256: 0660ca602b2d2d2ae4781a06c692b3eeb9d437ffea05b831d76e41f4a3188783
+            nfpm_binary_sha256: 17133a2467ffb7cec851c2d7bae0c6098d09d7ed7d3d101a9605f6a473323936
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-22.04-arm
+            runner_arch: ARM64
+            nfpm_arch: arm64
+            nfpm_archive_sha256: 1c0f5f2999b9a974bfb04fdb0cc3306096de530ac5dbb25d739cc5f5219c919c
+            nfpm_binary_sha256: 4d7ddf169945f7f557ac5373035d373429050d00476925953560e1ac65e16c74
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.preflight.outputs.source_sha }}
+      - name: Assert clean exact source checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ needs.preflight.outputs.source_sha }}"
+          test -z "$(git status --porcelain)"
+          git diff --exit-code -- Cargo.toml Cargo.lock
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: canonical-linux-binaries-${{ needs.preflight.outputs.version }}-${{ needs.preflight.outputs.source_sha }}
+          path: canonical-stage
+      - name: Verify canonical binary receipt after artifact transfer
+        run: |
+          set -euo pipefail
+          (cd canonical-stage/canonical-binaries && sha256sum -c ../BINARY_SHA256SUMS)
+      - name: Install pinned nFPM
+        shell: bash
+        env:
+          NFPM_VERSION: 2.47.0
+          NFPM_ARCH: ${{ matrix.nfpm_arch }}
+          NFPM_ARCHIVE_SHA256: ${{ matrix.nfpm_archive_sha256 }}
+          NFPM_BINARY_SHA256: ${{ matrix.nfpm_binary_sha256 }}
+        run: |
+          set -euo pipefail
+          install_dir="/tmp/nfpm-bin"
+          mkdir -p "$install_dir"
+          archive="$install_dir/nfpm_${NFPM_VERSION}_Linux_${NFPM_ARCH}.tar.gz"
+          url="https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_Linux_${NFPM_ARCH}.tar.gz"
+          curl -fsSL "$url" -o "$archive"
+          printf '%s  %s\n' "$NFPM_ARCHIVE_SHA256" "$archive" | sha256sum -c -
+          tar -xzf "$archive" -C "$install_dir" nfpm
+          printf '%s  %s\n' "$NFPM_BINARY_SHA256" "$install_dir/nfpm" | sha256sum -c -
+          mv "$install_dir/nfpm" "$install_dir/nfpm-${NFPM_VERSION}"
+          chmod 0755 "$install_dir/nfpm-${NFPM_VERSION}"
+          .github/scripts/nfpm/verify-nfpm.sh \
+            --binary "$install_dir/nfpm-${NFPM_VERSION}" \
+            --version "$NFPM_VERSION" \
+            --sha256 "$NFPM_BINARY_SHA256"
+      - name: Run native managed-package lifecycle gate
+        shell: bash
+        env:
+          NFPM_BIN: /tmp/nfpm-bin/nfpm-2.47.0
+          TARGET: ${{ matrix.target }}
+          EXPECTED_RUNNER_ARCH: ${{ matrix.runner_arch }}
+          REQUIRE_INSTALL: "1"
+        run: |
+          set -euo pipefail
+          test "${{ runner.arch }}" = "$EXPECTED_RUNNER_ARCH"
+          .github/scripts/nfpm/tests/test_client_nfpm_native.sh
+      - name: Build managed DEB/RPM packages
+        shell: bash
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+          TARGET: ${{ matrix.target }}
+          NFPM_BIN: /tmp/nfpm-bin/nfpm-2.47.0
+        run: |
+          set -euo pipefail
+          AGENT_BIN="canonical-stage/canonical-binaries/terraphim-agent-${TARGET}"
+          GREP_BIN="canonical-stage/canonical-binaries/terraphim-grep-${TARGET}"
+          test -f "$AGENT_BIN"
+          test -f "$GREP_BIN"
+          chmod 0755 "$AGENT_BIN" "$GREP_BIN"
+          .github/scripts/nfpm/build-client-packages.sh \
+            --version "$VERSION" \
+            --target "$TARGET" \
+            --agent-binary "$AGENT_BIN" \
+            --grep-binary "$GREP_BIN" \
+            --out-dir "client-managed-packages/${TARGET}" \
+            --nfpm "$NFPM_BIN"
+      - name: Run actual-package native lifecycle gate (installs the real produced DEB/RPM)
+        shell: bash
+        env:
+          NFPM_BIN: /tmp/nfpm-bin/nfpm-2.47.0
+          TARGET: ${{ matrix.target }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+          PACKAGE_DIR: client-managed-packages/${{ matrix.target }}
+          AGENT_BINARY: canonical-stage/canonical-binaries/terraphim-agent-${{ matrix.target }}
+          GREP_BINARY: canonical-stage/canonical-binaries/terraphim-grep-${{ matrix.target }}
+          EXPECTED_RUNNER_ARCH: ${{ matrix.runner_arch }}
+          REQUIRE_INSTALL: "1"
+        run: |
+          set -euo pipefail
+          test "${{ runner.arch }}" = "$EXPECTED_RUNNER_ARCH"
+          .github/scripts/nfpm/tests/test_client_nfpm_native_actual.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: client-managed-packages-${{ matrix.target }}
+          path: client-managed-packages/${{ matrix.target }}/*
+          if-no-files-found: error
+          overwrite: false
+
   create-universal-macos:
     name: Create universal macOS agent and grep
     needs: [preflight, build-binaries]
@@ -401,11 +587,15 @@ jobs:
 
   seal-release-stage:
     name: Validate and seal immutable release stage
-    needs: [preflight, build-binaries, sign-and-notarize-macos]
+    needs: [preflight, build-binaries, stage-canonical-linux, build-client-packages, sign-and-notarize-macos]
+    # Managed packages may be skipped only when their stable-version gate is
+    # out of scope. A real packaging failure always blocks the sealed stage.
     if: >-
       always() && !cancelled() &&
       needs.preflight.result == 'success' &&
       needs.build-binaries.result == 'success' &&
+      needs.stage-canonical-linux.result == 'success' &&
+      (needs.build-client-packages.result == 'success' || needs.build-client-packages.result == 'skipped') &&
       needs.sign-and-notarize-macos.result == 'success'
     runs-on: ubuntu-latest
     permissions:
@@ -422,16 +612,12 @@ jobs:
           git diff --exit-code -- Cargo.toml Cargo.lock
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: raw-client-binaries-x86_64-unknown-linux-gnu
-          path: raw
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: raw-client-binaries-x86_64-unknown-linux-musl
-          path: raw
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: raw-client-binaries-aarch64-unknown-linux-musl
-          path: raw
+          name: canonical-linux-binaries-${{ needs.preflight.outputs.version }}-${{ needs.preflight.outputs.source_sha }}
+          path: .
+      - name: Verify canonical Linux binary receipt after artifact transfer
+        run: |
+          set -euo pipefail
+          (cd canonical-binaries && sha256sum -c ../BINARY_SHA256SUMS)
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: raw-client-binaries-x86_64-pc-windows-msvc
@@ -440,11 +626,16 @@ jobs:
         with:
           name: signed-client-binaries-apple-darwin
           path: raw
-      - name: Stage and hash canonical Linux package bytes
-        run: |
-          set -euo pipefail
-          scripts/stage-canonical-linux.py raw canonical-binaries BINARY_SHA256SUMS
-          (cd canonical-binaries && sha256sum -c ../BINARY_SHA256SUMS)
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        if: needs.build-client-packages.result == 'success'
+        with:
+          name: client-managed-packages-x86_64-unknown-linux-musl
+          path: client-managed-staging/client-managed-packages-x86_64-unknown-linux-musl
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        if: needs.build-client-packages.result == 'success'
+        with:
+          name: client-managed-packages-aarch64-unknown-linux-musl
+          path: client-managed-staging/client-managed-packages-aarch64-unknown-linux-musl
       - name: Create deterministic archives and exact asset enumeration
         env:
           VERSION: ${{ needs.preflight.outputs.version }}
@@ -506,6 +697,19 @@ jobs:
           while read -r archive; do
             scripts/validate-release-archive.py "$VERSION" "release-assets/$archive"
           done < expected-assets.txt
+      - name: Assemble unsigned managed packages into a separate stage-only inventory
+        shell: bash
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir managed-release-assets
+          .github/scripts/release/assemble-client-release-inventory.sh \
+            --output managed-release-assets \
+            --expected-version "$VERSION" \
+            --managed-staging client-managed-staging \
+            --managed-target x86_64-unknown-linux-musl \
+            --managed-target aarch64-unknown-linux-musl
       - name: Seal checksums and dual-schema candidate manifests
         env:
           VERSION: ${{ needs.preflight.outputs.version }}
@@ -517,6 +721,7 @@ jobs:
           set -euo pipefail
           (cd release-assets && LC_ALL=C sha256sum $(LC_ALL=C find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort) > ../SHA256SUMS)
           (cd release-assets && sha256sum -c ../SHA256SUMS)
+          test "$(wc -l < SHA256SUMS | tr -d ' ')" = 20
           for binary in terraphim-agent terraphim-cli terraphim-grep; do
             scripts/build-manifest.sh "$VERSION" "$binary" release-assets "manifests/$binary.v2.candidate.json"
             scripts/build-legacy-manifest.py "manifests/$binary.v2.candidate.json" "manifests/$binary.v1.candidate.json"
@@ -542,6 +747,7 @@ jobs:
           name: client-release-stage-${{ needs.preflight.outputs.version }}-${{ needs.preflight.outputs.source_sha }}
           path: |
             release-assets/*
+            managed-release-assets/*
             canonical-binaries/*
             manifests/*.candidate.json
             SHA256SUMS
