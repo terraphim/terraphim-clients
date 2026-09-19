@@ -15,7 +15,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.21.1"
+version = "1.21.16"
 edition = "2024"
 authors = ["Terraphim Team <team@terraphim.ai>"]
 documentation = "https://terraphim.ai"
@@ -25,7 +25,64 @@ license = "Apache-2.0"
 readme = "README.md"
 
 [patch.crates-io]
-terraphim_service = { version = "=1.20.6", registry = "terraphim" }
+# Registry policy, 2026-09-09:
+#
+#   * Internal development and CI in this monorepo pulls the whole 1.21.x
+#     family from the Gitea `terraphim` registry. The full family is only
+#     consistent there; crates.io still tops out at the 1.20.x line for
+#     everything except terraphim_types and terraphim_automata.
+#
+#   * For the public GitHub release of `terraphim-agent`, we want
+#     crates.io to be the source of truth so external users can build
+#     without access to the Gitea registry. Until the missing family
+#     crates are published upstream, that build also has to use this
+#     `[patch.crates-io]` block.
+#
+# `terraphim_automata 1.21.0` takes `&Thesaurus` where 1.20.x takes an owned
+# `Thesaurus`. The two signatures disagree, so any 1.21.x dependency on
+# crates.io will silently drag in a 1.20.x neighbour and break the build
+# with "expected ConfigState, found ConfigState" or similar errors.
+#
+# Status today (registry policy partially enacted):
+#   terraphim_types         1.22.1  on crates.io (published 2026-09-09, Refs #32)
+#   terraphim_automata      1.21.1  on crates.io (published 2026-09-09, Refs #65/#66/#67)
+#   terraphim_file_search   1.21.0  Gitea only (crates.io has 1.20.3)
+#   terraphim_middleware    1.21.0  Gitea only (crates.io has 1.20.3)
+#   terraphim_rolegraph     1.20.2  Gitea only (crates.io has 1.20.4)
+#   terraphim_service       1.21.1  Gitea only (crates.io has 1.20.6)
+#   terraphim_orchestrator  1.21.0  Gitea only (crates.io has 1.20.2)
+#   terraphim_config        1.20.2  Gitea only (1.20.4 is yanked; pin exactly)
+#   terraphim_persistence   1.20.2  Gitea only (1.20.4 is yanked; pin exactly)
+#   terraphim_settings      1.20.2  Gitea only
+#   terraphim_router        1.20.2  Gitea only
+#   terraphim_tracker       1.20.2  Gitea only
+#   terraphim-markdown-parser 1.20.2 Gitea only
+#
+# Tracking issue for the multi-repo publish work: terraphim/terraphim-core #71.
+# Once that issue closes, drop `[patch.crates-io]` for any crate that lives on
+# crates.io at the required version and remove `registry = "terraphim"` from
+# the corresponding `[workspace.dependencies]` entry. Refs #112.
+#
+# Mirrors the block terraphim-ai already runs.
+terraphim_types = { version = "1.21.0", registry = "terraphim" }
+terraphim_automata = { version = "1.21.0", registry = "terraphim" }
+# file_search/middleware 1.20.x still pass owned Thesaurus into automata.
+terraphim_file_search = { version = "1.21.0", registry = "terraphim" }
+terraphim_middleware = { version = "1.21.0", registry = "terraphim" }
+terraphim_rolegraph = { version = "1.20.2", registry = "terraphim" }
+# 1.20.4 is yanked on the Gitea registry; pin exactly so transitive deps cannot
+# drag in a crates.io 1.20.4 copy.
+terraphim_config = { version = "=1.20.2", registry = "terraphim" }
+terraphim_persistence = { version = "=1.20.2", registry = "terraphim" }
+terraphim_service = { version = "1.21.1", registry = "terraphim" }
+terraphim_orchestrator = { version = "1.21.0", registry = "terraphim" }
+# Remaining family members: crates.io has 1.20.4 copies of these, which drag in a
+# second terraphim_config/types graph and produce "expected ConfigState, found
+# ConfigState" errors. Gitea has 1.20.2 for all four.
+terraphim_settings = { version = "1.20.2", registry = "terraphim" }
+terraphim_router = { version = "1.20.2", registry = "terraphim" }
+terraphim_tracker = { version = "1.20.2", registry = "terraphim" }
+terraphim-markdown-parser = { version = "1.20.2", registry = "terraphim" }
 rustls-webpki = { git = "https://github.com/rustls/webpki.git", tag = "v/0.103.12" }
 
 [workspace.dependencies]

@@ -83,7 +83,7 @@ async fn replace_with_kg(
     link_type: terraphim_automata::LinkType,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let thesaurus = build_test_thesaurus().await?;
-    let result = terraphim_automata::replace_matches(text, thesaurus, link_type)?;
+    let result = terraphim_automata::replace_matches(text, &thesaurus, link_type)?;
     Ok(String::from_utf8(result)?)
 }
 
@@ -292,7 +292,7 @@ bun install
         let text = "Visit https://example.com for more info";
         let result = terraphim_automata::replace_matches(
             text,
-            thesaurus,
+            &thesaurus,
             terraphim_automata::LinkType::PlainText,
         )
         .expect("Replacement should succeed");
@@ -321,7 +321,7 @@ bun install
         let text = "[Claude](https://claude.ai/code)";
         let result = terraphim_automata::replace_matches(
             text,
-            thesaurus,
+            &thesaurus,
             terraphim_automata::LinkType::PlainText,
         )
         .expect("Replacement should succeed");
@@ -356,7 +356,7 @@ bun install
         let text = "Contact noreply@anthropic.com for help";
         let result = terraphim_automata::replace_matches(
             text,
-            thesaurus,
+            &thesaurus,
             terraphim_automata::LinkType::PlainText,
         )
         .expect("Replacement should succeed");
@@ -386,7 +386,7 @@ bun install
         let text = "Using Claude Code for development";
         let result = terraphim_automata::replace_matches(
             text,
-            thesaurus,
+            &thesaurus,
             terraphim_automata::LinkType::PlainText,
         )
         .expect("Replacement should succeed");
@@ -421,7 +421,7 @@ bun install
         let text = "Replace foo here";
         let result = terraphim_automata::replace_matches(
             text,
-            thesaurus,
+            &thesaurus,
             terraphim_automata::LinkType::PlainText,
         )
         .expect("Replacement should succeed");
@@ -451,7 +451,7 @@ bun install
         let text = "Generated with [Claude Code](https://claude.ai/claude-code)";
         let result = terraphim_automata::replace_matches(
             text,
-            thesaurus,
+            &thesaurus,
             terraphim_automata::LinkType::PlainText,
         )
         .expect("Replacement should succeed");

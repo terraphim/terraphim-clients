@@ -1,6 +1,6 @@
 [package]
 name = "terraphim_grep"
-version = "1.21.2"
+version.workspace = true
 edition.workspace = true
 authors = ["Terraphim AI Team <team@terraphim.ai>"]
 description = "Intelligent hybrid grep with RLM fallback and KG curation"
@@ -8,7 +8,9 @@ documentation = "https://terraphim.ai"
 homepage = "https://terraphim.ai"
 readme = "README.md"
 license = "MIT"
-repository = "https://github.com/terraphim/terraphim-ai"
+# Include the canonical license in Cargo package output (#246).
+license-file = "../../LICENSE-MIT"
+repository = "https://git.terraphim.cloud/terraphim/terraphim-clients"
 keywords = ["grep", "search", "knowledge-graph", "rlm"]
 categories = ["development-tools"]
 
