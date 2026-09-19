@@ -279,7 +279,7 @@ test_prestripped_canonical_input_accepted_and_payload_binds_to_input_sha() {
         local pattern_file="$TMP/rpm-pattern"
         printf '*usr/bin/terraphim-agent\n' > "$pattern_file"
         ( set +o pipefail
-          rpm2cpio "$rpm" | cpio -i --to-stdout --pattern-file="$pattern_file" \
+          rpm2cpio "$rpm" | cpio --no-absolute-filenames -i --to-stdout --pattern-file="$pattern_file" \
               >"$rpm_payload" 2>"$TMP/rpm-cpio.err" )
         [[ -s "$rpm_payload" ]] || fail "RPM payload extraction produced no bytes: $(cat "$TMP/rpm-cpio.err")"
         local rpm_payload_sha
@@ -345,7 +345,7 @@ test_production_run_binds_receipts_and_inventory_to_canonical_input_sha() {
             printf '*usr/bin/%s\n' "$bin_name" > "$pf"
             local payload="$TMP/prod-rpm-payload-$bin_name"
             ( set +o pipefail
-              rpm2cpio "$out/${bin_name}-9.8.7-1.x86_64.rpm" | cpio -i --to-stdout --pattern-file="$pf" \
+              rpm2cpio "$out/${bin_name}-9.8.7-1.x86_64.rpm" | cpio --no-absolute-filenames -i --to-stdout --pattern-file="$pf" \
                   >"$payload" 2>"$TMP/prod-rpm-cpio-$bin_name.err" )
             [[ -s "$payload" ]] || fail "production RPM payload extraction produced no bytes for $bin_name"
         done

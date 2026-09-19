@@ -230,7 +230,16 @@ inspect_rpm() {
     mkdir -p "$extract"
 
     if command -v rpm2cpio >/dev/null 2>&1 && command -v rpm >/dev/null 2>&1 && command -v cpio >/dev/null 2>&1; then
-        (cd "$extract" && rpm2cpio "$rpm_pkg" | cpio -idmv >/dev/null 2>&1)
+        # --no-absolute-filenames keeps absolute RPM payload member names
+        # (Ubuntu 24.04 rpm2cpio / nFPM 2.47) private to $extract instead of
+        # writing toward the host's real /usr, and surfaces the extraction
+        # diagnostics on failure instead of discarding them.
+        local extract_log="$extract.cpio.log"
+        if ! (cd "$extract" && rpm2cpio "$rpm_pkg" | cpio --no-absolute-filenames -idmv) >"$extract_log" 2>&1; then
+            echo "RPM payload extraction failed for $rpm_pkg (rpm2cpio | cpio --no-absolute-filenames -idmv):" >&2
+            sed 's/^/  /' "$extract_log" >&2
+            exit 1
+        fi
         {
             printf 'arch='
             rpm -qp --qf '%{ARCH}' "$rpm_pkg"
@@ -259,7 +268,15 @@ inspect_rpm() {
                     fi
                 fi
                 cd /extract
-                rpm2cpio /pkg.rpm | cpio -idmv >/dev/null 2>&1
+                # --no-absolute-filenames keeps absolute RPM payload member
+                # names (Ubuntu 24.04 rpm2cpio / nFPM 2.47) private to
+                # /extract; the log stays off the mounted volume and is
+                # surfaced on failure instead of discarded.
+                if ! rpm2cpio /pkg.rpm | cpio --no-absolute-filenames -idmv >/tmp/rpm-extract.log 2>&1; then
+                    echo "RPM payload extraction failed for /pkg.rpm (rpm2cpio | cpio --no-absolute-filenames -idmv):" >&2
+                    sed "s/^/  /" /tmp/rpm-extract.log >&2
+                    exit 1
+                fi
                 {
                     printf "arch="
                     rpm -qp --qf "%{ARCH}" /pkg.rpm

@@ -647,6 +647,166 @@ test_verify_rpm_rejects_wrong_receipt() {
     assert_contains "$log" "RPM package-manager receipt missing or does not read exactly 'rpm'"
 }
 
+# ---------------------------------------------------------------------------
+# Ubuntu 24.04 / nFPM 2.47 absolute-member regression coverage.
+#
+# /usr/bin/rpm2cpio on Ubuntu 24.04 emits RPM payload members with absolute
+# names (/usr/bin/<bin>, ...). `cpio -idmv` without --no-absolute-filenames
+# then either fails outright (unwritable /usr) or writes toward the host's
+# real /usr instead of the private extraction directory -- and the old
+# pipeline discarded stderr, so CI was opaque either way. verify_rpm's host
+# branch must pass `--no-absolute-filenames`, keep the extraction private,
+# and surface the rpm2cpio/cpio diagnostics when extraction fails. These
+# tests drive the REAL host cpio through verify_rpm with function stubs for
+# rpm2cpio (emitting a real cpio archive whose member names are absolute)
+# and rpm (canned metadata answers), so removing the safe option or the
+# failure diagnostics fails the suite.
+# ---------------------------------------------------------------------------
+
+# Append one newc (SVR4 ASCII) cpio entry to stdout. $1 = member name
+# (stored verbatim; absolute here, mirroring Ubuntu 24.04 rpm2cpio output
+# for nFPM 2.47 RPMs), $2 = "dir"|"file", $3 = ino, $4 = payload file for
+# "file" entries.
+newc_entry() {
+    local name="$1" kind="$2" ino="$3" payload_file="${4:-}"
+    local mode nlink=1 size=0 pad
+    if [[ "$kind" == "dir" ]]; then
+        mode=$((8#40755))
+        nlink=2
+    else
+        mode=$((8#100755))
+        size="$(stat -c %s "$payload_file")"
+    fi
+    printf '070701'
+    printf '%08x' "$ino" "$mode" 0 0 "$nlink" 1700000000 "$size" 0 0 0 0 "$((${#name} + 1))" 0
+    printf '%s\0' "$name"
+    pad=$(( (4 - (110 + ${#name} + 1) % 4) % 4 ))
+    if [[ "$pad" -gt 0 ]]; then head -c "$pad" /dev/zero; fi
+    if [[ "$kind" == "file" ]]; then
+        cat "$payload_file"
+        pad=$(( (4 - size % 4) % 4 ))
+        if [[ "$pad" -gt 0 ]]; then head -c "$pad" /dev/zero; fi
+    fi
+}
+
+# Build a real newc cpio archive at $1 whose member names are absolute
+# (/usr/...), exactly what /usr/bin/rpm2cpio on Ubuntu 24.04 hands cpio for
+# an nFPM 2.47 RPM. $2 = payload file for /usr/bin/terraphim-agent, $3 =
+# receipt file for /usr/share/terraphim/package-manager.d/terraphim-agent.
+make_absolute_member_cpio_archive() {
+    local archive="$1" payload_file="$2" receipt_file="$3"
+    command -v cpio >/dev/null 2>&1 || fail "cpio is required for the absolute-member fixture"
+    {
+        newc_entry /usr dir 1
+        newc_entry /usr/bin dir 2
+        newc_entry /usr/bin/terraphim-agent file 3 "$payload_file"
+        newc_entry /usr/share dir 4
+        newc_entry /usr/share/terraphim dir 5
+        newc_entry /usr/share/terraphim/package-manager.d dir 6
+        newc_entry /usr/share/terraphim/package-manager.d/terraphim-agent file 7 "$receipt_file"
+        # TRAILER!!! entry: all-zero metadata, namesize 11.
+        printf '070701'
+        printf '%08x' 0 0 0 0 1 0 0 0 0 0 0 11 0
+        printf 'TRAILER!!!\0'
+        head -c $(( (4 - (110 + 11) % 4) % 4 )) /dev/zero
+    } > "$archive"
+    [[ -s "$archive" ]] || fail "absolute-member cpio fixture archive is empty"
+    # The fixture is only meaningful if the payload member name is absolute.
+    cpio -it --quiet < "$archive" 2>/dev/null | grep -qx '/usr/bin/terraphim-agent' ||
+        fail "absolute-member cpio fixture archive lacks /usr/bin/terraphim-agent"
+}
+
+# Canned `rpm` metadata answers for the host branch of verify_rpm: the arch
+# query, the requires query, and the file-digest-algorithm query.
+stub_rpm_metadata_x86_64() {
+    rpm() {
+        case " $* " in
+            *' %{FILEDIGESTALGO} '*) printf '8' ;;
+            *' %{ARCH} '*) printf 'x86_64' ;;
+            *' -qpR '*) : ;;
+            *) return 64 ;;
+        esac
+    }
+}
+
+test_verify_rpm_host_branch_strips_absolute_member_names() {
+    command -v cpio >/dev/null 2>&1 || { require_tool_or_skip "cpio not installed"; return 0; }
+    local payload=$'absolute-member RPM payload bytes\n'
+    local payload_file="$TMP/rpm-abs-member-payload"
+    local receipt_file="$TMP/rpm-abs-member-receipt"
+    printf '%s' "$payload" > "$payload_file"
+    printf 'rpm\n' > "$receipt_file"
+    local archive="$TMP/absolute-members.cpio"
+    make_absolute_member_cpio_archive "$archive" "$payload_file" "$receipt_file"
+    local expected_sha
+    expected_sha="$(printf '%s' "$payload" | sha256sum | awk '{print $1}')"
+    printf 'fake rpm container\n' > "$TMP/fake-absolute-member.rpm"
+
+    local work="$TMP/rpm-abs-member-work"
+    local log="$TMP/rpm-abs-member.log"
+    if ! (
+        TERRAPHIM_BUILD_CLIENT_PACKAGES_SOURCED=1 source "$BUILD"
+        WORK_DIR="$work"
+        BIN_NAME=terraphim-agent
+        RPM_ARCH=x86_64
+        EXPECTED_SHA="$expected_sha"
+        mkdir -p "$WORK_DIR"
+        rpm2cpio() { cat "$archive"; }
+        stub_rpm_metadata_x86_64
+        lint_rpm() { :; }
+        verify_rpm "$TMP/fake-absolute-member.rpm"
+    ) >"$log" 2>&1; then
+        fail "verify_rpm host branch rejected an RPM payload with absolute member names: $(cat "$log")"
+    fi
+
+    # Extraction must have stayed private to WORK_DIR; the archive member
+    # names were absolute, so any path-unsafe extraction would have written
+    # back over the fixture tree (or toward /usr) and left WORK_DIR empty.
+    [[ "$(sha256sum "$work/rpm-extract-terraphim-agent/usr/bin/terraphim-agent" | awk '{print $1}')" == "$expected_sha" ]] ||
+        fail "verify_rpm host branch did not extract the absolute-member payload privately: $(cat "$log")"
+}
+
+test_verify_rpm_host_branch_surfaces_extraction_diagnostics() {
+    command -v cpio >/dev/null 2>&1 || { require_tool_or_skip "cpio not installed"; return 0; }
+    local log="$TMP/rpm-extract-failure.log"
+    printf 'fake rpm container\n' > "$TMP/fake-corrupt.rpm"
+    if (
+        TERRAPHIM_BUILD_CLIENT_PACKAGES_SOURCED=1 source "$BUILD"
+        WORK_DIR="$TMP/rpm-extract-failure-work"
+        BIN_NAME=terraphim-agent
+        RPM_ARCH=x86_64
+        EXPECTED_SHA="$(sha256sum /dev/null | awk '{print $1}')"
+        mkdir -p "$WORK_DIR"
+        # rpm2cpio succeeds but emits a corrupt archive, so cpio is the
+        # command that fails; its stderr must reach the operator.
+        rpm2cpio() { printf 'not a cpio archive\n'; }
+        stub_rpm_metadata_x86_64
+        lint_rpm() { :; }
+        verify_rpm "$TMP/fake-corrupt.rpm"
+    ) >"$log" 2>&1; then
+        fail "verify_rpm host branch accepted a corrupt RPM payload archive"
+    fi
+    assert_contains "$log" "RPM payload extraction failed"
+    # The underlying cpio diagnostic must be surfaced, not discarded.
+    assert_contains "$log" "cpio"
+}
+
+test_rpm_extraction_uses_no_absolute_filenames_everywhere() {
+    local gate="$ROOT/.github/scripts/nfpm/tests/test_client_nfpm_native.sh"
+    local strip="$ROOT/.github/scripts/nfpm/tests/test_client_nfpm_strip.sh"
+    # Every rpm2cpio | cpio extraction in the production script and the
+    # native/strip test gates must pass --no-absolute-filenames (host and
+    # Docker branches alike); a bare `cpio -i...` consumer of an RPM payload
+    # is a path-safety regression.
+    assert_contains "$BUILD" 'cpio --no-absolute-filenames -idmv'
+    assert_contains "$gate" 'cpio --no-absolute-filenames -idmv'
+    assert_not_contains "$BUILD" 'cpio -idmv'
+    assert_not_contains "$gate" 'cpio -idmv'
+    assert_not_contains "$BUILD" 'cpio -i --to-stdout'
+    assert_not_contains "$gate" 'cpio -i --to-stdout'
+    assert_not_contains "$strip" 'cpio -i --to-stdout'
+}
+
 test_build_reports_missing_nfpm() {
     local agent="$TMP/target/x86_64-unknown-linux-musl/release/terraphim-agent"
     local grep_bin="$TMP/target/x86_64-unknown-linux-musl/release/terraphim-grep"
@@ -948,6 +1108,9 @@ test_verify_deb_rejects_wrong_receipt
 test_verify_rpm_rejects_payload_sha_mismatch
 test_verify_rpm_rejects_missing_receipt
 test_verify_rpm_rejects_wrong_receipt
+test_verify_rpm_host_branch_strips_absolute_member_names
+test_verify_rpm_host_branch_surfaces_extraction_diagnostics
+test_rpm_extraction_uses_no_absolute_filenames_everywhere
 test_build_reports_missing_nfpm
 test_deb_payload_fixture_matches_input_binary
 test_build_script_expects_nfpm_deb_filename
