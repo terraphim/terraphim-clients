@@ -3,13 +3,200 @@
 //! Spins up a real local HTTP server (std::net) — no mocks — to exercise
 //! `fetch_manifest` against live bytes, retry-on-5xx, and 404 handling.
 
+use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::process::Command;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 
-use terraphim_update::manifest::{ManifestConfig, fetch_manifest, resolve_asset_url};
+use serde::Deserialize;
+
+use terraphim_update::manifest::{
+    ManifestConfig, fetch_manifest, resolve_asset_url, validate_manifest,
+};
+
+#[derive(Debug, Deserialize)]
+struct Pre12115ReleaseManifest {
+    version: String,
+    released_at: String,
+    assets: HashMap<String, String>,
+    #[serde(default)]
+    notes_url: Option<String>,
+}
+
+#[test]
+fn test_generated_legacy_manifest_executes_pre12115_wire_contract() {
+    let root = tempfile::tempdir().expect("temporary stage");
+    let assets = root.path().join("release-assets");
+    std::fs::create_dir(&assets).expect("asset directory");
+    let targets = terraphim_update::manifest::all_target_triples();
+    for (index, target) in targets.iter().enumerate() {
+        let extension = if target == "x86_64-pc-windows-msvc" {
+            ".zip"
+        } else {
+            ".tar.gz"
+        };
+        std::fs::write(
+            assets.join(format!("terraphim-agent-1.21.15-{target}{extension}")),
+            format!("sealed-payload-{index}"),
+        )
+        .expect("fixture asset");
+    }
+    let strict = root.path().join("terraphim-agent.v2.candidate.json");
+    let legacy = root.path().join("terraphim-agent.v1.candidate.json");
+    let repository = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let built = Command::new(repository.join("scripts/build-manifest.sh"))
+        .args([
+            "1.21.15",
+            "terraphim-agent",
+            assets.to_str().expect("UTF-8 asset path"),
+            strict.to_str().expect("UTF-8 strict path"),
+        ])
+        .env("SOURCE_DATE_EPOCH", "1789689600")
+        .output()
+        .expect("run strict manifest builder");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let derived = Command::new("python3")
+        .args([
+            repository
+                .join("scripts/build-legacy-manifest.py")
+                .to_str()
+                .expect("UTF-8 script path"),
+            strict.to_str().expect("UTF-8 strict path"),
+            legacy.to_str().expect("UTF-8 legacy path"),
+        ])
+        .output()
+        .expect("run legacy manifest builder");
+    assert!(
+        derived.status.success(),
+        "{}",
+        String::from_utf8_lossy(&derived.stderr)
+    );
+
+    let bytes = std::fs::read(&legacy).expect("generated legacy bytes");
+    let old: Pre12115ReleaseManifest =
+        serde_json::from_slice(&bytes).expect("<=1.21.14 wire shape must deserialize");
+    assert_eq!(old.version, "1.21.15");
+    assert_eq!(old.released_at, "2026-09-18T00:00:00Z");
+    assert_eq!(
+        old.notes_url.as_deref(),
+        Some("https://github.com/terraphim/terraphim-clients/releases/tag/v1.21.15")
+    );
+    let current_target = terraphim_update::manifest::current_target_triples()[0].clone();
+    let advertised = old.assets.get(&current_target).expect("current target");
+    let expected_name = format!(
+        "terraphim-agent-1.21.15-{current_target}{}",
+        if current_target == "x86_64-pc-windows-msvc" {
+            ".zip"
+        } else {
+            ".tar.gz"
+        }
+    );
+    assert_eq!(advertised, &format!("terraphim-agent/{expected_name}"));
+    let resolved = format!("https://downloads.terraphim.ai/{advertised}");
+    assert_eq!(
+        resolved,
+        format!("https://downloads.terraphim.ai/terraphim-agent/{expected_name}")
+    );
+    let installed = root.path().join("installed-payload");
+    std::fs::copy(assets.join(&expected_name), &installed).expect("old install copy");
+    assert_eq!(
+        std::fs::read(installed).expect("installed bytes"),
+        std::fs::read(assets.join(expected_name)).expect("advertised bytes")
+    );
+
+    let strict_bytes = std::fs::read(strict).expect("strict bytes");
+    assert!(
+        serde_json::from_slice::<Pre12115ReleaseManifest>(&strict_bytes).is_err(),
+        "strict object-valued assets must not masquerade as the old wire shape"
+    );
+}
+
+#[test]
+fn test_manifest_rejects_legacy_assets_and_unknown_keys() {
+    let legacy = r#"{
+        "version":"1.21.15",
+        "released_at":"2026-09-18T00:00:00Z",
+        "assets":{"x86_64-unknown-linux-gnu":"terraphim-agent/legacy.tar.gz"},
+        "notes_url":"https://example.invalid/v1.21.15"
+    }"#;
+    let unknown = r#"{
+        "version":"1.21.15",
+        "released_at":"2026-09-18T00:00:00Z",
+        "assets":{"x86_64-unknown-linux-gnu":{
+            "path":"terraphim-agent/terraphim-agent-1.21.15-x86_64-unknown-linux-gnu.tar.gz",
+            "sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size":42,
+            "signature":"not-part-of-the-schema"
+        }},
+        "notes_url":"https://example.invalid/v1.21.15",
+        "channel":"stable"
+    }"#;
+
+    for body in [legacy, unknown] {
+        let result = serde_json::from_str::<terraphim_update::manifest::ReleaseManifest>(body);
+        assert!(
+            result.is_err(),
+            "strict manifest unexpectedly accepted {body}"
+        );
+    }
+}
+
+#[test]
+fn test_manifest_rejects_duplicate_targets_invalid_integrity_and_zero_size() {
+    let valid = r#"{
+        "version":"1.21.15","released_at":"2026-09-18T00:00:00Z",
+        "assets":{
+            "x86_64-unknown-linux-gnu":{"path":"x/x-1.21.15-x86_64-unknown-linux-gnu.tar.gz","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","size":1}
+        },"notes_url":"https://example.invalid/v1.21.15"
+    }"#;
+    let duplicate = r#"{
+        "version":"1.21.15","released_at":"2026-09-18T00:00:00Z",
+        "assets":{
+            "x86_64-unknown-linux-gnu":{"path":"x/x-1.21.15-x86_64-unknown-linux-gnu.tar.gz","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","size":1},
+            "x86_64-unknown-linux-gnu":{"path":"x/x-1.21.15-x86_64-unknown-linux-gnu.tar.gz","sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","size":2}
+        },"notes_url":"https://example.invalid/v1.21.15"
+    }"#;
+    let uppercase_sha = valid.replacen(
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        1,
+    );
+    let zero_size = valid.replacen("\"size\":1", "\"size\":0", 1);
+    for body in [duplicate.to_string(), uppercase_sha, zero_size] {
+        assert!(
+            serde_json::from_str::<terraphim_update::manifest::ReleaseManifest>(&body).is_err(),
+            "invalid manifest unexpectedly parsed: {body}"
+        );
+    }
+}
+
+#[test]
+fn test_official_manifest_requires_exact_targets_and_filename_identity() {
+    let mut manifest: terraphim_update::manifest::ReleaseManifest =
+        serde_json::from_str(&sample_manifest_json()).expect("strict fixture");
+    let config = ManifestConfig::new("terraphim-agent");
+    validate_manifest(&manifest, &config).expect("complete fixture");
+
+    manifest.assets.remove("aarch64-unknown-linux-musl");
+    assert!(validate_manifest(&manifest, &config).is_err());
+
+    let mut wrong_path: terraphim_update::manifest::ReleaseManifest =
+        serde_json::from_str(&sample_manifest_json()).expect("strict fixture");
+    let asset = wrong_path
+        .assets
+        .get_mut("x86_64-unknown-linux-gnu")
+        .expect("asset");
+    asset.path =
+        "terraphim-agent/terraphim-agent-1.21.14-x86_64-unknown-linux-gnu.tar.gz".to_string();
+    assert!(validate_manifest(&wrong_path, &config).is_err());
+}
 
 /// Minimal single-connection HTTP/1.1 server for one request, running on its
 /// own thread. Returns the configured status + body once, then shuts down.
@@ -112,9 +299,13 @@ fn sample_manifest_json() -> String {
     let entries: Vec<String> = terraphim_update::manifest::all_target_triples()
         .into_iter()
         .map(|target| {
+            let extension = if target == "x86_64-pc-windows-msvc" {
+                ".zip"
+            } else {
+                ".tar.gz"
+            };
             format!(
-                "    \"{}\": \"terraphim-agent/terraphim-agent-1.21.9-{}.tar.gz\"",
-                target, target
+                "    \"{target}\": {{\"path\":\"terraphim-agent/terraphim-agent-1.21.9-{target}{extension}\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":1}}"
             )
         })
         .collect();
@@ -147,7 +338,16 @@ fn test_fetch_manifest_from_local_server() {
         terraphim_update::manifest::all_target_triples().len(),
         "sample manifest must cover every target in all_target_triples() (linux + macos + windows)"
     );
-    assert!(manifest.notes_url.is_some());
+    assert!(manifest.notes_url.ends_with("/v1.21.9"));
+}
+
+#[test]
+fn test_default_manifest_pointer_is_strict_v2() {
+    let cfg = ManifestConfig::new("terraphim-agent");
+    assert_eq!(
+        cfg.manifest_url(),
+        "https://downloads.terraphim.ai/terraphim-agent/stable-v2.json"
+    );
 }
 
 #[test]
@@ -194,4 +394,17 @@ fn test_resolve_asset_url_against_local_manifest() {
     let url = resolve_asset_url(&manifest, &cfg).expect("should resolve for current platform");
     assert!(url.starts_with("https://downloads.terraphim.ai/"));
     assert!(url.ends_with(".tar.gz"));
+}
+
+#[test]
+fn test_resolve_asset_url_rejects_unvalidated_traversal_path() {
+    let mut manifest: terraphim_update::manifest::ReleaseManifest =
+        serde_json::from_str(&sample_manifest_json()).expect("strict fixture");
+    let target = terraphim_update::manifest::current_target_triples()[0].clone();
+    let asset = manifest.assets.get_mut(&target).expect("current target");
+    asset.path = "../escaped.tar.gz".to_string();
+    let cfg = ManifestConfig::new("terraphim-agent");
+
+    let error = resolve_asset_url(&manifest, &cfg).expect_err("traversal must fail");
+    assert!(error.to_string().contains("validation failed"));
 }

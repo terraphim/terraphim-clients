@@ -18,8 +18,10 @@ use anyhow::{Context, Result, anyhow};
 use base64::Engine;
 use self_update::cargo_crate_version;
 use self_update::version::bump_is_greater;
+use sha2::{Digest, Sha256};
 use std::fmt;
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 use tracing::{error, info, warn};
@@ -312,9 +314,9 @@ impl TerraphimUpdater {
     /// Check if an update is available without installing.
     ///
     /// Dispatches to the configured [`UpdateBackend`]: R2 (manifest) by
-    /// default, GitHub as fallback. On the R2 backend, a manifest fetch
-    /// failure does **not** fall back here — callers that want fallback
-    /// behaviour should use [`Self::check_and_update`].
+    /// default, GitHub as fallback. R2 fetch or parse failures fall back to a
+    /// real GitHub release check; validated integrity failures during install
+    /// remain definitive.
     pub async fn check_update(&self) -> Result<UpdateStatus> {
         if let Some(status) = self.managed_status() {
             return Ok(status);
@@ -324,14 +326,20 @@ impl TerraphimUpdater {
             self.config.bin_name, self.config.current_version, self.config.backend
         );
         match self.config.backend {
-            UpdateBackend::R2 => self.check_update_r2().await,
+            UpdateBackend::R2 => match self.check_update_r2().await {
+                Ok(status) => Ok(status),
+                Err(error) => {
+                    warn!("R2 update check failed ({error}); falling back to GitHub backend");
+                    self.check_update_github().await
+                }
+            },
             UpdateBackend::GitHub => self.check_update_github().await,
         }
     }
 
     /// Check for an update via the R2 manifest backend.
     ///
-    /// Fetches `{base_url}/{bin}/stable.json`, compares the manifest version
+    /// Fetches `{base_url}/{bin}/stable-v2.json`, compares the manifest version
     /// against the current version using semver. No secrets, no per-IP rate
     /// limit.
     pub async fn check_update_r2(&self) -> Result<UpdateStatus> {
@@ -342,27 +350,30 @@ impl TerraphimUpdater {
         let current_version = self.config.current_version.clone();
         let bin_name = self.config.bin_name.clone();
 
-        let result = tokio::task::spawn_blocking(move || match manifest::fetch_manifest(&cfg) {
-            Ok(m) => match is_newer_version_static(&m.version, &current_version) {
-                Ok(true) => UpdateStatus::Available {
-                    current_version: current_version.clone(),
-                    latest_version: m.version,
+        let result = tokio::task::spawn_blocking(move || -> Result<UpdateStatus> {
+            let manifest = manifest::fetch_manifest(&cfg)?;
+            Ok(
+                match is_newer_version_static(&manifest.version, &current_version) {
+                    Ok(true) => UpdateStatus::Available {
+                        current_version: current_version.clone(),
+                        latest_version: manifest.version,
+                    },
+                    Ok(false) => UpdateStatus::UpToDate(current_version),
+                    Err(e) => UpdateStatus::Failed(format!("version compare for {bin_name}: {e}")),
                 },
-                Ok(false) => UpdateStatus::UpToDate(current_version),
-                Err(e) => UpdateStatus::Failed(format!("version compare for {bin_name}: {e}")),
-            },
-            Err(e) => UpdateStatus::Failed(format!("manifest fetch: {e}")),
+            )
         })
         .await;
 
         match result {
-            Ok(status) => {
+            Ok(Ok(status)) => {
                 log_status(&status);
                 Ok(status)
             }
-            Err(e) => {
-                error!("Failed to spawn blocking task: {}", e);
-                Ok(UpdateStatus::Failed(format!("Task spawn error: {}", e)))
+            Ok(Err(error)) => Err(error),
+            Err(error) => {
+                error!("Failed to spawn blocking task: {}", error);
+                Err(anyhow!("R2 update check task failed: {error}"))
             }
         }
     }
@@ -409,14 +420,15 @@ impl TerraphimUpdater {
             // 3. Resolve the asset URL for the current target triple. An
             //    absent asset is definitive (the manifest is wrong, not the
             //    transport) -> Ok(Failed), do not fall back.
-            let asset_url = match manifest::resolve_asset_url(&release, &cfg) {
-                Ok(u) => u,
+            let asset = match manifest::resolve_asset(&release, &cfg) {
+                Ok(asset) => asset,
                 Err(e) => {
                     return Ok(UpdateStatus::Failed(format!(
                         "no asset for current target: {e}"
                     )));
                 }
             };
+            let asset_url = asset.url.clone();
             info!("Downloading {} from R2", asset_url);
 
             // 4. Download to a temp file named after the original asset so
@@ -439,7 +451,34 @@ impl TerraphimUpdater {
                 return Err(anyhow!("download failed: {e}"));
             }
 
-            // 5. Verify the zipsign Ed25519 signature using the named path
+            // 5. Verify exact final-byte integrity before parsing a signature
+            //    or touching the installed binary.
+            let downloaded_size = fs::metadata(&archive_path)?.len();
+            if downloaded_size != asset.size {
+                return Ok(UpdateStatus::Failed(format!(
+                    "download size mismatch: expected {}, got {}",
+                    asset.size, downloaded_size
+                )));
+            }
+            let mut archive = fs::File::open(&archive_path)?;
+            let mut hasher = Sha256::new();
+            let mut buffer = [0_u8; 64 * 1024];
+            loop {
+                let read = archive.read(&mut buffer)?;
+                if read == 0 {
+                    break;
+                }
+                hasher.update(&buffer[..read]);
+            }
+            let downloaded_sha256 = format!("{:x}", hasher.finalize());
+            if downloaded_sha256 != asset.sha256 {
+                return Ok(UpdateStatus::Failed(format!(
+                    "download checksum mismatch: expected {}, got {}",
+                    asset.sha256, downloaded_sha256
+                )));
+            }
+
+            // 6. Verify the zipsign Ed25519 signature using the named path
             //    (context = archive filename, matching sign time).
             let vr = signature::verify_archive_signature(&archive_path, None)?;
             match vr {
@@ -463,7 +502,7 @@ impl TerraphimUpdater {
                 }
             }
 
-            // 6. Install (extract + chmod + atomic rename) to current_exe().parent().
+            // 7. Install (extract + chmod + atomic rename) to current_exe().parent().
             if let policy::UpdatePolicy::PackageManaged {
                 manager,
                 update_command,
@@ -1330,11 +1369,15 @@ impl TerraphimUpdater {
     /// `check_and_update` for the R2 backend: manifest check then R2 install
     /// with GitHub fallback on transport failure.
     async fn check_and_update_r2(&self) -> Result<UpdateStatus> {
-        match self.check_update_r2().await? {
-            UpdateStatus::Available {
+        match self.check_update_r2().await {
+            Err(error) => {
+                warn!("R2 update check failed ({error}); falling back to GitHub backend");
+                self.check_and_update_github().await
+            }
+            Ok(UpdateStatus::Available {
                 current_version,
                 latest_version,
-            } => {
+            }) => {
                 info!(
                     "Update available: {} -> {}, installing...",
                     current_version, latest_version
@@ -1347,7 +1390,7 @@ impl TerraphimUpdater {
                     }
                 }
             }
-            status => Ok(status),
+            Ok(status) => Ok(status),
         }
     }
 
@@ -1817,7 +1860,7 @@ mod tests {
         assert_eq!(config.manifest.base_url, "https://staging.example.com");
         assert_eq!(
             config.manifest.manifest_url(),
-            "https://staging.example.com/test-binary/stable.json"
+            "https://staging.example.com/test-binary/stable-v2.json"
         );
     }
 

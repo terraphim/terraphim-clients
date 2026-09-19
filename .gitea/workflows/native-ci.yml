@@ -98,6 +98,10 @@ jobs:
       # Binaries built by this workspace (terraphim-agent, terraphim_mcp_server)
       # are resolved by the tests via CARGO_BIN_EXE_*, so they need no env.
       - run: TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo test --workspace --all-targets --no-fail-fast
+      # #248: focused strict-manifest/integrity rollback attribution. Python
+      # workflow contracts run on GitHub because the native runner command
+      # policy allows cargo and repo scripts, not arbitrary Python commands.
+      - run: cargo test --locked -p terraphim_update --test manifest --test r2_update
       # #113: focused re-runs of the integration tests that require a real
       # terraphim_server binary (also covered by --all-targets above; kept for
       # fast failure attribution). ensure_server_binary() (in
