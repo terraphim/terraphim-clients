@@ -381,7 +381,16 @@ docker_rpm_tool() {
                 fi
             fi
             cd /extract
-            rpm2cpio /pkg.rpm | cpio -idmv >/dev/null 2>&1
+            # --no-absolute-filenames keeps RPM payload members with
+            # absolute names (Ubuntu 24.04 rpm2cpio / nFPM 2.47) private to
+            # /extract; keep the log off the mounted volume so the host-side
+            # cleanup trap never meets a root-owned file, and surface it on
+            # failure instead of discarding stderr.
+            if ! rpm2cpio /pkg.rpm | cpio --no-absolute-filenames -idmv >/tmp/rpm-extract.log 2>&1; then
+                echo "RPM payload extraction failed for /pkg.rpm (rpm2cpio | cpio --no-absolute-filenames -idmv):" >&2
+                sed "s/^/  /" /tmp/rpm-extract.log >&2
+                exit 1
+            fi
             payload="/extract/usr/bin/$2"
             if test -L "$payload" || ! test -f "$payload" || ! test -s "$payload"; then
                 echo "extracted RPM payload must be a non-empty regular non-symlink file: $payload" >&2
@@ -537,7 +546,18 @@ verify_rpm() {
     : > "$metadata"
 
     if command -v rpm2cpio >/dev/null 2>&1 && command -v rpm >/dev/null 2>&1 && command -v cpio >/dev/null 2>&1; then
-        (cd "$tmp" && rpm2cpio "$pkg" | cpio -idmv >/dev/null 2>&1)
+        # --no-absolute-filenames is mandatory: Ubuntu 24.04's rpm2cpio
+        # emits nFPM 2.47 RPM payload members with absolute names
+        # (/usr/bin/<bin>, ...), and copy-in without the option then either
+        # fails outright or writes toward the host's real /usr. Extraction must
+        # stay private to $tmp, fail closed on any nonzero status, and
+        # surface the rpm2cpio/cpio diagnostics instead of discarding them.
+        local extract_log="$WORK_DIR/rpm-extract-$BIN_NAME.log"
+        if ! (cd "$tmp" && rpm2cpio "$pkg" | cpio --no-absolute-filenames -idmv) >"$extract_log" 2>&1; then
+            echo "RPM payload extraction failed for $pkg (rpm2cpio | cpio --no-absolute-filenames -idmv):" >&2
+            sed 's/^/  /' "$extract_log" >&2
+            exit 1
+        fi
     else
         docker_rpm_tool "$pkg" "$tmp" "$EXPECTED_SHA" "$metadata" "$BIN_NAME"
     fi

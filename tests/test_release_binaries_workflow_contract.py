@@ -99,12 +99,12 @@ def stage_env(**updates: str) -> dict[str, str]:
     env = os.environ.copy()
     env.update(
         {
-            "VERSION": "1.21.15",
-            "RELEASE_TAG": "v1.21.15",
-            "SOURCE_REF": "v1.21.15",
+            "VERSION": "1.21.16",
+            "RELEASE_TAG": "v1.21.16",
+            "SOURCE_REF": "v1.21.16",
             "EXPECTED_SOURCE_SHA": "b" * 40,
             "TARGET_REPO": "terraphim-ai",
-            "CORRELATION_ID": "terraphim-ai/release-1.21.15:248",
+            "CORRELATION_ID": "terraphim-ai/release-1.21.16:248",
             "PUBLISH_TO_TARGET_RELEASE": "false",
         }
     )
@@ -147,8 +147,8 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
         self.assertEqual(accepted.returncode, 0, accepted.stderr)
 
         cases = (
-            ({"VERSION": "v1.21.15"}, "stable semantic version"),
-            ({"RELEASE_TAG": "v1.21.14"}, "must equal 'v' plus version"),
+            ({"VERSION": "v1.21.16"}, "stable semantic version"),
+            ({"RELEASE_TAG": "v1.21.15"}, "must equal 'v' plus version"),
             ({"SOURCE_REF": "main"}, "must equal source_ref"),
             ({"EXPECTED_SOURCE_SHA": "B" * 40}, "lowercase hex SHA"),
             ({"TARGET_REPO": "terraphim-clients"}, "stage-only mode"),
@@ -176,7 +176,7 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
     def test_release_uses_checked_in_version_and_never_mutates_source(self) -> None:
         text = workflow_text()
         workspace = tomllib.loads((ROOT / "Cargo.toml").read_text())
-        self.assertEqual(workspace["workspace"]["package"]["version"], "1.21.15")
+        self.assertEqual(workspace["workspace"]["package"]["version"], "1.21.16")
         for forbidden in (
             "Set release version",
             "set_section_version",
@@ -471,6 +471,36 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
                 self.assertNotEqual(mutant, text)
                 with self.assertRaises(AssertionError):
                     self.assert_seal_package_result_contract(mutant)
+
+    def assert_lipo_verify_arch_order(self, block: str) -> None:
+        # Xcode 16.4 lipo requires the input file before the -verify_arch
+        # command and its architecture flags: the legacy order
+        # `lipo -verify_arch x86_64 arm64 FILE` parses FILE as an
+        # architecture and fails the universal macOS step. The only safe
+        # order is `lipo FILE -verify_arch x86_64 arm64`.
+        self.assertIn(
+            'lipo "universal/${binary}-universal-apple-darwin" -verify_arch x86_64 arm64',
+            block,
+        )
+        self.assertNotIn("lipo -verify_arch x86_64 arm64", block)
+
+    def test_universal_lipo_verify_arch_uses_safe_argument_order(self) -> None:
+        block = job_block("create-universal-macos")
+        self.assert_lipo_verify_arch_order(block)
+
+        mutations = {
+            "flags-first": block.replace(
+                'lipo "universal/${binary}-universal-apple-darwin" -verify_arch x86_64 arm64',
+                'lipo -verify_arch x86_64 arm64 "universal/${binary}-universal-apple-darwin"',
+                1,
+            ),
+            "verify-dropped": block.replace(" -verify_arch x86_64 arm64", "", 1),
+        }
+        for name, mutant in mutations.items():
+            with self.subTest(mutation=name):
+                self.assertNotEqual(mutant, block)
+                with self.assertRaises(AssertionError):
+                    self.assert_lipo_verify_arch_order(mutant)
 
     def test_build_client_packages_matrix_is_two_musl_targets_only(self) -> None:
         block = job_block("build-client-packages")
