@@ -228,6 +228,10 @@ inspect_rpm() {
     metadata="$extract.metadata"
     expected_sha="$(sha256sum "$binary" | awk '{print $1}')"
     mkdir -p "$extract"
+    # The extraction below runs from inside $extract; anchor the package
+    # path so a relative $rpm_pkg cannot resolve against it (callers pass
+    # absolute paths today; this keeps that a guarantee, not an accident).
+    rpm_pkg="$(realpath "$rpm_pkg")"
 
     if command -v rpm2cpio >/dev/null 2>&1 && command -v rpm >/dev/null 2>&1 && command -v cpio >/dev/null 2>&1; then
         # --no-absolute-filenames keeps absolute RPM payload member names
