@@ -1,0 +1,72 @@
+name: Promote sealed release stage
+
+# Privileged operator promotion of an already-sealed client release stage,
+# executed inside Actions so the R2 credential (repo secret
+# CLOUDFLARE_API_TOKEN) never leaves GitHub. The wrapped
+# scripts/promote-release.sh re-validates provenance (version, source SHA,
+# correlation id) against the sealed stage before any remote write, and its
+# immutable-asset preflight makes re-runs idempotent: identical GitHub
+# assets and R2 objects are skipped byte-for-byte, differing bytes abort.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version without v prefix
+        required: true
+        type: string
+      staged_run_id:
+        description: Actions run id that produced the sealed stage artifact
+        required: true
+        type: string
+      expected_source_sha:
+        description: Expected peeled 40-character source commit SHA
+        required: true
+        type: string
+      correlation_id:
+        description: Correlation id bound to the sealed stage provenance
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  promote:
+    name: Promote sealed stage to GitHub release and R2
+    runs-on: ubuntu-latest
+    permissions:
+      # actions:read lets gh fetch the sealed artifact by run id; the
+      # contents:write scope only matters when an archive is missing from
+      # the release and must be re-uploaded and read back.
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install pinned wrangler
+        run: npm install -g wrangler@4.140.0
+      - name: Download the sealed stage artifact by run id
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
+          STAGED_RUN_ID: ${{ inputs.staged_run_id }}
+        run: |
+          set -euo pipefail
+          stage="client-release-stage-${VERSION}-${EXPECTED_SOURCE_SHA}"
+          mkdir -p "${GITHUB_WORKSPACE}/${stage}"
+          gh run download "${STAGED_RUN_ID}" --repo "${GITHUB_REPOSITORY}" \
+            --name "${stage}" --dir "${GITHUB_WORKSPACE}/${stage}"
+          test -f "${GITHUB_WORKSPACE}/${stage}/provenance.json"
+          echo "STAGED_DIR=${GITHUB_WORKSPACE}/${stage}" >> "${GITHUB_ENV}"
+      - name: Promote (GitHub assets, R2 objects, stable pointers)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VERSION: ${{ inputs.version }}
+          EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
+          CORRELATION_ID: ${{ inputs.correlation_id }}
+        run: |
+          set -euo pipefail
+          scripts/promote-release.sh \
+            "${VERSION}" "${STAGED_DIR}" terraphim-clients \
+            "${EXPECTED_SOURCE_SHA}" "${CORRELATION_ID}"
