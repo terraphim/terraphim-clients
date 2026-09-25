@@ -52,6 +52,31 @@ for command_name in gh wrangler curl cmp; do
   }
 done
 
+# Wrangler's `r2 object put --remote` has reported "Upload complete." for
+# multi-megabyte objects that never became readable, so the S3 API is the
+# preferred upload transport whenever its credentials are present. Wrangler
+# stays the fallback for operator environments without S3 keys.
+r2_s3_endpoint="${R2_ENDPOINT:-}"
+r2_s3_access_key="${R2_ACCESS_KEY_ID:-}"
+r2_s3_secret_key="${R2_SECRET_ACCESS_KEY:-}"
+if [ -n "$r2_s3_endpoint$r2_s3_access_key$r2_s3_secret_key" ]; then
+  [[ "$r2_s3_endpoint" == https://* ]] || {
+    echo "ERROR: R2_ENDPOINT must use HTTPS" >&2
+    exit 2
+  }
+  [ -n "$r2_s3_access_key" ] && [ -n "$r2_s3_secret_key" ] || {
+    echo "ERROR: R2_ENDPOINT requires both R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY" >&2
+    exit 2
+  }
+  command -v aws >/dev/null || {
+    echo "ERROR: required command not found: aws" >&2
+    exit 2
+  }
+  echo "R2 upload transport: S3 API (aws s3api) via R2_ENDPOINT"
+else
+  echo "R2 upload transport: wrangler r2 object put --remote"
+fi
+
 verification_dir="$(mktemp -d)"
 snapshot_tmp=""
 cleanup() {
@@ -128,6 +153,34 @@ fetch_r2() {
   esac
 }
 
+r2_content_type() {
+  case "$1" in
+    *.json) echo "application/json" ;;
+    *.tar.gz) echo "application/gzip" ;;
+    *.zip) echo "application/zip" ;;
+    *.zst) echo "application/zstd" ;;
+    *) echo "application/octet-stream" ;;
+  esac
+}
+
+r2_put() {
+  local object_path="$1"
+  local local_path="$2"
+  local content_type
+  content_type="$(r2_content_type "$object_path")"
+  if [ -n "$r2_s3_endpoint" ]; then
+    AWS_ACCESS_KEY_ID="$r2_s3_access_key" \
+    AWS_SECRET_ACCESS_KEY="$r2_s3_secret_key" \
+      aws s3api put-object --bucket "$bucket" --key "$object_path" \
+        --body "$local_path" --content-type "$content_type" \
+        --endpoint-url "$r2_s3_endpoint" --region auto \
+        --output text --no-cli-pager >/dev/null
+  else
+    wrangler r2 object put "$bucket/$object_path" --file "$local_path" \
+      --content-type "$content_type" --remote
+  fi
+}
+
 github_plan="$verification_dir/github-upload.tsv"
 r2_plan="$verification_dir/r2-upload.tsv"
 : > "$github_plan"
@@ -180,7 +233,7 @@ while IFS= read -r local_asset; do
   rmdir "$verification_dir/github-readback/$name.dir"
 done < "$github_plan"
 
-# Wrangler does not expose an atomic if-none-match put for this command. Re-read
+# Neither R2 transport exposes an atomic if-none-match put. Re-read
 # immediately before each put, skip an identical race winner, and fail on a
 # differing winner. A sub-request race between the final 404 and put remains a
 # documented provider limitation; every put is nevertheless read back exactly.
@@ -195,7 +248,7 @@ while IFS=$'\t' read -r object_path local_path; do
     rm -f "$immediate"
     continue
   fi
-  wrangler r2 object put "$bucket/$object_path" --file "$local_path" --remote
+  r2_put "$object_path" "$local_path"
   readback="$verification_dir/r2-readback/${object_path//\//_}"
   fetch_r2 "$object_path" "$readback" || {
     echo "ERROR: uploaded R2 object is absent: $object_path" >&2
@@ -244,7 +297,7 @@ advance_pointer() {
     fi
     rm -f "$existing"
   fi
-  wrangler r2 object put "$bucket/$object_path" --file "$local_path" --content-type application/json --remote
+  r2_put "$object_path" "$local_path"
   fetch_r2 "$object_path" "$existing" || {
     echo "ERROR: stable pointer readback is absent: $object_path" >&2
     exit 1

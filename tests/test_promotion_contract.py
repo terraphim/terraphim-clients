@@ -227,6 +227,35 @@ sys.stdout.write(status)
     return tools, gh_remote, r2_remote, log
 
 
+def install_aws_s3_stub(tools: Path) -> None:
+    executable(
+        tools / "aws",
+        r'''#!/usr/bin/env python3
+import os, pathlib, shutil, sys
+args = sys.argv[1:]
+if args[:2] != ["s3api", "put-object"]: sys.exit(2)
+if "--endpoint-url" not in args or "--content-type" not in args: sys.exit(2)
+key = args[args.index("--key") + 1]
+expected_types = {".json": "application/json", ".tar.gz": "application/gzip", ".zip": "application/zip", ".zst": "application/zstd"}
+expected = next((value for suffix, value in expected_types.items() if key.endswith(suffix)), "application/octet-stream")
+if args[args.index("--content-type") + 1] != expected: sys.exit(5)
+failure = os.environ.get("FAIL_OBJECT_ONCE", os.environ.get("FAIL_POINTER_ONCE", ""))
+marker = pathlib.Path(os.environ.get("FAILURE_MARKER", "/nonexistent"))
+if key == failure and not marker.exists():
+    marker.write_text("failed\n")
+    sys.exit(19)
+remote = pathlib.Path(os.environ["R2_REMOTE"]) / key
+remote.parent.mkdir(parents=True, exist_ok=True)
+shutil.copyfile(args[args.index("--body") + 1], remote)
+with pathlib.Path(os.environ["CALL_LOG"]).open("a") as handle: handle.write(f"r2-put {key}\n")
+''',
+    )
+
+
+def poison_wrangler(tools: Path) -> None:
+    executable(tools / "wrangler", "#!/bin/sh\nexit 3\n")
+
+
 def promotion_env(tools: Path, gh_remote: Path, r2_remote: Path, log: Path) -> dict[str, str]:
     env = os.environ.copy()
     env.update(
@@ -374,6 +403,79 @@ class PromotionContract(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertNotIn("scratch-leak", log.read_text())
             self.assertEqual(list(scratch.iterdir()), [])
+
+    def test_s3_api_transport_promotes_without_wrangler_and_is_idempotent(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            staged = prepare_complete_stage(root)
+            tools, gh_remote, r2_remote, log = install_remote_tools(root)
+            install_aws_s3_stub(tools)
+            poison_wrangler(tools)
+            env = promotion_env(tools, gh_remote, r2_remote, log)
+            env.update(
+                {
+                    "R2_ENDPOINT": "https://s3.invalid",
+                    "R2_ACCESS_KEY_ID": "test-access-key",
+                    "R2_SECRET_ACCESS_KEY": "test-secret-key",
+                }
+            )
+            first = subprocess.run(promotion_command(staged), env=env, text=True, capture_output=True)
+            self.assertEqual(first.returncode, 0, first.stderr)
+            self.assertIn("R2 upload transport: S3 API", first.stdout)
+            writes = [line for line in log.read_text().splitlines() if line.startswith("r2-put")]
+            self.assertIn(f"r2-put terraphim-agent/manifests/v2/{VERSION}.json", writes)
+            self.assertIn("r2-put terraphim-agent/stable.json", writes)
+            for binary in ("terraphim-agent", "terraphim-cli", "terraphim-grep"):
+                expected = (staged / "manifests" / f"{binary}.v1.candidate.json").read_bytes()
+                self.assertEqual((r2_remote / binary / "stable.json").read_bytes(), expected)
+            second = subprocess.run(promotion_command(staged), env=env, text=True, capture_output=True)
+            self.assertEqual(second.returncode, 0, second.stderr)
+            self.assertEqual(
+                [line for line in log.read_text().splitlines() if line.startswith("r2-put")],
+                writes,
+            )
+
+    def test_s3_api_transport_failure_never_advances_stable_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            staged = prepare_complete_stage(root)
+            tools, gh_remote, r2_remote, log = install_remote_tools(root)
+            install_aws_s3_stub(tools)
+            env = promotion_env(tools, gh_remote, r2_remote, log)
+            env.update(
+                {
+                    "R2_ENDPOINT": "https://s3.invalid",
+                    "R2_ACCESS_KEY_ID": "test-access-key",
+                    "R2_SECRET_ACCESS_KEY": "test-secret-key",
+                    "FAIL_OBJECT_ONCE": f"terraphim-agent/manifests/v1/{VERSION}.json",
+                    "FAILURE_MARKER": str(root / "failed-once"),
+                }
+            )
+            result = subprocess.run(promotion_command(staged), env=env, text=True, capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            calls = log.read_text() if log.exists() else ""
+            self.assertNotIn("stable.json", calls)
+            self.assertNotIn("stable-v2.json", calls)
+
+    def test_partial_s3_credentials_are_rejected_before_any_remote_query(self) -> None:
+        # A missing aws binary cannot be simulated portably: hosted runners
+        # ship a real aws on PATH, which is exactly the production setup.
+        for missing in ("R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"):
+            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                staged = prepare_complete_stage(root)
+                tools, gh_remote, r2_remote, log = install_remote_tools(root)
+                install_aws_s3_stub(tools)
+                env = promotion_env(tools, gh_remote, r2_remote, log)
+                env["R2_ENDPOINT"] = "https://s3.invalid"
+                if missing != "R2_ACCESS_KEY_ID":
+                    env["R2_ACCESS_KEY_ID"] = "test-access-key"
+                if missing != "R2_SECRET_ACCESS_KEY":
+                    env["R2_SECRET_ACCESS_KEY"] = "test-secret-key"
+                result = subprocess.run(promotion_command(staged), env=env, text=True, capture_output=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("ERROR:", result.stderr)
+                self.assertFalse(log.exists(), "S3 misconfiguration must fail before any remote query")
 
     def test_rollback_requires_explicit_pointers_only_authorization_flag(self) -> None:
         result = subprocess.run(
