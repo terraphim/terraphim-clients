@@ -148,18 +148,32 @@ fn grep_updater() -> TerraphimUpdater {
 
 async fn handle_update_command(command: Command) -> Result<()> {
     let updater = grep_updater();
-    let status = match command {
+    match command {
         Command::CheckUpdate => {
             println!("Checking for terraphim-grep updates...");
-            updater.check_update().await?
+            let status = updater.check_update().await?;
+            println!("{}", status);
+            Ok(())
         }
         Command::Update => {
             println!("Updating terraphim-grep...");
-            updater.check_and_update().await?
+            let status = updater.check_and_update().await?;
+            match status {
+                // A package-manager receipt owns this install: an explicit
+                // `update` must refuse with a non-zero exit and the exact
+                // stderr line the packaging lifecycle gates match on, leaving
+                // the installed binary untouched (Gitea #247 contract).
+                terraphim_update::UpdateStatus::PackageManaged { .. } => {
+                    eprintln!("terraphim-grep update was refused: {}", status);
+                    std::process::exit(1);
+                }
+                other => {
+                    println!("{}", other);
+                    Ok(())
+                }
+            }
         }
-    };
-    println!("{status}");
-    Ok(())
+    }
 }
 
 /// Discover project-level config from `.terraphim/` directory.
