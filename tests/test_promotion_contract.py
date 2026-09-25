@@ -202,6 +202,9 @@ count_file = count_dir / key.replace("/", "_")
 count_dir.mkdir(parents=True, exist_ok=True)
 count = int(count_file.read_text()) + 1 if count_file.exists() else 1
 count_file.write_text(str(count))
+if key == os.environ.get("LAG_KEY") and count <= int(os.environ.get("LAG_READS", "0")):
+    sys.stdout.write("404")
+    sys.exit(0)
 if key == os.environ.get("APPEAR_ON_READ_KEY") and count == int(os.environ.get("APPEAR_ON_READ_NUMBER", "2")):
     source.parent.mkdir(parents=True, exist_ok=True)
     source.write_bytes(os.environ.get("APPEAR_BYTES", "different-race-winner").encode())
@@ -476,6 +479,34 @@ class PromotionContract(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("ERROR:", result.stderr)
                 self.assertFalse(log.exists(), "S3 misconfiguration must fail before any remote query")
+
+    def test_public_channel_lag_is_awaited_before_declaring_absence(self) -> None:
+        path = "terraphim-agent/terraphim-agent-1.21.15-aarch64-apple-darwin.tar.gz"
+        for lag_reads, wait, expect_success in ((3, "600", True), (999, "0", False)):
+            with self.subTest(lag_reads=lag_reads, wait=wait), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                staged = prepare_complete_stage(root)
+                tools, gh_remote, r2_remote, log = install_remote_tools(root)
+                env = promotion_env(tools, gh_remote, r2_remote, log)
+                env.update(
+                    {
+                        "LAG_KEY": path,
+                        "LAG_READS": str(lag_reads),
+                        "R2_READBACK_WAIT": wait,
+                    }
+                )
+                result = subprocess.run(promotion_command(staged), env=env, text=True, capture_output=True)
+                if expect_success:
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual((r2_remote / path).read_bytes(), b"signed-final-terraphim-agent-aarch64-apple-darwin")
+                    reads = (log.parent / "curl-counts" / path.replace("/", "_")).read_text()
+                    self.assertEqual(int(reads), lag_reads + 1, "readback must retry past the lag window")
+                else:
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(f"uploaded R2 object is absent after {wait}s: {path}", result.stderr)
+                    calls = log.read_text() if log.exists() else ""
+                    self.assertNotIn("stable.json", calls)
+                    self.assertNotIn("stable-v2.json", calls)
 
     def test_rollback_requires_explicit_pointers_only_authorization_flag(self) -> None:
         result = subprocess.run(
