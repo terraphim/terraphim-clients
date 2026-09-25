@@ -46,9 +46,13 @@ def version_tuple(value: str) -> tuple[int, int, int]:
 
 
 def fetch(base_url: str, path: str, limit: int) -> bytes:
-    with urllib.request.urlopen(  # nosec B310: validate() allowlists the scheme
-        f"{base_url}/{path}", timeout=60
-    ) as response:
+    # Cloudflare bot management on the public channel answers the default
+    # Python-urllib User-Agent with 403, so identify as the validator.
+    request = urllib.request.Request(  # nosec B310: validate() allowlists the scheme
+        f"{base_url}/{path}",
+        headers={"User-Agent": "terraphim-r2-manifest-validator/1.0"},
+    )
+    with urllib.request.urlopen(request, timeout=60) as response:
         data = response.read(limit + 1)
     if len(data) > limit:
         raise ValueError(f"{path}: response exceeds {limit} bytes")
@@ -144,9 +148,11 @@ def verify_asset(
         raise ValueError("chunk size must be positive")
     digest = hashlib.sha256()
     total = 0
-    with opener(  # nosec B310: validate() allowlists the scheme
-        f"{base_url}/{path}", timeout=60
-    ) as response:
+    request = urllib.request.Request(  # nosec B310: validate() allowlists the scheme
+        f"{base_url}/{path}",
+        headers={"User-Agent": "terraphim-r2-manifest-validator/1.0"},
+    )
+    with opener(request, timeout=60) as response:
         while True:
             chunk = response.read(min(chunk_size, declared_size - total + 1))
             if not chunk:
