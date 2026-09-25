@@ -61,9 +61,13 @@ generation refuses to write `stable.json` or `stable-v2.json` by design.
 - [ ] Confirm the destination GitHub release exists and its tag is exact.
 - [ ] Confirm the release is neither `draft` nor `prerelease`; either state is
   forbidden from advancing stable manifests.
-- [ ] Configure `gh`, `wrangler`, R2 credentials, and the public `BASE_URL` in
-  the privileged operator environment. These credentials do not belong in the
-  producer workflow.
+- [ ] Configure `gh`, R2 credentials, and the public `BASE_URL` in the
+  privileged operator environment. Exporting `R2_ENDPOINT`,
+  `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY` uploads through the S3 API,
+  which is the transport used by `promote-release.yml`; without them the
+  script falls back to `wrangler r2 object put --remote`, which has reported
+  success for multi-megabyte objects that never became readable. These
+  credentials do not belong in the producer workflow.
 - [ ] Set `TMPDIR` to a protected filesystem with enough space for one largest
   remote object plus the small plans. Successful comparison/readback copies are
   removed immediately rather than retained until process exit. The stage
@@ -97,9 +101,10 @@ order: strict `stable-v2.json` first and legacy `stable.json` last.
   absence; redirects, authorization/rate-limit/server errors, malformed status,
   timeouts, and transport failures stop the run.
 - [ ] R2 immutables are re-read immediately before each put and every put is
-  read back. Wrangler does not expose an atomic conditional put in this flow,
-  so a residual race remains between the final 404 and the put. Never claim an
-  atomic no-clobber guarantee; investigate any readback mismatch immediately.
+  read back. Neither R2 transport (S3 API or wrangler) exposes an atomic
+  conditional put in this flow, so a residual race remains between the final
+  404 and the put. Never claim an atomic no-clobber guarantee; investigate any
+  readback mismatch immediately.
 - [ ] On any failure before the stable phase, verify that no stable pointer was
   written, correct the failure, and rerun from the same sealed stage.
 - [ ] If interruption occurs during the final stable-pointer loop, rerun from
