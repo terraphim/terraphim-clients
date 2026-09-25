@@ -549,12 +549,18 @@ jobs:
       - name: Sign, notarize, and revalidate final macOS binaries
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          CERT_BASE64: ${{ secrets.CERT_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.CERT_PASSWORD }}
           VERSION: ${{ needs.preflight.outputs.version }}
         run: |
           set -euo pipefail
-          load_masked() {
-            local name="$1" reference="$2" value
-            value="$(op read "$reference" --no-newline)"
+          # Shared validation: non-empty, CERT_BASE64 newline-stripped, all
+          # other values single-line, masked in logs, exported under $name.
+          normalise_and_mask() {
+            local name="$1" value="$2"
             [ -n "$value" ] || { echo "empty credential $name" >&2; exit 1; }
             if [ "$name" = "CERT_BASE64" ]; then
               value="${value//$'\r'/}"
@@ -570,11 +576,32 @@ jobs:
             # masking above and the empty-value check are unchanged.
             export "${name?}"
           }
-          load_masked APPLE_ID 'op://TerraphimPlatform/apple.developer.credentials/username'
-          load_masked APPLE_TEAM_ID 'op://TerraphimPlatform/apple.developer.credentials/APPLE_TEAM_ID'
-          load_masked APPLE_APP_PASSWORD 'op://TerraphimPlatform/apple.developer.credentials/APPLE_APP_SPECIFIC_PASSWORD'
-          load_masked CERT_BASE64 'op://TerraphimPlatform/apple.developer.certificate/base64'
-          load_masked CERT_PASSWORD 'op://TerraphimPlatform/apple.developer.certificate/password'
+          load_masked() {
+            local name="$1" reference="$2"
+            normalise_and_mask "$name" "$(op read "$reference" --no-newline)"
+          }
+          load_masked_env() {
+            local name="$1"
+            normalise_and_mask "$name" "${!name:-}"
+          }
+          # Preferred source is the 1Password service account; when it has not
+          # been provisioned, the identical credentials held by the reviewed
+          # tsm-production-release environment (the same source
+          # finalize-prebuilt-release.yml uses) keep the lane unblocked.
+          if [ -n "${OP_SERVICE_ACCOUNT_TOKEN:-}" ]; then
+            load_masked APPLE_ID 'op://TerraphimPlatform/apple.developer.credentials/username'
+            load_masked APPLE_TEAM_ID 'op://TerraphimPlatform/apple.developer.credentials/APPLE_TEAM_ID'
+            load_masked APPLE_APP_PASSWORD 'op://TerraphimPlatform/apple.developer.credentials/APPLE_APP_SPECIFIC_PASSWORD'
+            load_masked CERT_BASE64 'op://TerraphimPlatform/apple.developer.certificate/base64'
+            load_masked CERT_PASSWORD 'op://TerraphimPlatform/apple.developer.certificate/password'
+          else
+            echo "NOTE: OP_SERVICE_ACCOUNT_TOKEN not set; using tsm-production-release environment secrets" >&2
+            load_masked_env APPLE_ID
+            load_masked_env APPLE_TEAM_ID
+            load_masked_env APPLE_APP_PASSWORD
+            load_masked_env CERT_BASE64
+            load_masked_env CERT_PASSWORD
+          fi
           chmod 755 macos/*
           for path in macos/*; do
             scripts/sign-macos-binary.sh "$path" "$APPLE_ID" "$APPLE_TEAM_ID" "$APPLE_APP_PASSWORD" "$CERT_BASE64" "$CERT_PASSWORD"

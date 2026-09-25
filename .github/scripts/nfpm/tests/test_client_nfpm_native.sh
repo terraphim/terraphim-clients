@@ -232,13 +232,16 @@ inspect_rpm() {
     if command -v rpm2cpio >/dev/null 2>&1 && command -v rpm >/dev/null 2>&1 && command -v cpio >/dev/null 2>&1; then
         # --no-absolute-filenames keeps absolute RPM payload member names
         # (Ubuntu 24.04 rpm2cpio / nFPM 2.47) private to $extract instead of
-        # writing toward the host's real /usr, and surfaces the extraction
-        # diagnostics on failure instead of discarding them.
+        # writing toward the host's real /usr. Pipeline status is deliberately
+        # not the success criterion: rpm 4.17's rpm2cpio (Ubuntu 24.04 and
+        # Pop!_OS, i.e. every runner this gate runs on) exits 1 on nFPM 2.47
+        # RPMs while writing a complete, correct payload. Note the status,
+        # then let the payload-presence and SHA-256 checks below stay
+        # fail-closed.
         local extract_log="$extract.cpio.log"
         if ! (cd "$extract" && rpm2cpio "$rpm_pkg" | cpio --no-absolute-filenames -idmv) >"$extract_log" 2>&1; then
-            echo "RPM payload extraction failed for $rpm_pkg (rpm2cpio | cpio --no-absolute-filenames -idmv):" >&2
+            echo "NOTE: rpm2cpio|cpio returned nonzero for $rpm_pkg; verifying extracted payload" >&2
             sed 's/^/  /' "$extract_log" >&2
-            exit 1
         fi
         {
             printf 'arch='
@@ -270,10 +273,17 @@ inspect_rpm() {
                 cd /extract
                 # --no-absolute-filenames keeps absolute RPM payload member
                 # names (Ubuntu 24.04 rpm2cpio / nFPM 2.47) private to
-                # /extract; the log stays off the mounted volume and is
-                # surfaced on failure instead of discarded.
+                # /extract. Pipeline status is deliberately not the success
+                # criterion: the rpm 4.17 rpm2cpio exits 1 on nFPM 2.47 RPMs
+                # while writing a complete, correct payload. Note the status,
+                # then let the payload-presence check stay fail-closed (the
+                # host side SHA-compares the extracted binary afterwards).
                 if ! rpm2cpio /pkg.rpm | cpio --no-absolute-filenames -idmv >/tmp/rpm-extract.log 2>&1; then
-                    echo "RPM payload extraction failed for /pkg.rpm (rpm2cpio | cpio --no-absolute-filenames -idmv):" >&2
+                    echo "NOTE: rpm2cpio|cpio returned nonzero for /pkg.rpm; verifying extracted payload" >&2
+                    sed "s/^/  /" /tmp/rpm-extract.log >&2
+                fi
+                if ! test -f "/extract/usr/bin/$1"; then
+                    echo "RPM payload extraction produced no /extract/usr/bin/$1 (rpm2cpio | cpio --no-absolute-filenames -idmv):" >&2
                     sed "s/^/  /" /tmp/rpm-extract.log >&2
                     exit 1
                 fi
@@ -287,12 +297,19 @@ inspect_rpm() {
                     printf "\n"
                 } > /metadata
                 chmod -R a+rwX /extract /metadata
-            '
+            ' sh "$bin_name"
     else
         echo "BLOCKED: RPM inspection requires host rpm/rpm2cpio/cpio or Docker" >&2
         exit 127
     fi
 
+    # Fail-closed payload judgement for both branches: rpm2cpio|cpio status is
+    # only advisory (NOTE above), so the extracted binary itself is the
+    # criterion, SHA-compared immediately after.
+    [[ -f "$extract/usr/bin/$bin_name" ]] || {
+        echo "RPM payload extraction produced no $bin_name for $rpm_pkg" >&2
+        exit 1
+    }
     actual_sha="$(sha256sum "$extract/usr/bin/$bin_name" | awk '{print $1}')"
     [[ "$actual_sha" == "$expected_sha" ]] || {
         echo "RPM payload SHA mismatch expected=$expected_sha actual=$actual_sha" >&2
