@@ -384,12 +384,14 @@ docker_rpm_tool() {
             # --no-absolute-filenames keeps RPM payload members with
             # absolute names (Ubuntu 24.04 rpm2cpio / nFPM 2.47) private to
             # /extract; keep the log off the mounted volume so the host-side
-            # cleanup trap never meets a root-owned file, and surface it on
-            # failure instead of discarding stderr.
+            # cleanup trap never meets a root-owned file. Pipeline status is
+            # deliberately not the success criterion: the rpm 4.17 rpm2cpio
+            # exits nonzero on valid nFPM 2.47 RPMs while writing a complete
+            # payload (see the verify_rpm host branch). Note the status, then
+            # let the payload/SHA checks below stay fail-closed.
             if ! rpm2cpio /pkg.rpm | cpio --no-absolute-filenames -idmv >/tmp/rpm-extract.log 2>&1; then
-                echo "RPM payload extraction failed for /pkg.rpm (rpm2cpio | cpio --no-absolute-filenames -idmv):" >&2
+                echo "NOTE: rpm2cpio|cpio returned nonzero for /pkg.rpm; verifying extracted payload" >&2
                 sed "s/^/  /" /tmp/rpm-extract.log >&2
-                exit 1
             fi
             payload="/extract/usr/bin/$2"
             if test -L "$payload" || ! test -f "$payload" || ! test -s "$payload"; then
