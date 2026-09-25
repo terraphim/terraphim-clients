@@ -890,7 +890,7 @@ pub fn annotate_with_entities(text: &str) -> Vec<String> {
 // Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
 pub fn annotate_with_thesaurus(text: &str, thesaurus: &terraphim_types::Thesaurus) -> Vec<String> {
-    match terraphim_automata::matcher::find_matches(text, &thesaurus, false) {
+    match terraphim_automata::matcher::find_matches(text, thesaurus, false) {
         Ok(matches) => {
             let mut seen = std::collections::HashSet::new();
             let mut entities = Vec::new();
@@ -1517,6 +1517,9 @@ pub fn query_all_entries_semantic(
 /// the context and the learning content. Used as a fallback relevance
 /// scorer for the legacy `LearningEntry` corpus; the cross-agent
 /// `SharedLearning` store uses BM25 (`SharedLearningStore::suggest`).
+// Feature-gated public API: caller `main.rs::run_suggest_command` is
+// `#[cfg(feature = "shared-learning")]`. See `Cargo.toml` [features].
+#[allow(dead_code)]
 pub fn score_entry_relevance(entry: &LearningEntry, context_keywords: &[String]) -> usize {
     let text = match entry {
         LearningEntry::Learning(l) => {
@@ -1538,6 +1541,9 @@ pub fn score_entry_relevance(entry: &LearningEntry, context_keywords: &[String])
 }
 
 /// A scored learning entry with its relevance score.
+// Feature-gated public API: constructed only under `shared-learning`;
+// see `suggest_learnings` below and `main.rs::run_suggest_command`.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct ScoredEntry {
     /// The learning entry
@@ -1548,6 +1554,9 @@ pub struct ScoredEntry {
 
 impl ScoredEntry {
     /// Format as a suggestion line for display.
+    // Feature-gated public API: used under `shared-learning` via
+    // `shared_learning_from_entry` and the suggest tests.
+    #[allow(dead_code)]
     pub fn format_suggestion(&self) -> String {
         match &self.entry {
             LearningEntry::Learning(l) => {
@@ -1591,6 +1600,9 @@ impl ScoredEntry {
 /// `source_agent` is set to `"legacy-local"` to make the provenance
 /// distinguishable from natively-shared entries; callers may overwrite this
 /// by mutating the returned value before persisting.
+// Feature-gated public API: caller `main.rs::run_suggest_command` is
+// `#[cfg(feature = "shared-learning")]`. See `Cargo.toml` [features].
+#[allow(dead_code)]
 pub fn shared_learning_from_entry(
     entry: &LearningEntry,
     shared_ids: &std::collections::HashSet<String>,
@@ -1919,6 +1931,9 @@ pub fn auto_extract_corrections(
 /// # Returns
 ///
 /// List of scored entries sorted by relevance (highest first).
+// Feature-gated public API: caller `main.rs::run_suggest_command` is
+// `#[cfg(feature = "shared-learning")]`. See `Cargo.toml` [features].
+#[allow(dead_code)]
 pub fn suggest_learnings(
     storage_dir: &PathBuf,
     context: &str,
