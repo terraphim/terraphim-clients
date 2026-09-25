@@ -2028,10 +2028,20 @@ async fn run_offline_command(
         let config = UpdaterConfig::new("terraphim-agent").with_version(env!("CARGO_PKG_VERSION"));
         let updater = TerraphimUpdater::new(config);
         match updater.check_and_update().await {
-            Ok(status) => {
-                println!("{}", status);
-                return Ok(());
-            }
+            Ok(status) => match status {
+                // A package-manager receipt owns this install: an explicit
+                // `update` must refuse with a non-zero exit and the exact
+                // stderr line the packaging lifecycle gates match on, leaving
+                // the installed binary untouched (Gitea #247 contract).
+                terraphim_update::UpdateStatus::PackageManaged { .. } => {
+                    eprintln!("terraphim-agent update was refused: {}", status);
+                    std::process::exit(1);
+                }
+                other => {
+                    println!("{}", other);
+                    return Ok(());
+                }
+            },
             Err(e) => {
                 eprintln!("Update failed: {}", e);
                 std::process::exit(1);
