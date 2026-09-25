@@ -3934,18 +3934,13 @@ async fn run_suggest_command(sub: SuggestSub) -> Result<()> {
                     .map_err(|e| anyhow::anyhow!("{}", e))?;
 
                 // 2. Keyword scoring across the local legacy corpus.
-                let local_scored = crate::learnings::capture::suggest_learnings(
-                    &local_storage_dir,
-                    ctx,
-                    5,
-                )
-                .unwrap_or_default();
+                let local_scored =
+                    crate::learnings::capture::suggest_learnings(&local_storage_dir, ctx, 5)
+                        .unwrap_or_default();
 
                 // 3. De-duplicate against the shared index.
-                let shared_ids: std::collections::HashSet<String> = shared_top
-                    .iter()
-                    .map(|l| l.id.clone())
-                    .collect();
+                let shared_ids: std::collections::HashSet<String> =
+                    shared_top.iter().map(|l| l.id.clone()).collect();
                 let local_candidates: Vec<(f64, _)> = local_scored
                     .into_iter()
                     .filter_map(|se| {
@@ -3961,12 +3956,7 @@ async fn run_suggest_command(sub: SuggestSub) -> Result<()> {
 
                 // 4. Merge and rank.
                 let merged = store
-                    .suggest_with_local_scored(
-                        ctx,
-                        "session-end",
-                        local_candidates,
-                        1,
-                    )
+                    .suggest_with_local_scored(ctx, "session-end", local_candidates, 1)
                     .await
                     .map_err(|e| anyhow::anyhow!("{}", e))?;
 
@@ -4631,7 +4621,7 @@ async fn run_server_command(
             // Extract paragraphs using automata
             let results = terraphim_automata::matcher::extract_paragraphs_from_automata(
                 &text,
-                thesaurus,
+                &thesaurus,
                 !exclude_term, // include_term is opposite of exclude_term
             )?;
 

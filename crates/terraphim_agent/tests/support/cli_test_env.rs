@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -80,7 +80,7 @@ pub fn apply_hermetic_env(cmd: &mut Command) -> Result<()> {
 /// correction files the hook writes; the other agent integration tests use
 /// the simpler `apply_hermetic_env` wrapper. Hence the cross-binary allow.
 #[allow(dead_code)]
-pub fn set_hermetic_env(cmd: &mut Command, root: &PathBuf) -> Result<()> {
+pub fn set_hermetic_env(cmd: &mut Command, root: &Path) -> Result<()> {
     let home_dir = root.join("home");
     let xdg_config_home = home_dir.join(".config");
     let terraphim_config_dir = xdg_config_home.join("terraphim");

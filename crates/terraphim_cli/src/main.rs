@@ -795,7 +795,7 @@ async fn handle_evaluate(
         .await
         .map_err(|e| anyhow::anyhow!("Failed to load thesaurus '{}': {}", thesaurus_path, e))?;
 
-    let result = evaluate(&ground_truth, thesaurus);
+    let result = evaluate(&ground_truth, &thesaurus);
     Ok(serde_json::to_value(&result)?)
 }
 
@@ -881,6 +881,22 @@ async fn handle_check_update() -> Result<serde_json::Value> {
             });
             Ok(result)
         }
+        // Semver-compatible fallback (Gitea #247 packaged-install
+        // regression): this production source must keep compiling against
+        // the currently published `terraphim_update`, which predates the
+        // `PackageManaged` variant, so it can't be named here. Generic
+        // guidance via `Display` (which embeds the stable
+        // `sudo pacman -Syu` command when linked against a pacman-aware
+        // `terraphim_update`) is acceptable for this informational
+        // check-only path; this arm is unreachable against the published
+        // crate.
+        ref other => {
+            let result = serde_json::json!({
+                "update_available": false,
+                "message": other.to_string(),
+            });
+            Ok(result)
+        }
     }
 }
 
@@ -933,6 +949,16 @@ async fn handle_update() -> Result<serde_json::Value> {
             });
             Ok(result)
         }
+        // Semver-compatible fallback (Gitea #247 packaged-install
+        // regression): this production source must keep compiling against
+        // the currently published `terraphim_update`, which predates the
+        // `PackageManaged` variant, so it can't be named here. `Display`
+        // covers it (and any future variant) with the stable
+        // `sudo pacman -Syu` guidance when linked against a pacman-aware
+        // `terraphim_update`, routed through `Err` so this explicit update
+        // path exits non-zero; this arm is unreachable against the
+        // published crate.
+        ref other => Err(anyhow::anyhow!("{bin_name} update was refused: {other}")),
     }
 }
 

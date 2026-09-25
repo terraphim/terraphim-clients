@@ -6,9 +6,11 @@ authors = ["Terraphim Contributors"]
 description = "Terraphim AI Agent CLI - Command-line interface with interactive REPL and ASCII graph visualization"
 documentation = "https://terraphim.ai"
 homepage = "https://terraphim.ai"
-repository = "https://github.com/terraphim/terraphim-ai"
+repository = "https://git.terraphim.cloud/terraphim/terraphim-clients"
 keywords = ["cli", "ai", "agent", "search", "repl"]
 license = "Apache-2.0"
+# Include the canonical license in Cargo package output (#246).
+license-file = "../../LICENSE-Apache-2.0"
 readme = "README.md"
 
 [features]

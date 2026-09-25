@@ -1,2 +1,20 @@
 /target
-Cargo.lock
+# Cargo.lock is committed: this workspace ships binaries (terraphim-agent,
+# terraphim-cli, terraphim-grep, ...), and CI must build the same graph a
+# human verified. Leaving it untracked let CI resolve differently from every
+# local check and turned up as duplicate terraphim_config copies (#118).
+**/__pycache__/
+
+# cachebro SQLite caches -- agent exploration tool, transient
+.cachebro/
+
+# Insta snapshot diff artefacts (transient; insta's own tooling
+# promotes them with `cargo insta accept` when wanted).
+**/*.snap.new
+
+# Runtime test logs from MCP server harness runs.
+crates/terraphim_mcp_server/server_output.log
+crates/terraphim_mcp_server/logs/
+
+# Ad-hoc test backups (manual `cp file.rs file.rs.backup`).
+*.rs.backup

@@ -35,14 +35,22 @@ pub struct HookResult {
 
 impl HookResult {
     /// Create a successful result.
+    ///
+    /// Delegates to [`HookResult::with_count`] with a count of 1 when the
+    /// text changed, 0 otherwise. Callers that know the actual number of
+    /// replacements should use [`HookResult::with_count`] directly.
     pub fn success(original: String, result: String) -> Self {
         let changed = original != result;
-        let replacements = if changed { 1 } else { 0 };
+        Self::with_count(original, result, usize::from(changed))
+    }
+
+    /// Create a successful result with the actual number of replacements made.
+    pub fn with_count(original: String, result: String, count: usize) -> Self {
         Self {
             result,
             original,
-            replacements,
-            changed,
+            replacements: count,
+            changed: count > 0,
             error: None,
         }
     }
@@ -94,10 +102,15 @@ impl ReplacementService {
 
     /// Perform replacement on text.
     pub fn replace(&self, text: &str) -> Result<HookResult, ReplacementError> {
+        let matches = self.find_matches(text)?;
         let result_bytes =
-            terraphim_automata::replace_matches(text, self.thesaurus.clone(), self.link_type)?;
+            terraphim_automata::replace_matches(text, &self.thesaurus, self.link_type)?;
         let result = String::from_utf8(result_bytes)?;
-        Ok(HookResult::success(text.to_string(), result))
+        Ok(HookResult::with_count(
+            text.to_string(),
+            result,
+            matches.len(),
+        ))
     }
 
     /// Perform replacement with fail-open semantics.
@@ -117,7 +130,7 @@ impl ReplacementService {
     ) -> Result<Vec<terraphim_automata::Matched>, ReplacementError> {
         Ok(terraphim_automata::find_matches(
             text,
-            self.thesaurus.clone(),
+            &self.thesaurus,
             true,
         )?)
     }
@@ -300,5 +313,127 @@ mod tests {
         // Just verify it compiles and doesn't panic
         let result = service.replace("npm install").unwrap();
         assert!(result.changed);
+    }
+
+    /// Thesaurus mapping foo -> qux for count-focused tests.
+    fn create_foo_thesaurus() -> Thesaurus {
+        let mut thesaurus = Thesaurus::new("foo-test".to_string());
+        let qux = NormalizedTerm::new(1u64, NormalizedTermValue::from("qux"));
+        thesaurus.insert(NormalizedTermValue::from("foo"), qux);
+        thesaurus
+    }
+
+    /// Thesaurus with three distinct single-word mappings.
+    fn create_multi_thesaurus() -> Thesaurus {
+        let mut thesaurus = Thesaurus::new("multi-test".to_string());
+        thesaurus.insert(
+            NormalizedTermValue::from("foo"),
+            NormalizedTerm::new(1u64, NormalizedTermValue::from("qux")),
+        );
+        thesaurus.insert(
+            NormalizedTermValue::from("bar"),
+            NormalizedTerm::new(2u64, NormalizedTermValue::from("quux")),
+        );
+        thesaurus.insert(
+            NormalizedTermValue::from("baz"),
+            NormalizedTerm::new(3u64, NormalizedTermValue::from("quuz")),
+        );
+        thesaurus
+    }
+
+    #[test]
+    fn replace_reports_actual_count() {
+        // Minimal repro for the bug: three occurrences must report 3, not 1.
+        let service = ReplacementService::new(create_foo_thesaurus());
+        let result = service.replace("foo bar foo baz foo").unwrap();
+        assert_eq!(result.result, "qux bar qux baz qux");
+        assert_eq!(result.replacements, 3);
+        assert!(result.changed);
+    }
+
+    #[test]
+    fn replace_reports_zero_when_no_matches() {
+        let service = ReplacementService::new(create_foo_thesaurus());
+        let result = service.replace("hello world").unwrap();
+        assert_eq!(result.replacements, 0);
+        assert!(!result.changed);
+        assert_eq!(result.result, "hello world");
+    }
+
+    #[test]
+    fn replace_reports_two_matches() {
+        let service = ReplacementService::new(create_foo_thesaurus());
+        let result = service.replace("foo hello foo").unwrap();
+        assert_eq!(result.result, "qux hello qux");
+        assert_eq!(result.replacements, 2);
+    }
+
+    #[test]
+    fn replace_count_matches_find_matches_len() {
+        let service = ReplacementService::new(create_test_thesaurus());
+        for text in [
+            "npm install",
+            "cargo build",
+            "npm install && yarn add foo && pnpm dlx bar",
+            "npm npm npm",
+            "",
+        ] {
+            let expected = service.find_matches(text).unwrap().len();
+            let result = service.replace(text).unwrap();
+            assert_eq!(
+                result.replacements, expected,
+                "count mismatch for input: {text:?}"
+            );
+            assert_eq!(result.changed, expected > 0, "changed flag for {text:?}");
+        }
+    }
+
+    #[test]
+    fn replace_handles_adjacent_matches() {
+        let service = ReplacementService::new(create_foo_thesaurus());
+        // Adjacent occurrences separated by a single space.
+        let result = service.replace("foo foo foo").unwrap();
+        let expected = service.find_matches("foo foo foo").unwrap().len();
+        assert_eq!(result.replacements, expected);
+        assert_eq!(result.result, "qux qux qux");
+        // Directly adjacent occurrences: count must stay consistent with the
+        // automata engine's match semantics (no double counting, no loss).
+        let result = service.replace("foofoo").unwrap();
+        let expected = service.find_matches("foofoo").unwrap().len();
+        assert_eq!(result.replacements, expected);
+        assert_eq!(result.changed, expected > 0);
+    }
+
+    #[test]
+    fn replace_count_equals_distinct_substitutions() {
+        let service = ReplacementService::new(create_multi_thesaurus());
+        let result = service.replace("foo bar baz").unwrap();
+        assert_eq!(result.replacements, 3);
+        assert_eq!(result.result, "qux quux quuz");
+    }
+
+    #[test]
+    fn success_constructor_unchanged() {
+        // The success constructor keeps its 0/1 semantics for callers that
+        // don't know the actual count.
+        let changed = HookResult::success("npm".to_string(), "bun".to_string());
+        assert!(changed.changed);
+        assert_eq!(changed.replacements, 1);
+        let unchanged = HookResult::success("same".to_string(), "same".to_string());
+        assert!(!unchanged.changed);
+        assert_eq!(unchanged.replacements, 0);
+    }
+
+    #[test]
+    fn with_count_sets_changed_correctly() {
+        let zero = HookResult::with_count("a".to_string(), "a".to_string(), 0);
+        assert!(!zero.changed);
+        assert_eq!(zero.replacements, 0);
+        assert!(zero.error.is_none());
+
+        let five = HookResult::with_count("a".to_string(), "b".to_string(), 5);
+        assert!(five.changed);
+        assert_eq!(five.replacements, 5);
+        assert!(five.error.is_none());
     }
 }

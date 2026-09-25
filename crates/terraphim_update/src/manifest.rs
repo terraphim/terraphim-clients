@@ -5,19 +5,26 @@
 //! the current compile target. Decouples version discovery from any specific
 //! provider API (no GitHub API, no S3 ListObjectsV2, no embedded secrets).
 //!
-//! The manifest lives at `{base_url}/{bin_name}/stable.json`, e.g.
-//! `https://downloads.terraphim.ai/terraphim-agent/stable.json`.
+//! The strict manifest lives at `{base_url}/{bin_name}/stable-v2.json`, e.g.
+//! `https://downloads.terraphim.ai/terraphim-agent/stable-v2.json`. The legacy
+//! `stable.json` pointer remains string-valued for pre-1.21.15 clients.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::env::consts::{ARCH, OS};
+use std::fmt;
+use std::io::Read;
 use std::time::Duration;
 
-use serde::{Deserialize, Serialize};
+use serde::de::{self, MapAccess, Visitor};
+use serde::{Deserialize, Deserializer, Serialize};
 use thiserror::Error;
 use tracing::{debug, info, warn};
 
 /// Maximum manifest fetch attempts before giving up.
 const MAX_FETCH_ATTEMPTS: u32 = 3;
+/// Maximum accepted stable manifest size. Release manifests are a few KiB;
+/// this bound prevents untrusted hosts from forcing unbounded allocation.
+const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
 
 /// Which distribution backend to use for update checks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -31,29 +38,125 @@ pub enum UpdateBackend {
     GitHub,
 }
 
-/// The per-binary release manifest served at `{base_url}/{bin}/stable.json`.
+/// The per-binary strict release manifest served at
+/// `{base_url}/{bin}/stable-v2.json`.
 ///
 /// ```json
 /// {
 ///   "version": "1.21.9",
 ///   "released_at": "2026-07-06T17:38:00Z",
 ///   "assets": {
-///     "x86_64-unknown-linux-gnu": "terraphim-agent/terraphim-agent-1.21.9-x86_64-unknown-linux-gnu.tar.gz"
+///     "x86_64-unknown-linux-gnu": {
+///       "path": "terraphim-agent/terraphim-agent-1.21.15-x86_64-unknown-linux-gnu.tar.gz",
+///       "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+///       "size": 123456
+///     }
 ///   },
 ///   "notes_url": "https://github.com/terraphim/terraphim-clients/releases/tag/v1.21.9"
 /// }
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct ReleaseManifest {
     /// Latest semantic version (no leading 'v').
     pub version: String,
     /// ISO-8601 release timestamp (informational).
     pub released_at: String,
-    /// Map of Rust target triple -> asset key relative to `base_url`.
-    pub assets: HashMap<String, String>,
-    /// Optional human-readable release-notes URL.
-    #[serde(default)]
-    pub notes_url: Option<String>,
+    /// Map of Rust target triple to an integrity-bearing immutable asset.
+    #[serde(deserialize_with = "deserialize_assets")]
+    pub assets: BTreeMap<String, ReleaseAsset>,
+    /// Human-readable release-notes URL.
+    pub notes_url: String,
+}
+
+/// Immutable release asset metadata. All fields are required and unknown
+/// fields are rejected so integrity checks cannot silently disappear.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ReleaseAsset {
+    /// Object path relative to the manifest base URL.
+    pub path: String,
+    /// Lowercase SHA-256 digest of the final signed archive bytes.
+    #[serde(deserialize_with = "deserialize_sha256")]
+    pub sha256: String,
+    /// Exact positive byte length of the final signed archive.
+    #[serde(deserialize_with = "deserialize_positive_size")]
+    pub size: u64,
+}
+
+/// A selected asset together with its fully qualified download URL.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedAsset {
+    /// Fully qualified download URL.
+    pub url: String,
+    /// Relative object path from the manifest.
+    pub path: String,
+    /// Expected lowercase SHA-256 digest.
+    pub sha256: String,
+    /// Expected byte length.
+    pub size: u64,
+}
+
+fn deserialize_sha256<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = String::deserialize(deserializer)?;
+    if value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        Ok(value)
+    } else {
+        Err(de::Error::custom(
+            "sha256 must be exactly 64 lowercase hexadecimal characters",
+        ))
+    }
+}
+
+fn deserialize_positive_size<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = u64::deserialize(deserializer)?;
+    if value == 0 {
+        Err(de::Error::custom("asset size must be positive"))
+    } else {
+        Ok(value)
+    }
+}
+
+fn deserialize_assets<'de, D>(deserializer: D) -> Result<BTreeMap<String, ReleaseAsset>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct AssetsVisitor;
+
+    impl<'de> Visitor<'de> for AssetsVisitor {
+        type Value = BTreeMap<String, ReleaseAsset>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str("a map of unique target triples to strict release assets")
+        }
+
+        fn visit_map<A>(self, mut access: A) -> Result<Self::Value, A::Error>
+        where
+            A: MapAccess<'de>,
+        {
+            let mut assets = BTreeMap::new();
+            while let Some((target, asset)) = access.next_entry::<String, ReleaseAsset>()? {
+                if assets.insert(target.clone(), asset).is_some() {
+                    return Err(de::Error::custom(format!(
+                        "duplicate manifest target {target:?}"
+                    )));
+                }
+            }
+            Ok(assets)
+        }
+    }
+
+    deserializer.deserialize_map(AssetsVisitor)
 }
 
 /// Configuration for the manifest backend.
@@ -64,7 +167,7 @@ pub struct ManifestConfig {
     pub base_url: String,
     /// Binary name, e.g. `terraphim-agent`.
     pub bin_name: String,
-    /// Manifest filename (default `stable.json`).
+    /// Manifest filename (default `stable-v2.json`).
     pub manifest_name: String,
 }
 
@@ -73,7 +176,7 @@ impl Default for ManifestConfig {
         Self {
             base_url: DEFAULT_BASE_URL.to_string(),
             bin_name: String::new(),
-            manifest_name: "stable.json".to_string(),
+            manifest_name: "stable-v2.json".to_string(),
         }
     }
 }
@@ -134,6 +237,10 @@ pub enum ManifestError {
     #[error("manifest parse failed: {0}")]
     Parse(String),
 
+    /// Parsed JSON violates the release identity or exact target contract.
+    #[error("manifest validation failed: {0}")]
+    Invalid(String),
+
     /// Manifest carries no asset for the current target triple.
     #[error("no asset in manifest for target {target}")]
     NoAssetForTarget { target: String },
@@ -160,11 +267,19 @@ pub fn fetch_manifest(config: &ManifestConfig) -> Result<ReleaseManifest, Manife
                     warn!("manifest fetch attempt {} failed: {}", attempt, msg);
                     last_err = Some(msg);
                 } else {
-                    let body = resp
-                        .into_string()
+                    let mut body = String::new();
+                    resp.into_reader()
+                        .take(MAX_MANIFEST_BYTES + 1)
+                        .read_to_string(&mut body)
                         .map_err(|e| ManifestError::Fetch(format!("read body: {e}")))?;
+                    if body.len() as u64 > MAX_MANIFEST_BYTES {
+                        return Err(ManifestError::Parse(
+                            "manifest exceeds 1 MiB limit".to_string(),
+                        ));
+                    }
                     let manifest: ReleaseManifest = serde_json::from_str(&body)
                         .map_err(|e| ManifestError::Parse(e.to_string()))?;
+                    validate_manifest(&manifest, config)?;
                     debug!(
                         "manifest fetched: version {} ({} assets)",
                         manifest.version,
@@ -199,16 +314,123 @@ pub fn resolve_asset_url(
     manifest: &ReleaseManifest,
     config: &ManifestConfig,
 ) -> Result<String, ManifestError> {
+    validate_manifest(manifest, config)?;
     for target in current_target_triples() {
-        if let Some(key) = manifest.assets.get(&target) {
+        if let Some(asset) = manifest.assets.get(&target) {
             debug!("resolved asset for target {}", target);
-            return Ok(config.asset_url(key));
+            return Ok(config.asset_url(&asset.path));
         }
         debug!("target {} not in manifest; trying fallback", target);
     }
     Err(ManifestError::NoAssetForTarget {
         target: format!("{ARCH}-{OS}"),
     })
+}
+
+/// Resolve the current platform asset with its integrity metadata.
+pub fn resolve_asset(
+    manifest: &ReleaseManifest,
+    config: &ManifestConfig,
+) -> Result<ResolvedAsset, ManifestError> {
+    validate_manifest(manifest, config)?;
+    for target in current_target_triples() {
+        if let Some(asset) = manifest.assets.get(&target) {
+            return Ok(ResolvedAsset {
+                url: config.asset_url(&asset.path),
+                path: asset.path.clone(),
+                sha256: asset.sha256.clone(),
+                size: asset.size,
+            });
+        }
+    }
+    Err(ManifestError::NoAssetForTarget {
+        target: format!("{ARCH}-{OS}"),
+    })
+}
+
+/// Validate release identity, filenames, paths, and official exact target sets.
+pub fn validate_manifest(
+    manifest: &ReleaseManifest,
+    config: &ManifestConfig,
+) -> Result<(), ManifestError> {
+    let version = semver::Version::parse(&manifest.version)
+        .map_err(|error| ManifestError::Invalid(format!("invalid version: {error}")))?;
+    if !version.pre.is_empty() || !version.build.is_empty() {
+        return Err(ManifestError::Invalid(
+            "stable manifest version must not be prerelease or build metadata".to_string(),
+        ));
+    }
+    chrono::DateTime::parse_from_rfc3339(&manifest.released_at).map_err(|error| {
+        ManifestError::Invalid(format!("released_at must be RFC 3339: {error}"))
+    })?;
+    if !manifest.notes_url.starts_with("https://") {
+        return Err(ManifestError::Invalid(
+            "notes_url must use HTTPS".to_string(),
+        ));
+    }
+    if manifest.assets.is_empty() {
+        return Err(ManifestError::Invalid(
+            "assets must not be empty".to_string(),
+        ));
+    }
+
+    for (target, asset) in &manifest.assets {
+        if target.is_empty()
+            || !target
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+        {
+            return Err(ManifestError::Invalid(format!(
+                "invalid target key {target:?}"
+            )));
+        }
+        let extension = if target == "x86_64-pc-windows-msvc" {
+            ".zip"
+        } else {
+            ".tar.gz"
+        };
+        let filename = format!(
+            "{}-{}-{}{}",
+            config.bin_name, manifest.version, target, extension
+        );
+        let expected_path = format!("{}/{filename}", config.bin_name);
+        if asset.path != expected_path {
+            return Err(ManifestError::Invalid(format!(
+                "asset path {:?} must equal {:?}",
+                asset.path, expected_path
+            )));
+        }
+    }
+
+    if let Some(expected) = expected_targets_for_bin(&config.bin_name) {
+        let actual: BTreeSet<&str> = manifest.assets.keys().map(String::as_str).collect();
+        if actual != expected {
+            return Err(ManifestError::Invalid(format!(
+                "{} targets do not match the exact release contract",
+                config.bin_name
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn expected_targets_for_bin(bin_name: &str) -> Option<BTreeSet<&'static str>> {
+    let mut targets = BTreeSet::from([
+        "aarch64-apple-darwin",
+        "aarch64-unknown-linux-musl",
+        "x86_64-apple-darwin",
+        "x86_64-pc-windows-msvc",
+        "x86_64-unknown-linux-gnu",
+        "x86_64-unknown-linux-musl",
+    ]);
+    match bin_name {
+        "terraphim-agent" | "terraphim-grep" => {
+            targets.insert("universal-apple-darwin");
+            Some(targets)
+        }
+        "terraphim-cli" => Some(targets),
+        _ => None,
+    }
 }
 
 /// Ordered list of target triples to try for the current platform.
@@ -218,25 +440,48 @@ pub fn resolve_asset_url(
 /// self-contained.
 pub fn current_target_triples() -> Vec<String> {
     let cur = format!("{}-{}", ARCH, OS);
-    match cur.as_str() {
-        "x86_64-linux" => vec![
-            "x86_64-unknown-linux-gnu".to_string(),
-            "x86_64-unknown-linux-musl".to_string(),
-        ],
-        "aarch64-linux" => vec![
-            "aarch64-unknown-linux-gnu".to_string(),
-            "aarch64-unknown-linux-musl".to_string(),
-        ],
-        "x86_64-windows" => vec!["x86_64-pc-windows-msvc".to_string()],
-        "x86_64-macos" => vec![
-            "x86_64-apple-darwin".to_string(),
-            "universal-apple-darwin".to_string(),
-        ],
-        "aarch64-macos" => vec![
-            "aarch64-apple-darwin".to_string(),
-            "universal-apple-darwin".to_string(),
-        ],
-        other => vec![other.to_string()],
+    target_triples_for_host(&cur)
+        .into_iter()
+        .map(String::from)
+        .collect()
+}
+
+/// All target triples the updater publishes assets for, deduplicated.
+///
+/// Used by the test fixture to derive the manifest's asset count so adding
+/// a new platform here (or to `target_triples_for_host`) automatically extends
+/// the fixture without a magic-number update.
+pub fn all_target_triples() -> Vec<String> {
+    [
+        "aarch64-apple-darwin",
+        "aarch64-unknown-linux-musl",
+        "universal-apple-darwin",
+        "x86_64-apple-darwin",
+        "x86_64-pc-windows-msvc",
+        "x86_64-unknown-linux-gnu",
+        "x86_64-unknown-linux-musl",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect()
+}
+
+/// Static map from `ARCH-OS` host string to the target triples we publish
+/// assets for. Single source of truth for both `current_target_triples()` and
+/// `all_target_triples()`; adding a new platform is a one-line change here.
+///
+/// Unknown hosts return an empty list -- callers that depend on a match (the
+/// manifest module's `resolve_asset_url`) treat an empty result as
+/// "no asset for this target", which is the correct behaviour for an
+/// unsupported platform.
+fn target_triples_for_host(host: &str) -> Vec<&'static str> {
+    match host {
+        "x86_64-linux" => vec!["x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl"],
+        "aarch64-linux" => vec!["aarch64-unknown-linux-gnu", "aarch64-unknown-linux-musl"],
+        "x86_64-windows" => vec!["x86_64-pc-windows-msvc"],
+        "x86_64-macos" => vec!["x86_64-apple-darwin", "universal-apple-darwin"],
+        "aarch64-macos" => vec!["aarch64-apple-darwin", "universal-apple-darwin"],
+        _ => Vec::new(),
     }
 }
 
@@ -245,26 +490,40 @@ mod tests {
     use super::*;
 
     fn sample_manifest() -> ReleaseManifest {
-        let mut assets = HashMap::new();
+        let mut assets = BTreeMap::new();
         assets.insert(
             "x86_64-unknown-linux-gnu".to_string(),
-            "terraphim-agent/terraphim-agent-1.21.9-x86_64-unknown-linux-gnu.tar.gz".to_string(),
+            ReleaseAsset {
+                path: "terraphim-agent/terraphim-agent-1.21.9-x86_64-unknown-linux-gnu.tar.gz"
+                    .to_string(),
+                sha256: "a".repeat(64),
+                size: 1,
+            },
         );
         assets.insert(
             "x86_64-unknown-linux-musl".to_string(),
-            "terraphim-agent/terraphim-agent-1.21.9-x86_64-unknown-linux-musl.tar.gz".to_string(),
+            ReleaseAsset {
+                path: "terraphim-agent/terraphim-agent-1.21.9-x86_64-unknown-linux-musl.tar.gz"
+                    .to_string(),
+                sha256: "b".repeat(64),
+                size: 2,
+            },
         );
         assets.insert(
             "aarch64-unknown-linux-musl".to_string(),
-            "terraphim-agent/terraphim-agent-1.21.9-aarch64-unknown-linux-musl.tar.gz".to_string(),
+            ReleaseAsset {
+                path: "terraphim-agent/terraphim-agent-1.21.9-aarch64-unknown-linux-musl.tar.gz"
+                    .to_string(),
+                sha256: "c".repeat(64),
+                size: 3,
+            },
         );
         ReleaseManifest {
             version: "1.21.9".to_string(),
             released_at: "2026-07-06T17:38:00Z".to_string(),
             assets,
-            notes_url: Some(
-                "https://github.com/terraphim/terraphim-clients/releases/tag/v1.21.9".to_string(),
-            ),
+            notes_url: "https://github.com/terraphim/terraphim-clients/releases/tag/v1.21.9"
+                .to_string(),
         }
     }
 
@@ -273,7 +532,7 @@ mod tests {
         let cfg = ManifestConfig::new("terraphim-agent");
         assert_eq!(
             cfg.manifest_url(),
-            "https://downloads.terraphim.ai/terraphim-agent/stable.json"
+            "https://downloads.terraphim.ai/terraphim-agent/stable-v2.json"
         );
     }
 
@@ -282,7 +541,7 @@ mod tests {
         let cfg = ManifestConfig::new("terraphim-agent/").with_base_url("https://x.example/");
         assert_eq!(
             cfg.manifest_url(),
-            "https://x.example/terraphim-agent/stable.json"
+            "https://x.example/terraphim-agent/stable-v2.json"
         );
     }
 
@@ -309,12 +568,17 @@ mod tests {
         let json = r#"{
             "version": "1.2.3",
             "released_at": "2026-01-01T00:00:00Z",
-            "assets": { "x86_64-unknown-linux-gnu": "bin/foo-1.2.3.tar.gz" }
+            "assets": { "x86_64-unknown-linux-gnu": {
+                "path": "bin/bin-1.2.3-x86_64-unknown-linux-gnu.tar.gz",
+                "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "size": 1
+            } },
+            "notes_url": "https://example.invalid/v1.2.3"
         }"#;
         let m: ReleaseManifest = serde_json::from_str(json).unwrap();
         assert_eq!(m.version, "1.2.3");
         assert_eq!(m.assets.len(), 1);
-        assert!(m.notes_url.is_none());
+        assert_eq!(m.notes_url, "https://example.invalid/v1.2.3");
     }
 
     #[test]
@@ -334,10 +598,30 @@ mod tests {
 
     #[test]
     fn test_resolve_asset_finds_present_target() {
-        let cfg = ManifestConfig::new("terraphim-agent");
-        let manifest = sample_manifest();
-        // current_target_triples()[0] must be present in the sample manifest.
+        // Build the manifest from the host's own triples rather than reusing
+        // `sample_manifest()`, which carries Linux assets only and so could
+        // never resolve on macOS. Deriving the fixture keeps this test correct
+        // on any host and cannot rot when a target is added. Refs #116.
+        let cfg = ManifestConfig::new("test-client");
         let first = current_target_triples()[0].clone();
+        let extension = if first == "x86_64-pc-windows-msvc" {
+            ".zip"
+        } else {
+            ".tar.gz"
+        };
+        let manifest = ReleaseManifest {
+            version: "1.21.9".to_string(),
+            released_at: "2026-09-18T00:00:00Z".to_string(),
+            assets: BTreeMap::from([(
+                first.clone(),
+                ReleaseAsset {
+                    path: format!("test-client/test-client-1.21.9-{first}{extension}"),
+                    sha256: "d".repeat(64),
+                    size: 4,
+                },
+            )]),
+            notes_url: "https://example.invalid/v1.21.9".to_string(),
+        };
         let url = resolve_asset_url(&manifest, &cfg).unwrap();
         assert!(url.contains(&first));
         assert!(url.starts_with("https://downloads.terraphim.ai/"));
@@ -345,12 +629,19 @@ mod tests {
 
     #[test]
     fn test_resolve_asset_no_match_errors() {
-        let cfg = ManifestConfig::new("terraphim-agent");
+        let cfg = ManifestConfig::new("test-client");
         let manifest = ReleaseManifest {
             version: "1.0.0".to_string(),
-            released_at: "x".to_string(),
-            assets: HashMap::new(),
-            notes_url: None,
+            released_at: "2026-09-18T00:00:00Z".to_string(),
+            assets: BTreeMap::from([(
+                "wasm32-unknown-unknown".to_string(),
+                ReleaseAsset {
+                    path: "test-client/test-client-1.0.0-wasm32-unknown-unknown.tar.gz".to_string(),
+                    sha256: "d".repeat(64),
+                    size: 4,
+                },
+            )]),
+            notes_url: "https://example.invalid/v1.0.0".to_string(),
         };
         let res = resolve_asset_url(&manifest, &cfg);
         assert!(matches!(res, Err(ManifestError::NoAssetForTarget { .. })));

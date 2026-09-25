@@ -134,7 +134,7 @@ impl ToolCategory {
     /// Public API consumed only by integration tests and downstream callers.
     /// The `tsa` binary does not call this method, hence the conditional allow.
     /// Consumers: `tests/integration_tests.rs` (cross-binary integration test).
-        #[must_use]
+    #[must_use]
     /// Public API consumed only by `tests/integration_tests.rs` (cross-binary integration test). The `tsa` binary does not call this method.
     #[allow(dead_code)]
     pub fn from_string(s: &str) -> Self {

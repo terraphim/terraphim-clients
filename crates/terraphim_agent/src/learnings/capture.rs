@@ -865,7 +865,7 @@ pub fn annotate_with_entities(text: &str) -> Vec<String> {
         None => return Vec::new(),
     };
 
-    match terraphim_automata::matcher::find_matches(text, thesaurus, false) {
+    match terraphim_automata::matcher::find_matches(text, &thesaurus, false) {
         Ok(matches) => {
             let mut seen = std::collections::HashSet::new();
             let mut entities = Vec::new();
@@ -889,7 +889,7 @@ pub fn annotate_with_entities(text: &str) -> Vec<String> {
 /// This is useful for testing or when a pre-built thesaurus is available.
 // Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
 #[allow(dead_code)]
-pub fn annotate_with_thesaurus(text: &str, thesaurus: terraphim_types::Thesaurus) -> Vec<String> {
+pub fn annotate_with_thesaurus(text: &str, thesaurus: &terraphim_types::Thesaurus) -> Vec<String> {
     match terraphim_automata::matcher::find_matches(text, thesaurus, false) {
         Ok(matches) => {
             let mut seen = std::collections::HashSet::new();
@@ -1517,6 +1517,9 @@ pub fn query_all_entries_semantic(
 /// the context and the learning content. Used as a fallback relevance
 /// scorer for the legacy `LearningEntry` corpus; the cross-agent
 /// `SharedLearning` store uses BM25 (`SharedLearningStore::suggest`).
+// Feature-gated public API: caller `main.rs::run_suggest_command` is
+// `#[cfg(feature = "shared-learning")]`. See `Cargo.toml` [features].
+#[allow(dead_code)]
 pub fn score_entry_relevance(entry: &LearningEntry, context_keywords: &[String]) -> usize {
     let text = match entry {
         LearningEntry::Learning(l) => {
@@ -1538,6 +1541,9 @@ pub fn score_entry_relevance(entry: &LearningEntry, context_keywords: &[String])
 }
 
 /// A scored learning entry with its relevance score.
+// Feature-gated public API: constructed only under `shared-learning`;
+// see `suggest_learnings` below and `main.rs::run_suggest_command`.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct ScoredEntry {
     /// The learning entry
@@ -1548,6 +1554,9 @@ pub struct ScoredEntry {
 
 impl ScoredEntry {
     /// Format as a suggestion line for display.
+    // Feature-gated public API: used under `shared-learning` via
+    // `shared_learning_from_entry` and the suggest tests.
+    #[allow(dead_code)]
     pub fn format_suggestion(&self) -> String {
         match &self.entry {
             LearningEntry::Learning(l) => {
@@ -1591,6 +1600,9 @@ impl ScoredEntry {
 /// `source_agent` is set to `"legacy-local"` to make the provenance
 /// distinguishable from natively-shared entries; callers may overwrite this
 /// by mutating the returned value before persisting.
+// Feature-gated public API: caller `main.rs::run_suggest_command` is
+// `#[cfg(feature = "shared-learning")]`. See `Cargo.toml` [features].
+#[allow(dead_code)]
 pub fn shared_learning_from_entry(
     entry: &LearningEntry,
     shared_ids: &std::collections::HashSet<String>,
@@ -1620,7 +1632,11 @@ pub fn shared_learning_from_entry(
             let mut kws: Vec<String> = Vec::with_capacity(l.tags.len() + l.entities.len());
             kws.extend(l.tags.iter().cloned());
             kws.extend(l.entities.iter().cloned());
-            (body, kws, terraphim_types::shared_learning::LearningSource::BashHook)
+            (
+                body,
+                kws,
+                terraphim_types::shared_learning::LearningSource::BashHook,
+            )
         }
         LearningEntry::Correction(c) => {
             let body = format!(
@@ -1632,14 +1648,14 @@ pub fn shared_learning_from_entry(
                 "correction".to_string(),
             ];
             kws.extend(c.tags.iter().cloned());
-            (body, kws, terraphim_types::shared_learning::LearningSource::Manual)
+            (
+                body,
+                kws,
+                terraphim_types::shared_learning::LearningSource::Manual,
+            )
         }
         LearningEntry::Procedure(p) => {
-            let steps: Vec<String> = p
-                .steps
-                .iter()
-                .map(|s| format!("- {}", s.command))
-                .collect();
+            let steps: Vec<String> = p.steps.iter().map(|s| format!("- {}", s.command)).collect();
             let body = format!(
                 "Procedure: {}\nDescription: {}\nSteps ({}):\n{}",
                 p.title,
@@ -1649,7 +1665,11 @@ pub fn shared_learning_from_entry(
             );
             let mut kws = vec!["procedure".to_string()];
             kws.extend(p.tags.iter().cloned());
-            (body, kws, terraphim_types::shared_learning::LearningSource::Manual)
+            (
+                body,
+                kws,
+                terraphim_types::shared_learning::LearningSource::Manual,
+            )
         }
     };
 
@@ -1911,6 +1931,9 @@ pub fn auto_extract_corrections(
 /// # Returns
 ///
 /// List of scored entries sorted by relevance (highest first).
+// Feature-gated public API: caller `main.rs::run_suggest_command` is
+// `#[cfg(feature = "shared-learning")]`. See `Cargo.toml` [features].
+#[allow(dead_code)]
 pub fn suggest_learnings(
     storage_dir: &PathBuf,
     context: &str,
@@ -2544,7 +2567,7 @@ mod tests {
         thesaurus.insert(NormalizedTermValue::from("cargo"), cargo_term);
 
         let entities =
-            annotate_with_thesaurus("npm install failed, try cargo build instead", thesaurus);
+            annotate_with_thesaurus("npm install failed, try cargo build instead", &thesaurus);
 
         assert!(!entities.is_empty(), "Should find at least one entity");
         assert!(
@@ -2569,7 +2592,7 @@ mod tests {
         thesaurus.insert(NormalizedTermValue::from("rust"), term);
 
         // Text mentions "rust" twice
-        let entities = annotate_with_thesaurus("rust is great, rust is fast", thesaurus);
+        let entities = annotate_with_thesaurus("rust is great, rust is fast", &thesaurus);
 
         // Should only appear once
         assert_eq!(
@@ -2584,7 +2607,7 @@ mod tests {
     #[test]
     fn test_annotate_with_empty_thesaurus() {
         let thesaurus = terraphim_types::Thesaurus::new("empty".to_string());
-        let entities = annotate_with_thesaurus("some text", thesaurus);
+        let entities = annotate_with_thesaurus("some text", &thesaurus);
         assert!(entities.is_empty());
     }
 
@@ -2922,12 +2945,7 @@ mod tests {
         LearningEntry::Learning(learning)
     }
 
-    fn fixed_correction(
-        id: &str,
-        original: &str,
-        corrected: &str,
-        tags: &[&str],
-    ) -> LearningEntry {
+    fn fixed_correction(id: &str, original: &str, corrected: &str, tags: &[&str]) -> LearningEntry {
         let mut c = CorrectionEvent::new(
             CorrectionType::ToolPreference,
             original.to_string(),
@@ -3078,9 +3096,7 @@ mod tests {
         );
         for entry in [&one_hit, &two_hit, &three_hit] {
             let path = match entry {
-                LearningEntry::Learning(l) => {
-                    storage.join(format!("learning-{}.md", l.id))
-                }
+                LearningEntry::Learning(l) => storage.join(format!("learning-{}.md", l.id)),
                 _ => unreachable!(),
             };
             fs::write(
@@ -3128,11 +3144,7 @@ mod tests {
         // `len() > 2` filter, so the scorer falls back to recent-by-time.
         let entry = fixed_learning("FALLBACK-1", "ls -la", "ok", &[]);
         if let LearningEntry::Learning(l) = &entry {
-            fs::write(
-                storage.join("learning-fb.md"),
-                l.to_markdown(),
-            )
-            .unwrap();
+            fs::write(storage.join("learning-fb.md"), l.to_markdown()).unwrap();
         }
 
         // Context "a i" → after `len() > 2` filter, no keywords remain.
@@ -3162,8 +3174,8 @@ mod tests {
     fn test_shared_learning_from_entry_converts_learning_variant() {
         let entry = fixed_learning("FRESH-1", "git push -f", "remote: rejected", &["git"]);
         let shared_ids = std::collections::HashSet::new();
-        let shared = shared_learning_from_entry(&entry, &shared_ids)
-            .expect("fresh id should be retained");
+        let shared =
+            shared_learning_from_entry(&entry, &shared_ids).expect("fresh id should be retained");
         assert_eq!(shared.id, "FRESH-1");
         assert_eq!(shared.source_agent, "legacy-local");
         assert!(matches!(
@@ -3199,8 +3211,8 @@ mod tests {
         entry_unwrapped.correction = Some("git push origin main".to_string());
         let entry = LearningEntry::Learning(entry_unwrapped);
         let shared_ids = std::collections::HashSet::new();
-        let shared = shared_learning_from_entry(&entry, &shared_ids)
-            .expect("fresh id should be retained");
+        let shared =
+            shared_learning_from_entry(&entry, &shared_ids).expect("fresh id should be retained");
         assert_eq!(shared.id, "FRESH-2");
         assert!(
             shared
@@ -3213,12 +3225,7 @@ mod tests {
 
     #[test]
     fn test_shared_learning_from_entry_converts_correction_variant() {
-        let entry = fixed_correction(
-            "FRESH-3",
-            "npm install",
-            "bun add",
-            &["tool"],
-        );
+        let entry = fixed_correction("FRESH-3", "npm install", "bun add", &["tool"]);
         let shared_ids = std::collections::HashSet::new();
         let shared = shared_learning_from_entry(&entry, &shared_ids)
             .expect("correction id should be retained");

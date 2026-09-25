@@ -87,9 +87,7 @@ fn test_tools_list_only() {
             child.wait().ok();
             let _ = stderr_log_thread.join();
             let log = stderr_log.lock().expect("stderr log mutex").clone();
-            panic!(
-                "broken pipe writing initialize request ({e}); server stderr:\n{log}"
-            );
+            panic!("broken pipe writing initialize request ({e}); server stderr:\n{log}");
         }
     }
     stdin.flush().expect("Failed to flush stdin");
@@ -115,7 +113,9 @@ fn test_tools_list_only() {
 
     println!("2. Sending initialized notification...");
     let line = format!("{}\n", initialized_notification);
-    stdin.write_all(line.as_bytes()).expect("Failed to write notification");
+    stdin
+        .write_all(line.as_bytes())
+        .expect("Failed to write notification");
     stdin.flush().expect("Failed to flush stdin");
     thread::sleep(std::time::Duration::from_millis(100));
 
@@ -129,7 +129,9 @@ fn test_tools_list_only() {
 
     println!("3. Listing available tools...");
     let line = format!("{}\n", tools_request);
-    stdin.write_all(line.as_bytes()).expect("Failed to write to stdin");
+    stdin
+        .write_all(line.as_bytes())
+        .expect("Failed to write to stdin");
     stdin.flush().expect("Failed to flush stdin");
 
     response.clear();

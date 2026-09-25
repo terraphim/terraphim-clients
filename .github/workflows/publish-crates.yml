@@ -25,6 +25,30 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - name: Refuse crates.io publish for private-registry-only crates (#95)
+        env:
+          CRATE_LIST: ${{ inputs.crate_list }}
+        run: |
+          # terraphim_agent is private-registry-only: its install graph
+          # (terraphim_sessions >= 1.21.2 with cursor-connector) resolves only
+          # against the terraphim registry, so a crates.io publish would ship
+          # an uninstallable package (#95). Fail BEFORE any manifest mutation
+          # so the stripping step below can never produce a broken artifact.
+          python3 - <<'PY'
+          import os, re, sys
+
+          crates = os.environ["CRATE_LIST"].split()
+          if not crates:
+              sys.exit("crate_list must contain at least one package name")
+          for crate in crates:
+              if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", crate):
+                  sys.exit(f"invalid Cargo package name in crate_list: {crate!r}")
+              if crate == "terraphim_agent":
+                  sys.exit(
+                      "terraphim_agent is private-registry-only; publish it to "
+                      "the terraphim registry, not crates.io (#95)"
+                  )
+          PY
       - name: Strip private-registry refs for crates.io publish
         run: |
           python3 - <<'PY'

@@ -68,7 +68,9 @@ fn test_all_mcp_tools() {
 
     println!("1. Sending initialization request...");
     let line = format!("{}\n", init_request);
-    stdin.write_all(line.as_bytes()).expect("Failed to write to stdin");
+    stdin
+        .write_all(line.as_bytes())
+        .expect("Failed to write to stdin");
     stdin.flush().expect("Failed to flush stdin");
 
     let mut response = String::new();
@@ -94,7 +96,9 @@ fn test_all_mcp_tools() {
 
     println!("2. Sending initialized notification...");
     let line = format!("{}\n", initialized_notification);
-    stdin.write_all(line.as_bytes()).expect("Failed to write notification");
+    stdin
+        .write_all(line.as_bytes())
+        .expect("Failed to write notification");
     stdin.flush().expect("Failed to flush stdin");
     std::thread::sleep(std::time::Duration::from_millis(100));
 
@@ -110,7 +114,9 @@ fn test_all_mcp_tools() {
 
     println!("3. Listing available tools...");
     let line = format!("{}\n", tools_request);
-    stdin.write_all(line.as_bytes()).expect("Failed to write to stdin");
+    stdin
+        .write_all(line.as_bytes())
+        .expect("Failed to write to stdin");
     stdin.flush().expect("Failed to flush stdin");
 
     response.clear();
@@ -133,18 +139,30 @@ fn test_all_mcp_tools() {
     println!("Number of tools available: {}", tools.len());
 
     // `json_decode` is a pure JSON utility with no KG dependency.
-    exercise_call_tool(&mut stdin, &mut reader, "json_decode",
-        serde_json::json!({"jsonlines": "{\"a\":1}\n{\"b\":2}\n"}));
+    exercise_call_tool(
+        &mut stdin,
+        &mut reader,
+        "json_decode",
+        serde_json::json!({"jsonlines": "{\"a\":1}\n{\"b\":2}\n"}),
+    );
 
     // `find_files` is a lightweight file-search that does not load the
     // thesaurus. We point it at the hermetic root so it returns quickly.
-    exercise_call_tool(&mut stdin, &mut reader, "find_files",
-        serde_json::json!({"query": "non-existent-prefix", "path": root.to_string_lossy(), "limit": 5}));
+    exercise_call_tool(
+        &mut stdin,
+        &mut reader,
+        "find_files",
+        serde_json::json!({"query": "non-existent-prefix", "path": root.to_string_lossy(), "limit": 5}),
+    );
 
     // `grep_files` is also lightweight. An empty query against the hermetic
     // root returns no matches without spinning up the thesaurus.
-    exercise_call_tool(&mut stdin, &mut reader, "grep_files",
-        serde_json::json!({"query": "no-such-pattern-xyzzy", "path": root.to_string_lossy(), "limit": 5}));
+    exercise_call_tool(
+        &mut stdin,
+        &mut reader,
+        "grep_files",
+        serde_json::json!({"query": "no-such-pattern-xyzzy", "path": root.to_string_lossy(), "limit": 5}),
+    );
 
     println!("Test completed!");
 
@@ -170,7 +188,9 @@ fn exercise_call_tool(
 
     println!("Calling {tool} with arguments {arguments}");
     let line = format!("{}\n", request);
-    stdin.write_all(line.as_bytes()).expect("Failed to write to stdin");
+    stdin
+        .write_all(line.as_bytes())
+        .expect("Failed to write to stdin");
     stdin.flush().expect("Failed to flush stdin");
 
     let mut response = String::new();
@@ -179,10 +199,9 @@ fn exercise_call_tool(
         .expect("Failed to read response");
     println!("{tool} response: '{}'", response.trim());
 
-    let value: Value =
-        serde_json::from_str(&response).unwrap_or_else(|e| panic!(
-            "{tool} response must be valid JSON, got error {e}: {response}"
-        ));
+    let value: Value = serde_json::from_str(&response).unwrap_or_else(|e| {
+        panic!("{tool} response must be valid JSON, got error {e}: {response}")
+    });
     // tools/call returns either a `result` (success or structured error
     // content) or `error`. Either is acceptable; we just verify the
     // response is well-formed JSON-RPC.
