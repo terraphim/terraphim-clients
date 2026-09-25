@@ -544,6 +544,11 @@ verify_rpm() {
     local metadata="$WORK_DIR/rpm.metadata-$BIN_NAME"
 
     [[ -f "$pkg" ]] || { echo "missing RPM output: $pkg" >&2; exit 1; }
+    # The payload extraction below runs from inside $tmp, so a relative
+    # package path would resolve against it and report the package as
+    # missing seconds after nFPM created it (seal run 36171579110). Anchor
+    # the path before any cd, exactly as docker_rpm_tool already does.
+    pkg="$(realpath "$pkg")"
     mkdir -p "$tmp"
     : > "$metadata"
 
