@@ -30,6 +30,10 @@ repo="terraphim/${target_repo}"
 base_url="${BASE_URL:-https://downloads.terraphim.ai}"
 bucket="${R2_BUCKET:-terraphim-releases}"
 r2_read_timeout="${R2_READ_TIMEOUT:-600}"
+# Newly written objects can take minutes to appear on the public custom
+# domain even though the S3 write already succeeded, so every post-put
+# readback retries for this long before declaring the object absent.
+r2_readback_wait="${R2_READBACK_WAIT:-600}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
 [[ "$base_url" == https://* ]] || {
@@ -42,6 +46,10 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 }
 [[ "$r2_read_timeout" =~ ^[0-9]+$ ]] && [ "$r2_read_timeout" -ge 30 ] && [ "$r2_read_timeout" -le 3600 ] || {
   echo "ERROR: R2_READ_TIMEOUT must be an integer from 30 through 3600 seconds" >&2
+  exit 2
+}
+[[ "$r2_readback_wait" =~ ^[0-9]+$ ]] && [ "$r2_readback_wait" -ge 0 ] && [ "$r2_readback_wait" -le 3600 ] || {
+  echo "ERROR: R2_READBACK_WAIT must be an integer from 0 through 3600 seconds" >&2
   exit 2
 }
 
@@ -181,6 +189,26 @@ r2_put() {
   fi
 }
 
+# Await an object's appearance on the public channel. The write path (S3 API
+# or wrangler) can acknowledge an object minutes before the custom domain
+# serves it, so a single immediate re-read is not evidence of absence.
+await_r2() {
+  local object_path="$1"
+  local destination="$2"
+  local waited=0
+  local interval=5
+  while :; do
+    if fetch_r2 "$object_path" "$destination"; then
+      return 0
+    fi
+    if [ "$waited" -ge "$r2_readback_wait" ]; then
+      return 1
+    fi
+    sleep "$interval"
+    waited=$((waited + interval))
+  done
+}
+
 github_plan="$verification_dir/github-upload.tsv"
 r2_plan="$verification_dir/r2-upload.tsv"
 : > "$github_plan"
@@ -250,8 +278,8 @@ while IFS=$'\t' read -r object_path local_path; do
   fi
   r2_put "$object_path" "$local_path"
   readback="$verification_dir/r2-readback/${object_path//\//_}"
-  fetch_r2 "$object_path" "$readback" || {
-    echo "ERROR: uploaded R2 object is absent: $object_path" >&2
+  await_r2 "$object_path" "$readback" || {
+    echo "ERROR: uploaded R2 object is absent after ${r2_readback_wait}s: $object_path" >&2
     exit 1
   }
   cmp "$local_path" "$readback" || {
@@ -298,8 +326,8 @@ advance_pointer() {
     rm -f "$existing"
   fi
   r2_put "$object_path" "$local_path"
-  fetch_r2 "$object_path" "$existing" || {
-    echo "ERROR: stable pointer readback is absent: $object_path" >&2
+  await_r2 "$object_path" "$existing" || {
+    echo "ERROR: stable pointer readback is absent after ${r2_readback_wait}s: $object_path" >&2
     exit 1
   }
   cmp "$local_path" "$existing" || {

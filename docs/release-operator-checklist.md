@@ -105,6 +105,10 @@ order: strict `stable-v2.json` first and legacy `stable.json` last.
   conditional put in this flow, so a residual race remains between the final
   404 and the put. Never claim an atomic no-clobber guarantee; investigate any
   readback mismatch immediately.
+- [ ] A successful R2 write can take minutes to appear on the public channel
+  even though the S3 operation already acknowledged it. Every post-put
+  readback retries for `R2_READBACK_WAIT` seconds (default 600) before the
+  run declares the object absent and stops.
 - [ ] On any failure before the stable phase, verify that no stable pointer was
   written, correct the failure, and rerun from the same sealed stage.
 - [ ] If interruption occurs during the final stable-pointer loop, rerun from
