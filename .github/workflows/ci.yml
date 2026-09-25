@@ -94,7 +94,10 @@ jobs:
           set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends rpm2cpio cpio rpm
-          rpm2cpio --version >/dev/null 2>&1 ||
+          # rpm2cpio has no --version/--help flag: it takes an RPM path as its
+          # only argument, so probe for the executable itself. cpio and rpm do
+          # support --version and are checked that way.
+          command -v rpm2cpio >/dev/null 2>&1 ||
             { echo "rpm2cpio missing after install" >&2; exit 1; }
           cpio --version >/dev/null 2>&1 ||
             { echo "cpio missing after install" >&2; exit 1; }
