@@ -13,6 +13,15 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # The workspace pins twelve private-registry deps (Cargo.toml lines
+    # 82-85 and others). Without this token the hosted runner cannot
+    # resolve them, which has been the failure mode blocking every CI run
+    # on this workflow (#26, run 36156158322 and earlier). release-binaries.yml
+    # already maps the same secret; ci.yml just needs it in job env so the
+    # build and updater integration steps can fetch terraphim-markdown-parser
+    # and the rest.
+    env:
+      CARGO_REGISTRIES_TERRAPHIM_TOKEN: ${{ secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
