@@ -55,7 +55,7 @@ impl Analyzer {
     ///
     /// Public API consumed only by cross-binary integration tests.
     /// Consumers: `tests/integration_tests.rs`.
-        #[must_use]
+    #[must_use]
     /// Public API consumed only by `tests/integration_tests.rs` (cross-binary integration test). The `tsa` binary does not call this method.
     #[allow(dead_code)]
     pub fn with_config(mut self, config: AnalyzerConfig) -> Self {
@@ -765,7 +765,7 @@ impl Analyzer {
     /// Public API consumed only by cross-binary integration tests
     /// (in-file unit tests in this module also exercise it directly).
     /// Consumers: `tests/integration_tests.rs` and lib unit tests in this file.
-        #[must_use]
+    #[must_use]
     /// Public API consumed only by lib unit tests in this file and `tests/integration_tests.rs` (cross-binary integration test). The `tsa` binary does not call this method.
     #[allow(dead_code)]
     pub fn detect_tool_chains(

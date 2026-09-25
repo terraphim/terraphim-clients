@@ -228,7 +228,6 @@ pub struct AutocompleteResponse {
 // does not enable `firecracker`, so the lint sees them as dead. See
 // `Cargo.toml` [features] for the firecracker declaration.
 
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 // Feature-gated to `firecracker`; see VM Management Types comment above.
 #[allow(dead_code)]
@@ -429,8 +428,6 @@ impl ApiClient {
             .await?;
         Ok(body)
     }
-
-    
 
     // VM Management APIs
 

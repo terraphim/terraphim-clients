@@ -1620,7 +1620,11 @@ pub fn shared_learning_from_entry(
             let mut kws: Vec<String> = Vec::with_capacity(l.tags.len() + l.entities.len());
             kws.extend(l.tags.iter().cloned());
             kws.extend(l.entities.iter().cloned());
-            (body, kws, terraphim_types::shared_learning::LearningSource::BashHook)
+            (
+                body,
+                kws,
+                terraphim_types::shared_learning::LearningSource::BashHook,
+            )
         }
         LearningEntry::Correction(c) => {
             let body = format!(
@@ -1632,14 +1636,14 @@ pub fn shared_learning_from_entry(
                 "correction".to_string(),
             ];
             kws.extend(c.tags.iter().cloned());
-            (body, kws, terraphim_types::shared_learning::LearningSource::Manual)
+            (
+                body,
+                kws,
+                terraphim_types::shared_learning::LearningSource::Manual,
+            )
         }
         LearningEntry::Procedure(p) => {
-            let steps: Vec<String> = p
-                .steps
-                .iter()
-                .map(|s| format!("- {}", s.command))
-                .collect();
+            let steps: Vec<String> = p.steps.iter().map(|s| format!("- {}", s.command)).collect();
             let body = format!(
                 "Procedure: {}\nDescription: {}\nSteps ({}):\n{}",
                 p.title,
@@ -1649,7 +1653,11 @@ pub fn shared_learning_from_entry(
             );
             let mut kws = vec!["procedure".to_string()];
             kws.extend(p.tags.iter().cloned());
-            (body, kws, terraphim_types::shared_learning::LearningSource::Manual)
+            (
+                body,
+                kws,
+                terraphim_types::shared_learning::LearningSource::Manual,
+            )
         }
     };
 
@@ -2922,12 +2930,7 @@ mod tests {
         LearningEntry::Learning(learning)
     }
 
-    fn fixed_correction(
-        id: &str,
-        original: &str,
-        corrected: &str,
-        tags: &[&str],
-    ) -> LearningEntry {
+    fn fixed_correction(id: &str, original: &str, corrected: &str, tags: &[&str]) -> LearningEntry {
         let mut c = CorrectionEvent::new(
             CorrectionType::ToolPreference,
             original.to_string(),
@@ -3078,9 +3081,7 @@ mod tests {
         );
         for entry in [&one_hit, &two_hit, &three_hit] {
             let path = match entry {
-                LearningEntry::Learning(l) => {
-                    storage.join(format!("learning-{}.md", l.id))
-                }
+                LearningEntry::Learning(l) => storage.join(format!("learning-{}.md", l.id)),
                 _ => unreachable!(),
             };
             fs::write(
@@ -3128,11 +3129,7 @@ mod tests {
         // `len() > 2` filter, so the scorer falls back to recent-by-time.
         let entry = fixed_learning("FALLBACK-1", "ls -la", "ok", &[]);
         if let LearningEntry::Learning(l) = &entry {
-            fs::write(
-                storage.join("learning-fb.md"),
-                l.to_markdown(),
-            )
-            .unwrap();
+            fs::write(storage.join("learning-fb.md"), l.to_markdown()).unwrap();
         }
 
         // Context "a i" → after `len() > 2` filter, no keywords remain.
@@ -3162,8 +3159,8 @@ mod tests {
     fn test_shared_learning_from_entry_converts_learning_variant() {
         let entry = fixed_learning("FRESH-1", "git push -f", "remote: rejected", &["git"]);
         let shared_ids = std::collections::HashSet::new();
-        let shared = shared_learning_from_entry(&entry, &shared_ids)
-            .expect("fresh id should be retained");
+        let shared =
+            shared_learning_from_entry(&entry, &shared_ids).expect("fresh id should be retained");
         assert_eq!(shared.id, "FRESH-1");
         assert_eq!(shared.source_agent, "legacy-local");
         assert!(matches!(
@@ -3199,8 +3196,8 @@ mod tests {
         entry_unwrapped.correction = Some("git push origin main".to_string());
         let entry = LearningEntry::Learning(entry_unwrapped);
         let shared_ids = std::collections::HashSet::new();
-        let shared = shared_learning_from_entry(&entry, &shared_ids)
-            .expect("fresh id should be retained");
+        let shared =
+            shared_learning_from_entry(&entry, &shared_ids).expect("fresh id should be retained");
         assert_eq!(shared.id, "FRESH-2");
         assert!(
             shared
@@ -3213,12 +3210,7 @@ mod tests {
 
     #[test]
     fn test_shared_learning_from_entry_converts_correction_variant() {
-        let entry = fixed_correction(
-            "FRESH-3",
-            "npm install",
-            "bun add",
-            &["tool"],
-        );
+        let entry = fixed_correction("FRESH-3", "npm install", "bun add", &["tool"]);
         let shared_ids = std::collections::HashSet::new();
         let shared = shared_learning_from_entry(&entry, &shared_ids)
             .expect("correction id should be retained");

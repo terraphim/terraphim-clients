@@ -463,7 +463,6 @@ async fn test_knowledge_graph_ranking_impact() -> Result<()> {
     } else {
         0.0
     };
-    
 
     println!("  BM25 avg:        {:.2}", bm25_avg);
     println!("  Title avg:       {:.2}", title_avg);
