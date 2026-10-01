@@ -11,6 +11,7 @@ The real makepkg validation ('.SRCINFO' drift, 'namcap', install,
 the '.SRCINFO' drift assertion here is skipped when 'makepkg' is absent.
 """
 
+import os
 import re
 import shutil
 import subprocess
@@ -228,6 +229,7 @@ class PkgbuildContractTests(unittest.TestCase):
             self.assertEqual(len(base[f"source_{arch}"]), 2)
             self.assertEqual(len(base[f"sha256sums_{arch}"]), 2)
 
+    @unittest.skipIf(os.geteuid() == 0, "makepkg refuses to run as root; verify.sh checks drift as the builder user")
     @unittest.skipUnless(shutil.which("makepkg"), "makepkg is only available on Arch")
     def test_srcinfo_is_not_stale(self):
         generated = subprocess.run(
