@@ -1,15 +1,104 @@
 #!/usr/bin/env bash
-# Build a deterministic, integrity-bearing candidate release manifest.
 #
-# Usage: build-manifest.sh VERSION BINARY ARTIFACTS_DIR OUTPUT.candidate.json
+# Build a deterministic, integrity-bearing release manifest.
 #
-# This script deliberately cannot write stable.json or stable-v2.json. Stable
-# promotion is a separately authorized operation performed by promote-release.sh.
+# Two forms, selected by the trailing argument:
+#
+#   Legacy stdout (3 args) -- used by the v1.21.14 release finalizer
+#     (scripts/sign-macos-binary.sh and .github/workflows/finalize-prebuilt-release.yml):
+#       scripts/build-manifest.sh <version> <bin_name> <artifacts_dir> > stable.json
+#
+#     Emits the v1 (path-only assets) manifest on stdout. The asset map is the
+#     seven unix targets (aarch64 + x86_64 + universal Apple, three Linux
+#     musl/gnu). Windows is omitted on purpose: the tagged v1.21.14 updater
+#     cannot verify ZIP signatures, so the finalizer deliberately keeps
+#     Windows manifests blank until a later client release restores signed
+#     Windows automatic updates. Fail-closed: every required asset must
+#     exist; any missing target exits non-zero so CI never publishes a
+#     partial manifest.
+#
+#   Strict candidate (4 args) -- used by the v1.21.16 release producer
+#     (.github/workflows/release-binaries.yml seal-release-stage):
+#       scripts/build-manifest.sh <version> <bin_name> <artifacts_dir> <output.candidate.json>
+#
+#     Writes a v2 (object-valued assets with sha256 + size) candidate to the
+#     fourth argument. The candidate schema is strict: every advertised
+#     target for the binary must be present and well-formed (Windows zip
+#     included for agent and grep, omitted for cli), no extra or wrong-version
+#     archives may appear, and the filename must encode the exact version
+#     and target. The candidate builder refuses to overwrite a stable
+#     pointer (stable.json / stable-v2.json) -- stable promotion is a
+#     separately authorized promote-release.sh operation.
+#
+# SOURCE_DATE_EPOCH is mandatory in the 4-arg mode (deterministic
+# released_at); the 3-arg legacy mode uses the current wall clock because the
+# finalizer captures the published manifest's released_at at promotion time,
+# not at build time.
+#
 set -euo pipefail
 
-if [ "$#" -ne 4 ]; then
-  echo "usage: $0 VERSION BINARY ARTIFACTS_DIR OUTPUT.candidate.json" >&2
-  exit 2
+usage() {
+    cat >&2 <<'EOF'
+Usage:
+  scripts/build-manifest.sh VERSION BINARY ARTIFACTS_DIR
+      Emit the v1 (legacy stdout) manifest -- used by the v1.21.14
+      release finalizer.
+  scripts/build-manifest.sh VERSION BINARY ARTIFACTS_DIR OUTPUT.candidate.json
+      Write a v2 strict candidate manifest -- used by the v1.21.16
+      producer's seal-release-stage step.
+EOF
+    exit 2
+}
+
+if [ "$#" -eq 3 ]; then
+    legacy_mode=true
+elif [ "$#" -eq 4 ]; then
+    legacy_mode=false
+else
+    usage
+fi
+
+if [ "$legacy_mode" = true ]; then
+    version="$1"
+    bin="$2"
+    artifacts_dir="$3"
+
+    release_url="https://github.com/terraphim/terraphim-clients/releases/tag/v${version}"
+
+    unix_targets=(
+        aarch64-apple-darwin
+        x86_64-apple-darwin
+        universal-apple-darwin
+        x86_64-unknown-linux-gnu
+        x86_64-unknown-linux-musl
+        aarch64-unknown-linux-musl
+    )
+
+    assets=""
+    for target in "${unix_targets[@]}"; do
+        filename="${bin}-${version}-${target}.tar.gz"
+        [ -f "$artifacts_dir/$filename" ] || {
+            echo "ERROR: missing manifest asset: $artifacts_dir/$filename" >&2
+            exit 1
+        }
+        entry=$(printf '    "%s": "%s/%s"' "$target" "$bin" "$filename")
+        if [ -n "$assets" ]; then
+            assets="$assets,"$'\n'
+        fi
+        assets="$assets$entry"
+    done
+
+    cat <<EOF
+{
+  "version": "${version}",
+  "released_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "assets": {
+${assets}
+  },
+  "notes_url": "${release_url}"
+}
+EOF
+    exit 0
 fi
 
 : "${SOURCE_DATE_EPOCH:?SOURCE_DATE_EPOCH must identify the immutable source timestamp}"

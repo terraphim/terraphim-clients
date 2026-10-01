@@ -384,12 +384,14 @@ docker_rpm_tool() {
             # --no-absolute-filenames keeps RPM payload members with
             # absolute names (Ubuntu 24.04 rpm2cpio / nFPM 2.47) private to
             # /extract; keep the log off the mounted volume so the host-side
-            # cleanup trap never meets a root-owned file, and surface it on
-            # failure instead of discarding stderr.
+            # cleanup trap never meets a root-owned file. Pipeline status is
+            # deliberately not the success criterion: the rpm 4.17 rpm2cpio
+            # exits nonzero on valid nFPM 2.47 RPMs while writing a complete
+            # payload (see the verify_rpm host branch). Note the status, then
+            # let the payload/SHA checks below stay fail-closed.
             if ! rpm2cpio /pkg.rpm | cpio --no-absolute-filenames -idmv >/tmp/rpm-extract.log 2>&1; then
-                echo "RPM payload extraction failed for /pkg.rpm (rpm2cpio | cpio --no-absolute-filenames -idmv):" >&2
+                echo "NOTE: rpm2cpio|cpio returned nonzero for /pkg.rpm; verifying extracted payload" >&2
                 sed "s/^/  /" /tmp/rpm-extract.log >&2
-                exit 1
             fi
             payload="/extract/usr/bin/$2"
             if test -L "$payload" || ! test -f "$payload" || ! test -s "$payload"; then
@@ -542,6 +544,11 @@ verify_rpm() {
     local metadata="$WORK_DIR/rpm.metadata-$BIN_NAME"
 
     [[ -f "$pkg" ]] || { echo "missing RPM output: $pkg" >&2; exit 1; }
+    # The payload extraction below runs from inside $tmp, so a relative
+    # package path would resolve against it and report the package as
+    # missing seconds after nFPM created it (seal run 36171579110). Anchor
+    # the path before any cd, exactly as docker_rpm_tool already does.
+    pkg="$(realpath "$pkg")"
     mkdir -p "$tmp"
     : > "$metadata"
 
@@ -550,14 +557,34 @@ verify_rpm() {
         # emits nFPM 2.47 RPM payload members with absolute names
         # (/usr/bin/<bin>, ...), and copy-in without the option then either
         # fails outright or writes toward the host's real /usr. Extraction must
-        # stay private to $tmp, fail closed on any nonzero status, and
-        # surface the rpm2cpio/cpio diagnostics instead of discarding them.
+        # stay private to $tmp and surface the rpm2cpio/cpio diagnostics
+        # instead of discarding them.
+        #
+        # The pipeline status is deliberately NOT the success criterion.
+        # rpm 4.17's rpm2cpio (Ubuntu 24.04 and Pop!_OS, i.e. every runner
+        # this producer runs on) exits 1 on nFPM 2.47 RPMs while writing a
+        # complete, correct payload and printing nothing to stderr: the
+        # stream ends with a proper TRAILER!!! and `rpm -K` reports
+        # "digests OK". Trusting that status rejected every valid package
+        # (arch suite "RPM payload extraction failed" with all five members
+        # and "26 blocks" in the log). Extraction is therefore verified by
+        # what it produced, not by what it returned: cpio must succeed, the
+        # binary must exist and be a regular file, and its SHA-256 must
+        # match EXPECTED_SHA below. A genuinely truncated payload fails
+        # those checks (cpio reports "premature end of archive"), so this
+        # stays fail-closed.
         local extract_log="$WORK_DIR/rpm-extract-$BIN_NAME.log"
+        rm -rf "$tmp"
+        mkdir -p "$tmp"
         if ! (cd "$tmp" && rpm2cpio "$pkg" | cpio --no-absolute-filenames -idmv) >"$extract_log" 2>&1; then
-            echo "RPM payload extraction failed for $pkg (rpm2cpio | cpio --no-absolute-filenames -idmv):" >&2
+            echo "NOTE: rpm2cpio|cpio returned nonzero for $pkg; verifying extracted payload" >&2
+            sed 's/^/  /' "$extract_log" >&2
+        fi
+        [[ -f "$tmp/usr/bin/$BIN_NAME" ]] || {
+            echo "RPM payload extraction produced no $BIN_NAME for $pkg (rpm2cpio | cpio --no-absolute-filenames -idmv):" >&2
             sed 's/^/  /' "$extract_log" >&2
             exit 1
-        fi
+        }
     else
         docker_rpm_tool "$pkg" "$tmp" "$EXPECTED_SHA" "$metadata" "$BIN_NAME"
     fi

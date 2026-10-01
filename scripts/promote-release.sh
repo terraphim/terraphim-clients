@@ -30,6 +30,10 @@ repo="terraphim/${target_repo}"
 base_url="${BASE_URL:-https://downloads.terraphim.ai}"
 bucket="${R2_BUCKET:-terraphim-releases}"
 r2_read_timeout="${R2_READ_TIMEOUT:-600}"
+# Newly written objects can take minutes to appear on the public custom
+# domain even though the S3 write already succeeded, so every post-put
+# readback retries for this long before declaring the object absent.
+r2_readback_wait="${R2_READBACK_WAIT:-600}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
 [[ "$base_url" == https://* ]] || {
@@ -44,6 +48,10 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
   echo "ERROR: R2_READ_TIMEOUT must be an integer from 30 through 3600 seconds" >&2
   exit 2
 }
+[[ "$r2_readback_wait" =~ ^[0-9]+$ ]] && [ "$r2_readback_wait" -ge 0 ] && [ "$r2_readback_wait" -le 3600 ] || {
+  echo "ERROR: R2_READBACK_WAIT must be an integer from 0 through 3600 seconds" >&2
+  exit 2
+}
 
 for command_name in gh wrangler curl cmp; do
   command -v "$command_name" >/dev/null || {
@@ -51,6 +59,31 @@ for command_name in gh wrangler curl cmp; do
     exit 2
   }
 done
+
+# Wrangler's `r2 object put --remote` has reported "Upload complete." for
+# multi-megabyte objects that never became readable, so the S3 API is the
+# preferred upload transport whenever its credentials are present. Wrangler
+# stays the fallback for operator environments without S3 keys.
+r2_s3_endpoint="${R2_ENDPOINT:-}"
+r2_s3_access_key="${R2_ACCESS_KEY_ID:-}"
+r2_s3_secret_key="${R2_SECRET_ACCESS_KEY:-}"
+if [ -n "$r2_s3_endpoint$r2_s3_access_key$r2_s3_secret_key" ]; then
+  [[ "$r2_s3_endpoint" == https://* ]] || {
+    echo "ERROR: R2_ENDPOINT must use HTTPS" >&2
+    exit 2
+  }
+  [ -n "$r2_s3_access_key" ] && [ -n "$r2_s3_secret_key" ] || {
+    echo "ERROR: R2_ENDPOINT requires both R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY" >&2
+    exit 2
+  }
+  command -v aws >/dev/null || {
+    echo "ERROR: required command not found: aws" >&2
+    exit 2
+  }
+  echo "R2 upload transport: S3 API (aws s3api) via R2_ENDPOINT"
+else
+  echo "R2 upload transport: wrangler r2 object put --remote"
+fi
 
 verification_dir="$(mktemp -d)"
 snapshot_tmp=""
@@ -128,6 +161,54 @@ fetch_r2() {
   esac
 }
 
+r2_content_type() {
+  case "$1" in
+    *.json) echo "application/json" ;;
+    *.tar.gz) echo "application/gzip" ;;
+    *.zip) echo "application/zip" ;;
+    *.zst) echo "application/zstd" ;;
+    *) echo "application/octet-stream" ;;
+  esac
+}
+
+r2_put() {
+  local object_path="$1"
+  local local_path="$2"
+  local content_type
+  content_type="$(r2_content_type "$object_path")"
+  if [ -n "$r2_s3_endpoint" ]; then
+    AWS_ACCESS_KEY_ID="$r2_s3_access_key" \
+    AWS_SECRET_ACCESS_KEY="$r2_s3_secret_key" \
+      aws s3api put-object --bucket "$bucket" --key "$object_path" \
+        --body "$local_path" --content-type "$content_type" \
+        --endpoint-url "$r2_s3_endpoint" --region auto \
+        --output text --no-cli-pager >/dev/null
+  else
+    wrangler r2 object put "$bucket/$object_path" --file "$local_path" \
+      --content-type "$content_type" --remote
+  fi
+}
+
+# Await an object's appearance on the public channel. The write path (S3 API
+# or wrangler) can acknowledge an object minutes before the custom domain
+# serves it, so a single immediate re-read is not evidence of absence.
+await_r2() {
+  local object_path="$1"
+  local destination="$2"
+  local waited=0
+  local interval=5
+  while :; do
+    if fetch_r2 "$object_path" "$destination"; then
+      return 0
+    fi
+    if [ "$waited" -ge "$r2_readback_wait" ]; then
+      return 1
+    fi
+    sleep "$interval"
+    waited=$((waited + interval))
+  done
+}
+
 github_plan="$verification_dir/github-upload.tsv"
 r2_plan="$verification_dir/r2-upload.tsv"
 : > "$github_plan"
@@ -180,7 +261,7 @@ while IFS= read -r local_asset; do
   rmdir "$verification_dir/github-readback/$name.dir"
 done < "$github_plan"
 
-# Wrangler does not expose an atomic if-none-match put for this command. Re-read
+# Neither R2 transport exposes an atomic if-none-match put. Re-read
 # immediately before each put, skip an identical race winner, and fail on a
 # differing winner. A sub-request race between the final 404 and put remains a
 # documented provider limitation; every put is nevertheless read back exactly.
@@ -195,10 +276,10 @@ while IFS=$'\t' read -r object_path local_path; do
     rm -f "$immediate"
     continue
   fi
-  wrangler r2 object put "$bucket/$object_path" --file "$local_path" --remote
+  r2_put "$object_path" "$local_path"
   readback="$verification_dir/r2-readback/${object_path//\//_}"
-  fetch_r2 "$object_path" "$readback" || {
-    echo "ERROR: uploaded R2 object is absent: $object_path" >&2
+  await_r2 "$object_path" "$readback" || {
+    echo "ERROR: uploaded R2 object is absent after ${r2_readback_wait}s: $object_path" >&2
     exit 1
   }
   cmp "$local_path" "$readback" || {
@@ -244,9 +325,9 @@ advance_pointer() {
     fi
     rm -f "$existing"
   fi
-  wrangler r2 object put "$bucket/$object_path" --file "$local_path" --content-type application/json --remote
-  fetch_r2 "$object_path" "$existing" || {
-    echo "ERROR: stable pointer readback is absent: $object_path" >&2
+  r2_put "$object_path" "$local_path"
+  await_r2 "$object_path" "$existing" || {
+    echo "ERROR: stable pointer readback is absent after ${r2_readback_wait}s: $object_path" >&2
     exit 1
   }
   cmp "$local_path" "$existing" || {
