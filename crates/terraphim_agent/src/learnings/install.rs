@@ -1,7 +1,7 @@
 //! Hook installation for AI agents.
 //!
 //! This module provides functionality to install hooks for various AI agents
-//! (Claude Code, Codex, opencode) to capture failed commands as learnings.
+//! (Claude Code, Codex, opencode, pi) to capture failed commands as learnings.
 //!
 //! # Usage
 //!
@@ -26,6 +26,8 @@ pub enum AgentType {
     Codex,
     /// Opencode CLI
     Opencode,
+    /// pi coding-agent (pi_agent_rust)
+    Pi,
 }
 
 impl AgentType {
@@ -35,6 +37,7 @@ impl AgentType {
             AgentType::Claude => "claude",
             AgentType::Codex => "codex",
             AgentType::Opencode => "opencode",
+            AgentType::Pi => "pi",
         }
     }
 
@@ -44,6 +47,8 @@ impl AgentType {
             AgentType::Claude => dirs::config_dir().map(|d| d.join("claude")),
             AgentType::Codex => dirs::config_dir().map(|d| d.join("codex")),
             AgentType::Opencode => dirs::config_dir().map(|d| d.join("opencode")),
+            // pi_agent_rust uses ~/.pi/agent for settings and packages
+            AgentType::Pi => dirs::home_dir().map(|d| d.join(".pi").join("agent")),
         }
     }
 
@@ -116,12 +121,37 @@ else
 fi
 "#
             .to_string(),
+            // Pi uses JS extensions (`pi install`), not a shell CLAUDE_HOOK path.
+            // This "script" is install documentation + a smoke helper that pipes
+            // a normalized learn envelope (same as onToolResult handler).
+            AgentType::Pi => r#"#!/bin/bash
+# Terraphim learn hooks for pi (pi_agent_rust)
+# Preferred install:
+#   pi install <repo>/packages/pi-terraphim-learn
+# Extension listens for onToolResult and calls:
+#   terraphim-agent learn hook --format claude --learn-hook-type post-tool-use
+#
+# Smoke (stdin JSON → learn capture), fail-open:
+if command -v terraphim-agent >/dev/null 2>&1; then
+  INPUT=$(cat)
+  echo "$INPUT" | terraphim-agent learn hook --format claude --learn-hook-type post-tool-use 2>/dev/null || true
+  echo "$INPUT"
+else
+  cat
+fi
+"#
+            .to_string(),
         }
     }
 
     /// Get the hook file path for this agent.
     pub fn hook_path(&self) -> Option<PathBuf> {
-        self.config_dir().map(|d| d.join("terraphim-hook.sh"))
+        match self {
+            AgentType::Pi => self
+                .config_dir()
+                .map(|d| d.join("extensions").join("terraphim-learn-smoke.sh")),
+            _ => self.config_dir().map(|d| d.join("terraphim-hook.sh")),
+        }
     }
 }
 
@@ -221,6 +251,12 @@ pub async fn install_hook(agent: AgentType) -> Result<(), InstallError> {
             println!("  Opencode: Set the OPCODE_HOOK environment variable:");
             println!("    export OPCODE_HOOK={}", hook_path.display());
         }
+        AgentType::Pi => {
+            println!("  pi (pi_agent_rust): install the JS extension package:");
+            println!("    pi install <path-to-terraphim-clients>/packages/pi-terraphim-learn");
+            println!("  Smoke helper also written to: {}", hook_path.display());
+            println!("  Extension uses pi.on(\"onToolResult\") → terraphim-agent learn hook");
+        }
     }
     println!();
     println!("Or add the above line to your shell profile (~/.bashrc, ~/.zshrc, etc.)");
@@ -293,6 +329,7 @@ pub fn get_installation_status() -> Vec<(AgentType, bool)> {
         (AgentType::Claude, is_hook_installed(AgentType::Claude)),
         (AgentType::Codex, is_hook_installed(AgentType::Codex)),
         (AgentType::Opencode, is_hook_installed(AgentType::Opencode)),
+        (AgentType::Pi, is_hook_installed(AgentType::Pi)),
     ]
 }
 
@@ -305,6 +342,7 @@ mod tests {
         assert_eq!(AgentType::Claude.as_str(), "claude");
         assert_eq!(AgentType::Codex.as_str(), "codex");
         assert_eq!(AgentType::Opencode.as_str(), "opencode");
+        assert_eq!(AgentType::Pi.as_str(), "pi");
     }
 
     #[test]
@@ -312,6 +350,8 @@ mod tests {
         assert_ne!(AgentType::Claude, AgentType::Codex);
         assert_ne!(AgentType::Claude, AgentType::Opencode);
         assert_ne!(AgentType::Codex, AgentType::Opencode);
+        assert_ne!(AgentType::Pi, AgentType::Claude);
+        assert_ne!(AgentType::Pi, AgentType::Opencode);
     }
 
     #[test]
@@ -327,6 +367,24 @@ mod tests {
         let opencode_script = AgentType::Opencode.hook_script();
         assert!(opencode_script.contains("terraphim-agent"));
         assert!(opencode_script.contains("learn hook"));
+
+        let pi_script = AgentType::Pi.hook_script();
+        assert!(pi_script.contains("terraphim-agent"));
+        assert!(pi_script.contains("learn hook") || pi_script.contains("pi install"));
+        assert!(
+            pi_script.contains("onToolResult") || pi_script.contains("pi-terraphim-learn"),
+            "Pi install docs must mention extension event or package name"
+        );
+    }
+
+    #[test]
+    fn test_pi_config_dir_is_under_pi_agent() {
+        let dir = AgentType::Pi.config_dir().expect("pi config dir");
+        let s = dir.to_string_lossy();
+        assert!(
+            s.contains(".pi") || s.ends_with("pi/agent") || s.contains("pi"),
+            "unexpected pi config dir: {s}"
+        );
     }
 
     #[test]
@@ -335,6 +393,15 @@ mod tests {
         let script = AgentType::Claude.hook_script();
         assert!(script.contains("2>/dev/null || true"));
         assert!(script.contains("cat"));
+    }
+
+    #[test]
+    fn test_get_installation_status_includes_pi() {
+        let status = get_installation_status();
+        assert!(
+            status.iter().any(|(a, _)| *a == AgentType::Pi),
+            "get_installation_status must include Pi"
+        );
     }
 
     #[test]
