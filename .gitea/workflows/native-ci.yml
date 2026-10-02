@@ -61,9 +61,9 @@ jobs:
       # The overwrite puts the pinned version first for every lookup.
       # Three separate steps so a transient network failure on one
       # install can be retried without rerunning the others.
-      - name: Install cargo-llvm-cov (pinned to GH ci.yml version)
+      - name: Install cargo-llvm-cov (pinned; guarded by coverage_tool_pinning_matches_local_toolchain)
         run: cargo install cargo-llvm-cov --version 0.8.5 --locked
-      - name: Install cargo-nextest (pinned to GH ci.yml version)
+      - name: Install cargo-nextest (pinned; guarded by coverage_tool_pinning_matches_local_toolchain)
         run: cargo install cargo-nextest --version 0.9.144 --locked
       - name: Add llvm-tools-preview component
         run: rustup component add llvm-tools-preview
