@@ -1,6 +1,6 @@
 # Research: Re-point the coverage tool-pinning guard at the native lane
 
-**Status**: Draft
+**Status**: Approved
 **Canonical Path**: `docs/plans/research-fix-coverage-pinning-guard.md`
 **Change Slug**: `fix-coverage-pinning-guard`
 **Author**: Meiko (agent) for Alexander Mikhalev
