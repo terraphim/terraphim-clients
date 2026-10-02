@@ -47,11 +47,13 @@ jobs:
       # (sudo install by an admin), not available to workflow steps.
       # ~/.cargo/bin is not reliably on the VM PATH, so the coverage step
       # below prepends this root's bin dir to PATH instead.
-      # #328: --version pins match the GH lane's `with: tool:` block
-      # exactly (ci.yml pins cargo-llvm-cov@v0.8.5,nextest@v0.9.144);
-      # installing "latest" drifts on every upstream release and trips
-      # the coverage_tool_pinning_matches_local_toolchain ci_guard
-      # (run 522: "local toolchain has 0.9.1, but ci.yml pins 0.8.5").
+      # #342 removed the GitHub coverage lane and its `tool:` block, so
+      # these --version pins are the canonical source of truth for the
+      # coverage toolchain. Installing "latest" drifts on every upstream
+      # release (run 522, #313 era: the runner image shipped 0.9.1 against
+      # the 0.8.5 pin); the coverage_tool_pinning_matches_local_toolchain
+      # ci_guard compares these exact lines against the runner-local
+      # installs and fails closed if they are removed or reshaped.
       # No --root: installs go to the session's default CARGO_HOME/bin,
       # which cargo searches for subcommands BEFORE PATH -- a separate
       # root leaves the image's own 0.9.1 in CARGO_HOME/bin shadowing
