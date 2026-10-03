@@ -1,0 +1,31 @@
+pkgbase = terraphim-clients-bin
+	pkgdesc = Terraphim AI command-line clients (prebuilt static MUSL binaries)
+	pkgver = 1.21.16
+	pkgrel = 1
+	url = https://terraphim.ai
+	arch = x86_64
+	arch = aarch64
+	license = Apache-2.0
+	license = MIT
+	options = !strip
+	options = !debug
+	source_x86_64 = terraphim-agent-1.21.16-x86_64-unknown-linux-musl.tar.gz::https://github.com/terraphim/terraphim-clients/releases/download/v1.21.16/terraphim-agent-1.21.16-x86_64-unknown-linux-musl.tar.gz
+	source_x86_64 = terraphim-grep-1.21.16-x86_64-unknown-linux-musl.tar.gz::https://github.com/terraphim/terraphim-clients/releases/download/v1.21.16/terraphim-grep-1.21.16-x86_64-unknown-linux-musl.tar.gz
+	sha256sums_x86_64 = 71cb87455959f2eaa04fab1bd2655564635df58988dfae306c4aeb5583938151
+	sha256sums_x86_64 = 872a7d7fe1167c75340807be0e3a0bb079389e28d813eb4e198b3d1757e7a583
+	source_aarch64 = terraphim-agent-1.21.16-aarch64-unknown-linux-musl.tar.gz::https://github.com/terraphim/terraphim-clients/releases/download/v1.21.16/terraphim-agent-1.21.16-aarch64-unknown-linux-musl.tar.gz
+	source_aarch64 = terraphim-grep-1.21.16-aarch64-unknown-linux-musl.tar.gz::https://github.com/terraphim/terraphim-clients/releases/download/v1.21.16/terraphim-grep-1.21.16-aarch64-unknown-linux-musl.tar.gz
+	sha256sums_aarch64 = f8530d963171e3f72b52b8b729653cafa5ae5e105e219f7ecec7b170037acaa7
+	sha256sums_aarch64 = 194d4cac04eccbfb998c4f060e44b286873510d354fd3a3a160bf63b2c5e025c
+
+pkgname = terraphim-agent-bin
+	pkgdesc = Terraphim AI agent CLI (prebuilt static MUSL binary)
+	license = Apache-2.0
+	provides = terraphim-agent
+	conflicts = terraphim-agent
+
+pkgname = terraphim-grep-bin
+	pkgdesc = Terraphim AI grep CLI (prebuilt static MUSL binary)
+	license = MIT
+	provides = terraphim-grep
+	conflicts = terraphim-grep
