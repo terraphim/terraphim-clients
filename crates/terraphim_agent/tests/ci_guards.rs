@@ -73,58 +73,32 @@ fn no_duplicate_terraphim_crates() {
     );
 }
 
-/// The GitHub Actions `taiki-e/install-action` tool versions must match the
-/// locally-installed `cargo-llvm-cov` and `cargo-nextest` so a `cargo install`
-/// on the native lane (which is `--locked` to the workspace) and the GH lane
-/// (which is hand-pinned in `.github/workflows/ci.yml:30`) stay in lockstep.
+/// The native lane's pinned coverage toolchain (`.gitea/workflows/
+/// native-ci.yml`: `cargo install <tool> --version <v> --locked`) must match
+/// the locally-installed `cargo-llvm-cov` and `cargo-nextest`.
 ///
-/// If you upgrade the local toolchain and forget to bump the GH `with: tool:`
-/// block, the two runners will produce coverage reports from different
-/// rustc-instrumentation ABIs. The drift shows up as identical test sets but
-/// divergent SF: counts in the lcov artefacts. Refs #313.
+/// #342 removed the GitHub coverage lane (and its `taiki-e/install-action`
+/// `tool:` block), so the native install pins are the single source of
+/// truth. The pins matter because `cargo install` silently skips
+/// reinstalling when the runner already carries the same version (run 36153:
+/// "Ignored package `cargo-llvm-cov v0.8.5` is already installed") and an
+/// unpinned install drifts on every upstream release (run 522: image 0.9.1
+/// vs pin 0.8.5) — either way lcov can come from a different
+/// rustc-instrumentation ABI than intended. This guard fails closed: if the
+/// pins disappear from native-ci.yml it panics rather than letting the
+/// toolchain float. Refs #313 (original drift-test rationale), #342 (GH lane
+/// removal).
 #[test]
 fn coverage_tool_pinning_matches_local_toolchain() {
     let root = workspace_root();
 
-    // The GH ci.yml `with: tool:` line we want to keep in sync with.
-    let ci_yml = root.join(".github/workflows/ci.yml");
-    assert!(ci_yml.is_file(), "missing {}", ci_yml.display());
-    let ci_text = std::fs::read_to_string(&ci_yml).expect("read ci.yml");
+    // Canonical pin site: the native lane's pinned install steps.
+    let native_ci = root.join(".gitea/workflows/native-ci.yml");
+    assert!(native_ci.is_file(), "missing {}", native_ci.display());
+    let native_text = std::fs::read_to_string(&native_ci).expect("read native-ci.yml");
 
-    // Extract the `tool: cargo-llvm-cov@vX.Y.Z,nextest@vX.Y.Z` value.
-    let pinned_block = ci_text
-        .lines()
-        .find(|l| l.trim_start().starts_with("tool:"))
-        .expect("ci.yml has no `tool:` line; the GH coverage toolchain is unpinned");
-    let pinned_block = pinned_block.trim_start();
-    let pinned_block = pinned_block
-        .strip_prefix("tool:")
-        .expect("expected `tool:` prefix")
-        .trim();
-
-    let mut pinned = std::collections::HashMap::<&str, &str>::new();
-    for entry in pinned_block.split(',') {
-        let entry = entry.trim();
-        let (name, version) = entry
-            .split_once('@')
-            .unwrap_or_else(|| panic!("expected `name@version` in `tool:` block, got `{}`", entry));
-        // Strip the leading `v` so `cargo-llvm-cov@v0.8.5` matches the
-        // local `cargo llvm-cov --version` output of `cargo-llvm-cov 0.8.5`.
-        let version = version.strip_prefix('v').unwrap_or(version);
-        pinned.insert(name, version);
-    }
-    let gh_cov = pinned.get("cargo-llvm-cov").copied().unwrap_or_else(|| {
-        panic!(
-            "ci.yml `tool:` block does not pin cargo-llvm-cov; got `{}`",
-            pinned_block
-        )
-    });
-    let gh_nextest = pinned.get("nextest").copied().unwrap_or_else(|| {
-        panic!(
-            "ci.yml `tool:` block does not pin nextest; got `{}`",
-            pinned_block
-        )
-    });
+    let pinned_cov = native_ci_install_pin(&native_text, "cargo-llvm-cov");
+    let pinned_nextest = native_ci_install_pin(&native_text, "cargo-nextest");
 
     // Resolve the locally-installed versions.
     let cov_out = Command::new(env!("CARGO"))
@@ -177,19 +151,187 @@ fn coverage_tool_pinning_matches_local_toolchain() {
     };
 
     assert_eq!(
-        local_cov, gh_cov,
+        local_cov, pinned_cov,
         "cargo-llvm-cov version drift: local toolchain has {local_cov}, but \
-         .github/workflows/ci.yml pins {gh_cov}. Bump the GH `with: tool:` block \
-         (or downgrade the local toolchain) so the two runners use the same \
-         rustc-instrumentation ABI. Refs #313."
+         .gitea/workflows/native-ci.yml pins {pinned_cov}. Bump the \
+         native-ci.yml `--version` pin (or align the local install) so the \
+         coverage lane and local runs use the same rustc-instrumentation \
+         ABI. Refs #313, #342."
     );
     assert_eq!(
-        local_nextest, gh_nextest,
-        "cargo-nextest version drift: local toolchain has {local_nextest}, but \
-         .github/workflows/ci.yml pins {gh_nextest}. Bump the GH `with: tool:` \
-         block (or downgrade the local toolchain) so the two runners agree. \
-         Refs #313."
+        local_nextest, pinned_nextest,
+        "cargo-nextest version drift: local toolchain has {local_nextest}, \
+         but .gitea/workflows/native-ci.yml pins {pinned_nextest}. Bump the \
+         native-ci.yml `--version` pin (or align the local install) so the \
+         coverage lane and local runs agree. Refs #313, #342."
     );
+}
+
+/// Extract the pinned `--version` of `tool` from its `cargo install` line in
+/// `.gitea/workflows/native-ci.yml`.
+///
+/// Contract (enforced fail-closed), one line of the shape:
+/// ```text
+/// run: cargo install <tool> --version <semver> --locked
+/// ```
+///
+/// # Panics
+/// - no `cargo install <tool>` line exists (the coverage toolchain is
+///   unpinned)
+/// - the line has no `--version <value>` or no `--locked`
+/// - the version value does not start with an ASCII digit
+/// - two install lines for `<tool>` carry different versions
+fn native_ci_install_pin<'t>(text: &'t str, tool: &str) -> &'t str {
+    let install_prefix = format!("cargo install {tool}");
+    let mut pins = std::collections::HashSet::new();
+
+    for raw_line in text.lines() {
+        let mut line = raw_line.trim_start();
+        // Steps carry the command behind a YAML `run:` key (possibly a
+        // block scalar), so accept an optional `run:` prefix. Both
+        // `run: cargo install ...` and a bare `cargo install ...` line
+        // inside a block scalar match the contract.
+        if let Some(rest) = line.strip_prefix("run:") {
+            line = rest.trim_start();
+        }
+        let Some(rest) = line.strip_prefix(&install_prefix) else {
+            continue;
+        };
+        // Token boundary: `cargo install cargo-llvm-cov` must not match a
+        // `cargo-llvm-coverage` line (and vice versa).
+        if !rest.starts_with(char::is_whitespace) {
+            continue;
+        }
+
+        let mut version: Option<&str> = None;
+        let mut locked = false;
+        let mut tokens = line.split_whitespace();
+        while let Some(token) = tokens.next() {
+            match token {
+                "--version" => version = tokens.next(),
+                "--locked" => locked = true,
+                _ => {}
+            }
+        }
+        let version = version.unwrap_or_else(|| {
+            panic!(
+                "native-ci.yml install line for `{tool}` has no `--version \
+                 <value>`; expected `run: cargo install {tool} --version \
+                 <semver> --locked`; got: {line}"
+            )
+        });
+        if !version.starts_with(|c: char| c.is_ascii_digit()) {
+            panic!(
+                "native-ci.yml install line for `{tool}` has a non-numeric \
+                 `--version {version}`; expected a semver pin; got: {line}"
+            );
+        }
+        if !locked {
+            panic!(
+                "native-ci.yml install line for `{tool}` has no `--locked`; \
+                 the pin must be `--locked` so the install is reproducible; \
+                 got: {line}"
+            );
+        }
+        pins.insert(version);
+    }
+
+    match pins.len() {
+        0 => panic!(
+            "native-ci.yml has no pinned `cargo install {tool}` line; the \
+             coverage toolchain is unpinned — expected `run: cargo install \
+             {tool} --version <semver> --locked`"
+        ),
+        1 => pins.into_iter().next().unwrap(),
+        _ => {
+            let mut sorted: Vec<&str> = pins.into_iter().collect();
+            sorted.sort_unstable();
+            panic!(
+                "native-ci.yml pins `{tool}` at multiple versions: \
+                 {sorted:?}; keep exactly one pinned install line per tool"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod coverage_pin_parser_tests {
+    use super::native_ci_install_pin;
+
+    // The parser trim-starts every line, so fixtures need no YAML indent.
+    const HAPPY: &str = "- name: Install cargo-llvm-cov (pinned)\n\
+                         run: cargo install cargo-llvm-cov --version 0.8.5 --locked\n\
+                         - name: Install cargo-nextest (pinned)\n\
+                         run: cargo install cargo-nextest --version 0.9.144 --locked\n";
+
+    #[test]
+    fn install_pin_happy_path() {
+        assert_eq!(native_ci_install_pin(HAPPY, "cargo-llvm-cov"), "0.8.5");
+        assert_eq!(native_ci_install_pin(HAPPY, "cargo-nextest"), "0.9.144");
+    }
+
+    #[test]
+    #[should_panic(expected = "coverage toolchain is unpinned")]
+    fn install_pin_missing_tool() {
+        native_ci_install_pin(HAPPY, "cargo-tarpaulin");
+    }
+
+    #[test]
+    #[should_panic(expected = "no `--version <value>`")]
+    fn install_pin_requires_version() {
+        native_ci_install_pin(
+            "run: cargo install cargo-llvm-cov --locked\n",
+            "cargo-llvm-cov",
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "no `--locked`")]
+    fn install_pin_requires_locked() {
+        native_ci_install_pin(
+            "run: cargo install cargo-llvm-cov --version 0.8.5\n",
+            "cargo-llvm-cov",
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "non-numeric")]
+    fn install_pin_rejects_non_numeric_version() {
+        native_ci_install_pin(
+            "run: cargo install cargo-llvm-cov --version latest --locked\n",
+            "cargo-llvm-cov",
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "multiple versions")]
+    fn install_pin_rejects_divergent_duplicates() {
+        let text = "run: cargo install cargo-llvm-cov --version 0.8.5 --locked\n\
+                    run: cargo install cargo-llvm-cov --version 0.9.0 --locked\n";
+        native_ci_install_pin(text, "cargo-llvm-cov");
+    }
+
+    #[test]
+    fn install_pin_allows_identical_duplicates() {
+        let text = "run: cargo install cargo-llvm-cov --version 0.8.5 --locked\n\
+                    run: cargo install cargo-llvm-cov --version 0.8.5 --locked\n";
+        assert_eq!(native_ci_install_pin(text, "cargo-llvm-cov"), "0.8.5");
+    }
+
+    #[test]
+    #[should_panic(expected = "coverage toolchain is unpinned")]
+    fn install_pin_token_boundary() {
+        // `cargo-llvm-coverage` must not satisfy a `cargo-llvm-cov` query.
+        let text = "run: cargo install cargo-llvm-coverage --version 1.0.0 --locked\n";
+        native_ci_install_pin(text, "cargo-llvm-cov");
+    }
+
+    #[test]
+    fn install_pin_accepts_block_scalar_line() {
+        // Inside a `run: |` block the command line carries no `run:` key.
+        let text = "run: |\n  cargo install cargo-llvm-cov --version 0.8.5 --locked\n";
+        assert_eq!(native_ci_install_pin(text, "cargo-llvm-cov"), "0.8.5");
+    }
 }
 
 /// The native-ci lanes whose cargo (transitively, via the nested

@@ -519,6 +519,11 @@ jobs:
     runs-on: macos-15
     permissions:
       contents: read
+    # GitHub #21 reconciliation: production credentials (the 1Password service
+    # account feeding the Apple signing secrets) live only in the reviewed
+    # tsm-production-release environment on this repository; declare it so the
+    # job receives them, exactly as the release finalizer does.
+    environment: tsm-production-release
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -544,12 +549,18 @@ jobs:
       - name: Sign, notarize, and revalidate final macOS binaries
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          CERT_BASE64: ${{ secrets.CERT_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.CERT_PASSWORD }}
           VERSION: ${{ needs.preflight.outputs.version }}
         run: |
           set -euo pipefail
-          load_masked() {
-            local name="$1" reference="$2" value
-            value="$(op read "$reference" --no-newline)"
+          # Shared validation: non-empty, CERT_BASE64 newline-stripped, all
+          # other values single-line, masked in logs, exported under $name.
+          normalise_and_mask() {
+            local name="$1" value="$2"
             [ -n "$value" ] || { echo "empty credential $name" >&2; exit 1; }
             if [ "$name" = "CERT_BASE64" ]; then
               value="${value//$'\r'/}"
@@ -560,13 +571,37 @@ jobs:
             fi
             printf '::add-mask::%s\n' "$value"
             printf -v "$name" '%s' "$value"
-            export "$name"
+            # ${name?} both asserts the credential name is set/non-null and
+            # exports the variable it names (ShellCheck SC2163 form); the
+            # masking above and the empty-value check are unchanged.
+            export "${name?}"
           }
-          load_masked APPLE_ID 'op://TerraphimPlatform/apple.developer.credentials/username'
-          load_masked APPLE_TEAM_ID 'op://TerraphimPlatform/apple.developer.credentials/APPLE_TEAM_ID'
-          load_masked APPLE_APP_PASSWORD 'op://TerraphimPlatform/apple.developer.credentials/APPLE_APP_SPECIFIC_PASSWORD'
-          load_masked CERT_BASE64 'op://TerraphimPlatform/apple.developer.certificate/base64'
-          load_masked CERT_PASSWORD 'op://TerraphimPlatform/apple.developer.certificate/password'
+          load_masked() {
+            local name="$1" reference="$2"
+            normalise_and_mask "$name" "$(op read "$reference" --no-newline)"
+          }
+          load_masked_env() {
+            local name="$1"
+            normalise_and_mask "$name" "${!name:-}"
+          }
+          # Preferred source is the 1Password service account; when it has not
+          # been provisioned, the identical credentials held by the reviewed
+          # tsm-production-release environment (the same source
+          # finalize-prebuilt-release.yml uses) keep the lane unblocked.
+          if [ -n "${OP_SERVICE_ACCOUNT_TOKEN:-}" ]; then
+            load_masked APPLE_ID 'op://TerraphimPlatform/apple.developer.credentials/username'
+            load_masked APPLE_TEAM_ID 'op://TerraphimPlatform/apple.developer.credentials/APPLE_TEAM_ID'
+            load_masked APPLE_APP_PASSWORD 'op://TerraphimPlatform/apple.developer.credentials/APPLE_APP_SPECIFIC_PASSWORD'
+            load_masked CERT_BASE64 'op://TerraphimPlatform/apple.developer.certificate/base64'
+            load_masked CERT_PASSWORD 'op://TerraphimPlatform/apple.developer.certificate/password'
+          else
+            echo "NOTE: OP_SERVICE_ACCOUNT_TOKEN not set; using tsm-production-release environment secrets" >&2
+            load_masked_env APPLE_ID
+            load_masked_env APPLE_TEAM_ID
+            load_masked_env APPLE_APP_PASSWORD
+            load_masked_env CERT_BASE64
+            load_masked_env CERT_PASSWORD
+          fi
           chmod 755 macos/*
           for path in macos/*; do
             scripts/sign-macos-binary.sh "$path" "$APPLE_ID" "$APPLE_TEAM_ID" "$APPLE_APP_PASSWORD" "$CERT_BASE64" "$CERT_PASSWORD"
@@ -603,6 +638,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    # GitHub #21 reconciliation: the zipsign release private key is a
+    # production credential held only in the reviewed tsm-production-release
+    # environment on this repository; declare it so the sealing job receives
+    # it, exactly as the release finalizer does.
+    environment: tsm-production-release
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -722,7 +762,19 @@ jobs:
           CORRELATION_ID: ${{ needs.preflight.outputs.correlation_id }}
         run: |
           set -euo pipefail
-          (cd release-assets && LC_ALL=C sha256sum $(LC_ALL=C find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort) > ../SHA256SUMS)
+          # NUL-safe, deterministic SHA256SUMS: find emits bare filenames
+          # NUL-delimited, sort -z applies the same LC_ALL=C byte order the
+          # unquoted-substitution form used, and a single sha256sum
+          # invocation over the array keeps the exact `hash  filename`
+          # output format (bare names, later verified by `sha256sum -c`
+          # from inside release-assets). The explicit emptiness guard keeps
+          # a zero-asset stage failing closed instead of reading stdin.
+          (
+            cd release-assets
+            mapfile -d '' sealed_assets < <(LC_ALL=C find . -maxdepth 1 -type f -printf '%f\0' | LC_ALL=C sort -z)
+            [ "${#sealed_assets[@]}" -gt 0 ] || { echo "no release assets to seal" >&2; exit 1; }
+            LC_ALL=C sha256sum "${sealed_assets[@]}" > ../SHA256SUMS
+          )
           (cd release-assets && sha256sum -c ../SHA256SUMS)
           test "$(wc -l < SHA256SUMS | tr -d ' ')" = 20
           for binary in terraphim-agent terraphim-cli terraphim-grep; do

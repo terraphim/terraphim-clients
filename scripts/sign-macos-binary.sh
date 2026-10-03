@@ -49,10 +49,20 @@ security set-key-partition-list \
     "$KEYCHAIN_PATH"
 
 # Add keychain to search list
-security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed s/\"//g)
+EXISTING_KEYCHAINS=()
+while IFS= read -r keychain; do
+    keychain="${keychain//\"/}"
+    EXISTING_KEYCHAINS+=("$keychain")
+done < <(security list-keychains -d user)
+security list-keychains -d user -s "$KEYCHAIN_PATH" "${EXISTING_KEYCHAINS[@]}"
 
 # Find signing identity
-SIGNING_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep "Developer ID Application" | head -1 | awk -F'"' '{print $2}')
+SIGNING_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
+    | awk -F'"' '/Developer ID Application/{print $2; exit}')
+[ -n "$SIGNING_IDENTITY" ] || {
+    echo "ERROR: Developer ID Application identity was not imported" >&2
+    exit 1
+}
 echo "==> Found signing identity: $SIGNING_IDENTITY"
 
 # Sign the binary

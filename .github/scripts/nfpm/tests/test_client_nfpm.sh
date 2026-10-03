@@ -766,6 +766,47 @@ test_verify_rpm_host_branch_strips_absolute_member_names() {
         fail "verify_rpm host branch did not extract the absolute-member payload privately: $(cat "$log")"
 }
 
+# rpm 4.17's rpm2cpio exits 1 on valid nFPM 2.47 RPMs while writing a
+# complete payload and printing nothing to stderr (`rpm -K` on the same
+# package reports "digests OK"). Hosted CI run 36153935369 failed the arch
+# suite on exactly this: all five members plus "26 blocks" in the
+# extraction log, and the pipeline status alone rejected the package.
+# verify_rpm must judge extraction by its output, not by that status.
+test_verify_rpm_accepts_complete_payload_despite_rpm2cpio_exit_status() {
+    command -v cpio >/dev/null 2>&1 || { require_tool_or_skip "cpio not installed"; return 0; }
+    local payload=$'complete payload despite nonzero rpm2cpio\n'
+    local payload_file="$TMP/rpm-nonzero-payload"
+    local receipt_file="$TMP/rpm-nonzero-receipt"
+    printf '%s' "$payload" > "$payload_file"
+    printf 'rpm\n' > "$receipt_file"
+    local archive="$TMP/nonzero-status.cpio"
+    make_absolute_member_cpio_archive "$archive" "$payload_file" "$receipt_file"
+    local expected_sha
+    expected_sha="$(printf '%s' "$payload" | sha256sum | awk '{print $1}')"
+    printf 'fake rpm container\n' > "$TMP/fake-nonzero.rpm"
+
+    local work="$TMP/rpm-nonzero-work"
+    local log="$TMP/rpm-nonzero.log"
+    if ! (
+        TERRAPHIM_BUILD_CLIENT_PACKAGES_SOURCED=1 source "$BUILD"
+        WORK_DIR="$work"
+        BIN_NAME=terraphim-agent
+        RPM_ARCH=x86_64
+        EXPECTED_SHA="$expected_sha"
+        mkdir -p "$WORK_DIR"
+        # Complete archive on stdout, but the tool itself exits nonzero --
+        # the exact rpm 4.17 behaviour observed on the hosted runner.
+        rpm2cpio() { cat "$archive"; return 1; }
+        stub_rpm_metadata_x86_64
+        lint_rpm() { :; }
+        verify_rpm "$TMP/fake-nonzero.rpm"
+    ) >"$log" 2>&1; then
+        fail "verify_rpm rejected a complete payload because rpm2cpio exited nonzero: $(cat "$log")"
+    fi
+    [[ "$(sha256sum "$work/rpm-extract-terraphim-agent/usr/bin/terraphim-agent" | awk '{print $1}')" == "$expected_sha" ]] ||
+        fail "verify_rpm did not bind the extracted payload SHA: $(cat "$log")"
+}
+
 test_verify_rpm_host_branch_surfaces_extraction_diagnostics() {
     command -v cpio >/dev/null 2>&1 || { require_tool_or_skip "cpio not installed"; return 0; }
     local log="$TMP/rpm-extract-failure.log"
@@ -777,16 +818,19 @@ test_verify_rpm_host_branch_surfaces_extraction_diagnostics() {
         RPM_ARCH=x86_64
         EXPECTED_SHA="$(sha256sum /dev/null | awk '{print $1}')"
         mkdir -p "$WORK_DIR"
-        # rpm2cpio succeeds but emits a corrupt archive, so cpio is the
-        # command that fails; its stderr must reach the operator.
-        rpm2cpio() { printf 'not a cpio archive\n'; }
+        # rpm2cpio emits a corrupt archive, so the extraction produces no
+    # payload; the cpio diagnostic must reach the operator.
+    rpm2cpio() { printf 'not a cpio archive\n'; }
         stub_rpm_metadata_x86_64
         lint_rpm() { :; }
         verify_rpm "$TMP/fake-corrupt.rpm"
     ) >"$log" 2>&1; then
         fail "verify_rpm host branch accepted a corrupt RPM payload archive"
     fi
-    assert_contains "$log" "RPM payload extraction failed"
+    # The failure is reported by what extraction produced, not by the
+    # pipeline status: rpm 4.17's rpm2cpio exits 1 even on valid nFPM
+    # payloads, so the producer only fails closed when no binary appears.
+    assert_contains "$log" "RPM payload extraction produced no terraphim-agent"
     # The underlying cpio diagnostic must be surfaced, not discarded.
     assert_contains "$log" "cpio"
 }
@@ -1109,6 +1153,7 @@ test_verify_rpm_rejects_payload_sha_mismatch
 test_verify_rpm_rejects_missing_receipt
 test_verify_rpm_rejects_wrong_receipt
 test_verify_rpm_host_branch_strips_absolute_member_names
+test_verify_rpm_accepts_complete_payload_despite_rpm2cpio_exit_status
 test_verify_rpm_host_branch_surfaces_extraction_diagnostics
 test_rpm_extraction_uses_no_absolute_filenames_everywhere
 test_build_reports_missing_nfpm
