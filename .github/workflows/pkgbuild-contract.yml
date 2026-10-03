@@ -1,0 +1,43 @@
+name: pkgbuild-contract
+
+# Validates the canonical Arch/AUR split PKGBUILD (pkgbuilds/terraphim-clients-bin)
+# on every change. The Python contract test runs unprivileged on the runner and
+# the package itself is built, linted, installed, smoke-tested and removed
+# inside a real Arch Linux container. Refs terraphim-clients#316.
+
+on:
+  push:
+    paths:
+      - "pkgbuilds/terraphim-clients-bin/**"
+      - "tests/test_pkgbuild_release_contract.py"
+      - ".github/workflows/pkgbuild-contract.yml"
+  pull_request:
+    paths:
+      - "pkgbuilds/terraphim-clients-bin/**"
+      - "tests/test_pkgbuild_release_contract.py"
+      - ".github/workflows/pkgbuild-contract.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: pkgbuild contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Contract tests
+        run: python3 -m unittest tests.test_pkgbuild_release_contract -v
+
+  arch-package:
+    name: arch build + install
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:base-devel
+      options: --privileged
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install namcap
+        run: pacman -Sy --noconfirm --needed namcap
+      - name: Build, lint, install, smoke and remove
+        run: ./pkgbuilds/terraphim-clients-bin/verify.sh
