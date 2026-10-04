@@ -34,13 +34,6 @@ fn hermetic_learnings_dir(root: &Path) -> PathBuf {
     root.join("data").join("terraphim").join("learnings")
 }
 
-/// Derive the learnings dir from the same env var the helper sets on the
-/// spawned cmd. The hook (post-#144) uses this var via
-/// `LearningCaptureConfig::default()` to compute `global_dir`.
-fn hermetic_learnings_dir(root: &Path) -> PathBuf {
-    root.join("data").join("terraphim").join("learnings")
-}
-
 /// Run the user-prompt-submit hook with a JSON payload, returning whether it succeeded.
 fn run_user_prompt_submit(binary: &str, prompt: &str, root: &Path) -> bool {
     let json = format!(r#"{{"user_prompt":"{}"}}"#, prompt);
