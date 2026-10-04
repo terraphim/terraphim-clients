@@ -130,6 +130,24 @@ impl TerraphimGrep {
         options.force_rlm || options.include_answer
     }
 
+    /// Maximum tokens for the RLM synthesis completion.
+    ///
+    /// Reasoning models (e.g. DeepSeek V4 Flash, o1, o3) spend a substantial
+    /// fraction of their token budget on chain-of-thought reasoning before
+    /// emitting any content. A 2000-token cap is routinely exhausted by the
+    /// reasoning phase alone, leaving `content: null` in the response and
+    /// producing an empty synthesis. 8000 accommodates the reasoning overhead
+    /// while still bounding latency and cost.
+    ///
+    /// Override via the `TERRAPHIM_GREP_MAX_TOKENS` environment variable.
+    fn rlm_max_tokens() -> u32 {
+        std::env::var("TERRAPHIM_GREP_MAX_TOKENS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .filter(|&n| n > 0)
+            .unwrap_or(8000)
+    }
+
     /// Build a `SearchOnly` result from chunks that were retrieved but not synthesised.
     fn search_only_result(
         chunks: Vec<RetrievedChunk>,
@@ -344,7 +362,7 @@ impl TerraphimGrep {
                 .chat_completion(
                     messages,
                     terraphim_service::llm::ChatOptions {
-                        max_tokens: Some(2000),
+                        max_tokens: Some(Self::rlm_max_tokens()),
                         temperature: Some(0.3),
                     },
                 )
@@ -382,21 +400,33 @@ impl TerraphimGrep {
 
         let answer = if options.include_answer {
             let signature = signatures::AnswerSignature {};
-            signature.parse(&llm_response).ok().map(|a| {
-                let citations = chunks
-                    .iter()
-                    .map(|c| Citation {
-                        source: c.source.clone(),
-                        line: c.line_start,
-                        excerpt: c.content.chars().take(100).collect(),
+            match signature.parse(&llm_response) {
+                Ok(a) => {
+                    let citations = chunks
+                        .iter()
+                        .map(|c| Citation {
+                            source: c.source.clone(),
+                            line: c.line_start,
+                            excerpt: c.content.chars().take(100).collect(),
+                        })
+                        .collect();
+                    Some(signatures::AnswerWithCitations {
+                        answer: a.answer,
+                        citations,
+                        confidence: a.confidence,
                     })
-                    .collect();
-                signatures::AnswerWithCitations {
-                    answer: a.answer,
-                    citations,
-                    confidence: a.confidence,
                 }
-            })
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        response_len = llm_response.len(),
+                        "RLM synthesis produced an unparseable answer; the LLM response \
+                         was empty or did not match the expected JSON format. The search \
+                         chunks are still valid."
+                    );
+                    None
+                }
+            }
         } else {
             None
         };
@@ -412,15 +442,38 @@ impl TerraphimGrep {
             let _ = kg_curation.extract_and_index(query, &llm_response).await;
         }
 
-        Ok(GrepResult {
-            sufficiency_explanation: format!(
+        let sufficiency_explanation = if !options.include_answer {
+            format!(
+                "Found {} chunks (coverage {:.2}, KG confidence {:.2}); the LLM reviewed \
+                 the context in {}ms, but no structured answer was requested, so retrieved \
+                 chunks are returned without an answer object.",
+                chunks.len(),
+                metrics.coverage,
+                metrics.kg_confidence,
+                rlm_latency_ms,
+            )
+        } else if answer.is_some() {
+            format!(
                 "Found {} chunks (coverage {:.2}, KG confidence {:.2}); the answer was \
                  synthesised by the LLM in {}ms.",
                 chunks.len(),
                 metrics.coverage,
                 metrics.kg_confidence,
                 rlm_latency_ms,
-            ),
+            )
+        } else {
+            format!(
+                "Found {} chunks (coverage {:.2}, KG confidence {:.2}); the LLM response \
+                 could not be parsed as a structured answer, so no answer object is \
+                 returned. Retrieved chunks remain valid.",
+                chunks.len(),
+                metrics.coverage,
+                metrics.kg_confidence,
+            )
+        };
+
+        Ok(GrepResult {
+            sufficiency_explanation,
             chunks,
             answer,
             concepts: hybrid_results.kg_concepts,
@@ -518,6 +571,7 @@ mod tests {
     #[cfg(all(feature = "llm", feature = "code-search"))]
     struct CountingLocalLlm {
         calls: std::sync::atomic::AtomicUsize,
+        response: &'static str,
     }
 
     #[cfg(all(feature = "llm", feature = "code-search"))]
@@ -525,6 +579,14 @@ mod tests {
         fn new() -> Self {
             Self {
                 calls: std::sync::atomic::AtomicUsize::new(0),
+                response: r#"{"answer":"local synthesis","citations":[],"confidence":0.9}"#,
+            }
+        }
+
+        fn with_response(response: &'static str) -> Self {
+            Self {
+                calls: std::sync::atomic::AtomicUsize::new(0),
+                response,
             }
         }
 
@@ -556,7 +618,7 @@ mod tests {
             _opts: terraphim_service::llm::ChatOptions,
         ) -> terraphim_service::Result<String> {
             self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            Ok(r#"{"answer":"local synthesis","citations":[],"confidence":0.9}"#.to_string())
+            Ok(self.response.to_string())
         }
     }
 
@@ -668,6 +730,50 @@ mod tests {
         assert_eq!(answer.answer, "local synthesis");
     }
 
+    /// A malformed structured answer must not be reported as synthesised.
+    #[cfg(all(feature = "llm", feature = "code-search"))]
+    #[tokio::test]
+    async fn needs_synthesis_with_answer_parse_failure_explains_no_answer_object() {
+        let (_tmp, hybrid) = needs_synthesis_fixture().await;
+        let llm = Arc::new(CountingLocalLlm::with_response("not json"));
+
+        let grep = TerraphimGrep::new(hybrid, Arc::new(SufficiencyJudge::default()))
+            .with_llm_client(llm.clone());
+
+        let result = grep
+            .search(
+                "target",
+                GrepOptions {
+                    haystack: Haystack::Code,
+                    max_results: 50,
+                    include_answer: true,
+                    ..GrepOptions::default()
+                },
+            )
+            .await
+            .expect("search should succeed");
+
+        assert_eq!(llm.calls(), 1, "--answer must invoke the LLM exactly once");
+        assert!(result.answer.is_none(), "unparseable JSON => no answer");
+        assert!(
+            result
+                .sufficiency_explanation
+                .contains("could not be parsed"),
+            "explanation must describe parse failure, got: {}",
+            result.sufficiency_explanation
+        );
+        assert!(
+            !result
+                .sufficiency_explanation
+                .contains("answer was synthesised")
+                && !result
+                    .sufficiency_explanation
+                    .contains("answer was synthesized"),
+            "parse failure must not claim an answer was synthesised, got: {}",
+            result.sufficiency_explanation
+        );
+    }
+
     /// `--force-rlm` alone (without `--answer`) must still reach the LLM.
     #[cfg(all(feature = "llm", feature = "code-search"))]
     #[tokio::test]
@@ -697,6 +803,153 @@ mod tests {
             "expected RlmSynthesis, got {:?}",
             result.sufficiency
         );
+    }
+
+    /// `--force-rlm` without `--answer` asks for findings, not a structured answer.
+    #[cfg(all(feature = "llm", feature = "code-search"))]
+    #[tokio::test]
+    async fn force_rlm_without_answer_explains_no_structured_answer_requested() {
+        let (_tmp, hybrid) = needs_synthesis_fixture().await;
+        let llm = Arc::new(CountingLocalLlm::new());
+
+        let grep = TerraphimGrep::new(hybrid, Arc::new(SufficiencyJudge::default()))
+            .with_llm_client(llm.clone());
+
+        let result = grep
+            .search(
+                "target",
+                GrepOptions {
+                    haystack: Haystack::Code,
+                    max_results: 50,
+                    force_rlm: true,
+                    include_answer: false,
+                    ..GrepOptions::default()
+                },
+            )
+            .await
+            .expect("search should succeed");
+
+        assert_eq!(llm.calls(), 1, "--force-rlm must invoke the LLM");
+        assert!(result.answer.is_none(), "no --answer => no answer object");
+        assert!(
+            result
+                .sufficiency_explanation
+                .contains("no structured answer was requested"),
+            "explanation must state no structured answer was requested, got: {}",
+            result.sufficiency_explanation
+        );
+        assert!(
+            !result
+                .sufficiency_explanation
+                .contains("could not be parsed"),
+            "no-answer mode must not claim parse failure, got: {}",
+            result.sufficiency_explanation
+        );
+        assert!(
+            !result
+                .sufficiency_explanation
+                .contains("answer was synthesised")
+                && !result
+                    .sufficiency_explanation
+                    .contains("answer was synthesized"),
+            "no-answer mode must not claim an answer was synthesised, got: {}",
+            result.sufficiency_explanation
+        );
+    }
+
+    /// `--force-rlm` without a configured client preserves the search-only fallback.
+    #[cfg(all(feature = "llm", feature = "code-search"))]
+    #[tokio::test]
+    async fn force_rlm_without_client_returns_search_only_explanation() {
+        let (_tmp, hybrid) = needs_synthesis_fixture().await;
+        let grep = TerraphimGrep::new(hybrid, Arc::new(SufficiencyJudge::default()));
+
+        let result = grep
+            .search(
+                "target",
+                GrepOptions {
+                    haystack: Haystack::Code,
+                    max_results: 50,
+                    force_rlm: true,
+                    ..GrepOptions::default()
+                },
+            )
+            .await
+            .expect("search should succeed without LLM");
+
+        assert!(
+            matches!(result.sufficiency, SufficiencyState::SearchOnly),
+            "expected SearchOnly, got {:?}",
+            result.sufficiency
+        );
+        assert!(result.answer.is_none(), "no LLM client => no answer");
+        assert!(
+            result
+                .sufficiency_explanation
+                .contains("no LLM client is configured; returning the search results as-is"),
+            "no-client explanation must be preserved, got: {}",
+            result.sufficiency_explanation
+        );
+        assert!(
+            !result
+                .sufficiency_explanation
+                .contains("no structured answer was requested")
+                && !result
+                    .sufficiency_explanation
+                    .contains("could not be parsed"),
+            "no-client path must not be conflated with RLM response wording, got: {}",
+            result.sufficiency_explanation
+        );
+    }
+
+    /// `rlm_max_tokens` defaults to 8000 and honours the env override.
+    #[test]
+    fn rlm_max_tokens_default_and_override() {
+        // SAFETY: test code, single-threaded, no concurrent env access.
+        let saved = std::env::var("TERRAPHIM_GREP_MAX_TOKENS").ok();
+
+        unsafe {
+            std::env::remove_var("TERRAPHIM_GREP_MAX_TOKENS");
+        }
+        assert_eq!(
+            TerraphimGrep::rlm_max_tokens(),
+            8000,
+            "default should be 8000"
+        );
+
+        unsafe {
+            std::env::set_var("TERRAPHIM_GREP_MAX_TOKENS", "4000");
+        }
+        assert_eq!(TerraphimGrep::rlm_max_tokens(), 4000);
+
+        unsafe {
+            std::env::set_var("TERRAPHIM_GREP_MAX_TOKENS", "not-a-number");
+        }
+        assert_eq!(
+            TerraphimGrep::rlm_max_tokens(),
+            8000,
+            "invalid value falls back to default"
+        );
+
+        unsafe {
+            std::env::set_var("TERRAPHIM_GREP_MAX_TOKENS", "0");
+        }
+        assert_eq!(
+            TerraphimGrep::rlm_max_tokens(),
+            8000,
+            "zero falls back to default"
+        );
+
+        // Restore.
+        if let Some(v) = saved {
+            unsafe {
+                std::env::set_var("TERRAPHIM_GREP_MAX_TOKENS", v);
+            }
+        } else {
+            unsafe {
+                std::env::remove_var("TERRAPHIM_GREP_MAX_TOKENS");
+            }
+        }
     }
 
     /// The opt-in predicate: only the two explicit flags enable synthesis.
