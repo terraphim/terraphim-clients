@@ -442,15 +442,38 @@ impl TerraphimGrep {
             let _ = kg_curation.extract_and_index(query, &llm_response).await;
         }
 
-        Ok(GrepResult {
-            sufficiency_explanation: format!(
+        let sufficiency_explanation = if !options.include_answer {
+            format!(
+                "Found {} chunks (coverage {:.2}, KG confidence {:.2}); the LLM reviewed \
+                 the context in {}ms, but no structured answer was requested, so retrieved \
+                 chunks are returned without an answer object.",
+                chunks.len(),
+                metrics.coverage,
+                metrics.kg_confidence,
+                rlm_latency_ms,
+            )
+        } else if answer.is_some() {
+            format!(
                 "Found {} chunks (coverage {:.2}, KG confidence {:.2}); the answer was \
                  synthesised by the LLM in {}ms.",
                 chunks.len(),
                 metrics.coverage,
                 metrics.kg_confidence,
                 rlm_latency_ms,
-            ),
+            )
+        } else {
+            format!(
+                "Found {} chunks (coverage {:.2}, KG confidence {:.2}); the LLM response \
+                 could not be parsed as a structured answer, so no answer object is \
+                 returned. Retrieved chunks remain valid.",
+                chunks.len(),
+                metrics.coverage,
+                metrics.kg_confidence,
+            )
+        };
+
+        Ok(GrepResult {
+            sufficiency_explanation,
             chunks,
             answer,
             concepts: hybrid_results.kg_concepts,
@@ -548,6 +571,7 @@ mod tests {
     #[cfg(all(feature = "llm", feature = "code-search"))]
     struct CountingLocalLlm {
         calls: std::sync::atomic::AtomicUsize,
+        response: &'static str,
     }
 
     #[cfg(all(feature = "llm", feature = "code-search"))]
@@ -555,6 +579,14 @@ mod tests {
         fn new() -> Self {
             Self {
                 calls: std::sync::atomic::AtomicUsize::new(0),
+                response: r#"{"answer":"local synthesis","citations":[],"confidence":0.9}"#,
+            }
+        }
+
+        fn with_response(response: &'static str) -> Self {
+            Self {
+                calls: std::sync::atomic::AtomicUsize::new(0),
+                response,
             }
         }
 
@@ -586,7 +618,7 @@ mod tests {
             _opts: terraphim_service::llm::ChatOptions,
         ) -> terraphim_service::Result<String> {
             self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            Ok(r#"{"answer":"local synthesis","citations":[],"confidence":0.9}"#.to_string())
+            Ok(self.response.to_string())
         }
     }
 
@@ -698,6 +730,50 @@ mod tests {
         assert_eq!(answer.answer, "local synthesis");
     }
 
+    /// A malformed structured answer must not be reported as synthesised.
+    #[cfg(all(feature = "llm", feature = "code-search"))]
+    #[tokio::test]
+    async fn needs_synthesis_with_answer_parse_failure_explains_no_answer_object() {
+        let (_tmp, hybrid) = needs_synthesis_fixture().await;
+        let llm = Arc::new(CountingLocalLlm::with_response("not json"));
+
+        let grep = TerraphimGrep::new(hybrid, Arc::new(SufficiencyJudge::default()))
+            .with_llm_client(llm.clone());
+
+        let result = grep
+            .search(
+                "target",
+                GrepOptions {
+                    haystack: Haystack::Code,
+                    max_results: 50,
+                    include_answer: true,
+                    ..GrepOptions::default()
+                },
+            )
+            .await
+            .expect("search should succeed");
+
+        assert_eq!(llm.calls(), 1, "--answer must invoke the LLM exactly once");
+        assert!(result.answer.is_none(), "unparseable JSON => no answer");
+        assert!(
+            result
+                .sufficiency_explanation
+                .contains("could not be parsed"),
+            "explanation must describe parse failure, got: {}",
+            result.sufficiency_explanation
+        );
+        assert!(
+            !result
+                .sufficiency_explanation
+                .contains("answer was synthesised")
+                && !result
+                    .sufficiency_explanation
+                    .contains("answer was synthesized"),
+            "parse failure must not claim an answer was synthesised, got: {}",
+            result.sufficiency_explanation
+        );
+    }
+
     /// `--force-rlm` alone (without `--answer`) must still reach the LLM.
     #[cfg(all(feature = "llm", feature = "code-search"))]
     #[tokio::test]
@@ -726,6 +802,103 @@ mod tests {
             matches!(result.sufficiency, SufficiencyState::RlmSynthesis),
             "expected RlmSynthesis, got {:?}",
             result.sufficiency
+        );
+    }
+
+    /// `--force-rlm` without `--answer` asks for findings, not a structured answer.
+    #[cfg(all(feature = "llm", feature = "code-search"))]
+    #[tokio::test]
+    async fn force_rlm_without_answer_explains_no_structured_answer_requested() {
+        let (_tmp, hybrid) = needs_synthesis_fixture().await;
+        let llm = Arc::new(CountingLocalLlm::new());
+
+        let grep = TerraphimGrep::new(hybrid, Arc::new(SufficiencyJudge::default()))
+            .with_llm_client(llm.clone());
+
+        let result = grep
+            .search(
+                "target",
+                GrepOptions {
+                    haystack: Haystack::Code,
+                    max_results: 50,
+                    force_rlm: true,
+                    include_answer: false,
+                    ..GrepOptions::default()
+                },
+            )
+            .await
+            .expect("search should succeed");
+
+        assert_eq!(llm.calls(), 1, "--force-rlm must invoke the LLM");
+        assert!(result.answer.is_none(), "no --answer => no answer object");
+        assert!(
+            result
+                .sufficiency_explanation
+                .contains("no structured answer was requested"),
+            "explanation must state no structured answer was requested, got: {}",
+            result.sufficiency_explanation
+        );
+        assert!(
+            !result
+                .sufficiency_explanation
+                .contains("could not be parsed"),
+            "no-answer mode must not claim parse failure, got: {}",
+            result.sufficiency_explanation
+        );
+        assert!(
+            !result
+                .sufficiency_explanation
+                .contains("answer was synthesised")
+                && !result
+                    .sufficiency_explanation
+                    .contains("answer was synthesized"),
+            "no-answer mode must not claim an answer was synthesised, got: {}",
+            result.sufficiency_explanation
+        );
+    }
+
+    /// `--force-rlm` without a configured client preserves the search-only fallback.
+    #[cfg(all(feature = "llm", feature = "code-search"))]
+    #[tokio::test]
+    async fn force_rlm_without_client_returns_search_only_explanation() {
+        let (_tmp, hybrid) = needs_synthesis_fixture().await;
+        let grep = TerraphimGrep::new(hybrid, Arc::new(SufficiencyJudge::default()));
+
+        let result = grep
+            .search(
+                "target",
+                GrepOptions {
+                    haystack: Haystack::Code,
+                    max_results: 50,
+                    force_rlm: true,
+                    ..GrepOptions::default()
+                },
+            )
+            .await
+            .expect("search should succeed without LLM");
+
+        assert!(
+            matches!(result.sufficiency, SufficiencyState::SearchOnly),
+            "expected SearchOnly, got {:?}",
+            result.sufficiency
+        );
+        assert!(result.answer.is_none(), "no LLM client => no answer");
+        assert!(
+            result
+                .sufficiency_explanation
+                .contains("no LLM client is configured; returning the search results as-is"),
+            "no-client explanation must be preserved, got: {}",
+            result.sufficiency_explanation
+        );
+        assert!(
+            !result
+                .sufficiency_explanation
+                .contains("no structured answer was requested")
+                && !result
+                    .sufficiency_explanation
+                    .contains("could not be parsed"),
+            "no-client path must not be conflated with RLM response wording, got: {}",
+            result.sufficiency_explanation
         );
     }
 
