@@ -224,7 +224,7 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq qemu-user-static
       - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.1
         with:
-          key: immutable-clients-${{ matrix.target }}
+          key: immutable-clients-v2-${{ matrix.target }}
       - name: Build all shipped binaries from the locked source
         shell: bash
         env:
