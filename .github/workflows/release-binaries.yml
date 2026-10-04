@@ -229,7 +229,6 @@ jobs:
         shell: bash
         env:
           CARGO_PROFILE_RELEASE_STRIP: symbols
-          CARGO_REGISTRIES_TERRAPHIM_TOKEN: ${{ secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN }}
         run: |
           set -euo pipefail
           if [ "${{ matrix.use_cross }}" = "true" ]; then
