@@ -181,24 +181,34 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-22.04
+          # 2026-10-04: Linux and macOS lanes run on self-hosted runners that
+          # reach git.terraphim.cloud via the Tailscale /etc/hosts mapping, so
+          # cargo needs no special auth against the Gitea cargo registry
+          # (Caddy treats tailnet sources as on-network). GitHub-hosted runners
+          # cannot reach the registry: off-tailnet cargo access is
+          # Bearer-only (Gitea #341) and cargo omits Bearer on .crate
+          # downloads when the registry advertises auth-required:false.
+          - os: [self-hosted, Linux, X64, release-linux]
             target: x86_64-unknown-linux-gnu
             use_cross: false
-          - os: ubuntu-22.04
+          - os: [self-hosted, Linux, X64, release-linux]
             target: x86_64-unknown-linux-musl
             use_cross: true
-          - os: ubuntu-22.04
+          - os: [self-hosted, Linux, X64, release-linux]
             target: aarch64-unknown-linux-musl
             use_cross: true
-          - os: macos-15-intel
+          # Both macOS targets build on the Apple Silicon runner; x86_64 is a
+          # cross-compile from the arm64 host.
+          - os: [self-hosted, macOS, ARM64, release-macos]
             target: x86_64-apple-darwin
             use_cross: false
-          - os: macos-15
+          - os: [self-hosted, macOS, ARM64, release-macos]
             target: aarch64-apple-darwin
             use_cross: false
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            use_cross: false
+          # x86_64-pc-windows-msvc lane: temporarily removed. GitHub-hosted
+          # Windows runners cannot authenticate to the private Gitea cargo
+          # registry; restore this lane once the terraphim crates are
+          # published to crates.io.
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -232,10 +242,6 @@ jobs:
           CARGO_REGISTRIES_TERRAPHIM_TOKEN: ${{ secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN }}
         run: |
           set -euo pipefail
-          echo "DEBUG: token length=${#CARGO_REGISTRIES_TERRAPHIM_TOKEN}"
-          echo "DEBUG: token prefix=${CARGO_REGISTRIES_TERRAPHIM_TOKEN:0:7}"
-          echo "DEBUG: CARGO_REGISTRY_TOKEN set=${CARGO_REGISTRY_TOKEN:+yes}"
-          rustup run 1.96.0 cargo config get registries.terraphim 2>&1 || true
           if [ "${{ matrix.use_cross }}" = "true" ]; then
             build=(rustup run 1.96.0 cross)
           else
