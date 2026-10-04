@@ -140,12 +140,16 @@ impl TerraphimGrep {
     /// while still bounding latency and cost.
     ///
     /// Override via the `TERRAPHIM_GREP_MAX_TOKENS` environment variable.
+    /// Values above 32 000 are rejected (clamped to the default) to prevent
+    /// a typo from turning into an unbounded cost/latency multiplier.
     fn rlm_max_tokens() -> u32 {
+        const DEFAULT: u32 = 8000;
+        const MAX_SANE: u32 = 32_000;
         std::env::var("TERRAPHIM_GREP_MAX_TOKENS")
             .ok()
             .and_then(|v| v.parse().ok())
-            .filter(|&n| n > 0)
-            .unwrap_or(8000)
+            .filter(|&n| n > 0 && n <= MAX_SANE)
+            .unwrap_or(DEFAULT)
     }
 
     /// Build a `SearchOnly` result from chunks that were retrieved but not synthesised.
@@ -244,7 +248,11 @@ impl TerraphimGrep {
                             "Found {} chunks but {}; returning search results only \
                              (pass --answer or --force-rlm to synthesise).",
                             metrics.chunk_count,
-                            below.join(", "),
+                            if below.is_empty() {
+                                "multiple metrics below their thresholds".to_string()
+                            } else {
+                                below.join(", ")
+                            },
                         ),
                     ));
                 }
@@ -442,15 +450,29 @@ impl TerraphimGrep {
             let _ = kg_curation.extract_and_index(query, &llm_response).await;
         }
 
-        Ok(GrepResult {
-            sufficiency_explanation: format!(
+        let explanation = if answer.is_some() {
+            format!(
                 "Found {} chunks (coverage {:.2}, KG confidence {:.2}); the answer was \
                  synthesised by the LLM in {}ms.",
                 chunks.len(),
                 metrics.coverage,
                 metrics.kg_confidence,
                 rlm_latency_ms,
-            ),
+            )
+        } else {
+            format!(
+                "Found {} chunks (coverage {:.2}, KG confidence {:.2}); the LLM responded \
+                 in {}ms but the response could not be parsed into an answer (see logs). \
+                 The chunks below are the unmodified search results.",
+                chunks.len(),
+                metrics.coverage,
+                metrics.kg_confidence,
+                rlm_latency_ms,
+            )
+        };
+
+        Ok(GrepResult {
+            sufficiency_explanation: explanation,
             chunks,
             answer,
             concepts: hybrid_results.kg_concepts,
