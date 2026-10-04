@@ -1,5 +1,9 @@
 [package]
 name = "terraphim_agent"
+# Pinned ahead of the workspace: 1.21.1 on the terraphim registry carries the
+# broken install set (#95), so published agent releases must stay >= 1.21.2.
+# v1.21.12 consolidates canonical main after the divergent v1.21.11 release
+# branch (#97).
 version.workspace = true
 edition.workspace = true
 authors = ["Terraphim Contributors"]
@@ -14,7 +18,7 @@ license-file = "../../LICENSE-Apache-2.0"
 readme = "README.md"
 
 [features]
-default = ["repl-interactive", "llm", "repl-sessions"]
+default = ["repl-interactive", "llm", "repl-sessions", "shared-learning"]
 server = ["dep:reqwest", "dep:urlencoding"]
 llm = ["terraphim_service/ollama", "terraphim_service/llm_router"]
 repl = ["dep:rustyline", "dep:colored", "dep:comfy-table"]
@@ -51,9 +55,10 @@ tracing = { workspace = true }
 
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 log = { workspace = true }
+env_logger = "0.11"
 urlencoding = { version = "2.1", optional = true }
 ahash = "0.8"
-terraphim_update = { path = "../terraphim_update", version = "1.0.0" }
+terraphim_update = { path = "../terraphim_update", version = "1.20.2", registry = "terraphim" }
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 regex = "1.12"
 glob = "0.3"
@@ -63,6 +68,7 @@ jiff = { version = "0.2", features = ["serde"] }
 strsim = "0.11"  # For edit distance / fuzzy matching in forgiving CLI
 uuid = { workspace = true }
 dialoguer = "0.12"  # Interactive CLI prompts for onboarding wizard
+sha2 = "0.10"  # Corpus and thesaurus hashes for the judge-free memory benchmark (#260)
 
 # REPL dependencies - only compiled with features
 rustyline = { version = "17.0", optional = true }
@@ -70,20 +76,30 @@ colored = { version = "3.0", optional = true }
 comfy-table = { version = "7.0", optional = true }
 dirs = { version = "5.0" }
 directories = "5.0"
-terraphim_types = { version = "1.0.0" }
-terraphim_settings = { version = "1.0.0" }
-terraphim_persistence = { version = "1.0.0" }
-terraphim_config = { version = "1.0.0" }
-terraphim_command_runtime = { path = "../terraphim_command_runtime", version = "0.1.0" }
-terraphim_automata = { version = "1.19.2" }
-terraphim_service = { version = "1.20.4", default-features = false, registry = "terraphim" }
-terraphim_middleware = { version = "1.0.0" }
-terraphim_rolegraph = { version = "1.0.0" }
-terraphim_hooks = { path = "../terraphim_hooks", version = "1.0.0" }
-terraphim_tracker = { version = "1.0.0" }
-terraphim_orchestrator = { version = "1.0.0" }
-# Session search - uses workspace version (path for dev, version for crates.io)
-terraphim_sessions = { path = "../terraphim_sessions", version = "1.6.0", optional = true, features = ["tsa-full", "aider-connector", "search-index"] }
+terraphim_types = { version = "1.22.1", registry = "terraphim" }
+terraphim_settings = { version = "1.20.2", registry = "terraphim" }
+terraphim_persistence = { version = "1.20.2", registry = "terraphim" }
+terraphim_agent_evolution = { version = "1.20.2", registry = "terraphim" }
+terraphim_config = { version = "1.20.2", registry = "terraphim" }
+terraphim_command_runtime = { path = "../terraphim_command_runtime", version = "0.1.0", registry = "terraphim" }
+terraphim_automata = { version = "1.21.0", registry = "terraphim" }
+terraphim_service = { version = "1.21.1", default-features = false, registry = "terraphim" }
+# Upstream 1.21.3 moved McpToolIndex here; `mcp_tool_index` is now a deprecated
+# re-export shim and lib.rs re-exports the real type. Refs #112.
+terraphim_mcp_search = { version = "0.1.3", registry = "terraphim" }
+terraphim_middleware = { version = "1.21.0", registry = "terraphim" }
+terraphim_rolegraph = { version = "1.20.2", registry = "terraphim" }
+terraphim_hooks = { path = "../terraphim_hooks", version = "1.21.0", registry = "terraphim" }
+terraphim_tracker = { version = "1.20.2", registry = "terraphim" }
+terraphim_orchestrator = { version = "1.21.0", registry = "terraphim" }
+# Session search (#95): depend on the canonical terraphim-registry release.
+# crates.io only has stale terraphim_sessions (<= 1.21.1, no cursor-connector
+# and a broken terraphim-markdown-parser resolution), so the floor is 1.21.2
+# from the private registry. Do not use a workspace path here: the exact
+# published package is the release artifact being validated.
+# Sibling workspace crate: must be a path dep, otherwise the workspace compiles
+# two different terraphim_sessions (the local one and a published copy). Refs #112.
+terraphim_sessions = { path = "../terraphim_sessions", version = "1.21.2", optional = true, features = ["tsa-full", "aider-connector", "cursor-connector", "search-index"], registry = "terraphim" }
 
 [dev-dependencies]
 assert_cmd = "2"
@@ -95,9 +111,13 @@ reqwest = { workspace = true }
 tokio = { workspace = true }
 tempfile = { workspace = true }
 wiremock = "0.6"
-
-terraphim_test_utils = { version = "1.20.3" }
+terraphim_test_utils = { version = "1.20.3", registry = "terraphim" }
 insta = { version = "1.41", features = ["yaml", "redactions"] }
+# Packaged-install-graph regression test (#95)
+toml = "0.8"
+semver = "1"
+# Retrieval latency bench (#261); same version and features as terraphim_sessions.
+criterion = { version = "0.8", features = ["html_reports"] }
 
 # Enable REPL features for testing
 terraphim_agent = { path = ".", features = ["repl-full"] }
@@ -109,6 +129,12 @@ rustc_version = "0.4"
 [[bin]]
 name = "terraphim-agent"
 path = "src/main.rs"
+
+# Retrieval latency bench over the committed memory fixture tiled to 100, 1k
+# and 10k items (#261, epic #255).
+[[bench]]
+name = "memory_retrieve"
+harness = false
 
 [package.metadata.deb]
 maintainer = "Terraphim Contributors <team@terraphim.ai>"

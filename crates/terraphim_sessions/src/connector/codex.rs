@@ -48,9 +48,6 @@ struct GitInfo {
 /// Response item entry
 #[derive(Debug, Clone, Deserialize)]
 struct ResponseItem {
-    #[serde(rename = "type")]
-    #[allow(dead_code)] // Required for deserializing "type" field
-    msg_type: String,
     role: String,
     #[serde(default)]
     content: Vec<ContentBlock>,
@@ -131,10 +128,10 @@ impl SessionConnector for CodexConnector {
             .filter_map(|e| e.ok())
             .filter(|e| e.path().extension().is_some_and(|ext| ext == "jsonl"))
         {
-            if let Some(limit) = options.limit {
-                if sessions.len() >= limit {
-                    break;
-                }
+            if let Some(limit) = options.limit
+                && sessions.len() >= limit
+            {
+                break;
             }
 
             match self.parse_session_file(entry.path()).await {
@@ -147,6 +144,7 @@ impl SessionConnector for CodexConnector {
             }
         }
 
+        crate::redaction::redact_sessions(&mut sessions);
         Ok(sessions)
     }
 }

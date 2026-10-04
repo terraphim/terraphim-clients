@@ -9,8 +9,8 @@ use std::time::Duration;
 use tempfile::TempDir;
 
 fn run_tui_command(args: &[&str], test_root: Option<PathBuf>) -> Result<(String, String, i32)> {
-    let mut cmd = Command::new("cargo");
-    cmd.args(["run", "-p", "terraphim_agent", "--"]).args(args);
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_terraphim-agent"));
+    cmd.args(args);
     if let Some(root) = test_root {
         cmd.env("HOME", root.join("home"))
             .env("XDG_CONFIG_HOME", root.join("home").join(".config"));

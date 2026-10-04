@@ -36,23 +36,10 @@ fn agent_binary() -> Result<PathBuf> {
                 }
             }
 
-            let status = Command::new("cargo")
-                .args(["build", "-p", "terraphim_agent", "--bin", "terraphim-agent"])
-                .status()
-                .map_err(|e| format!("failed to spawn cargo build: {}", e))?;
-            if !status.success() {
-                return Err(format!("cargo build failed with status {}", status));
-            }
-            // CARGO_MANIFEST_DIR is set by cargo when building/running tests.
-            let manifest = std::env::var("CARGO_MANIFEST_DIR")
-                .map_err(|_| "CARGO_MANIFEST_DIR not set".to_string())?;
-            // crates/terraphim_agent -> ../../target/debug/terraphim-agent
-            let bin = PathBuf::from(manifest)
-                .parent()
-                .and_then(|p| p.parent())
-                .ok_or("could not derive workspace root from CARGO_MANIFEST_DIR")?
-                .join("target/debug/terraphim-agent");
-            Ok(bin)
+            // Cargo built the binary before this test ran and gives us its
+            // path; a nested `cargo build` deadlocks on the outer build lock.
+            // Refs #113.
+            Ok(PathBuf::from(env!("CARGO_BIN_EXE_terraphim-agent")))
         })
         .clone()
         .map_err(anyhow::Error::msg)

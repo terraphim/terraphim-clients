@@ -47,15 +47,12 @@ struct GitInfo {
 }
 
 /// Response item entry
+///
+/// Codex payloads carry both a `type` (entry kind, e.g. `"message"`) and a
+/// `role` (author, e.g. `"user"`/`"assistant"`). The author comes from `role`;
+/// `type` is intentionally ignored.
 #[derive(Debug, Clone, Deserialize)]
 struct ResponseItem {
-    /// Required by serde to discriminate the JSON `type` field during
-    /// deserialisation. The Rust field is intentionally never read because
-    /// the enum tag is consumed by serde; the discriminator is needed to
-    /// drive per-variant parsing.
-    #[serde(rename = "type")]
-    #[allow(dead_code)]
-    msg_type: String,
     role: String,
     #[serde(default)]
     content: Vec<ContentBlock>,

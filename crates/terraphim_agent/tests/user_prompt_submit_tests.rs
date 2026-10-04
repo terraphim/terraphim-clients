@@ -22,26 +22,16 @@ fn agent_binary() -> String {
         return bin;
     }
 
-    let output = Command::new("cargo")
-        .args(["build", "-p", "terraphim_agent"])
-        .output()
-        .expect("cargo build should succeed");
-    if !output.status.success() {
-        panic!(
-            "cargo build failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
+    // Cargo already built the binary for this test; nesting `cargo build`
+    // deadlocks on the outer build lock. Refs #113.
+    env!("CARGO_BIN_EXE_terraphim-agent").to_string()
+}
 
-    let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap();
-    workspace_root
-        .join("target/debug/terraphim-agent")
-        .to_string_lossy()
-        .to_string()
+/// Derive the learnings dir from the same env var the helper sets on the
+/// spawned cmd. The hook (post-#144) uses this var via
+/// `LearningCaptureConfig::default()` to compute `global_dir`.
+fn hermetic_learnings_dir(root: &Path) -> PathBuf {
+    root.join("data").join("terraphim").join("learnings")
 }
 
 /// Derive the learnings dir from the same env var the helper sets on the

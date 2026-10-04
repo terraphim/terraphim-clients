@@ -58,6 +58,18 @@ struct Args {
     #[arg(long, help = "Include LLM-generated answer")]
     answer: bool,
 
+    /// Hard-disable LLM synthesis for this run (see terraphim/terraphim-clients#81).
+    ///
+    /// Synthesis is already opt-in, but this also skips building the LLM client, so a
+    /// stray `OPENROUTER_API_KEY` in the environment cannot cost a single network call.
+    #[arg(
+        long,
+        visible_alias = "no-rlm",
+        conflicts_with_all = ["answer", "force_rlm"],
+        help = "Never use the LLM: return retrieved chunks only"
+    )]
+    search_only: bool,
+
     #[arg(long, help = "Output JSON format")]
     json: bool,
 
@@ -146,30 +158,89 @@ fn grep_updater() -> TerraphimUpdater {
     TerraphimUpdater::new(config)
 }
 
+/// The result of running `update` (`check_and_update`), decoupled from the
+/// actual `println!`/`std::process::exit` side effects so the decision is
+/// testable with an injected `TerraphimUpdater` and doesn't require spawning
+/// a subprocess. Mirrors `terraphim_agent`'s `UpdateCommandOutcome`.
+#[derive(Debug)]
+enum UpdateCommandOutcome {
+    /// Update completed (or determined not needed): caller should print the
+    /// status and exit 0. Current, unchanged behavior. Holds the legacy
+    /// `UpdateStatus` variants only (Gitea #247 packaged-install
+    /// regression) -- `classify_update_status` never puts a
+    /// `PackageManaged` value here.
+    Applied(terraphim_update::UpdateStatus),
+    /// A refusal: package-managed (Gitea #247, when linked against a
+    /// pacman-aware `terraphim_update`) or -- fail-closed -- any other
+    /// `UpdateStatus` this crate doesn't recognize by name. Caller should
+    /// print `message` and exit 1 -- the existing generic failure code,
+    /// reused deliberately pending Gitea #181's stable exit-code taxonomy.
+    PackageManagedRefusal { message: String },
+    /// The update failed for a reason unrelated to package management.
+    /// Caller should print `message` and exit 1. Current, unchanged
+    /// behavior.
+    Failed { message: String },
+}
+
+/// Classify a completed `check_and_update()` status.
+///
+/// Semver-compatible by construction (Gitea #247 packaged-install
+/// regression: `cargo install terraphim_grep` resolves the currently
+/// *published* `terraphim_update`, which predates the `PackageManaged`
+/// variant and the `policy` module entirely). Only the legacy `UpdateStatus`
+/// variants (`Updated`, `UpToDate`, `Available`, `Failed`) are matched by
+/// name; everything else falls through a fail-closed `other` arm that
+/// renders guidance via `Display` instead of naming the variant. With the
+/// workspace-local, pacman-aware `terraphim_update` that arm is exactly
+/// `PackageManaged` (whose `Display` impl embeds the stable
+/// `sudo pacman -Syu` guidance); with the published `terraphim_update` the
+/// arm is simply unreachable.
+fn classify_update_status(status: terraphim_update::UpdateStatus) -> UpdateCommandOutcome {
+    match status {
+        terraphim_update::UpdateStatus::Updated { .. }
+        | terraphim_update::UpdateStatus::UpToDate(_)
+        | terraphim_update::UpdateStatus::Available { .. } => UpdateCommandOutcome::Applied(status),
+        terraphim_update::UpdateStatus::Failed(message) => UpdateCommandOutcome::Failed { message },
+        other => UpdateCommandOutcome::PackageManagedRefusal {
+            message: format!("terraphim-grep update was refused: {other}"),
+        },
+    }
+}
+
+/// Run `check_and_update()` on `updater` and classify the result via
+/// [`classify_update_status`].
+async fn classify_update_result(updater: &TerraphimUpdater) -> UpdateCommandOutcome {
+    match updater.check_and_update().await {
+        Ok(status) => classify_update_status(status),
+        Err(e) => UpdateCommandOutcome::Failed {
+            message: e.to_string(),
+        },
+    }
+}
+
 async fn handle_update_command(command: Command) -> Result<()> {
     let updater = grep_updater();
     match command {
         Command::CheckUpdate => {
             println!("Checking for terraphim-grep updates...");
             let status = updater.check_update().await?;
-            println!("{}", status);
+            println!("{status}");
             Ok(())
         }
         Command::Update => {
             println!("Updating terraphim-grep...");
-            let status = updater.check_and_update().await?;
-            match status {
-                // A package-manager receipt owns this install: an explicit
-                // `update` must refuse with a non-zero exit and the exact
-                // stderr line the packaging lifecycle gates match on, leaving
-                // the installed binary untouched (Gitea #247 contract).
-                terraphim_update::UpdateStatus::PackageManaged { .. } => {
-                    eprintln!("terraphim-grep update was refused: {}", status);
+            match classify_update_result(&updater).await {
+                UpdateCommandOutcome::Applied(status) => {
+                    println!("{status}");
+                    Ok(())
+                }
+                UpdateCommandOutcome::PackageManagedRefusal { message } => {
+                    eprintln!("{message}");
                     std::process::exit(1);
                 }
-                other => {
-                    println!("{}", other);
-                    Ok(())
+                UpdateCommandOutcome::Failed { message } => {
+                    eprintln!("Update failed: {message}");
+                    std::process::exit(1);
                 }
             }
         }
@@ -203,68 +274,62 @@ fn resolve_role_name(
     Ok(explicit_role.unwrap_or("default").to_string())
 }
 
-/// Alternate thesaurus filename stems for a role, in priority order.
-///
-/// `discover_thesaurus` builds the filename literally from the role *name*
-/// (`thesaurus-<role_name>.json`), but projects commonly name the file after
-/// the role's configured `shortname` (e.g. `thesaurus-odidev.json` for role
-/// "Odilo Developer") or a lowercased hyphen slug (`thesaurus-odilo-developer.json`).
-/// The full role name is tried by the caller first; this returns only the
-/// alternates, deduplicated.
-///
-/// See terraphim/terraphim-clients#79.
-fn thesaurus_name_candidates(
+fn push_unique_candidate(candidates: &mut Vec<String>, candidate: impl Into<String>) {
+    let candidate = candidate.into();
+    if !candidate.is_empty() && !candidates.contains(&candidate) {
+        candidates.push(candidate);
+    }
+}
+
+fn thesaurus_role_candidates(
     role_name: &str,
-    config: &terraphim_config::project::ProjectConfig,
+    project_config: Option<&terraphim_config::project::ProjectConfig>,
 ) -> Vec<String> {
     let mut candidates = Vec::new();
+    push_unique_candidate(&mut candidates, role_name);
 
-    if let Some(role) = config.roles.get(role_name)
-        && let Some(shortname) = role.shortname.as_deref()
-        && !shortname.is_empty()
-        && shortname != role_name
-    {
-        candidates.push(shortname.to_string());
-    }
+    if let Some(config) = project_config {
+        if let Some(role) = config.roles.get(role_name)
+            && let Some(shortname) = &role.shortname
+        {
+            push_unique_candidate(&mut candidates, shortname);
+        }
 
-    let slug = role_name
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join("-")
-        .to_lowercase();
-    if slug != role_name && !candidates.contains(&slug) {
-        candidates.push(slug);
+        for (key, role) in &config.roles {
+            if role.name.to_string() == role_name {
+                push_unique_candidate(&mut candidates, key);
+                if let Some(shortname) = &role.shortname {
+                    push_unique_candidate(&mut candidates, shortname);
+                }
+            }
+        }
     }
 
     candidates
 }
 
-/// Find thesaurus path with project config priority.
-///
-/// Resolution order:
-///   1. `.terraphim/thesaurus-<role>.json` (project config, exact role name)
-///   2. `.terraphim/thesaurus-<shortname>.json` / `thesaurus-<slug>.json`
-///      (project config alternates, see [`thesaurus_name_candidates`])
-///   3. `*_thesaurus.json` in CWD or nearby directories (filesystem heuristic)
-fn find_default_thesaurus(role_name: &str) -> Option<PathBuf> {
-    if let Some(dir) = discover_project_dir() {
-        if let Some(path) = terraphim_config::project::discover_thesaurus(&dir, role_name) {
+fn discover_project_thesaurus(dir: &Path, role_name: &str) -> Option<PathBuf> {
+    let project_config = terraphim_config::project::ProjectConfig::load_from_dir(dir).ok();
+    for candidate in thesaurus_role_candidates(role_name, project_config.as_ref()) {
+        if let Some(path) = terraphim_config::project::discover_thesaurus(dir, &candidate) {
             tracing::info!("Using project thesaurus: {:?}", path);
             return Some(path);
         }
+    }
 
-        // The thesaurus filename stem often differs from the role *name*; try
-        // the role's shortname and a slugified name. Config is loaded lazily,
-        // only on a miss, so the happy path stays allocation-free.
-        if let Ok(config) = terraphim_config::project::ProjectConfig::load_from_dir(&dir) {
-            for candidate in thesaurus_name_candidates(role_name, &config) {
-                if let Some(path) = terraphim_config::project::discover_thesaurus(&dir, &candidate)
-                {
-                    tracing::info!("Using project thesaurus: {:?}", path);
-                    return Some(path);
-                }
-            }
-        }
+    None
+}
+
+/// Find thesaurus path with project config priority.
+///
+/// Resolution order:
+///   1. `.terraphim/thesaurus-<role>.json` or the matching role shortname (project config)
+///   2. `*_thesaurus.json` in CWD or nearby directories (filesystem heuristic)
+fn find_default_thesaurus(role_name: &str) -> Option<PathBuf> {
+    if let Some(dir) = discover_project_dir()
+        && let Some(path) = discover_project_thesaurus(&dir, role_name)
+    {
+        return Some(path);
     }
 
     let possible_paths = vec![
@@ -431,7 +496,6 @@ fn build_llm_for_role(
 // `--features llm` build substitutes `role_from_env` instead. See
 // `Cargo.toml` [features].
 #[cfg(not(feature = "llm"))]
-#[allow(dead_code)]
 fn build_llm_for_role(
     _role_name: &str,
     _role_config_path: Option<&std::path::Path>,
@@ -497,6 +561,11 @@ async fn main() -> Result<()> {
         return handle_update_command(command).await;
     }
 
+    let query = args
+        .query
+        .as_deref()
+        .context("missing search query; run `terraphim-grep --help` for usage")?;
+
     let options = GrepOptions {
         haystack: args.haystack.into(),
         context_lines: args.context,
@@ -548,7 +617,14 @@ async fn main() -> Result<()> {
     // Create TerraphimGrep and optionally attach an LLM client
     let terraphim_grep = TerraphimGrep::new(hybrid_searcher, sufficiency_judge);
     #[cfg(feature = "llm")]
-    let terraphim_grep = match build_llm_for_role(&role_name, args.role_config.as_deref()) {
+    let llm_client = if args.search_only {
+        tracing::debug!("--search-only: skipping LLM client setup");
+        None
+    } else {
+        build_llm_for_role(&role_name, args.role_config.as_deref())
+    };
+    #[cfg(feature = "llm")]
+    let terraphim_grep = match llm_client {
         Some(client) => {
             tracing::info!("LLM client wired: {}", client.name());
             let mut grep = terraphim_grep.with_llm_client(client.clone());
@@ -571,7 +647,7 @@ async fn main() -> Result<()> {
 
     // Perform search
     let result = terraphim_grep
-        .search(args.query.as_deref().unwrap_or(""), options)
+        .search(query, options)
         .await
         .context("Search failed")?;
 
@@ -599,6 +675,7 @@ fn print_results(result: &GrepResult, context_lines: usize) {
     println!("Chunks returned: {}", result.stats.chunks_returned);
     println!("KG hits: {}", result.stats.kg_hits);
     println!("Sufficiency: {:?}", result.sufficiency);
+    println!("  {}", result.sufficiency_explanation);
     println!();
 
     // Print concepts
@@ -653,6 +730,57 @@ fn print_results(result: &GrepResult, context_lines: usize) {
                     citation.source, citation.line, citation.excerpt
                 );
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod managed_mode_tests {
+    use super::*;
+    use terraphim_update::policy::{PackageManager, UpdatePolicy};
+
+    fn package_managed_updater() -> TerraphimUpdater {
+        let config = UpdaterConfig::new("terraphim-grep-managed-mode-test").with_policy(
+            UpdatePolicy::PackageManaged {
+                manager: PackageManager::Pacman,
+                update_command: "sudo pacman -Syu".to_string(),
+            },
+        );
+        TerraphimUpdater::new(config)
+    }
+
+    #[tokio::test]
+    async fn classify_update_result_refuses_when_package_managed() {
+        let updater = package_managed_updater();
+        match classify_update_result(&updater).await {
+            UpdateCommandOutcome::PackageManagedRefusal { message } => {
+                assert!(
+                    message.contains("sudo pacman -Syu"),
+                    "refusal message missing update command: {message}"
+                );
+            }
+            other => panic!("expected PackageManagedRefusal, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn check_update_returns_package_managed_status() {
+        let updater = package_managed_updater();
+        let status = updater.check_update().await.expect("check_update");
+        assert!(status.to_string().contains("sudo pacman -Syu"));
+    }
+
+    /// Control: the fail-closed fallback in `classify_update_status` must
+    /// not swallow the legacy, semver-stable variants -- only the unnamed
+    /// ("new-to-this-crate") ones route through the refusal arm.
+    #[test]
+    fn classify_update_status_reports_up_to_date_as_applied() {
+        let status = terraphim_update::UpdateStatus::UpToDate("1.2.3".to_string());
+        match classify_update_status(status) {
+            UpdateCommandOutcome::Applied(terraphim_update::UpdateStatus::UpToDate(version)) => {
+                assert_eq!(version, "1.2.3");
+            }
+            other => panic!("expected Applied(UpToDate), got {other:?}"),
         }
     }
 }
@@ -758,75 +886,48 @@ mod tests {
         );
     }
 
-    // Regression tests: terraphim/terraphim-clients#79
-    // The thesaurus filename stem often differs from the role *name*
-    // (e.g. `thesaurus-odidev.json` for role "Odilo Developer").
-
-    fn role_with_shortname(name: &str, shortname: &str) -> String {
-        format!(
-            r#"{{"shortname":"{}","name":"{}","relevance_function":"title-scorer","terraphim_it":false,"theme":"default","haystacks":[]}}"#,
-            shortname, name
-        )
-    }
-
     #[test]
-    fn candidates_prefer_shortname_then_slug() {
-        // Mirrors zestic-ai/odilo .terraphim/config.json.
-        let mut config = ProjectConfig {
-            selected_role: Some("Odilo Developer".to_string()),
-            ..Default::default()
-        };
-        config.roles.insert(
-            "Odilo Developer".to_string(),
-            serde_json::from_str(&role_with_shortname("Odilo Developer", "odidev")).unwrap(),
-        );
+    fn thesaurus_candidates_include_matching_role_shortname() {
+        let mut config = ProjectConfig::default();
+        let mut role: terraphim_config::Role =
+            serde_json::from_str(&minimal_role_json("Project Developer")).unwrap();
+        role.shortname = Some("projdev".to_string());
+        config.roles.insert("Project Developer".to_string(), role);
 
-        let candidates = thesaurus_name_candidates("Odilo Developer", &config);
+        let candidates = thesaurus_role_candidates("Project Developer", Some(&config));
+
         assert_eq!(
             candidates,
-            vec!["odidev".to_string(), "odilo-developer".to_string()]
+            vec!["Project Developer".to_string(), "projdev".to_string()]
         );
     }
 
     #[test]
-    fn candidates_fall_back_to_slug_when_role_not_in_config() {
-        let config = ProjectConfig::default();
-        let candidates = thesaurus_name_candidates("Rust Engineer", &config);
-        assert_eq!(candidates, vec!["rust-engineer".to_string()]);
-    }
+    fn discover_project_thesaurus_returns_shortname_match() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let terraphim_dir = tmp.path().join(".terraphim");
+        fs::create_dir(&terraphim_dir).unwrap();
+        fs::write(
+            terraphim_dir.join("config.json"),
+            r#"{
+              "roles": {
+                "Project Developer": {
+                  "shortname": "projdev",
+                  "name": "Project Developer",
+                  "relevance_function": "title-scorer",
+                  "terraphim_it": false,
+                  "theme": "default",
+                  "haystacks": []
+                }
+              }
+            }"#,
+        )
+        .unwrap();
+        let expected = terraphim_dir.join("thesaurus-projdev.json");
+        fs::write(&expected, "{}").unwrap();
 
-    #[test]
-    fn candidates_empty_when_nothing_to_add() {
-        // Lowercase single-word role name: slug is identical, no shortname.
-        let config = ProjectConfig::default();
-        assert!(thesaurus_name_candidates("devops", &config).is_empty());
-    }
+        let actual = discover_project_thesaurus(&terraphim_dir, "Project Developer");
 
-    #[test]
-    fn candidates_skip_shortname_equal_to_role_name() {
-        let mut config = ProjectConfig::default();
-        config.roles.insert(
-            "devops".to_string(),
-            serde_json::from_str(&role_with_shortname("devops", "devops")).unwrap(),
-        );
-        assert!(thesaurus_name_candidates("devops", &config).is_empty());
-    }
-
-    #[test]
-    fn candidates_dedupe_shortname_matching_slug() {
-        let mut config = ProjectConfig::default();
-        config.roles.insert(
-            "Rust Engineer".to_string(),
-            serde_json::from_str(&role_with_shortname("Rust Engineer", "rust-engineer")).unwrap(),
-        );
-        let candidates = thesaurus_name_candidates("Rust Engineer", &config);
-        assert_eq!(candidates, vec!["rust-engineer".to_string()]);
-    }
-
-    #[test]
-    fn candidates_slug_collapses_repeated_whitespace() {
-        let config = ProjectConfig::default();
-        let candidates = thesaurus_name_candidates("Odilo   Developer", &config);
-        assert_eq!(candidates, vec!["odilo-developer".to_string()]);
+        assert_eq!(actual, Some(expected));
     }
 }

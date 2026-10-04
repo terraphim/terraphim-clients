@@ -555,12 +555,8 @@ mod cli_integration_tests {
     fn test_cli_analyze_with_target_filename() {
         let temp_dir = create_target_filtering_test_directory().unwrap();
 
-        let output = Command::new("cargo")
+        let output = Command::new(env!("CARGO_BIN_EXE_tsa"))
             .args([
-                "run",
-                "--bin",
-                "tsa",
-                "--",
                 "analyze",
                 temp_dir.path().to_str().unwrap(),
                 "--target",
@@ -642,12 +638,8 @@ mod cli_integration_tests {
     fn test_cli_analyze_with_partial_target() {
         let temp_dir = create_target_filtering_test_directory().unwrap();
 
-        let output = Command::new("cargo")
+        let output = Command::new(env!("CARGO_BIN_EXE_tsa"))
             .args([
-                "run",
-                "--bin",
-                "tsa",
-                "--",
                 "analyze",
                 temp_dir.path().to_str().unwrap(),
                 "--target",
@@ -685,12 +677,8 @@ mod cli_integration_tests {
     fn test_cli_analyze_with_nonexistent_target() {
         let temp_dir = create_target_filtering_test_directory().unwrap();
 
-        let output = Command::new("cargo")
+        let output = Command::new(env!("CARGO_BIN_EXE_tsa"))
             .args([
-                "run",
-                "--bin",
-                "tsa",
-                "--",
                 "analyze",
                 temp_dir.path().to_str().unwrap(),
                 "--target",
@@ -719,12 +707,8 @@ mod cli_integration_tests {
     fn test_cli_files_only_flag_with_target() {
         let temp_dir = create_target_filtering_test_directory().unwrap();
 
-        let output = Command::new("cargo")
+        let output = Command::new(env!("CARGO_BIN_EXE_tsa"))
             .args([
-                "run",
-                "--bin",
-                "tsa",
-                "--",
                 "analyze",
                 temp_dir.path().to_str().unwrap(),
                 "--target",

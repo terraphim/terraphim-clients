@@ -29,12 +29,7 @@ pub trait PatternMatcher: Send + Sync {
     /// Returns matches ordered by position (leftmost-longest)
     fn find_matches<'a>(&self, text: &'a str) -> Vec<ToolMatch<'a>>;
 
-    /// Get the matcher type identifier.
-    ///
-    /// Trait method consumed only by in-file unit tests in this module.
-    /// External callers don't currently use it, hence the conditional allow.
-    /// Trait method consumed only by in-file unit tests in this module. External callers do not currently invoke it.
-    #[allow(dead_code)]
+    /// Get the matcher type identifier
     fn matcher_type(&self) -> &'static str;
 }
 
@@ -261,7 +256,7 @@ impl PatternMatcher for TerraphimMatcher {
         };
 
         // Call the actual terraphim_automata find_matches function
-        match terraphim_find_matches(text, thesaurus.clone(), true) {
+        match terraphim_find_matches(text, thesaurus, true) {
             Ok(matches) => {
                 // Convert terraphim matches to our ToolMatch format
                 matches
@@ -313,8 +308,6 @@ impl PatternMatcher for TerraphimMatcher {
 /// and the crate-level doc examples; the `tsa` binary uses a different
 /// matcher construction path, hence the conditional allow.
 #[must_use]
-/// Factory function consumed only by in-file unit tests in this module and the crate-level doc examples. The `tsa` binary constructs matchers via its own path.
-#[allow(dead_code)]
 pub fn create_matcher() -> Box<dyn PatternMatcher> {
     #[cfg(feature = "terraphim")]
     {

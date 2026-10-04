@@ -148,7 +148,7 @@ impl ConfigTemplate {
 
     fn build_rust_engineer(&self) -> Role {
         let mut role = Role::new("Rust Engineer");
-        role.shortname = Some("rust".to_string());
+        role.shortname = Some("rust-engineer".to_string());
         role.relevance_function = RelevanceFunction::TitleScorer;
         role.terraphim_it = false;
         role.theme = "cosmo".to_string();
@@ -408,7 +408,7 @@ impl TemplateRegistry {
             },
             ConfigTemplate {
                 id: "rust-engineer".to_string(),
-                name: "Rust Developer".to_string(),
+                name: "Rust Engineer".to_string(),
                 description: "Search Rust docs and crates.io via QueryRs".to_string(),
                 requires_path: false,
                 default_path: None,
@@ -658,6 +658,20 @@ mod tests {
             role.haystacks[1].extra_parameters.get("language"),
             Some(&"python".to_string())
         );
+    }
+
+    #[test]
+    fn test_build_rust_engineer() {
+        let registry = TemplateRegistry::new();
+        let template = registry.get("rust-engineer").unwrap();
+        assert_eq!(template.name, "Rust Engineer");
+
+        let role = template.build_role(None);
+        assert_eq!(role.name.to_string(), "Rust Engineer");
+        // Shortname must match the CLI flag `--role rust-engineer`
+        assert_eq!(role.shortname, Some("rust-engineer".to_string()));
+        assert_eq!(role.haystacks.len(), 1);
+        assert_eq!(role.haystacks[0].service, ServiceType::QueryRs);
     }
 
     #[test]

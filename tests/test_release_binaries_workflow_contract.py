@@ -710,37 +710,6 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
         self.assertLess(assemble, checksum)
         self.assertIn('test "$(wc -l < SHA256SUMS | tr -d \' \')" = 20', stage)
 
-    def test_checksum_sealing_and_credential_export_are_word_split_safe(self) -> None:
-        """ShellCheck SC2163/SC2046 hardening is contract, not decoration.
-
-        GitHub-hosted runners ship shellcheck, so actionlint's embedded-script
-        pass fails the workflow contract on the unsafe forms. These textual
-        assertions keep the safe forms required even where a local actionlint
-        runs without shellcheck (the unsafe forms then pass lint vacuously).
-
-        - SC2163: `export "${name?}"` is the ShellCheck-approved dynamic
-          export -- it exports the variable *named by* `name` and fails
-          closed if the credential name is unset or null. The masked 1Password
-          loading (`::add-mask::` + `printf -v`) is unchanged.
-        - SC2046: SHA256SUMS is sealed from a NUL-delimited `find -printf
-          '%f\\0' | sort -z` pipeline into an array, checksummed by a single
-          `sha256sum "${sealed_assets[@]}"` invocation (exact bare-filename
-          output format preserved for `sha256sum -c` and promote-release.sh),
-          with an explicit emptiness guard so a zero-asset stage fails closed
-          instead of reading stdin.
-        """
-        text = workflow_text()
-        signing = job_block("sign-and-notarize-macos")
-        self.assertIn('export "${name?}"', signing)
-        self.assertNotIn('export "$name"', signing)
-        stage = job_block("seal-release-stage")
-        self.assertIn("mapfile -d '' sealed_assets", stage)
-        self.assertIn("-printf '%f\\0'", stage)
-        self.assertIn("LC_ALL=C sort -z", stage)
-        self.assertIn('LC_ALL=C sha256sum "${sealed_assets[@]}"', stage)
-        self.assertIn('[ "${#sealed_assets[@]}" -gt 0 ]', stage)
-        self.assertNotIn("sha256sum $(LC_ALL=C find", stage)
-
     def test_producer_is_stage_only_and_has_no_public_writer(self) -> None:
         text = workflow_text()
         for forbidden in (

@@ -2,6 +2,17 @@
 
 use std::collections::HashMap;
 
+use crate::models::{ToolInvocation, ToolStatistics};
+
+/// Shell built-ins and keywords to exclude from tool detection
+const EXCLUDED_SHELL_BUILTINS: &[&str] = &[
+    "cd", "ls", "pwd", "echo", "cat", "mkdir", "rm", "cp", "mv", "export", "source", "if", "then",
+    "else", "fi", "for", "while", "do", "done", "case", "esac", "function", "return", "local",
+    "set", "unset", "shift", "test", "[", "[[", "alias", "unalias", "bg", "fg", "jobs", "wait",
+    "kill", "exit", "break", "continue", "read", "printf", "pushd", "popd", "dirs", "true",
+    "false", ":", ".",
+];
+
 /// Parse command into components (command, args, flags)
 ///
 /// # Arguments
@@ -116,9 +127,116 @@ pub fn split_command_pipeline(command: &str) -> Vec<String> {
     parts
 }
 
+/// Check if a command is an actual tool invocation (not a shell built-in)
+#[must_use]
+pub fn is_actual_tool(tool_name: &str) -> bool {
+    // Extract just the command name without path
+    let base_name = tool_name.rsplit('/').next().unwrap_or(tool_name).trim();
+
+    // Check if it's an excluded built-in
+    !EXCLUDED_SHELL_BUILTINS.contains(&base_name)
+}
+
+/// Calculate tool statistics from invocations
+/// Replaced by Analyzer::calculate_tool_statistics - kept for compatibility
+#[must_use]
+pub fn calculate_tool_statistics(
+    invocations: &[ToolInvocation],
+) -> HashMap<String, ToolStatistics> {
+    let mut stats: HashMap<String, ToolStatistics> = HashMap::new();
+
+    for inv in invocations {
+        let stat = stats
+            .entry(inv.tool_name.clone())
+            .or_insert_with(|| ToolStatistics {
+                tool_name: inv.tool_name.clone(),
+                category: inv.tool_category.clone(),
+                total_invocations: 0,
+                agents_using: Vec::new(),
+                success_count: 0,
+                failure_count: 0,
+                first_seen: inv.timestamp,
+                last_seen: inv.timestamp,
+                command_patterns: Vec::new(),
+                sessions: Vec::new(),
+            });
+
+        stat.total_invocations += 1;
+
+        // Track agents
+        if let Some(ref agent) = inv.agent_context
+            && !stat.agents_using.contains(agent)
+        {
+            stat.agents_using.push(agent.clone());
+        }
+
+        // Track sessions
+        if !stat.sessions.contains(&inv.session_id) {
+            stat.sessions.push(inv.session_id.clone());
+        }
+
+        // Update timestamps
+        if inv.timestamp < stat.first_seen {
+            stat.first_seen = inv.timestamp;
+        }
+        if inv.timestamp > stat.last_seen {
+            stat.last_seen = inv.timestamp;
+        }
+
+        // Track success/failure
+        match inv.exit_code {
+            Some(0) => stat.success_count += 1,
+            Some(_) => stat.failure_count += 1,
+            None => {}
+        }
+
+        // Track command patterns (store unique base commands)
+        let base_cmd = format!("{} {}", inv.tool_name, inv.arguments.join(" "));
+        if !stat.command_patterns.contains(&base_cmd) && stat.command_patterns.len() < 10 {
+            stat.command_patterns.push(base_cmd);
+        }
+    }
+
+    stats
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_calculate_tool_statistics_deduplicates_agents() {
+        use crate::models::ToolCategory;
+        use jiff::Timestamp;
+
+        let invocation = |agent: Option<&str>| ToolInvocation {
+            timestamp: Timestamp::from_second(1_700_000_000).unwrap(),
+            tool_name: "cargo".to_string(),
+            tool_category: ToolCategory::BuildTool,
+            command_line: "cargo build".to_string(),
+            arguments: vec!["build".to_string()],
+            flags: HashMap::new(),
+            exit_code: None,
+            agent_context: agent.map(str::to_string),
+            session_id: "s1".to_string(),
+            message_id: "m1".to_string(),
+        };
+
+        let stats = calculate_tool_statistics(&[
+            invocation(Some("developer")),
+            invocation(Some("developer")),
+            invocation(Some("architect")),
+            invocation(None),
+        ]);
+
+        let cargo = stats.get("cargo").expect("cargo statistics");
+        assert_eq!(cargo.total_invocations, 4);
+        assert_eq!(
+            cargo.agents_using,
+            vec!["developer".to_string(), "architect".to_string()],
+            "each agent is recorded once, and a missing agent context adds nothing"
+        );
+    }
 
     #[test]
     fn test_parse_command_context() {

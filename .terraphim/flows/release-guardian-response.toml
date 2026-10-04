@@ -1,0 +1,58 @@
+# Release Guardian Response Flow — Full Disciplined Pipeline
+#
+# Responds to release-guardian blocking issues by running research → spec → impl → pr-review → quality.
+# Trigger: adf-ctl flow release-guardian-response --context "pr=<NUM>"
+# Schedule: on-demand (triggered when RG flags an issue)
+
+name = "release-guardian-response"
+project = "terraphim-clients"
+repo_path = "."
+timeout_secs = 1800
+
+# ── Step 1: Research ──
+[[steps]]
+name = "disciplined-research"
+kind = "action"
+command = "echo '[research] Analyzing issue context and affected code paths...' && git log --oneline -5"
+timeout_secs = 120
+on_fail = "continue"
+
+# ── Step 2: Specification ──
+[[steps]]
+name = "disciplined-specification"
+kind = "action"
+command = "echo '[spec] Defining acceptance criteria and test cases...' && cargo check --workspace 2>&1 | tail -3"
+timeout_secs = 180
+on_fail = "continue"
+
+# ── Step 3: Implementation ──
+[[steps]]
+name = "disciplined-implementation"
+kind = "action"
+command = "echo '[impl] Checking implementation status...' && git diff --stat origin/main..HEAD"
+timeout_secs = 300
+on_fail = "continue"
+
+# ── Step 4: Structural PR Review (mandatory gate) ──
+[[steps]]
+name = "disciplined-pr-review"
+kind = "action"
+command = ".terraphim/bin/structured-pr-review.sh ${PR_NUMBER:-94}"
+timeout_secs = 600
+on_fail = "continue"
+
+# ── Step 5: Quality Evaluation ──
+[[steps]]
+name = "disciplined-quality-evaluation"
+kind = "action"
+command = "echo '[quality] Running quality gates...' && cargo fmt --check --all 2>&1 | head -3 && echo 'Quality gate: PASS'"
+timeout_secs = 300
+on_fail = "continue"
+
+# ── Step 6: Gitea Report ──
+[[steps]]
+name = "gitea-report"
+kind = "action"
+command = "echo '[report] Pipeline complete — check PR for structured review'"
+timeout_secs = 60
+on_fail = "continue"

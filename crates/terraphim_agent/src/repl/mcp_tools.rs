@@ -20,13 +20,11 @@ use terraphim_types::RoleName;
 //     `extract_paragraphs`, `find_matches`, `replace_matches`, `get_thesaurus`.
 // See `crates/terraphim_agent/Cargo.toml` [features] (`repl-mcp`).
 #[cfg(feature = "repl-mcp")]
-#[allow(dead_code)]
 pub struct McpToolsHandler {
     service: Arc<TuiService>,
 }
 
 #[cfg(feature = "repl-mcp")]
-#[allow(dead_code)]
 impl McpToolsHandler {
     /// Create a new McpToolsHandler with a reference to the TuiService
     pub fn new(service: Arc<TuiService>) -> Self {

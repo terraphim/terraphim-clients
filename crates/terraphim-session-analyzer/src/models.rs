@@ -4,6 +4,124 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::str::FromStr;
 
+/// Newtype wrappers for better type safety
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct SessionId(String);
+
+impl SessionId {
+    #[must_use]
+    pub fn new(id: String) -> Self {
+        Self(id)
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Display for SessionId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<String> for SessionId {
+    fn from(id: String) -> Self {
+        Self(id)
+    }
+}
+
+impl From<&str> for SessionId {
+    fn from(id: &str) -> Self {
+        Self(id.to_string())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct AgentType(String);
+
+impl AgentType {
+    #[must_use]
+    pub fn new(agent_type: String) -> Self {
+        Self(agent_type)
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Display for AgentType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<String> for AgentType {
+    fn from(agent_type: String) -> Self {
+        Self(agent_type)
+    }
+}
+
+impl From<&str> for AgentType {
+    fn from(agent_type: &str) -> Self {
+        Self(agent_type.to_string())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct MessageId(String);
+
+impl MessageId {
+    #[must_use]
+    pub fn new(id: String) -> Self {
+        Self(id)
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Display for MessageId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<String> for MessageId {
+    fn from(id: String) -> Self {
+        Self(id)
+    }
+}
+
+impl From<&str> for MessageId {
+    fn from(id: &str) -> Self {
+        Self(id.to_string())
+    }
+}
+
+impl AsRef<str> for SessionId {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl AsRef<str> for AgentType {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl AsRef<str> for MessageId {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
 /// Parse JSONL session entries from Claude Code
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -135,8 +253,6 @@ impl ToolCategory {
     /// The `tsa` binary does not call this method, hence the conditional allow.
     /// Consumers: `tests/integration_tests.rs` (cross-binary integration test).
     #[must_use]
-    /// Public API consumed only by `tests/integration_tests.rs` (cross-binary integration test). The `tsa` binary does not call this method.
-    #[allow(dead_code)]
     pub fn from_string(s: &str) -> Self {
         match s {
             "PackageManager" => ToolCategory::PackageManager,
@@ -329,25 +445,14 @@ pub fn extract_file_path(input: &serde_json::Value) -> Option<String> {
     None
 }
 
-/// Normalise an agent type identifier (e.g. "Backend Architect" -> "backend_architect").
-///
-/// Public API re-exported from `lib.rs`. Only the `tsa` binary is built in this
-/// crate and the binary does not call this helper, hence the annotation.
-/// Consumers: `tests/integration_tests.rs` (cross-binary integration test).
-/// A future refactor could move the body into a test helper or a `dev` module.
-#[allow(dead_code)]
+/// Agent type utilities
+/// Used in integration tests and public API
 #[must_use]
 pub fn normalize_agent_name(agent_type: &str) -> String {
     agent_type.to_lowercase().replace(['-', ' '], "_")
 }
 
-/// Map an agent type to its high-level category (e.g. "architect" -> "architecture").
-///
-/// Public API re-exported from `lib.rs`. Only the `tsa` binary is built in this
-/// crate and the binary does not call this helper, hence the annotation.
-/// Consumers: `tests/integration_tests.rs` (cross-binary integration test).
-/// A future refactor could move the body into a test helper or a `dev` module.
-#[allow(dead_code)]
+/// Used in integration tests and public API
 #[must_use]
 pub fn get_agent_category(agent_type: &str) -> &'static str {
     match agent_type {
@@ -382,6 +487,50 @@ mod tests {
 
         let path = extract_file_path(&input);
         assert_eq!(path, Some("/path/to/file.rs".to_string()));
+    }
+
+    #[test]
+    fn test_extract_file_path_prefers_direct_fields() {
+        // `path` and `pattern` are checked when `file_path` is absent.
+        assert_eq!(
+            extract_file_path(&serde_json::json!({"path": "/from/path.rs"})),
+            Some("/from/path.rs".to_string())
+        );
+        assert_eq!(
+            extract_file_path(&serde_json::json!({"pattern": "**/*.rs"})),
+            Some("**/*.rs".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_file_path_multiedit_branch() {
+        // Non-empty edits with a file_path resolves via the direct-field loop.
+        let multi_edit = serde_json::json!({
+            "file_path": "/path/to/file.rs",
+            "edits": [{"old_string": "a", "new_string": "b"}]
+        });
+        assert_eq!(
+            extract_file_path(&multi_edit),
+            Some("/path/to/file.rs".to_string())
+        );
+
+        // An empty edits array with no usable path field yields nothing.
+        let empty_edits = serde_json::json!({"edits": []});
+        assert_eq!(extract_file_path(&empty_edits), None);
+
+        // Edits present but no path anywhere yields nothing.
+        let edits_without_path = serde_json::json!({
+            "edits": [{"old_string": "a", "new_string": "b"}]
+        });
+        assert_eq!(extract_file_path(&edits_without_path), None);
+    }
+
+    #[test]
+    fn test_extract_file_path_returns_none_for_unrelated_input() {
+        assert_eq!(
+            extract_file_path(&serde_json::json!({"command": "cargo build"})),
+            None
+        );
     }
 
     #[test]

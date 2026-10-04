@@ -29,10 +29,28 @@ impl TuiService {
     /// If `no_project_config` is false, project-level `.terraphim/config.json` is discovered
     /// and merged on top of the loaded configuration.
     pub async fn new(config_path: Option<String>, no_project_config: bool) -> Result<Self> {
-        // Initialize logging
-        terraphim_service::logging::init_logging(
-            terraphim_service::logging::detect_logging_config(),
-        );
+        let config = Self::load_config(config_path, no_project_config).await?;
+        Self::from_config(config).await
+    }
+
+    /// Load the effective configuration without building a `ConfigState`.
+    ///
+    /// `ConfigState::new` builds the thesaurus and rolegraph, which profiling showed to be
+    /// ~63% of CLI startup (it parses a full markdown AST per knowledge-graph file, twice).
+    /// Commands that only read configuration -- `config show`, `roles list` -- do not need
+    /// any of that, so they load the config through here and skip it. Refs #120.
+    ///
+    /// Resolution order is identical to `new`; only the `ConfigState` build is omitted.
+    pub async fn load_config(
+        config_path: Option<String>,
+        no_project_config: bool,
+    ) -> Result<Config> {
+        // Initialize logging. We install the agent's own filtered logger
+        // (rather than `terraphim_service::logging`) so that the benign
+        // thesaurus-not-found `ERROR` logged by `ensure_thesaurus_loaded`
+        // is suppressed while every other line is preserved. See
+        // `crate::logging` and terraphim/terraphim-clients#48.
+        crate::logging::init_logging();
 
         log::info!("Initializing TUI service");
 
@@ -44,7 +62,7 @@ impl TuiService {
                     if !no_project_config {
                         Self::merge_project_config(&mut config);
                     }
-                    return Self::from_config(config).await;
+                    return Ok(config);
                 }
                 Err(e) => {
                     return Err(anyhow::anyhow!(
@@ -78,7 +96,7 @@ impl TuiService {
         // Priority 2: role_config in settings.toml (bootstrap-then-persistence)
         if let Some(ref role_config_path) = device_settings.role_config {
             log::info!("Found role_config in settings.toml: '{}'", role_config_path);
-            return Self::load_with_role_config(
+            return Self::load_config_with_role_config(
                 role_config_path,
                 &device_settings,
                 no_project_config,
@@ -96,12 +114,12 @@ impl TuiService {
                 }
                 Err(_) => {
                     log::debug!("No saved config found, using default embedded");
-                    return Self::new_with_embedded_defaults(no_project_config).await;
+                    return Self::load_config_embedded_defaults(no_project_config);
                 }
             },
             Err(e) => {
                 log::warn!("Failed to build config: {:?}, using default", e);
-                return Self::new_with_embedded_defaults(no_project_config).await;
+                return Self::load_config_embedded_defaults(no_project_config);
             }
         };
 
@@ -109,7 +127,7 @@ impl TuiService {
         if !no_project_config {
             Self::merge_project_config(&mut config);
         }
-        Self::from_config(config).await
+        Ok(config)
     }
 
     /// Load config using bootstrap-then-persistence strategy.
@@ -117,11 +135,11 @@ impl TuiService {
     /// Tries persistence first (preserves runtime changes). If no persisted config,
     /// loads from the JSON file (bootstrap) and the config will be saved to persistence
     /// on next `save_config()` call.
-    async fn load_with_role_config(
+    async fn load_config_with_role_config(
         role_config_path: &str,
         device_settings: &DeviceSettings,
         no_project_config: bool,
-    ) -> Result<Self> {
+    ) -> Result<Config> {
         // Try persistence first (preserves runtime changes like `config set`)
         if let Ok(mut empty_config) = ConfigBuilder::new_with_id(ConfigId::Embedded).build()
             && let Ok(persisted) = empty_config.load().await
@@ -135,7 +153,7 @@ impl TuiService {
             if !no_project_config {
                 Self::merge_project_config(&mut config);
             }
-            return Self::from_config(config).await;
+            return Ok(config);
         }
 
         // No persisted config -- bootstrap from JSON file
@@ -176,7 +194,7 @@ impl TuiService {
                 if !no_project_config {
                     Self::merge_project_config(&mut config);
                 }
-                Self::from_config(config).await
+                Ok(config)
             }
             Err(e) => {
                 log::error!(
@@ -184,7 +202,7 @@ impl TuiService {
                     role_config_path,
                     e
                 );
-                Self::new_with_embedded_defaults(no_project_config).await
+                Self::load_config_embedded_defaults(no_project_config)
             }
         }
     }
@@ -192,14 +210,84 @@ impl TuiService {
     /// Initialize service strictly from the embedded default configuration.
     ///
     /// This constructor avoids touching host-specific config/state and is used by tests.
+    // Reachable only from the lib target: `tests/tui_service_tests.rs` uses it, the binary
+    // no longer does since the embedded-defaults fallback now goes through
+    // `load_config_embedded_defaults`. Refs #120.
     pub async fn new_with_embedded_defaults(no_project_config: bool) -> Result<Self> {
+        let config = Self::load_config_embedded_defaults(no_project_config)?;
+        Self::from_config(config).await
+    }
+
+    /// Embedded defaults as a plain `Config`, without building a `ConfigState`. Refs #120.
+    fn load_config_embedded_defaults(no_project_config: bool) -> Result<Config> {
         let mut config = ConfigBuilder::new_with_id(ConfigId::Embedded)
             .build_default_embedded()
             .build()?;
         if !no_project_config {
             Self::merge_project_config(&mut config);
         }
-        Self::from_config(config).await
+        Ok(config)
+    }
+
+    /// Selected role, read straight from a `Config`.
+    ///
+    /// These three mirror the `ConfigState` helpers in `terraphim_command_runtime`, which lock
+    /// and read the same fields. They live here rather than in that crate because
+    /// `packaged_install_graph_regression` builds terraphim_agent from a packaged tarball, where
+    /// `terraphim_command_runtime` resolves from the registry -- adding functions there would
+    /// make this crate depend on unpublished API. Refs #120.
+    pub fn selected_role_of(config: &Config) -> RoleName {
+        config.selected_role.clone()
+    }
+
+    /// Build a service that loads only the requested role's thesaurus.
+    ///
+    /// `new` builds a `ConfigState` covering every configured role -- a
+    /// thesaurus and a rolegraph each, which profiling put at ~63% of CLI
+    /// startup (Refs #120). Commands that need exactly one role's thesaurus
+    /// (`memory retrieve`, which agents invoke in a loop) would otherwise pay
+    /// for every role's graph and query none of them (Refs #206).
+    ///
+    /// This resolves the role from the plain config (exact name, then
+    /// shortname case-insensitively -- the same order as
+    /// [`TuiService::resolve_role`]), strips the config to that one role, and
+    /// builds the service from it. Returns the service and the resolved role.
+    pub async fn new_for_single_role(
+        config_path: Option<String>,
+        role: Option<&str>,
+    ) -> Result<(Self, RoleName)> {
+        let config = Self::load_config(config_path, false).await?;
+        let role_name = match role {
+            Some(query) => config
+                .roles
+                .iter()
+                .find(|(name, r)| {
+                    name.as_str() == query
+                        || r.shortname
+                            .as_deref()
+                            .map(|s| s.eq_ignore_ascii_case(query))
+                            .unwrap_or(false)
+                })
+                .map(|(name, _)| name.clone())
+                .ok_or_else(|| anyhow::anyhow!("Role '{}' not found in config", query))?,
+            None => Self::selected_role_of(&config),
+        };
+        let mut single_role_config = config.clone();
+        single_role_config
+            .roles
+            .retain(|name, _| name == &role_name);
+        single_role_config.selected_role = role_name.clone();
+        let service = Self::from_config(single_role_config).await?;
+        Ok((service, role_name))
+    }
+
+    /// See [`TuiService::selected_role_of`].
+    pub fn roles_with_info_of(config: &Config) -> Vec<(String, Option<String>)> {
+        config
+            .roles
+            .iter()
+            .map(|(name, role)| (name.to_string(), role.shortname.clone()))
+            .collect()
     }
 
     async fn from_config(mut config: Config) -> Result<Self> {
@@ -297,8 +385,6 @@ impl TuiService {
     ///
     /// `selected_role` passed to `auto_select_role` is normalised: persisted
     /// `selected_role` is treated as `None` when it does not exist in `config.roles`.
-    // Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
-    #[allow(dead_code)]
     pub async fn resolve_or_auto_route(
         &self,
         role: Option<&str>,
@@ -524,13 +610,8 @@ impl TuiService {
             !exclude_term, // include_term is opposite of exclude_term
         )?;
 
-        // Convert to string tuples
-        let string_results = results
-            .into_iter()
-            .map(|(matched, paragraph)| (matched.normalized_term.value.to_string(), paragraph))
-            .collect();
-
-        Ok(string_results)
+        // Drop sub-word matches and label with the surface form actually present.
+        Ok(refine_extracted_paragraphs(text, results))
     }
 
     /// Perform autocomplete search using thesaurus for a role
@@ -892,4 +973,140 @@ pub struct ChecklistResult {
     pub total_items: usize,
     pub satisfied: Vec<String>,
     pub missing: Vec<String>,
+}
+
+/// Returns `true` when a thesaurus term occupying the byte span
+/// `[start, end)` of `text` sits on word boundaries, i.e. it is not glued to
+/// surrounding alphanumeric (or `_`) characters.
+///
+/// Short thesaurus terms (e.g. the two-letter abbreviation `lp`) otherwise
+/// match *inside* larger words via Aho-Corasick (`lp` inside `aLPha`), which
+/// produces phantom concept labels and paragraph slices that begin mid-word.
+/// Filtering on word boundaries keeps only genuine standalone matches.
+fn is_word_boundary_match(text: &str, start: usize, end: usize) -> bool {
+    let is_word_char = |c: char| c.is_alphanumeric() || c == '_';
+
+    let left_ok = match text.get(..start).and_then(|s| s.chars().next_back()) {
+        Some(c) => !is_word_char(c),
+        None => true, // start of text
+    };
+    let right_ok = match text.get(end..).and_then(|s| s.chars().next()) {
+        Some(c) => !is_word_char(c),
+        None => true, // end of text
+    };
+
+    left_ok && right_ok
+}
+
+/// Post-process raw automata extraction results so the `extract` command only
+/// reports genuine matches.
+///
+/// Two defects are corrected here (see issue #46):
+/// 1. Phantom term labels — the surface form that actually appears in `text`
+///    (`Matched.term`) is reported instead of the concept expansion
+///    (`normalized_term.value`), which may be a phrase absent from the input.
+/// 2. Mid-word start offsets — sub-word matches are dropped via
+///    [`is_word_boundary_match`], so surviving paragraphs begin at a clean
+///    word boundary.
+fn refine_extracted_paragraphs(
+    text: &str,
+    raw: Vec<(terraphim_automata::Matched, String)>,
+) -> Vec<(String, String)> {
+    raw.into_iter()
+        .filter_map(|(matched, paragraph)| match matched.pos {
+            Some((start, end)) if is_word_boundary_match(text, start, end) => {
+                Some((matched.term, paragraph))
+            }
+            Some(_) => None, // sub-word match: phantom label / mid-word offset
+            None => Some((matched.term, paragraph)),
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod extract_word_boundary_tests {
+    use super::*;
+    use terraphim_automata::matcher::extract_paragraphs_from_automata;
+    use terraphim_types::{NormalizedTerm, NormalizedTermValue, Thesaurus};
+
+    #[test]
+    fn standalone_word_is_a_boundary_match() {
+        let text = "Alpha line about config and pipeline.";
+        // "config" occupies a clean span flanked by spaces.
+        let start = text.find("config").unwrap();
+        assert!(is_word_boundary_match(text, start, start + "config".len()));
+    }
+
+    #[test]
+    fn subword_match_is_rejected() {
+        let text = "Alpha line about config.";
+        // "lp" inside "aLPha" — preceded by 'A', followed by 'h'.
+        let start = text.find("lpha").unwrap();
+        assert!(!is_word_boundary_match(text, start, start + 2));
+        // "li" inside "line" — at a left boundary but followed by 'n'.
+        let li = text.find("line").unwrap();
+        assert!(!is_word_boundary_match(text, li, li + 2));
+    }
+
+    #[test]
+    fn match_at_text_edges_is_a_boundary_match() {
+        let text = "config";
+        assert!(is_word_boundary_match(text, 0, text.len()));
+    }
+
+    /// Regression test for issue #46: a thesaurus whose two-letter abbreviations
+    /// expand to multi-word concepts must not emit phantom labels or mid-word
+    /// paragraph starts. Uses the real automata extraction path (no mocks).
+    #[test]
+    fn refine_drops_phantom_and_midword_matches() {
+        let mut thesaurus = Thesaurus::new("test".to_string());
+        // Abbreviations that match inside words: "lp" in "alpha", "li" in "line".
+        thesaurus.insert(
+            NormalizedTermValue::from("lp"),
+            NormalizedTerm::new(1, NormalizedTermValue::from("learning path")),
+        );
+        thesaurus.insert(
+            NormalizedTermValue::from("li"),
+            NormalizedTerm::new(2, NormalizedTermValue::from("learning intent")),
+        );
+        // Genuine standalone terms.
+        for (i, term) in ["config", "pipeline", "bun", "orchestrator"]
+            .iter()
+            .enumerate()
+        {
+            thesaurus.insert(
+                NormalizedTermValue::from(*term),
+                NormalizedTerm::new(10 + i as u64, NormalizedTermValue::from(*term)),
+            );
+        }
+
+        let text = "Alpha line about config and pipeline. Beta line mentions bun and orchestrator. Gamma unrelated text here.";
+        let raw = extract_paragraphs_from_automata(text, &thesaurus, true).unwrap();
+        let refined = refine_extracted_paragraphs(text, raw);
+
+        let labels: Vec<&str> = refined.iter().map(|(t, _)| t.as_str()).collect();
+        // Only genuine surface forms survive — no phantom concept labels.
+        assert!(
+            !labels.contains(&"learning path"),
+            "phantom label present: {labels:?}"
+        );
+        assert!(
+            !labels.contains(&"learning intent"),
+            "phantom label present: {labels:?}"
+        );
+        for expected in ["config", "pipeline", "bun", "orchestrator"] {
+            assert!(
+                labels.contains(&expected),
+                "missing real term {expected}: {labels:?}"
+            );
+        }
+
+        // Every surviving paragraph starts at a word boundary (never mid-word).
+        for (term, paragraph) in &refined {
+            assert!(
+                !paragraph.starts_with("lpha") && !paragraph.starts_with("ine"),
+                "paragraph for {term:?} starts mid-word: {paragraph:?}"
+            );
+        }
+    }
 }

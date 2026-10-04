@@ -19,15 +19,20 @@
 //! - **L3 (Human-Approved)**: CTO review via `/evolve` or Gitea issue approval
 
 mod markdown_store;
+mod redaction;
 mod store;
 mod types;
+pub mod validation;
 mod wiki_sync;
 
 pub use markdown_store::{MarkdownLearningStore, MarkdownStoreConfig, MarkdownStoreError};
+pub use redaction::redact_secrets;
 pub use store::{SharedLearningStore, StoreConfig};
 pub use terraphim_types::shared_learning::SuggestionStatus;
 pub use types::{LearningSource as SharedLearningSource, SharedLearning, TrustLevel};
-pub use wiki_sync::{GiteaWikiClient, WikiSyncError};
+pub use wiki_sync::{
+    GiteaWikiClient, GiteaWikiConfig, WikiSyncError, WikiSyncReport, WikiSyncService,
+};
 
 #[cfg(feature = "shared-learning")]
 pub use terraphim_types::shared_learning::LearningStore;
