@@ -13,11 +13,12 @@ import urllib.parse
 from typing import NoReturn
 
 
+# 2026-10-04: x86_64-pc-windows-msvc removed with the Windows lane while the
+# private crates are unpublished; restore the ".zip" entry with the lane.
 COMMON_TARGETS = {
     "aarch64-apple-darwin": ".tar.gz",
     "aarch64-unknown-linux-musl": ".tar.gz",
     "x86_64-apple-darwin": ".tar.gz",
-    "x86_64-pc-windows-msvc": ".zip",
     "x86_64-unknown-linux-gnu": ".tar.gz",
     "x86_64-unknown-linux-musl": ".tar.gz",
 }
