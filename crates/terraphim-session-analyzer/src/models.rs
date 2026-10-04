@@ -2,6 +2,7 @@ use indexmap::IndexMap;
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt::{self, Display};
 use std::str::FromStr;
 
 /// Newtype wrappers for better type safety
@@ -247,11 +248,8 @@ pub enum ToolCategory {
 }
 
 impl ToolCategory {
-    /// Parse a string category into ToolCategory.
-    ///
-    /// Public API consumed only by integration tests and downstream callers.
-    /// The `tsa` binary does not call this method, hence the conditional allow.
-    /// Consumers: `tests/integration_tests.rs` (cross-binary integration test).
+    /// Parse a string category into ToolCategory
+    /// Used in parser for converting string categories
     #[must_use]
     pub fn from_string(s: &str) -> Self {
         match s {
@@ -479,6 +477,28 @@ mod tests {
     }
 
     #[test]
+    fn test_newtype_wrappers() {
+        // Test SessionId
+        let session_id = SessionId::new("test-session".to_string());
+        assert_eq!(session_id.as_str(), "test-session");
+        assert_eq!(session_id.to_string(), "test-session");
+        assert_eq!(session_id.as_ref(), "test-session");
+
+        let session_id_from_str: SessionId = "another-session".into();
+        assert_eq!(session_id_from_str.as_str(), "another-session");
+
+        // Test AgentType
+        let agent_type = AgentType::new("architect".to_string());
+        assert_eq!(agent_type.as_str(), "architect");
+        assert_eq!(agent_type.to_string(), "architect");
+
+        // Test MessageId
+        let message_id = MessageId::new("msg-123".to_string());
+        assert_eq!(message_id.as_str(), "msg-123");
+        assert_eq!(message_id.to_string(), "msg-123");
+    }
+
+    #[test]
     fn test_extract_file_path() {
         let input = serde_json::json!({
             "file_path": "/path/to/file.rs",
@@ -613,6 +633,27 @@ mod tests {
                 prop_assert_eq!(result_path, Some(file_path.clone()));
             }
 
+            #[test]
+            fn test_newtype_wrapper_roundtrip(
+                session_id in "[a-zA-Z0-9-]{10,50}",
+                agent_type in "[a-zA-Z0-9-_]{3,30}",
+                message_id in "[a-zA-Z0-9-]{10,50}"
+            ) {
+                // Test SessionId roundtrip
+                let session = SessionId::new(session_id.clone());
+                prop_assert_eq!(session.as_str(), &session_id);
+                prop_assert_eq!(session.to_string(), session_id);
+
+                // Test AgentType roundtrip
+                let agent = AgentType::new(agent_type.clone());
+                prop_assert_eq!(agent.as_str(), &agent_type);
+                prop_assert_eq!(agent.to_string(), agent_type);
+
+                // Test MessageId roundtrip
+                let message = MessageId::new(message_id.clone());
+                prop_assert_eq!(message.as_str(), &message_id);
+                prop_assert_eq!(message.to_string(), message_id);
+            }
         }
     }
 }

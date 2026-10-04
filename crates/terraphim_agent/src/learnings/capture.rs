@@ -19,7 +19,6 @@ use terraphim_types::NormalizedTermValue;
 use crate::learnings::LearningCaptureConfig;
 use crate::learnings::compile::compile_corrections_to_thesaurus;
 use crate::learnings::redaction::redact_secrets;
-use terraphim_types::shared_learning::SharedLearning;
 
 /// Errors that can occur during learning capture.
 #[derive(Error, Debug)]

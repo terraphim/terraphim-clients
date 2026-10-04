@@ -13,12 +13,6 @@ use terraphim_automata::LinkType;
 #[cfg(feature = "repl-mcp")]
 use terraphim_types::RoleName;
 
-// Feature-gated public API: reachable only under `--features repl-mcp`
-// (included in the `repl-full` meta-feature). Consumers:
-//   * `crates/terraphim_agent/src/repl/handler.rs::ReplHandler::mcp_handler`
-//     constructs `McpToolsHandler::new` and calls `autocomplete_terms`,
-//     `extract_paragraphs`, `find_matches`, `replace_matches`, `get_thesaurus`.
-// See `crates/terraphim_agent/Cargo.toml` [features] (`repl-mcp`).
 #[cfg(feature = "repl-mcp")]
 pub struct McpToolsHandler {
     service: Arc<TuiService>,

@@ -130,24 +130,6 @@ impl TerraphimGrep {
         options.force_rlm || options.include_answer
     }
 
-    /// Maximum tokens for the RLM synthesis completion.
-    ///
-    /// Reasoning models (e.g. DeepSeek V4 Flash, o1, o3) spend a substantial
-    /// fraction of their token budget on chain-of-thought reasoning before
-    /// emitting any content. A 2000-token cap is routinely exhausted by the
-    /// reasoning phase alone, leaving `content: null` in the response and
-    /// producing an empty synthesis. 8000 accommodates the reasoning overhead
-    /// while still bounding latency and cost.
-    ///
-    /// Override via the `TERRAPHIM_GREP_MAX_TOKENS` environment variable.
-    fn rlm_max_tokens() -> u32 {
-        std::env::var("TERRAPHIM_GREP_MAX_TOKENS")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .filter(|&n| n > 0)
-            .unwrap_or(8000)
-    }
-
     /// Build a `SearchOnly` result from chunks that were retrieved but not synthesised.
     fn search_only_result(
         chunks: Vec<RetrievedChunk>,
@@ -362,7 +344,7 @@ impl TerraphimGrep {
                 .chat_completion(
                     messages,
                     terraphim_service::llm::ChatOptions {
-                        max_tokens: Some(Self::rlm_max_tokens()),
+                        max_tokens: Some(2000),
                         temperature: Some(0.3),
                     },
                 )
@@ -400,33 +382,21 @@ impl TerraphimGrep {
 
         let answer = if options.include_answer {
             let signature = signatures::AnswerSignature {};
-            match signature.parse(&llm_response) {
-                Ok(a) => {
-                    let citations = chunks
-                        .iter()
-                        .map(|c| Citation {
-                            source: c.source.clone(),
-                            line: c.line_start,
-                            excerpt: c.content.chars().take(100).collect(),
-                        })
-                        .collect();
-                    Some(signatures::AnswerWithCitations {
-                        answer: a.answer,
-                        citations,
-                        confidence: a.confidence,
+            signature.parse(&llm_response).ok().map(|a| {
+                let citations = chunks
+                    .iter()
+                    .map(|c| Citation {
+                        source: c.source.clone(),
+                        line: c.line_start,
+                        excerpt: c.content.chars().take(100).collect(),
                     })
+                    .collect();
+                signatures::AnswerWithCitations {
+                    answer: a.answer,
+                    citations,
+                    confidence: a.confidence,
                 }
-                Err(e) => {
-                    tracing::warn!(
-                        error = %e,
-                        response_len = llm_response.len(),
-                        "RLM synthesis produced an unparseable answer; the LLM response \
-                         was empty or did not match the expected JSON format. The search \
-                         chunks are still valid."
-                    );
-                    None
-                }
-            }
+            })
         } else {
             None
         };
@@ -515,7 +485,7 @@ impl TerraphimGrep {
 mod tests {
     use super::*;
     #[cfg(feature = "code-search")]
-    use terraphim_types::{NormalizedTerm, NormalizedTermValue, Thesaurus};
+    use terraphim_types::Thesaurus;
 
     #[test]
     fn grep_result_serialises_sufficiency_explanation() {
@@ -729,56 +699,6 @@ mod tests {
         );
     }
 
-    /// `rlm_max_tokens` defaults to 8000 and honours the env override.
-    #[test]
-    fn rlm_max_tokens_default_and_override() {
-        // SAFETY: test code, single-threaded, no concurrent env access.
-        let saved = std::env::var("TERRAPHIM_GREP_MAX_TOKENS").ok();
-
-        unsafe {
-            std::env::remove_var("TERRAPHIM_GREP_MAX_TOKENS");
-        }
-        assert_eq!(
-            TerraphimGrep::rlm_max_tokens(),
-            8000,
-            "default should be 8000"
-        );
-
-        unsafe {
-            std::env::set_var("TERRAPHIM_GREP_MAX_TOKENS", "4000");
-        }
-        assert_eq!(TerraphimGrep::rlm_max_tokens(), 4000);
-
-        unsafe {
-            std::env::set_var("TERRAPHIM_GREP_MAX_TOKENS", "not-a-number");
-        }
-        assert_eq!(
-            TerraphimGrep::rlm_max_tokens(),
-            8000,
-            "invalid value falls back to default"
-        );
-
-        unsafe {
-            std::env::set_var("TERRAPHIM_GREP_MAX_TOKENS", "0");
-        }
-        assert_eq!(
-            TerraphimGrep::rlm_max_tokens(),
-            8000,
-            "zero falls back to default"
-        );
-
-        // Restore.
-        if let Some(v) = saved {
-            unsafe {
-                std::env::set_var("TERRAPHIM_GREP_MAX_TOKENS", v);
-            }
-        } else {
-            unsafe {
-                std::env::remove_var("TERRAPHIM_GREP_MAX_TOKENS");
-            }
-        }
-    }
-
     /// The opt-in predicate: only the two explicit flags enable synthesis.
     #[test]
     fn rlm_requested_only_for_explicit_flags() {
@@ -955,71 +875,6 @@ mod tests {
             "expected no KG concepts without thesaurus"
         );
         assert_eq!(result.stats.kg_hits, 0);
-    }
-
-    /// When the sufficiency judge returns `Insufficient` with non-empty chunks
-    /// (fewer than `min_results` matches), the returned chunks and KG concepts
-    /// must be preserved and the stats must be truthful:
-    /// `stats.chunks_returned == chunks.len()` and `stats.kg_hits == concepts.len()`.
-    /// This guards the JSON result invariant that blocks release wrapper #3208.
-    #[cfg(feature = "code-search")]
-    #[tokio::test]
-    async fn rlm_insufficient_preserves_chunks_and_reports_truthful_stats() {
-        let tmp = tempfile::TempDir::new().expect("tempdir");
-        // Single match => chunks.len() (1) < min_results (3) => Insufficient branch.
-        let path = tmp.path().join("only_match.rs");
-        std::fs::write(&path, "fn unique_target() { /* unique_target */ }\n").unwrap();
-
-        let mut thesaurus = Thesaurus::new("t".to_string());
-        let concept_key = NormalizedTermValue::from("unique_target");
-        let concept = NormalizedTerm::new(1, concept_key.clone())
-            .with_display_value("unique_target".to_string());
-        thesaurus.insert(concept_key, concept);
-
-        let hybrid = HybridSearcher::new("test-role".to_string(), thesaurus)
-            .expect("build hybrid searcher")
-            .with_search_path(tmp.path().to_path_buf());
-        let grep = TerraphimGrep::new(Arc::new(hybrid), Arc::new(SufficiencyJudge::default()));
-
-        let result = grep
-            .search(
-                "unique_target",
-                GrepOptions {
-                    haystack: Haystack::Code,
-                    max_results: 50,
-                    ..GrepOptions::default()
-                },
-            )
-            .await
-            .expect("search should succeed");
-
-        assert!(
-            !result.chunks.is_empty(),
-            "expected at least one chunk from the known-match corpus"
-        );
-        assert!(
-            matches!(result.sufficiency, SufficiencyState::RlmInsufficient),
-            "single match must hit the Insufficient branch, got {:?}",
-            result.sufficiency
-        );
-        assert_eq!(
-            result.stats.chunks_returned,
-            result.chunks.len(),
-            "stats.chunks_returned must equal chunks.len() in the RlmInsufficient branch"
-        );
-        assert_eq!(
-            result.stats.kg_hits,
-            result.concepts.len(),
-            "stats.kg_hits must equal concepts.len() when concepts are retained"
-        );
-        assert!(result.stats.kg_hits > 0, "fixture must produce a KG hit");
-        assert!(
-            result
-                .concepts
-                .iter()
-                .any(|concept| concept.name == "unique_target"),
-            "the known KG concept must survive the RlmInsufficient branch"
-        );
     }
 
     /// The RLM prompt for `include_answer` must embed the `AnswerSignature`

@@ -1,7 +1,9 @@
 use crate::models::{
-    AgentInvocation, ContentBlock, FileOpType, FileOperation, Message, SessionEntry,
-    extract_file_path, parse_timestamp,
+    AgentInvocation, ContentBlock, FileOpType, FileOperation, Message, SessionEntry, ToolCategory,
+    ToolInvocation, extract_file_path, parse_timestamp,
 };
+use crate::patterns::PatternMatcher;
+use crate::tool_analyzer;
 use anyhow::{Context, Result};
 use rayon::prelude::*;
 use serde::Deserialize;
@@ -361,8 +363,6 @@ impl SessionParser {
     /// Get entry count for statistics
     /// Used in integration tests
     #[must_use]
-    /// Public API consumed only by `tests/integration_tests.rs` (cross-binary integration test). The `tsa` binary does not call this method.
-    #[allow(dead_code)]
     pub fn entry_count(&self) -> usize {
         self.entries.len()
     }
@@ -376,8 +376,6 @@ impl SessionParser {
     /// Find entries within a time window
     /// Used in integration tests
     #[must_use]
-    /// Public API consumed only by `tests/integration_tests.rs` (cross-binary integration test). The `tsa` binary does not call this method.
-    #[allow(dead_code)]
     pub fn entries_in_window(
         &self,
         start: jiff::Timestamp,
@@ -401,8 +399,6 @@ impl SessionParser {
     /// Find all unique agent types used in this session
     /// Used in integration tests
     #[must_use]
-    /// Public API consumed only by `tests/integration_tests.rs` (cross-binary integration test). The `tsa` binary does not call this method.
-    #[allow(dead_code)]
     pub fn get_agent_types(&self) -> Vec<String> {
         let agents = self.extract_agent_invocations();
         let mut agent_types: Vec<String> = agents
@@ -418,8 +414,6 @@ impl SessionParser {
     /// Build a timeline of events for visualization
     /// Used in integration tests
     #[must_use]
-    /// Public API consumed only by `tests/integration_tests.rs` (cross-binary integration test). The `tsa` binary does not call this method.
-    #[allow(dead_code)]
     pub fn build_timeline(&self) -> Vec<TimelineEvent> {
         let mut events = Vec::new();
 

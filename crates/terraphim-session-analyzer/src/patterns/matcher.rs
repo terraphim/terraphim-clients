@@ -159,14 +159,7 @@ impl PatternMatcher for AhoCorasickMatcher {
 ///
 /// This implementation uses the actual terraphim_automata library for pattern matching,
 /// which provides knowledge graph-based semantic search capabilities.
-/// Terraphim-based pattern matcher using knowledge graph automata.
-///
-/// Consumed only by in-file unit tests in this module and `create_matcher`
-/// (the bin does not use it directly, hence the conditional allow).
 #[cfg(feature = "terraphim")]
-/// Terraphim-based pattern matcher using knowledge graph automata. Consumed only by in-file unit tests and `create_matcher`. The `tsa` binary does not use it.
-#[cfg(feature = "terraphim")]
-#[allow(dead_code)]
 pub struct TerraphimMatcher {
     /// Thesaurus containing the pattern mappings
     thesaurus: Option<Thesaurus>,
@@ -186,7 +179,6 @@ impl Default for TerraphimMatcher {
 }
 
 #[cfg(feature = "terraphim")]
-#[allow(dead_code)]
 impl TerraphimMatcher {
     /// Create a new uninitialized Terraphim matcher
     #[must_use]
@@ -299,14 +291,10 @@ impl PatternMatcher for TerraphimMatcher {
     }
 }
 
-/// Factory function to create a new pattern matcher.
+/// Factory function to create a new pattern matcher
 ///
 /// Returns Terraphim matcher if the feature is enabled,
-/// otherwise returns the default Aho-Corasick implementation.
-///
-/// Public API consumed only by in-file unit tests in this module
-/// and the crate-level doc examples; the `tsa` binary uses a different
-/// matcher construction path, hence the conditional allow.
+/// otherwise returns the default Aho-Corasick implementation
 #[must_use]
 pub fn create_matcher() -> Box<dyn PatternMatcher> {
     #[cfg(feature = "terraphim")]

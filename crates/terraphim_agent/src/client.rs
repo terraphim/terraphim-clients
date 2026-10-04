@@ -209,15 +209,51 @@ pub struct AutocompleteResponse {
     pub suggestions: Vec<AutocompleteSuggestion>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AsyncSummarizeResponse {
+    pub status: String,
+    pub task_id: String,
+    pub message: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TaskStatusResponse {
+    pub status: String,
+    pub task_id: String,
+    pub state: String, // "pending", "processing", "completed", "failed", "cancelled"
+    pub progress: Option<f64>,
+    pub result: Option<String>,
+    pub error: Option<String>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct QueueStatsResponse {
+    pub status: String,
+    pub pending_tasks: usize,
+    pub processing_tasks: usize,
+    pub completed_tasks: usize,
+    pub failed_tasks: usize,
+    pub total_tasks: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BatchSummarizeRequest {
+    pub documents: Vec<Document>,
+    pub role: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BatchSummarizeResponse {
+    pub status: String,
+    pub task_ids: Vec<String>,
+    pub message: Option<String>,
+    pub error: Option<String>,
+}
+
 // VM Management Types
-//
-// All types and methods in this section are feature-gated public API reachable
-// only when the `firecracker` Cargo feature is enabled (REPL `vm` subcommand
-// via `repl/handler.rs::handle_vm`, plus the unconditional
-// `commands/modes/firecracker.rs::FirecrackerExecutor` calls which compile
-// regardless). The default feature set (repl-interactive, llm, repl-sessions)
-// does not enable `firecracker`, so the lint sees them as dead. See
-// `Cargo.toml` [features] for the firecracker declaration.
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VmWithIp {

@@ -492,9 +492,6 @@ fn build_llm_for_role(
     terraphim_service::llm::build_llm_from_role(&role)
 }
 
-// Stub implementation used only when the `llm` Cargo feature is OFF; the
-// `--features llm` build substitutes `role_from_env` instead. See
-// `Cargo.toml` [features].
 #[cfg(not(feature = "llm"))]
 fn build_llm_for_role(
     _role_name: &str,

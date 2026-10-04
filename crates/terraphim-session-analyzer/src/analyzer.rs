@@ -54,8 +54,6 @@ impl Analyzer {
     /// Set custom configuration
     /// Used in integration tests
     #[must_use]
-    /// Public API consumed only by `tests/integration_tests.rs` (cross-binary integration test). The `tsa` binary does not call this method.
-    #[allow(dead_code)]
     pub fn with_config(mut self, config: AnalyzerConfig) -> Self {
         self.config = config;
         self
@@ -756,11 +754,7 @@ impl Analyzer {
     /// 3. Use sliding windows (2-5 tools) to find sequences
     /// 4. Group identical sequences across sessions
     /// 5. Calculate frequency, timing, and success rate
-    /// 6. Filter chains that appear at least twice.
-    ///
-    /// Public API consumed only by cross-binary integration tests
-    /// (in-file unit tests in this module also exercise it directly).
-    /// Consumers: `tests/integration_tests.rs` and lib unit tests in this file.
+    /// 6. Filter chains that appear at least twice
     #[must_use]
     pub fn detect_tool_chains(
         &self,
