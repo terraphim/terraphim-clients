@@ -260,11 +260,24 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ matrix.use_cross }}" = "true" ]; then
-            # The self-hosted runner shell exports RUSTC_WRAPPER=kache (a
-            # host-only rustc cache); cross forwards the host environment
-            # into its container where the wrapper binary does not exist
-            # ("could not execute process `kache rustc -vV`"). Unwrap only
-            # for the containerised lanes.
+            # The self-hosted runner's shared ~/.cargo/config.toml sets
+            # [build] rustc-wrapper = "kache" (a host-only rustc cache) and
+            # the shell exports RUSTC_WRAPPER; cross bind-mounts that config
+            # into its container, where the wrapper binary does not exist
+            # ("could not execute process `kache rustc -vV`"). Give the
+            # containerised lanes a lane-local CARGO_HOME whose config omits
+            # the wrapper, with the shared download caches linked in.
+            lane_cargo="${RUNNER_TEMP:-/tmp}/cargo-${{ matrix.target }}"
+            mkdir -p "$lane_cargo"
+            grep -v 'rustc-wrapper' /home/alex/.cargo/config.toml > "$lane_cargo/config.toml"
+            for cache_dir in registry git; do
+              if [ -d "/home/alex/.cargo/$cache_dir" ]; then
+                ln -sfn "/home/alex/.cargo/$cache_dir" "$lane_cargo/$cache_dir"
+              else
+                mkdir -p "$lane_cargo/$cache_dir"
+              fi
+            done
+            export CARGO_HOME="$lane_cargo"
             unset RUSTC_WRAPPER
             build=(rustup run 1.96.0 cross)
           else
