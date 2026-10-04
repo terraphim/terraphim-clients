@@ -132,17 +132,42 @@ impl LlmClient for OpenRouterClient {
             )
         })?;
 
-        let content = response_json
-            .get("choices")
-            .and_then(|c| c.get(0))
-            .and_then(|c| c.get("message"))
-            .and_then(|m| m.get("content"))
-            .and_then(|t| t.as_str())
-            .unwrap_or("")
-            .to_string();
-
-        Ok(content)
+        Ok(extract_content(&response_json))
     }
+}
+
+/// Extract the assistant content from an OpenRouter chat completion response,
+/// logging a warning when the content is empty (reasoning models may spend
+/// their entire token budget on chain-of-thought, leaving `content: null`).
+fn extract_content(response_json: &serde_json::Value) -> String {
+    let choice = || response_json.get("choices").and_then(|c| c.get(0));
+
+    let content = choice()
+        .and_then(|c| c.get("message"))
+        .and_then(|m| m.get("content"))
+        .and_then(|t| t.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    if content.is_empty() {
+        let finish_reason = choice()
+            .and_then(|c| c.get("finish_reason"))
+            .and_then(|f| f.as_str())
+            .unwrap_or("unknown");
+        let has_reasoning = choice()
+            .and_then(|c| c.get("message"))
+            .and_then(|m| m.get("reasoning"))
+            .is_some_and(|r| !r.is_null());
+        tracing::warn!(
+            %finish_reason,
+            %has_reasoning,
+            "OpenRouter returned empty content; the model may have spent its entire \
+             token budget on reasoning (reasoning models) or hit the max_tokens limit. \
+             Consider increasing TERRAPHIM_GREP_MAX_TOKENS or using a non-reasoning model."
+        );
+    }
+
+    content
 }
 
 /// Convenience wrapper that returns the client as a trait object.
@@ -206,5 +231,49 @@ mod tests {
         let client = OpenRouterClient::new("key", "model").expect("build client");
         let llm: Arc<dyn LlmClient> = into_llm_client(client);
         assert_eq!(llm.name(), "openrouter");
+    }
+
+    #[test]
+    fn test_extract_content_normal_response() {
+        let response = serde_json::json!({
+            "choices": [{
+                "message": {"role": "assistant", "content": "Hello there world."},
+                "finish_reason": "stop"
+            }]
+        });
+        assert_eq!(extract_content(&response), "Hello there world.");
+    }
+
+    #[test]
+    fn test_extract_content_null_content_with_reasoning() {
+        // Reasoning models return content: null when all tokens are spent on reasoning.
+        let response = serde_json::json!({
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": null,
+                    "reasoning": "Let me think about this step by step..."
+                },
+                "finish_reason": "length"
+            }]
+        });
+        assert_eq!(extract_content(&response), "");
+    }
+
+    #[test]
+    fn test_extract_content_missing_choices() {
+        let response = serde_json::json!({});
+        assert_eq!(extract_content(&response), "");
+    }
+
+    #[test]
+    fn test_extract_content_null_content_without_reasoning() {
+        let response = serde_json::json!({
+            "choices": [{
+                "message": {"role": "assistant", "content": null},
+                "finish_reason": "stop"
+            }]
+        });
+        assert_eq!(extract_content(&response), "");
     }
 }
