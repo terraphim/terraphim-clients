@@ -1,9 +1,4 @@
-mod analyzer;
-mod models;
-mod parser;
-mod patterns;
-mod reporter;
-mod tool_analyzer;
+use terraphim_session_analyzer::{analyzer, models, parser, patterns, reporter, tool_analyzer};
 
 use models::SessionAnalysis;
 

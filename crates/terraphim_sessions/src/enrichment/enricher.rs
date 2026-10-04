@@ -100,7 +100,7 @@ impl SessionEnricher {
             chars_processed += text.len();
 
             // Find concept matches
-            let matches = find_matches(text, self.thesaurus.clone(), true)?;
+            let matches = find_matches(text, &self.thesaurus, true)?;
 
             for matched in matches {
                 let concept = self.matched_to_concept(&matched, msg_idx, text);
@@ -113,11 +113,11 @@ impl SessionEnricher {
         concepts.calculate_co_occurrences();
 
         // Check graph connectivity if enabled
-        if self.config.check_graph_connections {
-            if let Some(ref rolegraph) = self.rolegraph {
-                let graph = rolegraph.read().await;
-                self.find_graph_connections(&mut concepts, &graph);
-            }
+        if self.config.check_graph_connections
+            && let Some(ref rolegraph) = self.rolegraph
+        {
+            let graph = rolegraph.read().await;
+            self.find_graph_connections(&mut concepts, &graph);
         }
 
         let duration_ms = start.elapsed().as_millis() as u64;

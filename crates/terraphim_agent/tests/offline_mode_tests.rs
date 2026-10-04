@@ -9,8 +9,8 @@ use support::cli_test_env::apply_hermetic_env;
 
 /// Test helper to run TUI commands in offline mode
 fn run_offline_command(args: &[&str]) -> Result<(String, String, i32)> {
-    let mut cmd = Command::new("cargo");
-    cmd.args(["run", "-p", "terraphim_agent", "--"]).args(args);
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_terraphim-agent"));
+    cmd.args(args);
     apply_hermetic_env(&mut cmd)?;
 
     let output = cmd.output()?;
@@ -27,9 +27,8 @@ fn run_server_command(args: &[&str]) -> Result<(String, String, i32)> {
     let mut cmd_args = vec!["--server"];
     cmd_args.extend_from_slice(args);
 
-    let mut cmd = Command::new("cargo");
-    cmd.args(["run", "-p", "terraphim_agent", "--features", "server", "--"])
-        .args(cmd_args);
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_terraphim-agent"));
+    cmd.args(cmd_args);
     apply_hermetic_env(&mut cmd)?;
 
     let output = cmd.output()?;
@@ -373,15 +372,14 @@ async fn test_server_mode_connection_failure() -> Result<()> {
 #[serial]
 async fn test_server_mode_with_custom_url() -> Result<()> {
     // Test server mode with custom URL
-    let mut cmd = Command::new("cargo");
-    cmd.args(["run", "-p", "terraphim_agent", "--features", "server", "--"])
-        .args([
-            "--server",
-            "--server-url",
-            "http://localhost:9999",
-            "config",
-            "show",
-        ]);
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_terraphim-agent"));
+    cmd.args([
+        "--server",
+        "--server-url",
+        "http://localhost:9999",
+        "config",
+        "show",
+    ]);
     apply_hermetic_env(&mut cmd)?;
 
     let output = cmd.output()?;
@@ -408,9 +406,8 @@ async fn test_server_mode_with_custom_url() -> Result<()> {
 #[serial]
 async fn test_command_line_argument_validation() -> Result<()> {
     // Test invalid command
-    let mut cmd = Command::new("cargo");
-    cmd.args(["run", "-p", "terraphim_agent", "--"])
-        .args(["invalid-command"]);
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_terraphim-agent"));
+    cmd.args(["invalid-command"]);
     apply_hermetic_env(&mut cmd)?;
 
     let output = cmd.output()?;

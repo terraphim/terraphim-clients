@@ -1,0 +1,101 @@
+c_id,verdict,priority,disposition,tc_ids,notes
+C01,PARTIAL,P0,TEST,TC-SEARCH-05+TC-SEARCH-06+TC-SEARCH-07+TC-SEARCH-09+TC-SEARCH-10+TC-SEARCH-13+TC-SEARCH-14+TC-SEARCH-15+TC-SEARCH-18+TC-SEARCH-19,positional BM25 query + limit caps + unfiltered list; missing repeatable --agent/--workspace/--offset; results hard-capped <=50 (T16)
+C02,MISSING,P1,TEST,TC-IMPORT-11+TC-SEARCH-19,search time filters absent; import-side since/until (T13) is the analog; confirm registry 1.20.4 build before asserting import behavior
+C03,PARTIAL,P2,TEST,TC-SEARCH-10+TC-SEARCH-11,--robot emits parseable JSON; default table top-10 + total; jsonl/compact/fields/highlight/request-id absent
+C04,MISSING,P2,GAP-DEFERRED,TC-SEARCH-22,no cursor/offset query surface; do NOT negative-assert pagination metadata (Pagination struct exists schema.rs:134-157)
+C05,MISSING,P2,TEST,TC-SEARCH-23,query-time aggregation absent; corpus-level timeline/stats grouping is the partial analog; match_type has no analog at all
+C06,MISSING,P2,GAP-DEFERRED,TC-SEARCH-24,no explain/dry-run/timeout diagnostics; nearest signal is exit-4 empty machine mode (T19); assert payload not bare code (exit-4 collision)
+C07,PARTIAL,P1,TEST,TC-SEARCH-01+TC-SEARCH-04,no --mode flag; realized mode implicit in build features + enrichment state; hybrid = KG boost count x10000 not RRF
+C08,MISSING,P3,GAP-DEFERRED,TC-ENRICH-01+TC-SEARCH-25,no embeddings/ANN by design; nearest alternative is enrichment concepts (T21/T23) in-memory REPL-bound
+C09,MISSING,P3,GAP-DEFERRED,TC-ENRICH-01+TC-IMPORT-14+TC-SEARCH-04,fixed BM25 Okapi scorer (T16/T36); no model registry or rerank stage
+C10,MISSING,P3,GAP-DEFERRED,TC-ENRICH-01+TC-IMPORT-14+TC-SEARCH-04,no daemon/latency tiers; in-process singleton (T39) rebuilds BM25 per call
+C11,MISSING,P2,GAP-DEFERRED,TC-ENRICH-01+TC-IMPORT-14+TC-SEARCH-04,no chained-search line format or consumer flag; nearest is T33 export full dumps
+C12,PARTIAL,P2,TEST,TC-IMPORT-01+TC-IMPORT-16+TC-SEARCH-20,auto-import fires once per instance + import_all skips failing connectors (T06/T07); no explicit --refresh; watcher unexposed (T14)
+C13,PARTIAL,P1,TEST,TC-SEARCH-11,show = fixed 5-message/80-char preview; preview starts at first match; no line addressing or -C control
+C14,MISSING,P2,TEST,TC-ENRICH-01+TC-IMPORT-14+TC-SEARCH-04,context widening absent; fixed-window show is the pin; no window/offset controls anywhere; authoritative TC missing - see ch3 gap list
+C15,PARTIAL,P1,TEST,TC-ENRICH-05+TC-ENRICH-06+TC-ENRICH-07,related returns top-5 excluding self; relatedness = first 3 tokens of first user message; --min ACCEPTED BUT IGNORED (T26)
+C16,PARTIAL,P1,TEST,TC-SEARCH-19,list --source is REPL-only (handler.rs:1959-1968); CLI list takes limit only; no --workspace/--current auto-resolve
+C17,PARTIAL,P1,TEST,TC-TIMELINE-STATS-06,timeline groups by started_at day/week/month (week = Week of date); no since/until/today or hour/none; no agent filter; authoritative TC missing - see ch3 gap list; authoritative TC missing - see ch3 gap list; timeline REPL smoke covers grouping/labels (routed ch5->ch6 TC-AS)
+C18,MISSING,P3,GAP-DEFERRED,TC-SEARCH-26,pack answer-pack format absent; would be a new terraphim feature not a parity fix
+C19,MISSING,P3,GAP-DEFERRED,TC-SEARCH-26,pack-intent routing depends on C18
+C20,PARTIAL,P2,TEST,TC-SEARCH-21,wildcard_fallback exists in robot DOCUMENT search only (main.rs:2231/schema.rs:299); sessions search pins literal * behavior
+C21,MISSING,P2,TEST,TC-IMPORT-13+TC-WATCH-INDEX-01+TC-WATCH-INDEX-02,index is STATUS-ONLY (T36 counts+scorer); assertions redirect to auto-import trigger + skip/truncate (T06/T07); cache read-never-written (T38)
+C22,N-A,P3,N-A,,N-A by design: no persistent index; every query is a full in-memory rebuild (T16); absence folded into IX-04 probe
+C23,N-A,P3,N-A,,N-A by design: nothing durable to discard (T16); full is the only mode
+C24,UNCLEAR,P2,UNCLEAR,TC-WATCH-INDEX-04+TC-WATCH-INDEX-05,T14 watcher is public-API-only unexposed; runtime probe decides registry-build outcome; nightly inotify lane; authoritative TC missing - see ch3 gap list
+C25,MISSING,P3,GAP-DEFERRED,TC-ENRICH-01+TC-IMPORT-14+TC-SEARCH-04+TC-WATCH-INDEX-06,no semantic indexing; enrichment concepts are the design alternative but in-memory cache only (T21)
+C26,MISSING,P2,GAP-DEFERRED,TC-WATCH-INDEX-07,no index write path; T43 clone() resets cache so idempotency is per-instance only
+C27,MISSING,P3,GAP-DEFERRED,TC-WATCH-INDEX-08,no NDJSON progress events on import (T07) or index (T36)
+C28,MISSING,P3,GAP-DEFERRED,TC-WATCH-INDEX-09,no ingest tracing surface
+C29,MISSING,P2,GAP-DEFERRED,TC-IMPORT-05+TC-WATCH-INDEX-10,no chatgpt importer in any build; flag T05-vs-T04 connector registry drift when asserting import breadth
+C30,MISSING,P2,TEST,TC-SOURCES-01,no health exit-code surface; detection completes fast even with aider CWD recursion (T04) - latency observation via sources --robot; authoritative TC missing - see ch3 gap list
+C31,PARTIAL,P2,TEST,TC-SOURCES-02,index-count slice asserted (T36); other ~9 state families asserted absent; no persistent DB/semantic/pending/quarantine by design; authoritative TC missing - see ch3 gap list
+C32,MISSING,P3,TEST,TC-SOURCES-03,state alias unknown-command error via 0-7 exit enum; alias machinery exists but no status command to alias; authoritative TC missing - see ch3 gap list
+C33,PARTIAL,P2,TEST,TC-SOURCES-04,per-connector available/unavailable under env matrix (T03); no staleness dimension; thin-PARTIAL flagged in end matter; authoritative TC missing - see ch3 gap list
+C34,MISSING,P2,TEST,TC-SOURCES-05,no coverage-verification; stats-vs-disk per-connector diff analog documented as uncomputable-or-surfaced; authoritative TC missing - see ch3 gap list
+C35,MISSING,P2,TEST,TC-SOURCES-06,no repair/fix verb; read-only import invariant (T09-T13) asserted under CF-06; safety guarantees vacuously true; authoritative TC missing - see ch3 gap list
+C36,MISSING,P3,TEST,TC-SOURCES-07,no fingerprinted repair flow; only persistent state is read-only disk cache (T38) with no recovery command; authoritative TC missing - see ch3 gap list
+C37,MISSING,P2,TEST,TC-SOURCES-08,no force-rebuild verb; real target = freshness asymmetry CLI (stale cache served T38) vs server-mode (always cold T42); authoritative TC missing - see ch3 gap list
+C38,MISSING,P3,TEST,TC-SOURCES-09,robot schema output contains zero doctor-family schemas; authoritative TC missing - see ch3 gap list
+C39,PARTIAL,P2,TEST,TC-SOURCES-10,connector + index slices covered (T01-T03/T36); paths/platform/version/quarantine fields absent; authoritative TC missing - see ch3 gap list
+C40,PARTIAL,P2,TEST,TC-TIMELINE-STATS-01+TC-TIMELINE-STATS-02+TC-TIMELINE-STATS-03,totals + user/assistant splits + per-source counts (service.rs:329-361); by_agent/top_workspaces/date_range/raw_mirror absent; authoritative TC missing - see ch3 gap list
+C41,MISSING,P2,TEST,TC-TIMELINE-STATS-05,readiness composed by caller from sources+stats+index in sequence; exit codes not health-wired; authoritative TC missing - see ch3 gap list
+C42,PARTIAL,P2,TEST,TC-SOURCES-11,capabilities/schemas/examples asserted; breadth beyond unverified; crate drift may change advertised surface; authoritative TC missing - see ch3 gap list
+C43,PARTIAL,P2,TEST,TC-SOURCES-12,robot schema count + per-command argument coverage vs cass 40-schema surface; drift-prone between builds; authoritative TC missing - see ch3 gap list
+C44,UNCLEAR,P2,UNCLEAR,TC-SOURCES-13,runtime probe: --version + robot output for crate/api/contract version triple; drift-dependent verdict; authoritative TC missing - see ch3 gap list
+C45,PARTIAL,P3,TEST,TC-SOURCES-03+TC-SOURCES-14,AutoCorrection + Did-you-mean + ForgivingParser aliases (main.rs:1500-1545/schema.rs:124-131); breadth far below cass 47 normalizations; authoritative TC missing - see ch3 gap list
+C46,N-A,P3,N-A,,N-A: no persistent ingest pipeline; analog = broken connector skipped and reported (T07); flips MISSING if persistent index lands
+C47,PARTIAL,P1,TEST,TC-SOURCES-16,list with status+estimate in text and --robot JSON; add/remove/custom-path flags rejected; write-side absent by design - biggest asymmetry; authoritative TC missing - see ch3 gap list
+C48,PARTIAL,P1,TEST,TC-SOURCES-17+TC-SOURCES-18,sync = implicit one-shot import; no -s/--dry-run/--no-index; global-limit truncation (T07) makes per-source selection the missing safety valve; authoritative TC missing - see ch3 gap list
+C49,PARTIAL,P2,TEST,TC-SOURCES-19,degraded connector (missing/renamed root) reported unavailable not silently omitted; cheapest high-value test in chunk; authoritative TC missing - see ch3 gap list
+C50,N-A,P3,N-A,,N-A: no remote-source model; all connectors local-filesystem (T04); absence within SO-08 probe scope
+C51,N-A,P3,N-A,,N-A: zero-config auto-detection (T04/T06) is the design; no interactive setup exists or is needed
+C52,N-A,P3,N-A,,N-A: no remote sources and no path remapping anywhere
+C53,MISSING,P2,TEST,TC-SOURCES-20,no runtime exclusion path (no config file no CLI flag); compile-time feature registry (T05); duplicate-import probe uses membership asserts (D-13); authoritative TC missing - see ch3 gap list
+C54,N-A,P3,N-A,,N-A: no persistent artifact/index store to manifest against; per-run T01 estimates are the only coverage signal
+C55,N-A,P3,N-A,,N-A: remote semantics out of scope by design; local source-attribution side-probe unverified - distinct gap outside chunk scope
+C56,N-A,P3,N-A,,N-A: single-node agent; server-mode sessions (T42) is one instance not a fleet
+C57,PARTIAL,P2,TEST,TC-ENRICH-01+TC-ENRICH-02+TC-ENRICH-10+TC-ENRICH-11,semantic readiness = enrichment build + thesaurus availability not model files; status surfaced via rebuild advice + dry-run counts
+C58,N-A,P3,N-A,,N-A: thesaurus provisioned offline via TUI compilation; at most assert enrich fails gracefully before a thesaurus exists
+C59,N-A,P3,N-A,,N-A: no artifact to checksum; optional assert dry-run counts stable across repeated runs (T21)
+C60,PARTIAL,P2,TEST,TC-ENRICH-01+TC-ENRICH-08,on-demand enrich computes counts and is re-runnable from scratch; no tiers/checkpoint; in-memory cache dies with REPL process
+C61,N-A,P3,N-A,,N-A: no remove/update verbs; staleness handled by rebuild advice messaging (T21)
+C62,PARTIAL,P0,TEST,TC-ENRICH-04+TC-ENRICH-13+TC-SEARCH-01+TC-SEARCH-02+TC-SEARCH-03+TC-SEARCH-04+TC-SEARCH-08,core row: 3-tier degrade asserted (hybrid boost / plain BM25 / substring fallback); NEVER score equality - fusion math differs (count x10000 not RRF)
+C63,MISSING,P2,TEST,TC-ENRICH-01+TC-ENRICH-15,absence probe: no socket/daemon flags; enrichment computed in-process on demand; first run after restart pays full cost
+C64,MISSING,P2,TEST,TC-TIMELINE-STATS-04,stats totals equal indexed session count and per-source sums to total; no freshness/coverage/drift surface exists; authoritative TC missing - see ch3 gap list
+C65,MISSING,P3,TEST,TC-TIMELINE-STATS-07,gap-only: assert stats JSON contains no token/cost fields (documents the gap); authoritative TC missing - see ch3 gap list
+C66,MISSING,P2,TEST,TC-FILES-01+TC-FILES-02+TC-FILES-03+TC-FILES-04+TC-FILES-05,tool calls reshaped into FileAccess not counts; files tool->access mapping (Read/Glob/Grep=read; Edit/Write/MultiEdit/NotebookEdit=write) asserted; authoritative TC missing - see ch3 gap list
+C67,MISSING,P3,TEST,TC-TIMELINE-STATS-08,gap-doc assertion: no model ids surfaced in stats or session metadata; authoritative TC missing - see ch3 gap list
+C68,MISSING,P3,TEST,TC-TIMELINE-STATS-09,stats recomputed per call; no rollup store to rebuild; authoritative TC missing - see ch3 gap list
+C69,MISSING,P3,TEST,TC-TIMELINE-STATS-10,optional sanity invariant: enrich dry-run counts never exceed cached session count; authoritative TC missing - see ch3 gap list
+C70,MISSING,P3,TEST,TC-TIMELINE-STATS-11,coverage/health vocabulary absent; nearest observable is T30 totals; authoritative TC missing - see ch3 gap list
+C71,PARTIAL,P1,TEST,TC-EXPORT-SHOW-01+TC-EXPORT-SHOW-02+TC-EXPORT-SHOW-03+TC-EXPORT-SHOW-04+TC-EXPORT-SHOW-05+TC-EXPORT-SHOW-08,json export pretty array round-trips T37 serde; md alias accepted; unknown format rejected; text/html/clipboard/include-tools/include-skills absent; authoritative TC missing - see ch3 gap list
+C72,MISSING,P3,TEST,TC-EXPORT-SHOW-05+TC-EXPORT-SHOW-06,export rejects html via unknown-format error (T33); no encryption anywhere; browser-sharing surface absent; authoritative TC missing - see ch3 gap list
+C73,MISSING,P3,GAP-DEFERRED,TC-EXPORT-SHOW-07,publishing/CI surface entirely outside terraphim local-agent scope today
+C74,N-A,P3,N-A,,N-A: reference side is documentation-only (not in live cass 0.6.11); testing vaporware avoided; revisit if cass ships implementation
+C75,N-A,P3,N-A,,N-A: no mirror by design (stores read in place; cache in-memory); read-only invariant - sessions commands never mutate source stores - asserted in zero-write guardrail
+C76,MISSING,P1,TEST,TC-EXPORT-SHOW-09+TC-EXPORT-SHOW-11,headline journey gap (find->resume); roadmap decision not a test target; absence probe on resume/continue verbs; authoritative TC missing - see ch3 gap list
+C77,PARTIAL,P2,TEST,TC-TIMELINE-STATS-02,stats per-source enumerates all ingested harnesses and sums to total; unknown/new source does not break stats; resume-path matrix moot (C76); authoritative TC missing - see ch3 gap list
+C78,MISSING,P2,TEST,TC-EXPORT-SHOW-01+TC-EXPORT-SHOW-10,subagent trap cannot fire while resume absent; MessageRole values asserted in exported JSON; guard for future resume work; authoritative TC missing - see ch3 gap list
+C79,MISSING,P2,TEST,TC-EXPORT-SHOW-09+TC-EXPORT-SHOW-11,future-guard: if resume is ever built emitted command must use each harness native resume syntax verbatim; authoritative TC missing - see ch3 gap list
+C80,PARTIAL,P1,TEST,TC-ROBOT-CLI-01+TC-ROBOT-CLI-02+TC-ROBOT-CLI-03+TC-ROBOT-CLI-04,"fact-checker corrected: preview_truncated + RobotError{code,message,details,suggestion} EXIST; snapshot schema.rs; negative-assert only request-id echo + literal _meta key; authoritative TC missing - see ch3 gap list"
+C81,PARTIAL,P2,TEST,TC-DOCS-DRIFT-05+TC-ROBOT-CLI-05,robot capabilities/schemas/examples = machine doc surface; snapshot for drift; no doc-topics surface (negative-assert); authoritative TC missing - see ch3 gap list
+C82,PARTIAL,P2,TEST,TC-ROBOT-CLI-06,human --help exits 0 and lists sessions subcommands; no --robot-help machine-first variant (negative-assert); authoritative TC missing - see ch3 gap list
+C83,MISSING,P2,TEST,TC-DOCS-DRIFT-03+TC-ROBOT-CLI-07,no --trace-file flag / CASS_TRACE_FILE env; TERRAPHIM_VERBOSE raises log verbosity; CI relies on stderr; authoritative TC missing - see ch3 gap list
+C84,N-A,P3,N-A,,N-A: infrastructure absent by design and out of session-search parity scope; optional negative probe under CF-03
+C85,N-A,P3,N-A,,N-A: no TUI; REPL harness itself is the mechanism not a parity target
+C86,N-A,P3,N-A,,N-A: no self-upgrade mechanism; assert --version prints and exits 0; no upgrade/check subcommand
+C87,PARTIAL,P2,TEST,TC-ROBOT-CLI-11+TC-SEARCH-12,ResponseMeta.version == --version output (schema.rs:56-59); api/contract triple + exit-6 path absent; drift 1.20.4 vs 1.21.3 needs CI pin (R1)
+C88,MISSING,P2,TEST,TC-DOCS-DRIFT-04+TC-ROBOT-CLI-12+TC-ROBOT-CLI-13,suite IS the consumer contract: exit-4 empty-results payload + learn from-session (T40) requires externally seeded sessions.json (T38 read-never-written); authoritative TC missing - see ch3 gap list
+C89,PARTIAL,P1,TEST,TC-DOCS-DRIFT-02+TC-ROBOT-CLI-14+TC-ROBOT-CLI-15,CLAUDE_SESSIONS_DIR redirects Claude discovery; HOME-only isolation (dirs 5.0.1 macOS ignores XDG - review fix 1); no --db/--data-dir; parallel runs serialize or isolate HOME; authoritative TC missing - see ch3 gap list
+C90,MISSING,P2,TEST,TC-ROBOT-CLI-16,no runtime exclusion config; exclusion = rebuild with different cargo features; feature matrix encoded in plan; zero-write guardrail; authoritative TC missing - see ch3 gap list
+C91,PARTIAL,P2,TEST,TC-ROBOT-CLI-15+TC-DOCS-DRIFT-02,"documented in skill, not implemented -> runtime probe + DOCS-DRIFT (TC-ROBOT-CLI-15 + TC-DOCS-DRIFT-02); aider root behavior may differ 1.20.4 vs 1.21.3"
+C92,MISSING,P2,TEST,TC-ROBOT-CLI-17,no embedder/batch/watchdog/checkpoint envs; assert search determinism across runs; drift: enrichment internals differ between crate versions; authoritative TC missing - see ch3 gap list
+C93,PARTIAL,P2,TEST,TC-PERF-05+TC-ROBOT-CLI-18,IndexStatus sessions fields populated after search (T41); server-mode re-imports on cold start (T42); no governor envs - measure cold-import latency not tune it; authoritative TC missing - see ch3 gap list
+C94,MISSING,P3,TEST,TC-ROBOT-CLI-19,negative test only: no streaming flags/envs; re-triage if streaming lands; authoritative TC missing - see ch3 gap list
+C95,PARTIAL,P2,TEST,TC-DOCS-DRIFT-05+TC-ROBOT-CLI-20,--format/--robot switch JSON vs human output; CASS_OUTPUT_FORMAT/NO_COLOR are no-ops; assert plain-text output stability; authoritative TC missing - see ch3 gap list
+C96,MISSING,P3,TEST,TC-DOCS-DRIFT-03+TC-ROBOT-CLI-21,flags rejected as unknown; verbosity only via TERRAPHIM_VERBOSE; review fix 4: --verbose/-v global flag DOES NOT exist - dropped from pin; authoritative TC missing - see ch3 gap list
+C97,PARTIAL,P1,TEST,TC-ROBOT-CLI-22,"compiled set {claude-code-native,claude-code,cursor,aider}; membership asserts only (D-13); T31 by_source counts match fixtures; drift: connector features differ 1.20.4 vs 1.21.3; authoritative TC missing - see ch3 gap list"
+C98,N-A,P1,N-A,,N-A verdict with P1 regression traps: concurrent invocations (T39/T43) and parallel server-mode cold imports (T42) do not corrupt state; no lock/busy errors; exit 7 unused
+C99,PARTIAL,P0,TEST,TC-IMPORT-05+TC-IMPORT-06+TC-IMPORT-07+TC-IMPORT-08+TC-IMPORT-09+TC-IMPORT-10+TC-ROBOT-CLI-25+TC-ROBOT-CLI-26+TC-ROBOT-CLI-27+TC-ROBOT-CLI-28+TC-ROBOT-CLI-29+TC-ROBOT-CLI-30+TC-SEARCH-16,highest-risk row: per-format fixtures + malformed/empty negative each; codex absent negative in binary; membership asserts (D-13); drift: parser set differs between crate versions
+C100,MISSING,P1,TEST,TC-ROBOT-CLI-31+TC-SEARCH-15,no --workspace/--current flags (negative-assert); only incidental scoping via query text matching title=project-path (T09); by-file is the path filter; cross-project noise documented

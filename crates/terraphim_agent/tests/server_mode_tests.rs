@@ -28,12 +28,17 @@ async fn start_test_server() -> Result<Option<(Child, String)>> {
     println!("Starting test server on {}", server_url);
 
     // Start the server with terraphim engineer config
-    let mut server = Command::new("cargo")
+    // terraphim_server is not a workspace member, so it cannot be run from
+    // here; a nested cargo would also deadlock under `cargo test`. Point
+    // TERRAPHIM_SERVER_BIN at a prebuilt binary to exercise this. Refs #113.
+    let server_bin = std::env::var("TERRAPHIM_SERVER_BIN").map_err(|_| {
+        anyhow::anyhow!(
+            "TERRAPHIM_SERVER_BIN is not set and terraphim_server is not a \
+             member of this workspace; cannot start a server. Refs #113"
+        )
+    })?;
+    let mut server = Command::new(server_bin)
         .args([
-            "run",
-            "-p",
-            "terraphim_server",
-            "--",
             "--config",
             "terraphim_server/default/terraphim_engineer_config.json",
         ])
@@ -102,9 +107,8 @@ fn run_server_command(server_url: &str, args: &[&str]) -> Result<(String, String
     let mut cmd_args = vec!["--server", "--server-url", server_url];
     cmd_args.extend_from_slice(args);
 
-    let mut cmd = Command::new("cargo");
-    cmd.args(["run", "-p", "terraphim_agent", "--features", "server", "--"])
-        .args(&cmd_args);
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_terraphim-agent"));
+    cmd.args(&cmd_args);
 
     let output = cmd.output()?;
 
@@ -484,9 +488,8 @@ async fn test_server_vs_offline_mode_comparison() -> Result<()> {
     let _ = server.wait();
 
     // Run offline command
-    let mut cmd = Command::new("cargo");
-    cmd.args(["run", "-p", "terraphim_agent", "--"])
-        .args(["config", "show"]);
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_terraphim-agent"));
+    cmd.args(["config", "show"]);
 
     let offline_output = cmd.output()?;
     let offline_stdout = String::from_utf8_lossy(&offline_output.stdout);

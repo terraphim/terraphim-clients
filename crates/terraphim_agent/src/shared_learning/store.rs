@@ -1,20 +1,13 @@
 //! Shared learning store implementation
 //!
-//! Provides markdown-backed storage with BM25-based deduplication and
-//! trust-gated promotion logic. When a Terraphim `RoleGraph` is configured,
-//! suggestion and similarity lookups use the existing Terraphim hybrid
-//! scorer (`RoleGraph::query_graph`: weighted mean of node rank + edge rank
-//! + document rank with thesaurus term expansion) instead of pure BM25.
-// BM25 remains the fallback when the graph returns no matches.
+//! Provides markdown-backed storage with BM25-based deduplication
+//! and trust-gated promotion logic.
 
 use std::collections::HashMap;
 
 use chrono::Utc;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
-
-#[cfg(feature = "shared-learning")]
-use terraphim_types::{Document, DocumentType};
 
 use crate::shared_learning::markdown_store::{
     MarkdownLearningStore, MarkdownStoreConfig, MarkdownStoreError,
@@ -139,41 +132,6 @@ impl Bm25Scorer {
     }
 }
 
-/// Build a Terraphim `Document` from a `SharedLearning` for ingestion into
-/// the role graph. The body carries the same lowercased, keyword-tagged
-/// text used by the BM25 fallback (`extract_searchable_text`), so both
-/// scorers index the same surface form.
-///
-/// Notes on field choices:
-/// - `id` is left empty: `RoleGraph::insert_document` keys its internal
-///   hashmap on the `document_id` parameter, not on `Document.id`. The
-///   id field is purely informational and would otherwise cost a clone
-///   per insert.
-/// - `tags` is left empty: `Document::fmt`, which the rolegraph uses to
-///   derive the indexing string, does not include tags. Keyword coverage
-///   is already in `body` (see `extract_searchable_text`).
-#[cfg(feature = "shared-learning")]
-fn build_document_for_graph(learning: &SharedLearning) -> Document {
-    let body = learning.extract_searchable_text();
-    Document {
-        id: String::new(),
-        url: String::new(),
-        title: learning.title.clone(),
-        body,
-        description: None,
-        summarization: None,
-        stub: None,
-        tags: None,
-        rank: None,
-        source_haystack: Some("shared_learning_store".to_string()),
-        doc_type: DocumentType::default(),
-        synonyms: None,
-        route: None,
-        priority: None,
-        quality_score: None,
-    }
-}
-
 pub struct SharedLearningStore {
     backend: MarkdownLearningStore,
     index: RwLock<HashMap<String, SharedLearning>>,
@@ -237,43 +195,8 @@ impl SharedLearningStore {
     pub async fn insert(&self, learning: SharedLearning) -> Result<(), StoreError> {
         let id = learning.id.clone();
         self.persist(&learning).await?;
-        self.index
-            .write()
-            .await
-            .insert(id.clone(), learning.clone());
-        // Mirror the insert into the role graph so suggestion / similarity
-        // can find this learning via Terraphim hybrid scoring immediately.
-        // Best-effort: a poisoned write lock on the graph must not fail
-        // the store-level insert.
-        #[cfg(feature = "shared-learning")]
-        self.sync_to_graph(&learning);
+        self.index.write().await.insert(id, learning);
         Ok(())
-    }
-
-    /// Insert a learning's text into the configured role graph, if any.
-    ///
-    /// Failures (poisoned lock, missing graph) are swallowed because the
-    /// graph is an accelerator on top of the in-memory index, not the
-    /// source of truth: subsequent BM25 fallback will still surface the
-    /// learning. A `tracing::warn!` is emitted when the lock is poisoned
-    /// so operators can detect degraded mode in logs.
-    #[cfg(feature = "shared-learning")]
-    fn sync_to_graph(&self, learning: &SharedLearning) {
-        if let Some(ref graph_lock) = self.role_graph {
-            match graph_lock.write() {
-                Ok(mut graph) => {
-                    let doc = build_document_for_graph(learning);
-                    graph.insert_document(learning.id.as_str(), doc);
-                }
-                Err(poisoned) => {
-                    warn!(
-                        learning_id = %learning.id,
-                        error = %poisoned,
-                        "rolegraph write lock poisoned; hybrid scoring will fall back to BM25 for this insert"
-                    );
-                }
-            }
-        }
     }
 
     pub async fn store_with_dedup(
@@ -318,15 +241,15 @@ impl SharedLearningStore {
                 })
                 .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
 
-            if let Some((existing_id, score)) = best_match {
-                if score >= self.config.similarity_threshold {
-                    debug!(
-                        "Merging with existing learning {} (score={:.3})",
-                        existing_id, score
-                    );
-                    self.merge_learning(&existing_id, &learning).await?;
-                    return Ok(StoreResult::Merged(existing_id));
-                }
+            if let Some((existing_id, score)) = best_match
+                && score >= self.config.similarity_threshold
+            {
+                debug!(
+                    "Merging with existing learning {} (score={:.3})",
+                    existing_id, score
+                );
+                self.merge_learning(&existing_id, &learning).await?;
+                return Ok(StoreResult::Merged(existing_id));
             }
         }
 
@@ -424,6 +347,9 @@ impl SharedLearningStore {
         let learning = index
             .get_mut(id)
             .ok_or_else(|| StoreError::NotFound(id.to_string()))?;
+        if learning.trust_level == TrustLevel::L0 {
+            learning.promote_to_l1();
+        }
         learning.promote_to_l2();
         let updated = learning.clone();
         drop(index);
@@ -537,21 +463,6 @@ impl SharedLearningStore {
             return Ok(Vec::new());
         }
 
-        // Hybrid path: when a role graph is configured, prefer its
-        // weighted-mean-of-node-edge-doc rank with thesaurus term
-        // expansion over pure BM25. The substring fallback within the
-        // same call keeps candidates that match the literal query but
-        // are not yet covered by any thesaurus node.
-        if let Some(hybrid) = self.hybrid_rank(query, &all_learnings, limit) {
-            let mut scored = hybrid;
-            scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
-            if scored.len() > limit {
-                scored.truncate(limit);
-            }
-            return Ok(scored);
-        }
-
-        // Fallback: pure BM25.
         let mut doc_freqs: HashMap<String, usize> = HashMap::new();
         let mut total_doc_len = 0;
 
@@ -595,80 +506,6 @@ impl SharedLearningStore {
         Ok(scored)
     }
 
-    /// Run the configured role graph against `query` and produce a
-    /// `(score, SharedLearning)` list ranked by Terraphim hybrid scoring.
-    ///
-    /// `limit` is used to cap the graph result set (passed as
-    /// `limit * 2` with a floor) so the rolegraph does not over-fetch
-    /// when the corpus grows large. The caller is expected to truncate
-    /// the returned vector to its own `limit` after applying the trust
-    /// weight.
-    ///
-    /// Returns `None` when no graph is configured, the graph read lock is
-    /// poisoned, the graph query itself fails, or the graph returns an
-    /// empty result set (no thesaurus node matched the query). In every
-    /// such case the caller is expected to fall back to pure BM25.
-    ///
-    /// Scoring: each `IndexedDocument.rank` is normalised against the
-    /// best rank returned by the graph so the score sits in `[0, 1]`,
-    /// then multiplied by the trust-level weight (`0..=3`) to keep
-    /// parity with the BM25 scoring shape.
-    #[cfg(feature = "shared-learning")]
-    fn hybrid_rank(
-        &self,
-        query: &str,
-        candidates: &[SharedLearning],
-        limit: usize,
-    ) -> Option<Vec<(f64, SharedLearning)>> {
-        let graph_lock = self.role_graph.as_ref()?;
-        let graph = graph_lock.read().ok()?;
-        let graph_cap = Some(limit.saturating_mul(2).max(8));
-        let graph_results = graph.query_graph(query, None, graph_cap).ok()?;
-        if graph_results.is_empty() {
-            return None;
-        }
-        let graph_id_rank: HashMap<String, u64> = graph_results
-            .into_iter()
-            .map(|(id, doc)| (id, doc.rank))
-            .collect();
-        let max_rank = graph_id_rank.values().copied().max().unwrap_or(1).max(1);
-        let query_lower = query.to_lowercase();
-        let scored: Vec<(f64, SharedLearning)> = candidates
-            .iter()
-            .filter(|l| {
-                graph_id_rank.contains_key(&l.id)
-                    || l.extract_searchable_text().contains(&query_lower)
-            })
-            .map(|l| {
-                let rank = graph_id_rank.get(&l.id).copied().unwrap_or(0);
-                let normalised = if rank == 0 {
-                    0.0
-                } else {
-                    rank as f64 / max_rank as f64
-                };
-                let weighted = normalised * l.trust_level.weight() as f64;
-                (weighted, l.clone())
-            })
-            .filter(|(score, _)| *score > 0.0)
-            .collect();
-        if scored.is_empty() {
-            return None;
-        }
-        Some(scored)
-    }
-
-    /// Shared-learning variant of `hybrid_rank` for the non-`shared-learning`
-    /// feature build: always returns `None`, so callers fall back to BM25.
-    #[cfg(not(feature = "shared-learning"))]
-    fn hybrid_rank(
-        &self,
-        _query: &str,
-        _candidates: &[SharedLearning],
-        _limit: usize,
-    ) -> Option<Vec<(f64, SharedLearning)>> {
-        None
-    }
-
     pub async fn suggest(
         &self,
         context: &str,
@@ -690,19 +527,6 @@ impl SharedLearningStore {
             return Ok(Vec::new());
         }
 
-        // Hybrid path: same gate-on-graph-then-fallback as `find_similar`,
-        // applied after the `applicable_agents` filter so per-agent
-        // scoping is preserved on both code paths.
-        if let Some(mut hybrid) = self.hybrid_rank(context, &applicable, limit) {
-            hybrid.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
-            let mut out: Vec<SharedLearning> = hybrid.into_iter().map(|(_, l)| l).collect();
-            if out.len() > limit {
-                out.truncate(limit);
-            }
-            return Ok(out);
-        }
-
-        // Fallback: pure BM25.
         let mut doc_freqs: HashMap<String, usize> = HashMap::new();
         let mut total_doc_len = 0;
 
@@ -742,94 +566,13 @@ impl SharedLearningStore {
         Ok(scored)
     }
 
-    /// Suggest relevant entries from the legacy local `LearningEntry` corpus
-    /// alongside BM25-scored `SharedLearning` results.
-    ///
-    /// The shared corpus is ranked with BM25 via `Self::suggest`. The local
-    /// corpus is ranked outside this method by the caller (e.g.
-    /// `learnings::capture::suggest_learnings` in `main.rs`) and passed in
-    /// as `local_candidates` together with per-candidate weights. Results are
-    /// merged, sorted by weight descending, and truncated to `limit`.
-    ///
-    /// Why decouple: the legacy learning module lives in the binary
-    /// (`mod learnings` in `main.rs`) and the library crate cannot depend
-    /// on it. Splitting the orchestration this way keeps the library free
-    /// of binary-only paths while still letting callers (like
-    /// `SuggestSub::SessionEnd`) rank across both corpora.
-    ///
-    /// `local_candidates` carries `(weight, SharedLearning)` pairs already
-    /// converted by the caller (typically via
-    /// `learnings::capture::shared_learning_from_entry`). Callers that have
-    /// no local corpus to merge can pass an empty Vec.
-    pub async fn suggest_with_local_scored(
-        &self,
-        context: &str,
-        agent_name: &str,
-        local_candidates: Vec<(f64, SharedLearning)>,
-        limit: usize,
-    ) -> Result<Vec<SharedLearning>, StoreError> {
-        // 1. Rank shared corpus.
-        let shared_results = self.suggest(context, agent_name, limit * 2).await?;
-
-        // 2. Seed merged vec with shared results at default weight 1.0.
-        let mut merged: Vec<(f64, SharedLearning)> =
-            shared_results.into_iter().map(|l| (1.0, l)).collect();
-
-        // 3. Append pre-scored local candidates at their caller-supplied weight.
-        merged.extend(local_candidates);
-
-        // 4. Sort by weighted score descending and truncate.
-        merged.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-        merged.truncate(limit);
-
-        Ok(merged.into_iter().map(|(_, l)| l).collect())
-    }
-
     pub async fn close(&self) {
         info!("Shared learning store closed");
     }
 
     #[cfg(feature = "shared-learning")]
     pub fn set_role_graph(&mut self, graph: terraphim_rolegraph::RoleGraph) {
-        // Populate the graph from the current in-memory index so callers
-        // do not have to pre-load documents. Without this initial sync,
-        // the graph would have no documents and `query_graph` would
-        // always return empty, defeating the purpose of hybrid scoring.
-        //
-        // Both lock acquisitions are best-effort: if either is contended
-        // or poisoned, the graph is left empty and `find_similar` /
-        // `suggest` fall back to BM25. A `tracing::warn!` is emitted so
-        // operators can detect the degraded mode in logs.
-        let existing: Vec<SharedLearning> = match self.index.try_read() {
-            Ok(guard) => guard.values().cloned().collect(),
-            Err(_) => {
-                warn!(
-                    "shared_learning_store index contended during set_role_graph; \
-                     initial sync skipped, hybrid scoring will fall back to BM25 \
-                     until the next insert re-syncs"
-                );
-                Vec::new()
-            }
-        };
-
-        let graph_lock = std::sync::RwLock::new(graph);
-        {
-            match graph_lock.write() {
-                Ok(mut g) => {
-                    for learning in &existing {
-                        let doc = build_document_for_graph(learning);
-                        g.insert_document(learning.id.as_str(), doc);
-                    }
-                }
-                Err(_) => {
-                    warn!(
-                        "rolegraph write lock poisoned during set_role_graph initial sync; \
-                         hybrid scoring will fall back to BM25"
-                    );
-                }
-            }
-        }
-        self.role_graph = Some(graph_lock);
+        self.role_graph = Some(std::sync::RwLock::new(graph));
     }
 
     #[cfg(feature = "shared-learning")]
@@ -920,29 +663,26 @@ impl terraphim_types::shared_learning::LearningStore for SharedLearningStore {
 
         if !context.is_empty() {
             let context_lower = context.to_lowercase();
-            if let Some(ref graph_lock) = self.role_graph {
-                if let Ok(graph) = graph_lock.read() {
-                    if let Ok(graph_results) = graph.query_graph(context, None, None) {
-                        if !graph_results.is_empty() {
-                            let graph_id_rank: std::collections::HashMap<String, u64> =
-                                graph_results
-                                    .into_iter()
-                                    .map(|(id, doc)| (id, doc.rank))
-                                    .collect();
-                            candidates.retain(|l| {
-                                graph_id_rank.contains_key(&l.id)
-                                    || l.extract_searchable_text().contains(&context_lower)
-                            });
-                            candidates.sort_by(|a, b| {
-                                let a_rank = graph_id_rank.get(&a.id).copied().unwrap_or(0);
-                                let b_rank = graph_id_rank.get(&b.id).copied().unwrap_or(0);
-                                b_rank.cmp(&a_rank)
-                            });
-                            candidates.truncate(limit);
-                            return Ok(candidates);
-                        }
-                    }
-                }
+            if let Some(ref graph_lock) = self.role_graph
+                && let Ok(graph) = graph_lock.read()
+                && let Ok(graph_results) = graph.query_graph(context, None, None)
+                && !graph_results.is_empty()
+            {
+                let graph_id_rank: std::collections::HashMap<String, u64> = graph_results
+                    .into_iter()
+                    .map(|(id, doc)| (id, doc.rank))
+                    .collect();
+                candidates.retain(|l| {
+                    graph_id_rank.contains_key(&l.id)
+                        || l.extract_searchable_text().contains(&context_lower)
+                });
+                candidates.sort_by(|a, b| {
+                    let a_rank = graph_id_rank.get(&a.id).copied().unwrap_or(0);
+                    let b_rank = graph_id_rank.get(&b.id).copied().unwrap_or(0);
+                    b_rank.cmp(&a_rank)
+                });
+                candidates.truncate(limit);
+                return Ok(candidates);
             }
 
             candidates.retain(|l| l.extract_searchable_text().contains(&context_lower));
@@ -989,7 +729,6 @@ impl terraphim_types::shared_learning::LearningStore for SharedLearningStore {
     ) -> Result<usize, terraphim_types::shared_learning::StoreError> {
         let cutoff = chrono::Utc::now() - chrono::Duration::days(max_age_days as i64);
         let mut index = block_on(self.index.write());
-        let before = index.len();
         let stale: Vec<(String, String)> = index
             .iter()
             .filter(|(_, l)| {
@@ -1007,7 +746,10 @@ impl terraphim_types::shared_learning::LearningStore for SharedLearningStore {
                 warn!("Failed to delete markdown for stale learning {}: {e}", id);
             }
         }
-        let removed = before - stale.len();
+        // `archive_stale` returns the number of stale learnings removed, matching
+        // the `LearningStore::archive_stale` contract (the count archived, not the
+        // count remaining).
+        let removed = stale.len();
         Ok(removed)
     }
 }
@@ -1060,7 +802,10 @@ mod tests {
         let retrieved = store.get(&id).await.unwrap();
         assert_eq!(retrieved.id, id);
         assert_eq!(retrieved.title, "Test Learning");
-        assert_eq!(retrieved.trust_level, TrustLevel::L0);
+        // terraphim_types 1.21.0: SharedLearning::new() starts at L1 (matching the
+        // `#[default]` on TrustLevel). L0 is reserved for raw extract before an entry
+        // enters the shared store. Refs #112.
+        assert_eq!(retrieved.trust_level, TrustLevel::L1);
     }
 
     #[tokio::test]
@@ -1370,7 +1115,8 @@ mod tests {
             retrieved.rejection_reason.as_deref(),
             Some("not applicable")
         );
-        assert_eq!(retrieved.trust_level, TrustLevel::L0);
+        // Rejection does not change trust level; new() now yields L1. Refs #112.
+        assert_eq!(retrieved.trust_level, TrustLevel::L1);
     }
 
     #[tokio::test]
@@ -1493,7 +1239,7 @@ mod tests {
             );
             let id = dyn_store.insert(learning).unwrap();
 
-            assert_eq!(dyn_store.get(&id).unwrap().trust_level, Tl::L0);
+            assert_eq!(dyn_store.get(&id).unwrap().trust_level, Tl::L1);
 
             dyn_store.record_effective(&id, "agent-a").unwrap();
             dyn_store.record_effective(&id, "agent-b").unwrap();
@@ -1599,6 +1345,14 @@ mod tests {
             );
             l0_stale.trust_level = Tl::L0;
             l0_stale.updated_at = chrono::Utc::now() - chrono::Duration::days(60);
+            let mut l0_stale_2 = SharedLearning::new(
+                "stale two".to_string(),
+                "c".to_string(),
+                LearningSource::Manual,
+                "a".to_string(),
+            );
+            l0_stale_2.trust_level = Tl::L0;
+            l0_stale_2.updated_at = chrono::Utc::now() - chrono::Duration::days(45);
             let mut l1_old = SharedLearning::new(
                 "old but L1".to_string(),
                 "c".to_string(),
@@ -1610,10 +1364,14 @@ mod tests {
 
             let dyn_store: &dyn LearningStore = &store;
             dyn_store.insert(l0_stale).unwrap();
+            dyn_store.insert(l0_stale_2).unwrap();
             dyn_store.insert(l1_old).unwrap();
 
+            // Two stale L0 entries are archived; the L1 entry is retained. The
+            // return value must be the count archived (2), not the count
+            // remaining (`before - stale == 3 - 2 == 1`).
             let archived = dyn_store.archive_stale(30).unwrap();
-            assert_eq!(archived, 1);
+            assert_eq!(archived, 2);
 
             let remaining = dyn_store.list_by_trust(Tl::L0).unwrap();
             assert_eq!(remaining.len(), 1);
@@ -1701,386 +1459,6 @@ mod tests {
                 .query_relevant("agent", "rust clippy", Tl::L1, 10)
                 .unwrap();
             assert!(!results.is_empty());
-        }
-    }
-
-    #[cfg(feature = "shared-learning")]
-    mod hybrid_tests {
-        //! Tests covering the Terraphim hybrid-scoring path used by
-        //! `find_similar` and `suggest` when a role graph is configured.
-        //!
-        //! Every test seeds a `RoleGraph` with a thesaurus that contains
-        //! at least one matching term for the query so the graph returns
-        //! a non-empty ranked set. The store is then asked to surface
-        //! learnings; the assertions verify that the graph-derived
-        //! ordering (normalised `IndexedDocument.rank` * trust weight) is
-        //! used in preference to pure BM25.
-
-        use super::*;
-        use crate::shared_learning::types::LearningSource;
-        use terraphim_rolegraph::RoleGraph;
-        use terraphim_types::{
-            Document, DocumentType, NormalizedTerm, NormalizedTermValue, RoleName, Thesaurus,
-        };
-
-        fn empty_thesaurus() -> Thesaurus {
-            Thesaurus::new("hybrid-test".to_string())
-        }
-
-        fn thesaurus_with(terms: &[&str]) -> Thesaurus {
-            let mut thesaurus = Thesaurus::new("hybrid-test".to_string());
-            for (i, term) in terms.iter().enumerate() {
-                thesaurus.insert(
-                    NormalizedTermValue::from(*term),
-                    NormalizedTerm::new(i as u64 + 1, NormalizedTermValue::from(*term)),
-                );
-            }
-            thesaurus
-        }
-
-        fn build_doc(id: &str, title: &str, body: &str) -> Document {
-            Document {
-                id: id.to_string(),
-                url: String::new(),
-                title: title.to_string(),
-                body: body.to_string(),
-                description: None,
-                summarization: None,
-                stub: None,
-                tags: None,
-                rank: None,
-                source_haystack: Some("test".to_string()),
-                doc_type: DocumentType::default(),
-                synonyms: None,
-                route: None,
-                priority: None,
-                quality_score: None,
-            }
-        }
-
-        fn seed_graph(terms: &[&str]) -> RoleGraph {
-            RoleGraph::new_sync(RoleName::new("hybrid-test"), thesaurus_with(terms)).unwrap()
-        }
-
-        async fn store_with_graph(graph: RoleGraph) -> SharedLearningStore {
-            let store = create_test_store().await;
-            // set_role_graph auto-syncs the in-memory index (empty here)
-            // so subsequent inserts hook into the same graph via
-            // `sync_to_graph`.
-            let mut s = store;
-            s.set_role_graph(graph);
-            s
-        }
-
-        fn make_learning(
-            id: &str,
-            title: &str,
-            content: &str,
-            keywords: Vec<&str>,
-            trust: TrustLevel,
-        ) -> SharedLearning {
-            let mut l = SharedLearning::new(
-                title.to_string(),
-                content.to_string(),
-                LearningSource::Manual,
-                "agent".to_string(),
-            )
-            .with_keywords(keywords.into_iter().map(String::from).collect());
-            l.id = id.to_string();
-            l.trust_level = trust;
-            l
-        }
-
-        #[tokio::test(flavor = "multi_thread")]
-        async fn find_similar_uses_role_graph_when_available() {
-            // Two learnings: "git push" matches the thesaurus term and
-            // should be surfaced first; "random" does not match any
-            // thesaurus term and must not appear.
-            let mut graph = seed_graph(&["git", "push"]);
-            let doc = build_doc("git-doc", "Git Push", "git push force error fix");
-            graph.insert_document("git-doc", doc);
-
-            let store = store_with_graph(graph).await;
-            store
-                .insert(make_learning(
-                    "git-doc",
-                    "Git Push",
-                    "git push force error fix",
-                    vec!["git"],
-                    TrustLevel::L1,
-                ))
-                .await
-                .unwrap();
-            store
-                .insert(make_learning(
-                    "unrelated",
-                    "Unrelated",
-                    "completely different topic",
-                    vec!["misc"],
-                    TrustLevel::L1,
-                ))
-                .await
-                .unwrap();
-
-            let results = store.find_similar("git push", 5).await.unwrap();
-            assert!(!results.is_empty(), "graph path should produce results");
-            assert_eq!(results[0].1.id, "git-doc");
-            // Hybrid scores are normalised to [0, trust_weight], not the
-            // tanh-compressed [0, 1] range BM25 returns. We only assert
-            // the relative ordering here.
-            let ids: Vec<&str> = results.iter().map(|(_, l)| l.id.as_str()).collect();
-            assert!(
-                ids.contains(&"git-doc"),
-                "git-doc must be surfaced, got {:?}",
-                ids
-            );
-        }
-
-        #[tokio::test(flavor = "multi_thread")]
-        async fn find_similar_falls_back_to_bm25_without_graph() {
-            let store = create_test_store().await;
-            store
-                .insert(make_learning(
-                    "git-doc",
-                    "Git Push",
-                    "git push force error fix",
-                    vec!["git"],
-                    TrustLevel::L1,
-                ))
-                .await
-                .unwrap();
-
-            let results = store.find_similar("git push", 5).await.unwrap();
-            assert_eq!(results.len(), 1);
-            assert_eq!(results[0].1.id, "git-doc");
-            // BM25 path score sits in [0, trust_weight]; just assert it
-            // is positive.
-            assert!(results[0].0 > 0.0);
-        }
-
-        #[tokio::test(flavor = "multi_thread")]
-        async fn find_similar_falls_back_to_bm25_when_graph_has_no_match() {
-            // Thesaurus terms are unrelated to the query, so the graph
-            // returns empty and we must drop to the BM25 fallback.
-            let graph = seed_graph(&["unrelated", "noise"]);
-            let store = store_with_graph(graph).await;
-            store
-                .insert(make_learning(
-                    "git-doc",
-                    "Git Push",
-                    "git push force error fix",
-                    vec!["git"],
-                    TrustLevel::L1,
-                ))
-                .await
-                .unwrap();
-
-            let results = store.find_similar("git push", 5).await.unwrap();
-            assert_eq!(results.len(), 1);
-            assert_eq!(results[0].1.id, "git-doc");
-        }
-
-        #[tokio::test(flavor = "multi_thread")]
-        async fn suggest_uses_role_graph_when_available() {
-            let mut graph = seed_graph(&["rust", "clippy"]);
-            graph.insert_document(
-                "rust-doc",
-                build_doc(
-                    "rust-doc",
-                    "Rust Clippy",
-                    "use cargo clippy to find rust errors",
-                ),
-            );
-
-            let store = store_with_graph(graph).await;
-            store
-                .insert(make_learning(
-                    "rust-doc",
-                    "Rust Clippy",
-                    "use cargo clippy to find rust errors",
-                    vec!["rust"],
-                    TrustLevel::L1,
-                ))
-                .await
-                .unwrap();
-
-            let results = store.suggest("rust clippy", "agent", 5).await.unwrap();
-            assert!(!results.is_empty());
-            assert_eq!(results[0].id, "rust-doc");
-        }
-
-        #[tokio::test(flavor = "multi_thread")]
-        async fn suggest_respects_applicable_agents_with_graph() {
-            let mut graph = seed_graph(&["shared"]);
-            graph.insert_document(
-                "shared-doc",
-                build_doc("shared-doc", "Shared Topic", "shared topic for everyone"),
-            );
-
-            let store = store_with_graph(graph).await;
-
-            // shared-doc: applicable to all agents (empty list).
-            store
-                .insert(make_learning(
-                    "shared-doc",
-                    "Shared Topic",
-                    "shared topic for everyone",
-                    vec![],
-                    TrustLevel::L1,
-                ))
-                .await
-                .unwrap();
-
-            // scoped-doc: applicable only to security-audit.
-            let scoped = make_learning(
-                "scoped-doc",
-                "Scoped Topic",
-                "scoped to security-audit agent only",
-                vec!["shared"],
-                TrustLevel::L1,
-            )
-            .with_applicable_agents(vec!["security-audit".to_string()]);
-            store.insert(scoped).await.unwrap();
-
-            let results = store.suggest("shared", "agent", 5).await.unwrap();
-            assert!(
-                results.iter().any(|l| l.id == "shared-doc"),
-                "shared-doc should be visible to agent"
-            );
-            assert!(
-                !results.iter().any(|l| l.id == "scoped-doc"),
-                "scoped-doc must be filtered out for non-security agent"
-            );
-        }
-
-        #[tokio::test(flavor = "multi_thread")]
-        async fn suggest_falls_back_to_bm25_without_graph() {
-            let store = create_test_store().await;
-            store
-                .insert(make_learning(
-                    "rust-doc",
-                    "Rust Clippy",
-                    "use cargo clippy to find rust errors",
-                    vec!["rust"],
-                    TrustLevel::L1,
-                ))
-                .await
-                .unwrap();
-
-            let results = store.suggest("rust clippy", "agent", 5).await.unwrap();
-            assert_eq!(results.len(), 1);
-            assert_eq!(results[0].id, "rust-doc");
-        }
-
-        #[tokio::test(flavor = "multi_thread")]
-        async fn insert_syncs_learning_into_role_graph() {
-            // Empty thesaurus: only the substring fallback inside
-            // `query_graph` can match. We verify that after `insert`,
-            // the graph contains a document whose body matches the
-            // inserted learning's searchable text by using a query
-            // that the substring fallback can resolve.
-            let graph = seed_graph(&["marker"]);
-            let store = store_with_graph(graph).await;
-            store
-                .insert(make_learning(
-                    "synced-doc",
-                    "Substring Only",
-                    "this body has the word marker in it",
-                    vec![],
-                    TrustLevel::L1,
-                ))
-                .await
-                .unwrap();
-
-            // Force the graph path: a query that *also* contains the
-            // thesaurus term "marker" so `query_graph` returns non-empty
-            // results.
-            let results = store.find_similar("marker substring", 5).await.unwrap();
-            assert!(
-                results.iter().any(|(_, l)| l.id == "synced-doc"),
-                "synced-doc must surface via the role graph after insert, got {:?}",
-                results
-                    .iter()
-                    .map(|(_, l)| l.id.clone())
-                    .collect::<Vec<_>>()
-            );
-        }
-
-        #[tokio::test(flavor = "multi_thread")]
-        async fn hybrid_rank_respects_trust_weighting() {
-            // Two learnings about git push: one at L1, one at L3. Both
-            // match the graph thesaurus term. L3 must rank higher
-            // because the hybrid score is multiplied by trust weight.
-            let mut graph = seed_graph(&["git"]);
-            graph.insert_document(
-                "l1-doc",
-                build_doc("l1-doc", "Git Push L1", "git push notes"),
-            );
-            graph.insert_document(
-                "l3-doc",
-                build_doc("l3-doc", "Git Push L3", "git push notes"),
-            );
-
-            let store = store_with_graph(graph).await;
-            store
-                .insert(make_learning(
-                    "l1-doc",
-                    "Git Push L1",
-                    "git push notes",
-                    vec!["git"],
-                    TrustLevel::L1,
-                ))
-                .await
-                .unwrap();
-            store
-                .insert(make_learning(
-                    "l3-doc",
-                    "Git Push L3",
-                    "git push notes",
-                    vec!["git"],
-                    TrustLevel::L3,
-                ))
-                .await
-                .unwrap();
-
-            let results = store.find_similar("git", 5).await.unwrap();
-            assert!(results.len() >= 2);
-            let l1_pos = results.iter().position(|(_, l)| l.id == "l1-doc");
-            let l3_pos = results.iter().position(|(_, l)| l.id == "l3-doc");
-            if let (Some(a), Some(b)) = (l3_pos, l1_pos) {
-                assert!(
-                    a < b,
-                    "L3 (trust_weight=3) must rank above L1 (trust_weight=1); positions l3={}, l1={}",
-                    a,
-                    b
-                );
-            } else {
-                panic!("both docs should be present, got {:?}", results);
-            }
-        }
-
-        #[tokio::test(flavor = "multi_thread")]
-        async fn hybrid_rank_with_empty_thesaurus_falls_back() {
-            // Empty thesaurus means query_graph returns empty for any
-            // query. The store must transparently fall back to BM25 so
-            // callers still receive a sensible ranking.
-            let graph =
-                RoleGraph::new_sync(RoleName::new("hybrid-test"), empty_thesaurus()).unwrap();
-            let store = store_with_graph(graph).await;
-            store
-                .insert(make_learning(
-                    "git-doc",
-                    "Git Push",
-                    "git push force error fix",
-                    vec!["git"],
-                    TrustLevel::L1,
-                ))
-                .await
-                .unwrap();
-
-            let results = store.find_similar("git push", 5).await.unwrap();
-            assert_eq!(results.len(), 1);
-            assert_eq!(results[0].1.id, "git-doc");
         }
     }
 }

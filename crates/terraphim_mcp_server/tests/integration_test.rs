@@ -27,50 +27,13 @@ async fn setup_server_command() -> Result<Command> {
         }
     }
 
-    // Build the server first to ensure the binary is up-to-date
-    let mut build = Command::new("cargo");
-    build
-        .arg("build")
-        .arg("--package")
-        .arg("terraphim_mcp_server");
-
-    // CI sets CI=true, and terraphim_mcp_server depends on fff-search whose
-    // build script requires the zlob feature under CI. The top-level main
-    // workflow already runs the workspace tests with zlob enabled, so mirror
-    // that feature contract for this nested build as well.
-    if std::env::var_os("CI").is_some() {
-        build.arg("--features").arg("zlob");
+    // Cargo sets CARGO_BIN_EXE_<name> for this package's integration tests and
+    // builds the binary first, so no target-dir guessing or nested `cargo build`
+    // (which would deadlock on the outer build lock, Refs #113) is needed.
+    let binary_path = std::path::PathBuf::from(env!("CARGO_BIN_EXE_terraphim_mcp_server"));
+    if !binary_path.exists() {
+        anyhow::bail!("Built binary not found at {:?}", binary_path);
     }
-
-    let build_status = build.status().await?;
-    if !build_status.success() {
-        return Err(anyhow::anyhow!("Failed to build terraphim_mcp_server"));
-    }
-    // Determine the path to the compiled binary.
-    // When building inside a workspace Cargo will place the binary in the *workspace* target dir,
-    // whereas `std::env::current_dir()` inside the test is the **crate** directory
-    // (e.g. crates/terraphim_mcp_server). Therefore the binary lives two levels up.
-    let crate_dir = std::env::current_dir()?;
-    let binary_name = if cfg!(target_os = "windows") {
-        "terraphim_mcp_server.exe"
-    } else {
-        "terraphim_mcp_server"
-    };
-    // Candidate locations (checked in order).
-    let candidate_paths = [
-        // 1. Workspace level (../../target/debug/…)
-        crate_dir
-            .parent()
-            .and_then(|p| p.parent())
-            .map(|workspace| workspace.join("target").join("debug").join(binary_name)),
-        // 2. Crate-local target dir (./target/debug/…)
-        Some(crate_dir.join("target").join("debug").join(binary_name)),
-    ];
-    let binary_path = candidate_paths
-        .into_iter()
-        .flatten()
-        .find(|p| p.exists())
-        .ok_or_else(|| anyhow::anyhow!("Built binary not found in expected locations"))?;
     println!("🚀 Using server binary at {:?}", binary_path);
     // Command to run the server binary directly
     let mut command = Command::new(binary_path);

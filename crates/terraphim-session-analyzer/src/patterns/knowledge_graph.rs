@@ -34,17 +34,14 @@
 use crate::models::ToolCategory;
 #[cfg(feature = "terraphim")]
 use crate::models::ToolChain;
+use anyhow::{Context, Result};
 use indexmap::IndexMap;
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::PathBuf;
 
-/// Learn new tool patterns from usage.
-///
-/// Public API consumed only by cross-binary integration tests.
-/// Consumers: `tests/knowledge_graph_tests.rs`.
-/// Public API consumed only by `tests/knowledge_graph_tests.rs` (cross-binary integration test). The `tsa` binary does not use it.
-#[allow(dead_code)]
+/// Learn new tool patterns from usage
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PatternLearner {
     /// Candidate patterns being tracked
@@ -54,12 +51,7 @@ pub struct PatternLearner {
     promotion_threshold: u32,
 }
 
-/// A candidate pattern being observed.
-///
-/// Public API consumed only by cross-binary integration tests.
-/// Consumers: `tests/knowledge_graph_tests.rs`.
-/// Public API consumed only by `tests/knowledge_graph_tests.rs` (cross-binary integration test). The `tsa` binary does not use it.
-#[allow(dead_code)]
+/// A candidate pattern being observed
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CandidatePattern {
     /// Name of the tool
@@ -81,12 +73,7 @@ pub struct CandidatePattern {
     pub last_seen: Timestamp,
 }
 
-/// A learned pattern that has been promoted.
-///
-/// Public API consumed only by cross-binary integration tests.
-/// Consumers: `tests/knowledge_graph_tests.rs`.
-/// Public API consumed only by `tests/knowledge_graph_tests.rs` (cross-binary integration test). The `tsa` binary does not use it.
-#[allow(dead_code)]
+/// A learned pattern that has been promoted
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LearnedPattern {
     /// Name of the tool
@@ -105,17 +92,12 @@ pub struct LearnedPattern {
     pub learned_at: Timestamp,
 }
 
-// impl block consumed only by `tests/knowledge_graph_tests.rs` (cross-binary
-// integration test); the `tsa` binary does not use `PatternLearner`.
-#[allow(dead_code)]
 impl Default for PatternLearner {
     fn default() -> Self {
         Self::new()
     }
 }
-// impl block consumed only by `tests/knowledge_graph_tests.rs` (cross-binary
-// integration test); the `tsa` binary does not use `PatternLearner`.
-#[allow(dead_code)]
+
 impl PatternLearner {
     /// Create a new pattern learner with default threshold (3 observations)
     #[must_use]
@@ -215,6 +197,56 @@ impl PatternLearner {
         self.candidate_patterns.len()
     }
 
+    /// Save learned patterns to cache directory
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the cache directory cannot be created or the file cannot be written
+    pub fn save_to_cache(&self, learned_patterns: &[LearnedPattern]) -> Result<()> {
+        let cache_path = get_cache_path()?;
+
+        // Create parent directory if it doesn't exist
+        if let Some(parent) = cache_path.parent() {
+            std::fs::create_dir_all(parent).with_context(|| {
+                format!("Failed to create cache directory: {}", parent.display())
+            })?;
+        }
+
+        // Serialize and write patterns
+        let json = serde_json::to_string_pretty(learned_patterns)
+            .context("Failed to serialize learned patterns")?;
+
+        std::fs::write(&cache_path, json).with_context(|| {
+            format!(
+                "Failed to write learned patterns to {}",
+                cache_path.display()
+            )
+        })?;
+
+        Ok(())
+    }
+
+    /// Load learned patterns from cache
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the cache file cannot be read or parsed
+    pub fn load_from_cache() -> Result<Vec<LearnedPattern>> {
+        let cache_path = get_cache_path()?;
+
+        if !cache_path.exists() {
+            return Ok(Vec::new());
+        }
+
+        let content = std::fs::read_to_string(&cache_path)
+            .with_context(|| format!("Failed to read cache file: {}", cache_path.display()))?;
+
+        let patterns: Vec<LearnedPattern> = serde_json::from_str(&content)
+            .context("Failed to parse learned patterns from cache")?;
+
+        Ok(patterns)
+    }
+
     /// Get all current candidate patterns (for debugging/inspection)
     #[must_use]
     pub fn get_candidates(&self) -> Vec<&CandidatePattern> {
@@ -222,11 +254,7 @@ impl PatternLearner {
     }
 }
 
-/// Determine the category based on voting results and context analysis.
-///
-/// Called only by `PatternLearner::promote_candidates`, which is consumed by tests.
-/// Called only by `PatternLearner::promote_candidates`, which is consumed by `tests/knowledge_graph_tests.rs` (cross-binary integration test). The `tsa` binary does not use it.
-#[allow(dead_code)]
+/// Determine the category based on voting results and context analysis
 fn determine_category(category_votes: &HashMap<String, u32>, contexts: &[String]) -> ToolCategory {
     // Find the category with the most votes
     let winner = category_votes
@@ -242,11 +270,7 @@ fn determine_category(category_votes: &HashMap<String, u32>, contexts: &[String]
     }
 }
 
-/// Calculate confidence score based on voting consistency.
-///
-/// Called only by `PatternLearner::promote_candidates`, which is consumed by tests.
-/// Called only by `PatternLearner::promote_candidates`, which is consumed by `tests/knowledge_graph_tests.rs` (cross-binary integration test). The `tsa` binary does not use it.
-#[allow(dead_code)]
+/// Calculate confidence score based on voting consistency
 fn calculate_confidence(category_votes: &HashMap<String, u32>, total_observations: u32) -> f32 {
     if total_observations == 0 {
         return 0.0;
@@ -263,12 +287,7 @@ fn calculate_confidence(category_votes: &HashMap<String, u32>, total_observation
     confidence.clamp(0.0, 1.0)
 }
 
-/// Infer category from tool name and command contexts using heuristics.
-///
-/// Public API consumed only by cross-binary integration tests.
-/// Consumers: `tests/knowledge_graph_tests.rs`.
-/// Public API consumed only by `tests/knowledge_graph_tests.rs` (cross-binary integration test). The `tsa` binary does not use it.
-#[allow(dead_code)]
+/// Infer category from tool name and command contexts using heuristics
 pub fn infer_category_from_contexts(contexts: &[String]) -> ToolCategory {
     // Analyze the contexts to find common patterns
     let combined_context = contexts.join(" ").to_lowercase();
@@ -346,8 +365,6 @@ pub fn infer_category_from_contexts(contexts: &[String]) -> ToolCategory {
 }
 
 /// Convert ToolCategory to string for storage
-/// Called only by `PatternLearner::observe`, which is consumed by `tests/knowledge_graph_tests.rs`. The `tsa` binary does not use it.
-#[allow(dead_code)]
 fn category_to_string(category: &ToolCategory) -> String {
     match category {
         ToolCategory::PackageManager => "PackageManager".to_string(),
@@ -362,8 +379,6 @@ fn category_to_string(category: &ToolCategory) -> String {
 }
 
 /// Convert string back to ToolCategory
-/// Called only by `determine_category`, which is consumed by `tests/knowledge_graph_tests.rs`. The `tsa` binary does not use it.
-#[allow(dead_code)]
 fn string_to_category(s: &str) -> ToolCategory {
     match s {
         "PackageManager" => ToolCategory::PackageManager,
@@ -381,14 +396,25 @@ fn string_to_category(s: &str) -> ToolCategory {
     }
 }
 
+/// Get the path to the learned patterns cache file
+///
+/// # Errors
+///
+/// Returns an error if the home directory cannot be determined
+fn get_cache_path() -> Result<PathBuf> {
+    let home = home::home_dir().context("Could not find home directory")?;
+    Ok(home
+        .join(".config")
+        .join("claude-log-analyzer")
+        .join("learned_patterns.json"))
+}
+
 // ============================================================================
 // Tool Relationship Models (Feature-gated for Terraphim)
 // ============================================================================
 
 /// Relationship between two tools indicating how they interact in workflows
 #[cfg(feature = "terraphim")]
-/// Public API consumed only by `tests/knowledge_graph_tests.rs` (cross-binary integration test). The `tsa` binary does not use it.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ToolRelationship {
     /// The source tool in the relationship
@@ -406,8 +432,6 @@ pub struct ToolRelationship {
 
 /// Types of relationships between tools
 #[cfg(feature = "terraphim")]
-/// Discriminant for `ToolRelationship`. Public API consumed only by `tests/knowledge_graph_tests.rs`. The `tsa` binary does not use it.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum RelationType {
     /// Tool A requires Tool B to function (e.g., wrangler depends on npm build)
@@ -424,7 +448,6 @@ pub enum RelationType {
 }
 
 #[cfg(feature = "terraphim")]
-#[allow(dead_code)]
 impl ToolRelationship {
     /// Infer relationships from tool chain patterns
     ///
@@ -501,8 +524,6 @@ impl ToolRelationship {
 
 /// Check if a tool dependency is well-known
 #[cfg(feature = "terraphim")]
-/// Called only by `ToolRelationship` methods, which are consumed by `tests/knowledge_graph_tests.rs`. The `tsa` binary does not use it.
-#[allow(dead_code)]
 fn is_known_dependency(dependency: &str, dependent: &str) -> bool {
     // Common dependency patterns
     matches!(
@@ -520,9 +541,6 @@ fn is_known_dependency(dependency: &str, dependent: &str) -> bool {
 
 /// Knowledge graph containing tool relationships
 #[cfg(feature = "terraphim")]
-// Public API consumed only by `tests/knowledge_graph_tests.rs` (cross-binary
-// integration test); the `tsa` binary does not use `KnowledgeGraph`.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct KnowledgeGraph {
     /// All known tool relationships
@@ -530,7 +548,6 @@ pub struct KnowledgeGraph {
 }
 
 #[cfg(feature = "terraphim")]
-#[allow(dead_code)]
 impl KnowledgeGraph {
     /// Create a new empty knowledge graph
     #[must_use]
@@ -711,9 +728,6 @@ impl KnowledgeGraph {
 
 /// Check if two tools are known alternatives
 #[cfg(feature = "terraphim")]
-// Called only by `KnowledgeGraph` methods, which are consumed by
-// `tests/knowledge_graph_tests.rs`; the `tsa` binary does not use it.
-#[allow(dead_code)]
 fn are_known_alternatives(tool1: &str, tool2: &str) -> bool {
     let alternatives = [
         ("npm", "yarn"),
@@ -925,6 +939,17 @@ mod tests {
                 std::mem::discriminant(&parsed)
             );
         }
+    }
+
+    #[test]
+    fn test_get_cache_path() {
+        let path = get_cache_path();
+        assert!(path.is_ok());
+
+        let path_buf = path.unwrap();
+        assert!(path_buf.to_string_lossy().contains(".config"));
+        assert!(path_buf.to_string_lossy().contains("claude-log-analyzer"));
+        assert!(path_buf.to_string_lossy().contains("learned_patterns.json"));
     }
 
     mod proptest_tests {

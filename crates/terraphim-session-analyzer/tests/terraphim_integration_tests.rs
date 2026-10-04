@@ -85,7 +85,7 @@ fn test_create_wrangler_thesaurus() {
 
     // Verify it contains our patterns by using find_matches
     let text = "npx wrangler deploy";
-    let matches = find_matches(text, thesaurus, true).expect("find_matches should succeed");
+    let matches = find_matches(text, &thesaurus, true).expect("find_matches should succeed");
     assert!(!matches.is_empty(), "Should find npx wrangler pattern");
 }
 
@@ -95,7 +95,7 @@ fn test_find_npx_wrangler_via_terraphim() {
     let text = "npx wrangler deploy --env production";
 
     // Use the actual terraphim_automata find_matches function
-    let matches = find_matches(text, thesaurus, true).expect("find_matches should succeed");
+    let matches = find_matches(text, &thesaurus, true).expect("find_matches should succeed");
 
     // Verify we found the match
     assert!(!matches.is_empty(), "Should find npx wrangler in text");
@@ -112,7 +112,7 @@ fn test_find_bunx_wrangler_via_terraphim() {
     let thesaurus = create_wrangler_thesaurus();
     let text = "bunx wrangler deploy";
 
-    let matches = find_matches(text, thesaurus, true).expect("find_matches should succeed");
+    let matches = find_matches(text, &thesaurus, true).expect("find_matches should succeed");
 
     assert!(!matches.is_empty(), "Should find bunx wrangler in text");
     assert_eq!(matches.len(), 1);
@@ -128,7 +128,7 @@ fn test_find_multiple_wrangler_invocations() {
     let thesaurus = create_wrangler_thesaurus();
     let text = "npx wrangler login && bunx wrangler deploy";
 
-    let matches = find_matches(text, thesaurus, true).expect("find_matches should succeed");
+    let matches = find_matches(text, &thesaurus, true).expect("find_matches should succeed");
 
     // Should find both invocations
     assert_eq!(matches.len(), 2, "Should find both wrangler invocations");
@@ -147,7 +147,7 @@ fn test_case_insensitive_matching() {
     let thesaurus = create_wrangler_thesaurus();
     let text = "NPX WRANGLER deploy";
 
-    let matches = find_matches(text, thesaurus, true).expect("find_matches should succeed");
+    let matches = find_matches(text, &thesaurus, true).expect("find_matches should succeed");
 
     // terraphim_automata uses aho-corasick internally with case-insensitive matching
     assert!(
@@ -161,7 +161,7 @@ fn test_comprehensive_tool_matching() {
     let thesaurus = create_comprehensive_thesaurus();
     let text = "npm install && cargo build && npx wrangler deploy";
 
-    let matches = find_matches(text, thesaurus, true).expect("find_matches should succeed");
+    let matches = find_matches(text, &thesaurus, true).expect("find_matches should succeed");
 
     // Should find all three tools
     assert_eq!(matches.len(), 3, "Should find npm, cargo, and wrangler");
@@ -183,7 +183,7 @@ fn test_match_positions() {
     let text = "npx wrangler deploy";
 
     // Request position information
-    let matches = find_matches(text, thesaurus, true).expect("find_matches should succeed");
+    let matches = find_matches(text, &thesaurus, true).expect("find_matches should succeed");
 
     assert_eq!(matches.len(), 1);
 
@@ -202,7 +202,7 @@ fn test_no_matches() {
     let thesaurus = create_wrangler_thesaurus();
     let text = "echo hello world";
 
-    let matches = find_matches(text, thesaurus, false)
+    let matches = find_matches(text, &thesaurus, false)
         .expect("find_matches should succeed even with no matches");
 
     assert!(
@@ -229,7 +229,7 @@ fn test_leftmost_longest_matching() {
     );
 
     let text = "npm install packages";
-    let matches = find_matches(text, thesaurus, true).expect("find_matches should succeed");
+    let matches = find_matches(text, &thesaurus, true).expect("find_matches should succeed");
 
     // Should prefer the longest match
     assert_eq!(matches.len(), 1, "Should find one match (longest)");
@@ -244,7 +244,7 @@ fn test_wrangler_with_complex_flags() {
     let thesaurus = create_wrangler_thesaurus();
     let text = "npx wrangler deploy --env prod --minify --compatibility-date 2024-01-01";
 
-    let matches = find_matches(text, thesaurus, true).expect("find_matches should succeed");
+    let matches = find_matches(text, &thesaurus, true).expect("find_matches should succeed");
 
     assert_eq!(matches.len(), 1);
     assert_eq!(matches[0].term, "npx wrangler");
@@ -266,8 +266,7 @@ fn test_all_package_manager_variants() {
     ];
 
     for (command, expected_match) in test_cases {
-        let matches =
-            find_matches(command, thesaurus.clone(), true).expect("find_matches should succeed");
+        let matches = find_matches(command, &thesaurus, true).expect("find_matches should succeed");
 
         assert_eq!(matches.len(), 1, "Failed for command: {}", command);
         assert_eq!(
@@ -292,7 +291,7 @@ fn test_terraphim_with_json_serialization() {
 
     // Use deserialized thesaurus
     let text = "npx wrangler deploy";
-    let matches = find_matches(text, deserialized, true).expect("find_matches should succeed");
+    let matches = find_matches(text, &deserialized, true).expect("find_matches should succeed");
 
     assert_eq!(matches.len(), 1);
     assert_eq!(matches[0].term, "npx wrangler");
@@ -304,7 +303,7 @@ fn test_terraphim_with_empty_text() {
     let text = "";
 
     let matches =
-        find_matches(text, thesaurus, false).expect("find_matches should succeed with empty text");
+        find_matches(text, &thesaurus, false).expect("find_matches should succeed with empty text");
 
     assert!(matches.is_empty(), "Should find no matches in empty text");
 }
@@ -314,7 +313,7 @@ fn test_terraphim_with_special_characters() {
     let thesaurus = create_wrangler_thesaurus();
     let text = "npx wrangler deploy > deploy.log 2>&1";
 
-    let matches = find_matches(text, thesaurus, true).expect("find_matches should succeed");
+    let matches = find_matches(text, &thesaurus, true).expect("find_matches should succeed");
 
     assert_eq!(matches.len(), 1);
     assert_eq!(matches[0].term, "npx wrangler");
@@ -325,7 +324,7 @@ fn test_terraphim_url_preservation() {
     let thesaurus = create_wrangler_thesaurus();
     let text = "npx wrangler deploy";
 
-    let matches = find_matches(text, thesaurus, true).expect("find_matches should succeed");
+    let matches = find_matches(text, &thesaurus, true).expect("find_matches should succeed");
 
     assert_eq!(matches.len(), 1);
 
@@ -361,7 +360,7 @@ fn test_terraphim_automata_performance() {
 
     // This should complete quickly
     let start = std::time::Instant::now();
-    let matches = find_matches(&text, thesaurus, true).expect("find_matches should succeed");
+    let matches = find_matches(&text, &thesaurus, true).expect("find_matches should succeed");
     let duration = start.elapsed();
 
     // Verify matches found
@@ -384,7 +383,7 @@ fn test_terraphim_actually_used_not_fallback() {
     let text = "bunx wrangler deploy --env production";
 
     // Call terraphim_automata::find_matches directly
-    let result = find_matches(text, thesaurus, true);
+    let result = find_matches(text, &thesaurus, true);
 
     // If we get a successful result, terraphim is working
     assert!(

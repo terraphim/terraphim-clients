@@ -29,7 +29,7 @@ pub mod export_kg;
 pub mod guard;
 mod hook;
 mod install;
-pub(crate) mod procedure;
+pub mod procedure;
 pub(crate) mod redaction;
 mod replay;
 #[cfg(feature = "shared-learning")]
@@ -43,7 +43,7 @@ pub use replay::{StepOutcome, replay_procedure};
 
 pub use capture::{
     CorrectionType, LearningSource, capture_correction, capture_failed_command, correct_learning,
-    list_all_entries, query_all_entries_semantic,
+    list_all_entries, list_learnings, query_all_entries_semantic,
 };
 // Re-export for testing and external use
 #[allow(unused_imports)]
@@ -52,7 +52,7 @@ pub use capture::{
     LearningError, annotate_with_entities, annotate_with_thesaurus, query_all_entries,
 };
 // Re-export KG thesaurus building utilities for use by hook validation pipeline
-pub(crate) use capture::{build_kg_thesaurus_with_hash, find_kg_dir};
+pub use capture::{build_kg_thesaurus_with_hash, find_kg_dir};
 
 // Re-export compile functions for building thesauruses from corrections
 #[allow(unused_imports)]
@@ -122,8 +122,6 @@ impl Default for LearningCaptureConfig {
 
 impl LearningCaptureConfig {
     /// Create config with custom directories
-    // Cross-binary test API: consumed by `mod tests` and/or sibling `tests/*.rs` files; the bin build does not call it.
-    #[allow(dead_code)]
     pub fn new(project_dir: PathBuf, global_dir: PathBuf) -> Self {
         Self {
             project_dir,

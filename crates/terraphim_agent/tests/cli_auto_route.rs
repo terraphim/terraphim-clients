@@ -23,8 +23,7 @@ use serial_test::serial;
 const FIXTURE_CONFIG: &str = "tests/test_config.json";
 
 fn run_agent(args: &[&str]) -> Result<(String, String, i32)> {
-    let output = Command::new("cargo")
-        .args(["run", "-p", "terraphim_agent", "--quiet", "--"])
+    let output = Command::new(env!("CARGO_BIN_EXE_terraphim-agent"))
         .args(args)
         .env_remove("RUST_LOG")
         .env_remove("JMAP_ACCESS_TOKEN")

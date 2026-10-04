@@ -126,7 +126,7 @@ impl KnowledgeGraphSearch {
     fn match_concept(&self, text: &str, concept: &str) -> Result<MatchResults> {
         // Use terraphim find_matches to search for the concept
         // Use false for overlapping matches to get all possible matches
-        let matches = find_matches(text, self.builder.thesaurus.clone(), false)
+        let matches = find_matches(text, &self.builder.thesaurus, false)
             .with_context(|| format!("Failed to find matches for concept: {concept}"))?;
 
         // Filter matches to only include this concept

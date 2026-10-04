@@ -13,8 +13,8 @@ fn is_expected_chat_error(stderr: &str) -> bool {
 
 /// Test helper to run TUI commands and parse output
 fn run_command_and_parse(args: &[&str]) -> Result<(String, String, i32)> {
-    let mut cmd = Command::new("cargo");
-    cmd.args(["run", "-p", "terraphim_agent", "--"]).args(args);
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_terraphim-agent"));
+    cmd.args(args);
 
     let output = cmd.output()?;
 

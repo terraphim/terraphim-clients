@@ -94,11 +94,18 @@ fn learn_capture_succeeds_from_tmp_dir() {
 fn learn_correction_succeeds_from_tmp_dir() {
     let binary = agent_binary();
     let tmp = tempfile::tempdir().expect("create temp dir");
+    // Steer storage into the temp dir so the test neither reads nor writes
+    // the developer's real learnings store (TERRAPHIM_DEFAULT_DATA_PATH is
+    // honoured by LearningCaptureConfig, Refs #144).
+    let data_dir = tmp.path().join("data");
 
+    // Current CLI grammar: `learn correction` takes a subcommand (`add`/`list`),
+    // so the obsolete flat `--original/--corrected` form must not be used (Refs #276).
     let output = Command::new(binary)
         .args([
             "learn",
             "correction",
+            "add",
             "--original",
             "agent-suggestion",
             "--corrected",
@@ -109,13 +116,31 @@ fn learn_correction_succeeds_from_tmp_dir() {
             "tmp-dir-test",
         ])
         .current_dir(tmp.path())
+        .env("TERRAPHIM_DEFAULT_DATA_PATH", &data_dir)
         .output()
-        .expect("failed to run terraphim-agent learn correction");
+        .expect("failed to run terraphim-agent learn correction add");
 
     assert!(
         output.status.success(),
-        "learn correction should succeed from temp dir.\nstdout: {}\nstderr: {}",
+        "learn correction add should succeed from temp dir.\nstdout: {}\nstderr: {}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
+    );
+
+    // Genuine end-to-end assertion: the captured correction must be persisted
+    // and retrievable via `learn correction list` from the same temp dir.
+    let list = Command::new(binary)
+        .args(["learn", "correction", "list"])
+        .current_dir(tmp.path())
+        .env("TERRAPHIM_DEFAULT_DATA_PATH", &data_dir)
+        .output()
+        .expect("failed to run terraphim-agent learn correction list");
+
+    let list_stdout = String::from_utf8_lossy(&list.stdout);
+    assert!(
+        list.status.success() && list_stdout.contains("[naming] agent-suggestion -> user-fix"),
+        "learn correction list should show the correction captured above.\nstdout: {}\nstderr: {}",
+        list_stdout,
+        String::from_utf8_lossy(&list.stderr),
     );
 }

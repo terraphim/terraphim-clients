@@ -13,12 +13,6 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-/// Maximum bytes captured from stdout+stderr before truncation.
-pub(crate) const MAX_OUTPUT_BYTES: usize = 48_000;
-
-/// Default execution timeout in seconds.
-pub(crate) const DISPATCH_TIMEOUT_SECS: u64 = 300;
-
 /// Subcommands that are safe to execute from an @adf mention.
 pub(crate) const ALLOWED_SUBCOMMANDS: &[&str] = &[
     "search",
@@ -638,6 +632,8 @@ mod tests {
     }
 
     // ── execute_dispatch tests ──
+
+    const MAX_OUTPUT_BYTES: usize = 48_000;
 
     fn test_config(binary: &str) -> ShellDispatchConfig {
         ShellDispatchConfig {

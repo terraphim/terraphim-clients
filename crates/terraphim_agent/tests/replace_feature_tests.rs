@@ -224,18 +224,8 @@ mod tests {
 
     #[test]
     fn test_replace_help_output() {
-        let output = Command::new("cargo")
-            .args([
-                "run",
-                "--quiet",
-                "-p",
-                "terraphim_agent",
-                "--bin",
-                "terraphim-agent",
-                "--",
-                "replace",
-                "--help",
-            ])
+        let output = Command::new(env!("CARGO_BIN_EXE_terraphim-agent"))
+            .args(["replace", "--help"])
             .output()
             .expect("Failed to execute command");
 

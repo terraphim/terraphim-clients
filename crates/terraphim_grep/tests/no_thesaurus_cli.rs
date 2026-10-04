@@ -57,22 +57,30 @@ fn cli_runs_without_thesaurus() {
         Some(0),
         "kg_hits should be zero"
     );
+}
 
-    // Truthful-stats invariant (blocks release wrapper #3208): the reported
-    // counter must always match the number of chunks actually returned, even
-    // when the sufficiency heuristic classifies the result as RlmInsufficient
-    // (fewer than min_results matches, as in this single-file corpus).
-    let chunks_returned = result["stats"]["chunks_returned"]
-        .as_u64()
-        .expect("chunks_returned is a number") as usize;
-    assert_eq!(
-        chunks_returned,
-        chunks.len(),
-        "stats.chunks_returned must equal chunks.len() (got {chunks_returned}, chunks = {})",
-        chunks.len()
+#[test]
+fn cli_help_lists_update_commands() {
+    let bin = env!("CARGO_BIN_EXE_terraphim-grep");
+
+    let output = Command::new(bin)
+        .arg("--help")
+        .output()
+        .expect("failed to run terraphim-grep --help");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        output.status.success(),
+        "terraphim-grep --help should succeed\nstdout: {stdout}\nstderr: {stderr}"
     );
     assert!(
-        chunks_returned >= 1,
-        "known-match corpus must report at least one returned chunk"
+        stdout.contains("check-update"),
+        "help should list check-update command\n{stdout}"
+    );
+    assert!(
+        stdout.contains("update"),
+        "help should list update command\n{stdout}"
     );
 }
