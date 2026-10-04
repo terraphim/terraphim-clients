@@ -260,6 +260,12 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ matrix.use_cross }}" = "true" ]; then
+            # The self-hosted runner shell exports RUSTC_WRAPPER=kache (a
+            # host-only rustc cache); cross forwards the host environment
+            # into its container where the wrapper binary does not exist
+            # ("could not execute process `kache rustc -vV`"). Unwrap only
+            # for the containerised lanes.
+            unset RUSTC_WRAPPER
             build=(rustup run 1.96.0 cross)
           else
             build=(rustup run 1.96.0 cargo)
