@@ -1,0 +1,48 @@
+name: Mirror canonical main to Gitea
+
+# GitHub is the canonical line. This workflow mirrors main and tags to the
+# Gitea mirror and then verifies that .github/ and scripts/ are byte-identical
+# on both forges, so the #342 reconciliation invariant is enforced by CI
+# rather than by hand.
+
+# Requires a repository secret:
+#   GITEA_MIRROR_TOKEN - a Gitea token with Contents: write on
+#                        terraphim/terraphim-clients.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: forge-mirror-terraphim-clients
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - name: Mirror main and tags to Gitea
+        env:
+          GITEA_MIRROR_TOKEN: ${{ secrets.GITEA_MIRROR_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GITEA_MIRROR_TOKEN:-}" ]; then
+            echo "::error::GITEA_MIRROR_TOKEN secret is not configured; cannot mirror to Gitea."
+            exit 1
+          fi
+          git remote add gitea "https://x-access-token:${GITEA_MIRROR_TOKEN}@git.terraphim.cloud/terraphim/terraphim-clients.git"
+          git push gitea "refs/remotes/origin/main:refs/heads/main"
+          git push gitea --tags
+      - name: Verify .github and scripts are identical on both forges
+        run: |
+          set -euo pipefail
+          git fetch --no-tags gitea "main:refs/remotes/gitea/main"
+          scripts/ci/check-forge-drift.sh origin/main gitea/main .github scripts
