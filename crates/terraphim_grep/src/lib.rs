@@ -130,6 +130,24 @@ impl TerraphimGrep {
         options.force_rlm || options.include_answer
     }
 
+    /// Maximum tokens for the RLM synthesis completion.
+    ///
+    /// Reasoning models (e.g. DeepSeek V4 Flash, o1, o3) spend a substantial
+    /// fraction of their token budget on chain-of-thought reasoning before
+    /// emitting any content. A 2000-token cap is routinely exhausted by the
+    /// reasoning phase alone, leaving `content: null` in the response and
+    /// producing an empty synthesis. 8000 accommodates the reasoning overhead
+    /// while still bounding latency and cost.
+    ///
+    /// Override via the `TERRAPHIM_GREP_MAX_TOKENS` environment variable.
+    fn rlm_max_tokens() -> u32 {
+        std::env::var("TERRAPHIM_GREP_MAX_TOKENS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .filter(|&n| n > 0)
+            .unwrap_or(8000)
+    }
+
     /// Build a `SearchOnly` result from chunks that were retrieved but not synthesised.
     fn search_only_result(
         chunks: Vec<RetrievedChunk>,
@@ -344,7 +362,7 @@ impl TerraphimGrep {
                 .chat_completion(
                     messages,
                     terraphim_service::llm::ChatOptions {
-                        max_tokens: Some(2000),
+                        max_tokens: Some(Self::rlm_max_tokens()),
                         temperature: Some(0.3),
                     },
                 )
@@ -382,21 +400,33 @@ impl TerraphimGrep {
 
         let answer = if options.include_answer {
             let signature = signatures::AnswerSignature {};
-            signature.parse(&llm_response).ok().map(|a| {
-                let citations = chunks
-                    .iter()
-                    .map(|c| Citation {
-                        source: c.source.clone(),
-                        line: c.line_start,
-                        excerpt: c.content.chars().take(100).collect(),
+            match signature.parse(&llm_response) {
+                Ok(a) => {
+                    let citations = chunks
+                        .iter()
+                        .map(|c| Citation {
+                            source: c.source.clone(),
+                            line: c.line_start,
+                            excerpt: c.content.chars().take(100).collect(),
+                        })
+                        .collect();
+                    Some(signatures::AnswerWithCitations {
+                        answer: a.answer,
+                        citations,
+                        confidence: a.confidence,
                     })
-                    .collect();
-                signatures::AnswerWithCitations {
-                    answer: a.answer,
-                    citations,
-                    confidence: a.confidence,
                 }
-            })
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        response_len = llm_response.len(),
+                        "RLM synthesis produced an unparseable answer; the LLM response \
+                         was empty or did not match the expected JSON format. The search \
+                         chunks are still valid."
+                    );
+                    None
+                }
+            }
         } else {
             None
         };
@@ -697,6 +727,56 @@ mod tests {
             "expected RlmSynthesis, got {:?}",
             result.sufficiency
         );
+    }
+
+    /// `rlm_max_tokens` defaults to 8000 and honours the env override.
+    #[test]
+    fn rlm_max_tokens_default_and_override() {
+        // SAFETY: test code, single-threaded, no concurrent env access.
+        let saved = std::env::var("TERRAPHIM_GREP_MAX_TOKENS").ok();
+
+        unsafe {
+            std::env::remove_var("TERRAPHIM_GREP_MAX_TOKENS");
+        }
+        assert_eq!(
+            TerraphimGrep::rlm_max_tokens(),
+            8000,
+            "default should be 8000"
+        );
+
+        unsafe {
+            std::env::set_var("TERRAPHIM_GREP_MAX_TOKENS", "4000");
+        }
+        assert_eq!(TerraphimGrep::rlm_max_tokens(), 4000);
+
+        unsafe {
+            std::env::set_var("TERRAPHIM_GREP_MAX_TOKENS", "not-a-number");
+        }
+        assert_eq!(
+            TerraphimGrep::rlm_max_tokens(),
+            8000,
+            "invalid value falls back to default"
+        );
+
+        unsafe {
+            std::env::set_var("TERRAPHIM_GREP_MAX_TOKENS", "0");
+        }
+        assert_eq!(
+            TerraphimGrep::rlm_max_tokens(),
+            8000,
+            "zero falls back to default"
+        );
+
+        // Restore.
+        if let Some(v) = saved {
+            unsafe {
+                std::env::set_var("TERRAPHIM_GREP_MAX_TOKENS", v);
+            }
+        } else {
+            unsafe {
+                std::env::remove_var("TERRAPHIM_GREP_MAX_TOKENS");
+            }
+        }
     }
 
     /// The opt-in predicate: only the two explicit flags enable synthesis.
