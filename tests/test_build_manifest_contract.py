@@ -11,11 +11,13 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "build-manifest.sh"
 LEGACY_SCRIPT = ROOT / "scripts" / "build-legacy-manifest.py"
 
+# 2026-10-04: x86_64-pc-windows-msvc removed with the Windows lane (see
+# release-binaries.yml); restore it when the private crates are published to
+# crates.io and the lane returns.
 COMMON_TARGETS = (
     "aarch64-apple-darwin",
     "aarch64-unknown-linux-musl",
     "x86_64-apple-darwin",
-    "x86_64-pc-windows-msvc",
     "x86_64-unknown-linux-gnu",
     "x86_64-unknown-linux-musl",
 )
