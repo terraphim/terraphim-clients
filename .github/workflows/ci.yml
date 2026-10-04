@@ -21,7 +21,7 @@ env:
 
 jobs:
   # Stage 1: fast checks
-  check:
+  build:
     runs-on: ubuntu-latest
     # The workspace pins twelve private-registry deps (Cargo.toml lines
     # 82-85 and others). Without this token the hosted runner cannot
@@ -58,7 +58,7 @@ jobs:
 
   # Stage 2: tests on every release platform
   test:
-    needs: check
+    needs: build
     strategy:
       fail-fast: false
       matrix:
@@ -181,7 +181,7 @@ jobs:
   # Stage 3: coverage gate (Linux only; threshold only ever increases).
   # --ignore-run-fail: the test job owns test failures; this job owns the number.
   coverage:
-    needs: check
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -200,7 +200,7 @@ jobs:
 
   # Stage 4: UB gates on nightly (from the #252 UB_RUNBOOK)
   ub-gates:
-    needs: check
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
