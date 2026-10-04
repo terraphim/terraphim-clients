@@ -120,11 +120,13 @@ output = pathlib.Path(output_arg)
 if not re.fullmatch(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)", version):
     sys.exit(f"invalid stable version: {version!r}")
 
+# 2026-10-04: x86_64-pc-windows-msvc removed while the private crates are
+# unpublished (GitHub-hosted runners cannot authenticate to the off-tailnet
+# cargo registry); restore the ".zip" entry with the Windows lane.
 common_targets = {
     "aarch64-apple-darwin": ".tar.gz",
     "aarch64-unknown-linux-musl": ".tar.gz",
     "x86_64-apple-darwin": ".tar.gz",
-    "x86_64-pc-windows-msvc": ".zip",
     "x86_64-unknown-linux-gnu": ".tar.gz",
     "x86_64-unknown-linux-musl": ".tar.gz",
 }
