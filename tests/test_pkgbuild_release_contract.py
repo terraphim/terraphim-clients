@@ -27,6 +27,11 @@ CARGO = ROOT / "Cargo.toml"
 
 D = chr(36)  # dollar sign, kept out of template literals in the test source
 
+# Tracks the last *published* release, not the workspace version: the PKGBUILD
+# pins the release asset SHA-256 digests, which only exist once the release is
+# sealed. During a release window (workspace bumped, assets not yet
+# published) this contract intentionally fails until the follow-up PKGBUILD
+# bump lands.
 PKGVER = "1.21.16"
 REPO = "terraphim/terraphim-clients"
 RELEASE_BASE = f"https://github.com/{REPO}/releases/download/v{PKGVER}"

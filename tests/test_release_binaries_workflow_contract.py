@@ -176,7 +176,7 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
     def test_release_uses_checked_in_version_and_never_mutates_source(self) -> None:
         text = workflow_text()
         workspace = tomllib.loads((ROOT / "Cargo.toml").read_text())
-        self.assertEqual(workspace["workspace"]["package"]["version"], "1.21.16")
+        self.assertEqual(workspace["workspace"]["package"]["version"], "1.21.17")
         for forbidden in (
             "Set release version",
             "set_section_version",
@@ -316,24 +316,27 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
                 with self.assertRaises((AssertionError, ValueError)):
                     self.assert_client_packaging_ci_contract(mutant)
 
-    def test_matrix_is_the_exact_six_lane_contract(self) -> None:
+    def test_matrix_is_the_exact_five_lane_self_hosted_contract(self) -> None:
         text = workflow_text()
         expected = {
-            ("ubuntu-22.04", "x86_64-unknown-linux-gnu", "false"),
-            ("ubuntu-22.04", "x86_64-unknown-linux-musl", "true"),
-            ("ubuntu-22.04", "aarch64-unknown-linux-musl", "true"),
-            ("macos-15-intel", "x86_64-apple-darwin", "false"),
-            ("macos-15", "aarch64-apple-darwin", "false"),
-            ("windows-latest", "x86_64-pc-windows-msvc", "false"),
+            ("[self-hosted, Linux, X64, release-linux]", "x86_64-unknown-linux-gnu", "false"),
+            ("[self-hosted, Linux, X64, release-linux]", "x86_64-unknown-linux-musl", "true"),
+            ("[self-hosted, Linux, X64, release-linux]", "aarch64-unknown-linux-musl", "true"),
+            ("[self-hosted, macOS, ARM64, release-macos]", "x86_64-apple-darwin", "false"),
+            ("[self-hosted, macOS, ARM64, release-macos]", "aarch64-apple-darwin", "false"),
         }
         actual = set(
             re.findall(
-                r"- os: ([^\n]+)\n\s+target: ([^\n]+)\n\s+use_cross: (true|false)",
+                r"- os: (\[[^\n]+\])\n\s+target: ([^\n]+)\n\s+use_cross: (true|false)",
                 text,
             )
         )
         self.assertEqual(actual, expected)
         self.assertIn("fail-fast: false", text)
+        # The Windows lane returns once the private crates are public on
+        # crates.io; GitHub-hosted runners cannot authenticate to the
+        # Bearer-only off-tailnet cargo registry (Gitea #341).
+        self.assertNotIn("windows-latest", text)
 
     def test_builds_are_locked_and_grep_features_are_preserved(self) -> None:
         block = job_block("build-binaries")
@@ -364,7 +367,10 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
         self.assertIn("aarch64-unknown-linux-musl", stage)
         self.assertIn("for binary in terraphim-agent terraphim-cli terraphim-grep", stage)
         self.assertIn('if [ "$binary" != "terraphim-cli" ]; then targets+=(universal-apple-darwin); fi', stage)
-        self.assertIn('test "$(wc -l < expected-assets.txt | tr -d \' \')" = 20', stage)
+        self.assertIn('test "$(wc -l < expected-assets.txt | tr -d \' \')" = 17', stage)
+        # Windows lane removed: 17 tar.gz assets (6 agent + 5 cli + 6 grep);
+        # restore 20 only when the Windows zip lane returns.
+        self.assertNotIn("x86_64-pc-windows-msvc", stage)
 
     def test_macos_is_signed_before_deterministic_packaging(self) -> None:
         text = workflow_text()
@@ -383,7 +389,6 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
             "tar --sort=name",
             '--owner=0 --group=0 --numeric-owner',
             "gzip -n -9",
-            "scripts/create-deterministic-zip.py",
             "LICENSE-Apache-2.0",
             "LICENSE-MIT",
             "expected-assets.txt",
@@ -391,6 +396,9 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
             "scripts/validate-release-archive.py",
         ):
             self.assertIn(token, stage)
+        # create-deterministic-zip.py left with the Windows zip lane; it must
+        # return together with that lane (and the = 17 count becomes 20).
+        self.assertNotIn("create-deterministic-zip", stage)
 
     def test_final_bytes_are_signed_before_checksums_and_manifests(self) -> None:
         stage = job_block("seal-release-stage")
@@ -708,7 +716,7 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
         self.assertIn("--managed-target aarch64-unknown-linux-musl", stage)
         self.assertIn("managed-release-assets/*", stage)
         self.assertLess(assemble, checksum)
-        self.assertIn('test "$(wc -l < SHA256SUMS | tr -d \' \')" = 20', stage)
+        self.assertIn('test "$(wc -l < SHA256SUMS | tr -d \' \')" = 17', stage)
 
     def test_producer_is_stage_only_and_has_no_public_writer(self) -> None:
         text = workflow_text()
@@ -904,8 +912,21 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
 
     def test_macos_thin_execution_has_deterministic_runner_semantics(self) -> None:
         text = workflow_text()
-        self.assertIn("os: macos-15-intel\n            target: x86_64-apple-darwin", text)
-        self.assertIn("os: macos-15\n            target: aarch64-apple-darwin", text)
+        # 2026-10-04: both macOS thin builds run on the Apple Silicon
+        # self-hosted runner (x86_64 is a cross-compile from the arm64 host);
+        # the sign/notarize job stays on GitHub-hosted macos-15 because it
+        # needs sudo for Rosetta provisioning and never touches the cargo
+        # registry.
+        self.assertIn(
+            "os: [self-hosted, macOS, ARM64, release-macos]\n"
+            "            target: x86_64-apple-darwin",
+            text,
+        )
+        self.assertIn(
+            "os: [self-hosted, macOS, ARM64, release-macos]\n"
+            "            target: aarch64-apple-darwin",
+            text,
+        )
         signing = job_block("sign-and-notarize-macos")
         self.assertIn("runs-on: macos-15", signing)
         provision = signing.index("softwareupdate --install-rosetta --agree-to-license")

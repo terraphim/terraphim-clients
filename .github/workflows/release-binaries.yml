@@ -181,24 +181,40 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-22.04
+          # 2026-10-04: Linux and macOS lanes run on self-hosted runners that
+          # reach git.terraphim.cloud via the Tailscale /etc/hosts mapping, so
+          # cargo needs no special auth against the Gitea cargo registry
+          # (Caddy treats tailnet sources as on-network). GitHub-hosted runners
+          # cannot reach the registry: off-tailnet cargo access is
+          # Bearer-only (Gitea #341) and cargo omits Bearer on .crate
+          # downloads when the registry advertises auth-required:false.
+          #
+          # Host preconditions on the release-linux runner (bigbox):
+          # passwordless sudo, docker (for cross), qemu-user-static,
+          # binutils (readelf), rustup on PATH. On the release-macos runner
+          # (Apple Silicon): rustup on PATH, Rosetta (provisioned by a
+          # guarded step below for the x86_64 lane).
+          - os: [self-hosted, Linux, X64, release-linux]
             target: x86_64-unknown-linux-gnu
             use_cross: false
-          - os: ubuntu-22.04
+          - os: [self-hosted, Linux, X64, release-linux]
             target: x86_64-unknown-linux-musl
             use_cross: true
-          - os: ubuntu-22.04
+          - os: [self-hosted, Linux, X64, release-linux]
             target: aarch64-unknown-linux-musl
             use_cross: true
-          - os: macos-15-intel
+          # Both macOS targets build on the Apple Silicon runner; x86_64 is a
+          # cross-compile from the arm64 host.
+          - os: [self-hosted, macOS, ARM64, release-macos]
             target: x86_64-apple-darwin
             use_cross: false
-          - os: macos-15
+          - os: [self-hosted, macOS, ARM64, release-macos]
             target: aarch64-apple-darwin
             use_cross: false
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            use_cross: false
+          # x86_64-pc-windows-msvc lane: temporarily removed. GitHub-hosted
+          # Windows runners cannot authenticate to the private Gitea cargo
+          # registry; restore this lane once the terraphim crates are
+          # published to crates.io.
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -222,6 +238,17 @@ jobs:
       - name: Install QEMU for supported foreign execution
         if: matrix.target == 'aarch64-unknown-linux-musl'
         run: sudo apt-get update -qq && sudo apt-get install -y -qq qemu-user-static
+      - name: Prove Rosetta for x86_64 thin verification on Apple Silicon
+        # The release-macos runner is an Apple Silicon host that verifies the
+        # cross-compiled x86_64 binary by executing it under Rosetta. The
+        # install is a no-op when Rosetta is already present; sudo is
+        # passwordless on the dedicated runner.
+        if: runner.os == 'macOS' && matrix.target == 'x86_64-apple-darwin'
+        run: |
+          set -euo pipefail
+          arch -x86_64 /usr/bin/true 2>/dev/null || \
+            sudo softwareupdate --install-rosetta --agree-to-license
+          arch -x86_64 /usr/bin/true
       - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.1
         with:
           key: immutable-clients-v2-${{ matrix.target }}
@@ -232,10 +259,6 @@ jobs:
           CARGO_REGISTRIES_TERRAPHIM_TOKEN: ${{ secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN }}
         run: |
           set -euo pipefail
-          echo "DEBUG: token length=${#CARGO_REGISTRIES_TERRAPHIM_TOKEN}"
-          echo "DEBUG: token prefix=${CARGO_REGISTRIES_TERRAPHIM_TOKEN:0:7}"
-          echo "DEBUG: CARGO_REGISTRY_TOKEN set=${CARGO_REGISTRY_TOKEN:+yes}"
-          rustup run 1.96.0 cargo config get registries.terraphim 2>&1 || true
           if [ "${{ matrix.use_cross }}" = "true" ]; then
             build=(rustup run 1.96.0 cross)
           else
@@ -265,12 +288,10 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
-          extension=""
-          [ "$TARGET" != "x86_64-pc-windows-msvc" ] || extension=".exe"
           for binary in terraphim-agent terraphim-cli terraphim-grep; do
-            path="target/$TARGET/release/${binary}${extension}"
+            path="target/$TARGET/release/$binary"
             test -s "$path"
-            test -x "$path" || [ -n "$extension" ]
+            test -x "$path"
             scripts/validate_release_binary.py "$TARGET" "$path"
             case "$TARGET" in
               aarch64-unknown-linux-musl) output="$(qemu-aarch64-static "$path" --version)" ;;
@@ -286,10 +307,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir raw
-          extension=""
-          [ "${{ matrix.target }}" != "x86_64-pc-windows-msvc" ] || extension=".exe"
           for binary in terraphim-agent terraphim-cli terraphim-grep; do
-            cp "target/${{ matrix.target }}/release/${binary}${extension}" "raw/${binary}-${{ matrix.target }}${extension}"
+            cp "target/${{ matrix.target }}/release/$binary" "raw/${binary}-${{ matrix.target }}"
           done
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -665,10 +684,11 @@ jobs:
         run: |
           set -euo pipefail
           (cd canonical-binaries && sha256sum -c ../BINARY_SHA256SUMS)
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: raw-client-binaries-x86_64-pc-windows-msvc
-          path: raw
+      # 2026-10-04: the Windows lane is removed while the private crates are
+      # unpublished (GitHub-hosted runners cannot authenticate to the
+      # off-tailnet cargo registry). Its download-artifact step and the zip
+      # assembly block below were removed atomically with the matrix lane;
+      # restore both when the crates reach crates.io.
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: signed-client-binaries-apple-darwin
@@ -712,23 +732,11 @@ jobs:
                 -C "$root" -cf - "$binary" LICENSE-Apache-2.0 LICENSE-MIT | gzip -n -9 > "release-assets/$archive"
               printf '%s\n' "$archive" >> expected-assets.txt
             done
-            target=x86_64-pc-windows-msvc
-            root="package-root/$binary-$target"
-            mkdir -p "$root"
-            cp "raw/$binary-$target.exe" "$root/$binary.exe"
-            cp LICENSE-Apache-2.0 LICENSE-MIT "$root/"
-            chmod 755 "$root/$binary.exe"
-            chmod 644 "$root/LICENSE-Apache-2.0" "$root/LICENSE-MIT"
-            touch -d "@$SOURCE_DATE_EPOCH" "$root/$binary.exe" "$root/LICENSE-Apache-2.0" "$root/LICENSE-MIT"
-            archive="$binary-$VERSION-$target.zip"
-            scripts/create-deterministic-zip.py "$SOURCE_DATE_EPOCH" "$root" \
-              "release-assets/$archive" "$binary.exe" LICENSE-Apache-2.0 LICENSE-MIT
-            printf '%s\n' "$archive" >> expected-assets.txt
           done
           LC_ALL=C sort -o expected-assets.txt expected-assets.txt
           find release-assets -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort > actual-assets.txt
           diff -u expected-assets.txt actual-assets.txt
-          test "$(wc -l < expected-assets.txt | tr -d ' ')" = 20
+          test "$(wc -l < expected-assets.txt | tr -d ' ')" = 17
       - name: Install archive signer
         run: cargo install zipsign --version 0.2.1 --locked
       - name: Sign every final archive
@@ -780,7 +788,7 @@ jobs:
             LC_ALL=C sha256sum "${sealed_assets[@]}" > ../SHA256SUMS
           )
           (cd release-assets && sha256sum -c ../SHA256SUMS)
-          test "$(wc -l < SHA256SUMS | tr -d ' ')" = 20
+          test "$(wc -l < SHA256SUMS | tr -d ' ')" = 17
           for binary in terraphim-agent terraphim-cli terraphim-grep; do
             scripts/build-manifest.sh "$VERSION" "$binary" release-assets "manifests/$binary.v2.candidate.json"
             scripts/build-legacy-manifest.py "manifests/$binary.v2.candidate.json" "manifests/$binary.v1.candidate.json"
