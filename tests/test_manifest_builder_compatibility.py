@@ -55,14 +55,14 @@ UNIX_TARGETS = (
 LEGACY_UNIX_TARGETS = UNIX_TARGETS
 
 # Targets the strict v2 candidate builder requires. cli gets the common set
-# (no universal); agent and grep add universal-apple-darwin. Every binary
-# (including cli) carries the Windows zip per the producer's seal step.
+# (no universal); agent and grep add universal-apple-darwin. The Windows zip
+# was removed with the lane on 2026-10-04 (unpublished private crates);
+# restore the "x86_64-pc-windows-msvc": ".zip" entry with the lane.
 def strict_targets_for(binary: str) -> tuple:
     base = {
         "aarch64-apple-darwin": ".tar.gz",
         "aarch64-unknown-linux-musl": ".tar.gz",
         "x86_64-apple-darwin": ".tar.gz",
-        "x86_64-pc-windows-msvc": ".zip",
         "x86_64-unknown-linux-gnu": ".tar.gz",
         "x86_64-unknown-linux-musl": ".tar.gz",
     }
@@ -198,25 +198,23 @@ class ManifestBuilderCompatibilityTests(unittest.TestCase):
             manifest = _run_v2("terraphim-agent", inventory.directory, output)
             self.assertEqual(manifest["version"], VERSION)
             # The strict agent target set is the producer's UNIX_TARGETS
-            # (universal-apple-darwin included) plus the Windows zip. The
-            # cross-contract reconciliation pins that composition: if the
-            # producer drops a target from UNIX_TARGETS for agent/grep, or
-            # universal Apple is removed entirely, the strict and legacy
-            # builders' path keys will drift apart and the contract test
-            # below catches the regression.
+            # (universal-apple-darwin included). The Windows zip left with
+            # the lane on 2026-10-04. The cross-contract reconciliation pins
+            # that composition: if the producer drops a target from
+            # UNIX_TARGETS for agent/grep, or universal Apple is removed
+            # entirely, the strict and legacy builders' path keys will drift
+            # apart and the contract test below catches the regression.
             self.assertEqual(
                 set(manifest["assets"]),
-                set(UNIX_TARGETS) | {"x86_64-pc-windows-msvc"},
+                set(UNIX_TARGETS),
             )
             self.assertEqual(
                 set(strict_targets_for("terraphim-agent")),
-                set(UNIX_TARGETS) | {"x86_64-pc-windows-msvc"},
+                set(UNIX_TARGETS),
             )
             for target, asset in manifest["assets"].items():
                 self.assertIsInstance(asset, dict)
-                expected_extension = (
-                    ".zip" if target == "x86_64-pc-windows-msvc" else ".tar.gz"
-                )
+                expected_extension = ".tar.gz"
                 expected_filename = _tarname(
                     "terraphim-agent", VERSION, target, expected_extension
                 )
