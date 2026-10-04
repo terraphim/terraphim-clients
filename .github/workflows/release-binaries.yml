@@ -270,13 +270,16 @@ jobs:
             lane_cargo="${RUNNER_TEMP:-/tmp}/cargo-${{ matrix.target }}"
             mkdir -p "$lane_cargo"
             grep -v 'rustc-wrapper' /home/alex/.cargo/config.toml > "$lane_cargo/config.toml"
-            for cache_dir in registry git; do
-              if [ -d "/home/alex/.cargo/$cache_dir" ]; then
-                ln -sfn "/home/alex/.cargo/$cache_dir" "$lane_cargo/$cache_dir"
-              else
-                mkdir -p "$lane_cargo/$cache_dir"
-              fi
-            done
+            # Share the registry (file-per-crate, cargo-locked) but keep the
+            # git checkout cache lane-local: matrix lanes run concurrently on
+            # one runner and cargo's bare-repo updates collide with EEXIST
+            # (seen on run 37234224428 for rustls-webpki).
+            if [ -d /home/alex/.cargo/registry ]; then
+              ln -sfn /home/alex/.cargo/registry "$lane_cargo/registry"
+            else
+              mkdir -p "$lane_cargo/registry"
+            fi
+            mkdir -p "$lane_cargo/git"
             export CARGO_HOME="$lane_cargo"
             unset RUSTC_WRAPPER
             build=(rustup run 1.96.0 cross)
