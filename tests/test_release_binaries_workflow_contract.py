@@ -367,7 +367,10 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
         self.assertIn("aarch64-unknown-linux-musl", stage)
         self.assertIn("for binary in terraphim-agent terraphim-cli terraphim-grep", stage)
         self.assertIn('if [ "$binary" != "terraphim-cli" ]; then targets+=(universal-apple-darwin); fi', stage)
-        self.assertIn('test "$(wc -l < expected-assets.txt | tr -d \' \')" = 20', stage)
+        self.assertIn('test "$(wc -l < expected-assets.txt | tr -d \' \')" = 17', stage)
+        # Windows lane removed: 17 tar.gz assets (6 agent + 5 cli + 6 grep);
+        # restore 20 only when the Windows zip lane returns.
+        self.assertNotIn("x86_64-pc-windows-msvc", stage)
 
     def test_macos_is_signed_before_deterministic_packaging(self) -> None:
         text = workflow_text()
@@ -386,7 +389,6 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
             "tar --sort=name",
             '--owner=0 --group=0 --numeric-owner',
             "gzip -n -9",
-            "scripts/create-deterministic-zip.py",
             "LICENSE-Apache-2.0",
             "LICENSE-MIT",
             "expected-assets.txt",
@@ -394,6 +396,9 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
             "scripts/validate-release-archive.py",
         ):
             self.assertIn(token, stage)
+        # create-deterministic-zip.py left with the Windows zip lane; it must
+        # return together with that lane (and the = 17 count becomes 20).
+        self.assertNotIn("create-deterministic-zip", stage)
 
     def test_final_bytes_are_signed_before_checksums_and_manifests(self) -> None:
         stage = job_block("seal-release-stage")
@@ -711,7 +716,7 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
         self.assertIn("--managed-target aarch64-unknown-linux-musl", stage)
         self.assertIn("managed-release-assets/*", stage)
         self.assertLess(assemble, checksum)
-        self.assertIn('test "$(wc -l < SHA256SUMS | tr -d \' \')" = 20', stage)
+        self.assertIn('test "$(wc -l < SHA256SUMS | tr -d \' \')" = 17', stage)
 
     def test_producer_is_stage_only_and_has_no_public_writer(self) -> None:
         text = workflow_text()
