@@ -30,6 +30,108 @@ use tracing::{error, info, warn};
 // `terraphim_update::UpdateBackend` rather than `...::manifest::UpdateBackend`.
 pub use manifest::{ManifestConfig, ManifestError, ReleaseManifest, UpdateBackend};
 
+/// GitHub owner of the repository that publishes Terraphim release assets.
+pub const DEFAULT_REPO_OWNER: &str = "terraphim";
+/// GitHub repository that publishes Terraphim release assets.
+pub const DEFAULT_REPO_NAME: &str = "terraphim-clients";
+
+/// Resolve a GitHub API token from the environment: `GITHUB_TOKEN`, then
+/// `GH_TOKEN` (the variable the `gh` CLI uses). Blank values count as unset.
+pub fn github_token_from_env() -> Option<String> {
+    first_token([
+        std::env::var("GITHUB_TOKEN").ok(),
+        std::env::var("GH_TOKEN").ok(),
+    ])
+}
+
+/// First candidate that is non-empty after trimming, trimmed.
+fn first_token<const N: usize>(candidates: [Option<String>; N]) -> Option<String> {
+    candidates
+        .into_iter()
+        .flatten()
+        .map(|token| token.trim().to_string())
+        .find(|token| !token.is_empty())
+}
+
+/// Where and how to reach GitHub Releases.
+///
+/// Every `self_update` GitHub builder is created through
+/// [`GitHubSource::builder`], so the repository and auth token cannot drift
+/// between call sites (terraphim-ai#3428: `update` used to drop the token and
+/// fail with 403 while `check-update` succeeded).
+#[derive(Clone)]
+struct GitHubSource {
+    repo_owner: String,
+    repo_name: String,
+    auth_token: Option<String>,
+    /// API base URL override; `None` means `https://api.github.com`.
+    api_url: Option<String>,
+}
+
+impl GitHubSource {
+    fn from_config(config: &UpdaterConfig) -> Self {
+        Self {
+            repo_owner: config.repo_owner.clone(),
+            repo_name: config.repo_name.clone(),
+            auth_token: config.auth_token.clone(),
+            api_url: config.github_api_url.clone(),
+        }
+    }
+
+    /// The default release repository, authenticated from the environment.
+    fn from_env() -> Self {
+        Self {
+            repo_owner: DEFAULT_REPO_OWNER.to_string(),
+            repo_name: DEFAULT_REPO_NAME.to_string(),
+            auth_token: github_token_from_env(),
+            api_url: None,
+        }
+    }
+
+    /// A `self_update` GitHub builder with repository, binary name, version,
+    /// auth token, API URL and install path applied.
+    fn builder(
+        &self,
+        bin_name: &str,
+        current_version: &str,
+    ) -> Result<self_update::backends::github::UpdateBuilder> {
+        let mut builder = self_update::backends::github::Update::configure();
+        builder.repo_owner(&self.repo_owner);
+        builder.repo_name(&self.repo_name);
+        // Release assets use hyphenated names (terraphim_agent -> terraphim-agent)
+        builder.bin_name(&bin_name.replace('_', "-"));
+        builder.current_version(current_version);
+        if let Some(token) = &self.auth_token {
+            builder.auth_token(token);
+        }
+        if let Some(url) = &self.api_url {
+            builder.with_url(url);
+        }
+        // Install path keeps the original (possibly underscored) name
+        builder.bin_install_path(platform::get_binary_path(bin_name)?);
+        Ok(builder)
+    }
+
+    /// Operator-facing message for a GitHub API error. Only suggests setting
+    /// a token when none was sent.
+    fn describe_error(&self, error: &str) -> String {
+        if !error.contains("403") {
+            return error.to_string();
+        }
+        if self.auth_token.is_some() {
+            format!(
+                "GitHub API returned 403 although an auth token was sent (rate limit reached, or the token is invalid or lacks access). Error: {}",
+                error
+            )
+        } else {
+            format!(
+                "GitHub API rate limit exceeded. Set GITHUB_TOKEN (or GH_TOKEN) for authenticated access (higher rate limit). Error: {}",
+                error
+            )
+        }
+    }
+}
+
 /// Represents the status of an update operation
 #[derive(Debug, Clone)]
 pub enum UpdateStatus {
@@ -161,8 +263,13 @@ pub struct UpdaterConfig {
     /// Configuration for the manifest (R2) backend.
     pub manifest: manifest::ManifestConfig,
     /// Optional GitHub auth token, forwarded to the GitHub fallback backend to
-    /// avoid rate limiting. Picked up from `GITHUB_TOKEN` by [`Self::new`].
+    /// avoid rate limiting. Picked up from `GITHUB_TOKEN` or `GH_TOKEN` by
+    /// [`Self::new`].
     pub auth_token: Option<String>,
+    /// GitHub API base URL for the fallback backend; `None` means
+    /// `https://api.github.com`. Set for a GitHub Enterprise mirror, or a
+    /// local test server.
+    pub github_api_url: Option<String>,
     /// Runtime update policy (Gitea #247): whether self-update is safe, or
     /// whether the running binary is package-managed and self-update must be
     /// refused. Resolved via [`policy::detect_update_policy_default`] by
@@ -178,7 +285,7 @@ impl UpdaterConfig {
     /// base url = `https://downloads.terraphim.ai`. The backend and base url
     /// can be overridden at runtime via the `TERRAPHIM_UPDATE_BACKEND`
     /// (`r2`|`github`) and `TERRAPHIM_UPDATE_BASE_URL` env vars, and the
-    /// GitHub fallback picks up `GITHUB_TOKEN` automatically.
+    /// GitHub fallback picks up `GITHUB_TOKEN` (or `GH_TOKEN`) automatically.
     ///
     /// **IMPORTANT**: The default version returned by this constructor is the
     /// version of the `terraphim_update` library crate, NOT the version of the
@@ -210,18 +317,14 @@ impl UpdaterConfig {
         let policy = policy::detect_update_policy_default();
         Self {
             bin_name: bin,
-            repo_owner: "terraphim".to_string(),
-            // FIX: releases live on terraphim-clients, not terraphim-ai.
-            repo_name: "terraphim-clients".to_string(),
+            repo_owner: DEFAULT_REPO_OWNER.to_string(),
+            repo_name: DEFAULT_REPO_NAME.to_string(),
             current_version: cargo_crate_version!().to_string(),
             show_progress: true,
             backend,
             manifest,
-            // FIX: pick up GITHUB_TOKEN so the fallback backend isn't rate-limited.
-            auth_token: std::env::var("GITHUB_TOKEN")
-                .ok()
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty()),
+            auth_token: github_token_from_env(),
+            github_api_url: None,
             policy,
         }
     }
@@ -257,6 +360,12 @@ impl UpdaterConfig {
     pub fn with_auth_token(mut self, token: impl Into<String>) -> Self {
         let t = token.into();
         self.auth_token = if t.is_empty() { None } else { Some(t) };
+        self
+    }
+
+    /// Override the GitHub API base URL used by the fallback backend.
+    pub fn with_github_api_url(mut self, url: impl Into<String>) -> Self {
+        self.github_api_url = Some(url.into());
         self
     }
 
@@ -540,31 +649,16 @@ impl TerraphimUpdater {
         );
 
         // Clone data for the blocking task
-        let repo_owner = self.config.repo_owner.clone();
-        let repo_name = self.config.repo_name.clone();
+        let source = GitHubSource::from_config(&self.config);
         let bin_name = self.config.bin_name.clone();
         let current_version = self.config.current_version.clone();
         let show_progress = self.config.show_progress;
-        let auth_token = self.config.auth_token.clone();
 
         // Move self_update operations to a blocking task to avoid runtime conflicts
         let result = tokio::task::spawn_blocking(move || {
-            // Normalize binary name for asset lookup (underscores to hyphens)
-            let bin_name_for_asset = bin_name.replace('_', "-");
-
             // Check if update is available
-            let mut builder = self_update::backends::github::Update::configure();
-            builder.repo_owner(&repo_owner);
-            builder.repo_name(&repo_name);
-            builder.bin_name(&bin_name_for_asset); // Use hyphenated name for asset lookup
-            builder.current_version(&current_version);
+            let mut builder = source.builder(&bin_name, &current_version)?;
             builder.show_download_progress(show_progress);
-            if let Some(token) = &auth_token {
-                builder.auth_token(token);
-            }
-
-            // Set custom install path to preserve underscore naming
-            builder.bin_install_path(platform::get_binary_path(&bin_name)?);
 
             match builder.build() {
                 Ok(updater) => {
@@ -587,17 +681,14 @@ impl TerraphimUpdater {
                                 Err(e) => Err(e),
                             }
                         }
-                Err(e) => {
-                    let err_msg = e.to_string();
-                    if err_msg.contains("403") {
-                        Ok(UpdateStatus::Failed(format!(
-                            "GitHub API rate limit exceeded. Set GITHUB_TOKEN env var for authenticated access (higher rate limit). Error: {}",
-                            err_msg
-                        )))
-                    } else {
-                        Ok(UpdateStatus::Failed(format!("Check failed: {}", err_msg)))
-                    }
-                }
+                        Err(e) => {
+                            let err_msg = e.to_string();
+                            if err_msg.contains("403") {
+                                Ok(UpdateStatus::Failed(source.describe_error(&err_msg)))
+                            } else {
+                                Ok(UpdateStatus::Failed(format!("Check failed: {}", err_msg)))
+                            }
+                        }
                     }
                 }
                 Err(e) => Ok(UpdateStatus::Failed(format!("Configuration error: {}", e))),
@@ -688,12 +779,10 @@ impl TerraphimUpdater {
         );
 
         // Clone data for the blocking task
-        let repo_owner = self.config.repo_owner.clone();
-        let repo_name = self.config.repo_name.clone();
+        let source = GitHubSource::from_config(&self.config);
         let bin_name = self.config.bin_name.clone();
         let current_version = self.config.current_version.clone();
         let show_progress = self.config.show_progress;
-        let auth_token = self.config.auth_token.clone();
 
         // Decode every trusted embedded public key for signature verification
         // (key-rotation aware: an archive signed with any trusted key passes).
@@ -720,23 +809,10 @@ impl TerraphimUpdater {
 
         // Move self_update operations to a blocking task to avoid runtime conflicts
         let result = tokio::task::spawn_blocking(move || {
-            // Normalize binary name for asset lookup (underscores to hyphens)
-            let bin_name_for_asset = bin_name.replace('_', "-");
-
             // Build the updater with signature verification enabled
-            let mut builder = self_update::backends::github::Update::configure();
-            builder.repo_owner(&repo_owner);
-            builder.repo_name(&repo_name);
-            builder.bin_name(&bin_name_for_asset); // Use hyphenated name for asset lookup
-            builder.current_version(&current_version);
+            let mut builder = source.builder(&bin_name, &current_version)?;
             builder.show_download_progress(show_progress);
             builder.verifying_keys(verifying_keys.clone()); // Enable signature verification
-            if let Some(token) = &auth_token {
-                builder.auth_token(token);
-            }
-
-            // Set custom install path to preserve underscore naming
-            builder.bin_install_path(platform::get_binary_path(&bin_name)?);
 
             match builder.build() {
                 Ok(updater) => match updater.update() {
@@ -838,8 +914,7 @@ impl TerraphimUpdater {
         );
 
         // Clone data for the blocking task
-        let repo_owner = self.config.repo_owner.clone();
-        let repo_name = self.config.repo_name.clone();
+        let source = GitHubSource::from_config(&self.config);
         let bin_name = self.config.bin_name.clone();
         let current_version = self.config.current_version.clone();
         let show_progress = self.config.show_progress;
@@ -847,8 +922,7 @@ impl TerraphimUpdater {
         // Move self_update operations to a blocking task
         let result = tokio::task::spawn_blocking(move || {
             Self::update_with_verification_blocking(
-                &repo_owner,
-                &repo_name,
+                &source,
                 &bin_name,
                 &current_version,
                 show_progress,
@@ -891,8 +965,7 @@ impl TerraphimUpdater {
 
     /// Blocking version of update_with_verification for use in spawn_blocking
     fn update_with_verification_blocking(
-        repo_owner: &str,
-        repo_name: &str,
+        source: &GitHubSource,
         bin_name: &str,
         current_version: &str,
         show_progress: bool,
@@ -903,23 +976,22 @@ impl TerraphimUpdater {
         );
 
         // Step 1: Get latest release info from GitHub
-        let release =
-            match Self::get_latest_release_info(repo_owner, repo_name, bin_name, current_version) {
-                Ok(release) => release,
-                Err(e) => {
-                    return Ok(UpdateStatus::Failed(format!(
-                        "Failed to get release info: {}",
-                        e
-                    )));
-                }
-            };
+        let release = match Self::get_latest_release_info(source, bin_name, current_version) {
+            Ok(release) => release,
+            Err(e) => {
+                return Ok(UpdateStatus::Failed(format!(
+                    "Failed to get release info: {}",
+                    source.describe_error(&e.to_string())
+                )));
+            }
+        };
 
         let latest_version = &release.version;
 
         // Step 2: Download archive to temp location
         let (_temp_dir, archive_path) = match Self::download_release_archive(
-            repo_owner,
-            repo_name,
+            &source.repo_owner,
+            &source.repo_name,
             bin_name,
             latest_version,
             show_progress,
@@ -987,29 +1059,16 @@ impl TerraphimUpdater {
 
     /// Get latest release info from GitHub
     fn get_latest_release_info(
-        repo_owner: &str,
-        repo_name: &str,
+        source: &GitHubSource,
         bin_name: &str,
         current_version: &str,
     ) -> Result<self_update::update::Release> {
         info!(
             "Fetching latest release info for {}/{}",
-            repo_owner, repo_name
+            source.repo_owner, source.repo_name
         );
 
-        // Normalize binary name for asset lookup (underscores to hyphens)
-        let bin_name_for_asset = bin_name.replace('_', "-");
-
-        let mut builder = self_update::backends::github::Update::configure();
-        builder.repo_owner(repo_owner);
-        builder.repo_name(repo_name);
-        builder.bin_name(&bin_name_for_asset); // Use hyphenated name for asset lookup
-        builder.current_version(current_version);
-
-        // Set custom install path to preserve underscore naming
-        builder.bin_install_path(platform::get_binary_path(bin_name)?);
-
-        let updater = builder.build()?;
+        let updater = source.builder(bin_name, current_version)?.build()?;
 
         let release = updater.get_latest_release()?;
 
@@ -1487,6 +1546,7 @@ pub async fn check_for_updates_auto_with_policy(
         current_version,
         policy,
         policy::detect_update_policy_default,
+        GitHubSource::from_env(),
     )
     .await
 }
@@ -1496,6 +1556,7 @@ async fn check_for_updates_auto_with_policy_and_detector<D>(
     current_version: &str,
     policy: &policy::UpdatePolicy,
     detect_policy: D,
+    source: GitHubSource,
 ) -> Result<UpdateStatus>
 where
     D: FnOnce() -> policy::UpdatePolicy,
@@ -1540,22 +1601,7 @@ where
     let current_version = current_version.to_string();
 
     let result = tokio::task::spawn_blocking(move || {
-        // Normalize binary name for asset lookup (underscores to hyphens)
-        let bin_name_for_asset = bin_name.replace('_', "-");
-
-        let mut builder = self_update::backends::github::Update::configure();
-        builder.repo_owner("terraphim");
-        builder.repo_name("terraphim-ai");
-        builder.bin_name(&bin_name_for_asset);
-        builder.current_version(&current_version);
-
-        if let Ok(token) = std::env::var("GITHUB_TOKEN") {
-            builder.auth_token(&token);
-        }
-
-        builder.bin_install_path(platform::get_binary_path(&bin_name)?);
-
-        match builder.build() {
+        match source.builder(&bin_name, &current_version)?.build() {
             Ok(updater) => match updater.get_latest_release() {
                 Ok(release) => {
                     let latest_version = release.version.clone();
@@ -1571,7 +1617,10 @@ where
                         Err(e) => Err(e),
                     }
                 }
-                Err(e) => Ok(UpdateStatus::Failed(format!("Check failed: {}", e))),
+                Err(e) => Ok(UpdateStatus::Failed(format!(
+                    "Check failed: {}",
+                    source.describe_error(&e.to_string())
+                ))),
             },
             Err(e) => Ok(UpdateStatus::Failed(format!("Configuration error: {}", e))),
         }
@@ -1838,7 +1887,7 @@ mod tests {
         assert_eq!(config.repo_name, "terraphim-clients");
         assert_eq!(config.backend, UpdateBackend::R2);
         assert_eq!(config.manifest.base_url, "https://downloads.terraphim.ai");
-        assert!(config.auth_token.is_none(), "no GITHUB_TOKEN in test env");
+        assert_eq!(config.auth_token, github_token_from_env());
     }
 
     #[test]
@@ -2087,6 +2136,7 @@ mod tests {
                 manager: crate::policy::PackageManager::Pacman,
                 update_command: "sudo pacman -Syu".to_string(),
             },
+            GitHubSource::from_env(),
         )
         .await
         .expect("check should short-circuit");
@@ -2107,6 +2157,7 @@ mod tests {
                 update_command: "sudo pacman -Syu".to_string(),
             },
             || panic!("detector must not run for an injected PackageManaged policy"),
+            GitHubSource::from_env(),
         )
         .await
         .expect("check should short-circuit");
@@ -2114,6 +2165,283 @@ mod tests {
         assert!(
             matches!(status, UpdateStatus::PackageManaged { .. }),
             "expected injected PackageManaged status, got {status:?}"
+        );
+    }
+
+    // --- GitHub source: token, repository and error wording (terraphim-ai#3428) ---
+
+    const TEST_TOKEN: &str = "test-token-3428";
+    const LATEST_RELEASE_PATH: &str = "/repos/terraphim/terraphim-clients/releases/latest";
+
+    /// A real local HTTP server that answers every request with one fixed
+    /// status and body, and records each request head (lowercased).
+    struct RecordingServer {
+        url: String,
+        requests: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    }
+
+    impl RecordingServer {
+        fn new(status: u16, body: &str) -> Self {
+            use std::io::{Read, Write};
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+            let url = format!("http://{}", listener.local_addr().expect("addr"));
+            let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+            let recorded = requests.clone();
+            let body = body.to_string();
+            std::thread::spawn(move || {
+                for stream in listener.incoming() {
+                    let Ok(mut stream) = stream else { break };
+                    let mut head = Vec::new();
+                    let mut buf = [0u8; 1024];
+                    while !head.windows(4).any(|w| w == b"\r\n\r\n") {
+                        match stream.read(&mut buf) {
+                            Ok(0) | Err(_) => break,
+                            Ok(n) => head.extend_from_slice(&buf[..n]),
+                        }
+                    }
+                    recorded
+                        .lock()
+                        .unwrap()
+                        .push(String::from_utf8_lossy(&head).to_lowercase());
+                    let response = format!(
+                        "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let _ = stream.write_all(response.as_bytes());
+                }
+            });
+            Self { url, requests }
+        }
+
+        fn requests(&self) -> Vec<String> {
+            self.requests.lock().unwrap().clone()
+        }
+    }
+
+    fn release_json(tag: &str) -> String {
+        format!(
+            r#"{{"tag_name":"{tag}","name":"{tag}","created_at":"2026-10-04T22:20:41Z","assets":[]}}"#
+        )
+    }
+
+    fn local_source(server: &RecordingServer, token: Option<&str>) -> GitHubSource {
+        GitHubSource {
+            repo_owner: DEFAULT_REPO_OWNER.to_string(),
+            repo_name: DEFAULT_REPO_NAME.to_string(),
+            auth_token: token.map(str::to_string),
+            api_url: Some(server.url.clone()),
+        }
+    }
+
+    fn assert_single_release_request(server: &RecordingServer, token: Option<&str>) {
+        assert_single_request(server, &format!("{LATEST_RELEASE_PATH} "), token);
+    }
+
+    /// Exactly one API request was made, its path starts with `path_prefix`,
+    /// and it carried `token` (or no auth header at all).
+    fn assert_single_request(server: &RecordingServer, path_prefix: &str, token: Option<&str>) {
+        let requests = server.requests();
+        assert_eq!(requests.len(), 1, "expected one API request: {requests:?}");
+        let request = &requests[0];
+        assert!(
+            request.starts_with(&format!("get {path_prefix}")),
+            "wrong endpoint: {request}"
+        );
+        match token {
+            Some(token) => assert!(
+                request.contains(&format!("authorization: token {token}")),
+                "token not sent: {request}"
+            ),
+            None => assert!(
+                !request.contains("authorization:"),
+                "unexpected auth header: {request}"
+            ),
+        }
+    }
+
+    #[test]
+    fn verified_update_release_lookup_sends_auth_token() {
+        let server = RecordingServer::new(200, &release_json("v9.9.9"));
+
+        let release = TerraphimUpdater::get_latest_release_info(
+            &local_source(&server, Some(TEST_TOKEN)),
+            "terraphim_agent",
+            "1.0.0",
+        )
+        .expect("release info");
+
+        assert_eq!(release.version, "9.9.9");
+        assert_single_release_request(&server, Some(TEST_TOKEN));
+    }
+
+    #[test]
+    fn release_lookup_without_token_sends_no_auth_header() {
+        let server = RecordingServer::new(200, &release_json("v9.9.9"));
+
+        TerraphimUpdater::get_latest_release_info(
+            &local_source(&server, None),
+            "terraphim-agent",
+            "1.0.0",
+        )
+        .expect("release info");
+
+        assert_single_release_request(&server, None);
+    }
+
+    #[test]
+    fn verified_update_403_with_token_does_not_suggest_setting_one() {
+        let server = RecordingServer::new(403, r#"{"message":"API rate limit exceeded"}"#);
+
+        let status = TerraphimUpdater::update_with_verification_blocking(
+            &local_source(&server, Some(TEST_TOKEN)),
+            "terraphim-agent",
+            "1.0.0",
+            false,
+        )
+        .expect("status");
+
+        let UpdateStatus::Failed(message) = status else {
+            panic!("expected Failed, got {status:?}");
+        };
+        assert!(
+            message.starts_with("Failed to get release info: "),
+            "{message}"
+        );
+        assert!(message.contains("auth token was sent"), "{message}");
+        assert!(!message.contains("Set GITHUB_TOKEN"), "{message}");
+        assert!(!message.contains(TEST_TOKEN), "token leaked: {message}");
+        assert_single_release_request(&server, Some(TEST_TOKEN));
+    }
+
+    #[tokio::test]
+    async fn auto_check_queries_release_repo_with_token() {
+        let server = RecordingServer::new(200, &release_json("v9.9.9"));
+
+        let status = check_for_updates_auto_with_policy_and_detector(
+            "terraphim-agent",
+            "1.0.0",
+            &crate::policy::UpdatePolicy::SelfManaged,
+            || crate::policy::UpdatePolicy::SelfManaged,
+            local_source(&server, Some(TEST_TOKEN)),
+        )
+        .await
+        .expect("status");
+
+        assert!(
+            matches!(&status, UpdateStatus::Available { latest_version, .. } if latest_version == "9.9.9"),
+            "expected 9.9.9 available, got {status:?}"
+        );
+        assert_single_release_request(&server, Some(TEST_TOKEN));
+    }
+
+    /// GitHub-backend config pointing at `server`, with the token supplied via
+    /// config (as `UpdaterConfig::new` does from `GITHUB_TOKEN`).
+    fn github_config(server: &RecordingServer) -> UpdaterConfig {
+        UpdaterConfig::new("terraphim-agent")
+            .with_version("1.0.0")
+            .with_backend(UpdateBackend::GitHub)
+            .with_github_api_url(server.url.clone())
+            .with_auth_token(TEST_TOKEN)
+            .with_progress(false)
+            .with_policy(crate::policy::UpdatePolicy::SelfManaged)
+    }
+
+    #[tokio::test]
+    async fn check_update_sends_config_token() {
+        let server = RecordingServer::new(200, &release_json("v9.9.9"));
+
+        let status = TerraphimUpdater::new(github_config(&server))
+            .check_update()
+            .await
+            .expect("status");
+
+        assert!(
+            matches!(&status, UpdateStatus::Available { latest_version, .. } if latest_version == "9.9.9"),
+            "expected 9.9.9 available, got {status:?}"
+        );
+        assert_single_release_request(&server, Some(TEST_TOKEN));
+    }
+
+    /// The reported bug: `check-update` authenticated but the verified
+    /// `update` path dropped the token and failed with 403.
+    #[tokio::test]
+    async fn update_with_verification_sends_config_token() {
+        let server = RecordingServer::new(403, r#"{"message":"API rate limit exceeded"}"#);
+
+        let status = TerraphimUpdater::new(github_config(&server))
+            .update_with_verification()
+            .await
+            .expect("status");
+
+        let UpdateStatus::Failed(message) = status else {
+            panic!("expected Failed, got {status:?}");
+        };
+        assert!(message.contains("auth token was sent"), "{message}");
+        assert_single_release_request(&server, Some(TEST_TOKEN));
+    }
+
+    #[tokio::test]
+    async fn update_sends_config_token() {
+        let server = RecordingServer::new(403, r#"{"message":"API rate limit exceeded"}"#);
+
+        let status = TerraphimUpdater::new(github_config(&server))
+            .update()
+            .await
+            .expect("status");
+
+        assert!(
+            matches!(status, UpdateStatus::Failed(_)),
+            "expected Failed, got {status:?}"
+        );
+        // self_update's install path lists releases rather than asking for /latest
+        assert_single_request(
+            &server,
+            "/repos/terraphim/terraphim-clients/releases",
+            Some(TEST_TOKEN),
+        );
+    }
+
+    #[test]
+    fn github_source_from_config_carries_repo_and_token() {
+        let config = UpdaterConfig::new("terraphim-agent").with_auth_token(TEST_TOKEN);
+
+        let source = GitHubSource::from_config(&config);
+
+        assert_eq!(source.repo_owner, DEFAULT_REPO_OWNER);
+        assert_eq!(source.repo_name, DEFAULT_REPO_NAME);
+        assert_eq!(source.auth_token.as_deref(), Some(TEST_TOKEN));
+        assert!(source.api_url.is_none());
+    }
+
+    #[test]
+    fn first_token_prefers_first_non_blank_and_trims() {
+        let s = |v: &str| Some(v.to_string());
+        assert_eq!(first_token([s(" a "), s("b")]), s("a"));
+        assert_eq!(first_token([None, s("gh")]), s("gh"));
+        assert_eq!(first_token([s("  "), s("gh")]), s("gh"));
+        assert_eq!(first_token::<2>([None, None]), None);
+    }
+
+    #[test]
+    fn describe_error_only_suggests_token_when_none_sent() {
+        let mut source = GitHubSource::from_env();
+        let forbidden = "api request failed with status: 403";
+
+        source.auth_token = None;
+        assert!(
+            source
+                .describe_error(forbidden)
+                .contains("Set GITHUB_TOKEN")
+        );
+
+        source.auth_token = Some(TEST_TOKEN.to_string());
+        let with_token = source.describe_error(forbidden);
+        assert!(with_token.contains("auth token was sent"));
+        assert!(!with_token.contains("Set GITHUB_TOKEN"));
+
+        assert_eq!(
+            source.describe_error("connection refused"),
+            "connection refused"
         );
     }
 
