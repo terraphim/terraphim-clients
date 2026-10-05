@@ -18,7 +18,7 @@
 
 pkgbase=terraphim-clients-bin
 pkgname=(terraphim-agent-bin terraphim-grep-bin)
-pkgver=1.21.16
+pkgver=1.21.18
 pkgrel=1
 pkgdesc='Terraphim AI command-line clients (prebuilt static MUSL binaries)'
 arch=('x86_64' 'aarch64')
@@ -45,12 +45,12 @@ source_aarch64=(
 # SHA256SUMS asset for v${pkgver}. tests/test_pkgbuild_release_contract.py pins
 # the same values so a version bump cannot silently keep stale digests.
 sha256sums_x86_64=(
-  '71cb87455959f2eaa04fab1bd2655564635df58988dfae306c4aeb5583938151'
-  '872a7d7fe1167c75340807be0e3a0bb079389e28d813eb4e198b3d1757e7a583'
+  '767ee6cdaa375f838cf69607a7346cb89195480dbfccc45ecefde7820a89ad4c'
+  '8e463f780e3683e909613a4dd01fb47da36e5736a6a51ea62f36a3ce235b7167'
 )
 sha256sums_aarch64=(
-  'f8530d963171e3f72b52b8b729653cafa5ae5e105e219f7ecec7b170037acaa7'
-  '194d4cac04eccbfb998c4f060e44b286873510d354fd3a3a160bf63b2c5e025c'
+  '1f4265ad8756378d101d35dc21d0362460cb858d9be99aa7486aafe83e8caa0f'
+  '1b02796312162b59cd0165aa302aa683e8f57b00c72f283ab0bd15d569d3b395'
 )
 
 # Prebuilt, already-stripped static binaries: never strip or emit debug info.
