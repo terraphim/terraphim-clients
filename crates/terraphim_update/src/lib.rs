@@ -2362,6 +2362,22 @@ mod tests {
         assert_single_release_request(&server, Some(TEST_TOKEN));
     }
 
+    #[tokio::test]
+    async fn check_update_403_with_token_reports_token_was_sent() {
+        let server = RecordingServer::new(403, r#"{"message":"Bad credentials"}"#);
+
+        let status = TerraphimUpdater::new(github_config(&server))
+            .check_update()
+            .await
+            .expect("status");
+
+        let UpdateStatus::Failed(message) = status else {
+            panic!("expected Failed, got {status:?}");
+        };
+        assert!(message.contains("auth token was sent"), "{message}");
+        assert_single_release_request(&server, Some(TEST_TOKEN));
+    }
+
     /// The reported bug: `check-update` authenticated but the verified
     /// `update` path dropped the token and failed with 403.
     #[tokio::test]
@@ -2410,6 +2426,18 @@ mod tests {
         assert_eq!(source.repo_owner, DEFAULT_REPO_OWNER);
         assert_eq!(source.repo_name, DEFAULT_REPO_NAME);
         assert_eq!(source.auth_token.as_deref(), Some(TEST_TOKEN));
+        assert!(source.api_url.is_none());
+    }
+
+    /// The auto-check path builds its source from the environment; it must
+    /// target the release repo, not the old `terraphim-ai` one.
+    #[test]
+    fn github_source_from_env_targets_release_repo() {
+        let source = GitHubSource::from_env();
+
+        assert_eq!(source.repo_owner, "terraphim");
+        assert_eq!(source.repo_name, "terraphim-clients");
+        assert_eq!(source.auth_token, github_token_from_env());
         assert!(source.api_url.is_none());
     }
 
