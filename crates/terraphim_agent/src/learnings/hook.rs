@@ -224,6 +224,13 @@ fn process_user_prompt_submit(json: &str) {
 /// - "prefer X over Y"     -> (Y, X)
 ///
 /// Returns None if no pattern matches.
+///
+/// Contract (UF-043, #309): offsets are computed on the same string that
+/// is sliced — never on a lowercased or trimmed copy that can diverge in
+/// byte length. Correction keywords match ASCII case-insensitively only;
+/// non-ASCII case folds are not matched, by design, because they can
+/// change byte lengths. Leading whitespace of any script is trimmed
+/// before matching. The function must never panic on any input.
 fn parse_correction_pattern(text: &str) -> Option<(String, String)> {
     let lower = text.to_lowercase();
     let trimmed = lower.trim_start();

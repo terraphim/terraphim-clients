@@ -205,6 +205,8 @@ Manage the procedural-learning store. Subcommands:
 `list` (recent learnings), `capture` (record a new one),
 `hook` (auto-capture from PostToolUse failures), `correct`
 (replace a stale learning), `replay` (run a procedure).
+Correction prompts ("use X instead of Y", "prefer X over Y") are
+matched ASCII case-insensitively.
 
 ```bash
 terraphim-agent learn list --recent
