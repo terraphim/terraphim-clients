@@ -266,9 +266,9 @@ pub struct UpdaterConfig {
     /// avoid rate limiting. Picked up from `GITHUB_TOKEN` or `GH_TOKEN` by
     /// [`Self::new`].
     pub auth_token: Option<String>,
-    /// GitHub API base URL for the fallback backend; `None` means
-    /// `https://api.github.com`. Set for a GitHub Enterprise mirror, or a
-    /// local test server.
+    /// GitHub API base URL for the fallback backend's release lookups; `None`
+    /// means `https://api.github.com`. Only API calls use it: the verified
+    /// update still downloads assets from `https://github.com/.../releases/download`.
     pub github_api_url: Option<String>,
     /// Runtime update policy (Gitea #247): whether self-update is safe, or
     /// whether the running binary is package-managed and self-update must be
@@ -363,7 +363,8 @@ impl UpdaterConfig {
         self
     }
 
-    /// Override the GitHub API base URL used by the fallback backend.
+    /// Override the GitHub API base URL used for release lookups (see
+    /// [`Self::github_api_url`]; asset downloads are unaffected).
     pub fn with_github_api_url(mut self, url: impl Into<String>) -> Self {
         self.github_api_url = Some(url.into());
         self
