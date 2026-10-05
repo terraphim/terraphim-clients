@@ -33,8 +33,9 @@ no registry or signing credentials.
   correlation ID, exact `client-release-stage-<version>-<source-sha>` identity,
   and embedded zipsign signature scheme. Promotion checks this exact object;
   visual inspection is additional evidence, not the gate.
-- [ ] `expected-assets.txt` lists exactly 20 archives: seven each for
-  `terraphim-agent` and `terraphim-grep`, and six for `terraphim-cli`.
+- [ ] `expected-assets.txt` lists exactly 17 archives: six each for
+  `terraphim-agent` and `terraphim-grep`, and five for `terraphim-cli`
+  (Windows zips were dropped from the target set in #50/#51).
 - [ ] Both Omarchy targets are present for agent and grep:
   `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`.
 - [ ] `sha256sum -c SHA256SUMS` succeeds from `release-assets/`.
