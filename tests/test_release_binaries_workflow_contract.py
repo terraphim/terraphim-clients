@@ -176,7 +176,7 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
     def test_release_uses_checked_in_version_and_never_mutates_source(self) -> None:
         text = workflow_text()
         workspace = tomllib.loads((ROOT / "Cargo.toml").read_text())
-        self.assertEqual(workspace["workspace"]["package"]["version"], "1.21.17")
+        self.assertEqual(workspace["workspace"]["package"]["version"], "1.21.18")
         for forbidden in (
             "Set release version",
             "set_section_version",
