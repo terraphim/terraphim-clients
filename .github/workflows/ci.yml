@@ -67,7 +67,7 @@ jobs:
         run: |
           set -euo pipefail
           cargo_home="$RUNNER_TEMP/cargo-home"
-          echo "DIAG"; sed -n '/credential-provider/p' "$HOME/.cargo/config.toml" | sed -E 's/(token|Bearer)[^"]*/\1<x>/g'
+          echo "DIAG"; sed -n '/credential-provider/p' "$HOME/.cargo/config.toml" | sed -E 's/[A-Za-z0-9_+\/=-]{24,}/<long>/g' | sed -E 's/\$\{?[A-Z_]+/<var>/g' | cut -c1-120
           mkdir -p "$cargo_home" "$RUNNER_TEMP/tools/bin"
           # Keep the registry definitions, drop the host-only rustc wrapper.
           if [ -f "$HOME/.cargo/config.toml" ]; then
