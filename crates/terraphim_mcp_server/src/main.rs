@@ -32,6 +32,7 @@
 //! RUST_LOG=warn terraphim-mcp-server
 //! ```
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -70,6 +71,12 @@ struct Args {
     /// SSE bind address (when --sse)
     #[arg(long, default_value = "127.0.0.1:8000")]
     bind: String,
+
+    /// Directory in which to discover the project `.terraphim/` config
+    /// (defaults to the current working directory). Useful for MCP clients,
+    /// such as Zed context servers, that cannot pass the project root.
+    #[arg(long, value_name = "DIR")]
+    config_dir: Option<PathBuf>,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
@@ -146,6 +153,62 @@ fn repair_selected_roles(config: &mut Config) {
     }
 }
 
+/// Resolve the effective configuration.
+///
+/// Project `.terraphim/` discovery starts from `config_dir` when given, or from
+/// the current working directory otherwise. When no usable project config is
+/// found, the hardcoded `profile` configuration is used.
+fn resolve_config(profile: &ConfigProfile, config_dir: Option<&Path>) -> Config {
+    let discovered = terraphim_config::project::discover(config_dir);
+    let project_dir = match discovered {
+        Ok(Some(dir)) => dir,
+        Ok(None) => {
+            if let Some(dir) = config_dir {
+                warn!(
+                    "No .terraphim/ directory found from --config-dir '{}', using profile",
+                    dir.display()
+                );
+            }
+            return build_profile_config(profile);
+        }
+        Err(e) => {
+            if let Some(dir) = config_dir {
+                warn!(
+                    "Project discovery failed for --config-dir '{}': {}; using profile",
+                    dir.display(),
+                    e
+                );
+            }
+            return build_profile_config(profile);
+        }
+    };
+
+    match terraphim_config::project::ProjectConfig::load_from_dir(&project_dir) {
+        Ok(project_config) if !project_config.is_empty() => {
+            info!(
+                "Using project configuration from '{}' ({} role(s))",
+                project_dir.display(),
+                project_config.roles.len()
+            );
+            merge_project_into_base(build_profile_config(profile), &project_config)
+        }
+        _ => {
+            if config_dir.is_some() {
+                warn!(
+                    "No project roles found in '{}', using profile",
+                    project_dir.display()
+                );
+            } else {
+                info!(
+                    "No project roles found in '{}', using profile",
+                    project_dir.display()
+                );
+            }
+            build_profile_config(profile)
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize logging
@@ -179,28 +242,7 @@ async fn main() -> Result<()> {
 
     // Build configuration based on selected profile
     // Priority: project .terraphim/ config > hardcoded profile
-    let config = if let Ok(Some(project_dir)) = terraphim_config::project::discover(None) {
-        match terraphim_config::project::ProjectConfig::load_from_dir(&project_dir) {
-            Ok(project_config) if !project_config.is_empty() => {
-                info!(
-                    "Using project configuration from '{}' ({} role(s))",
-                    project_dir.display(),
-                    project_config.roles.len()
-                );
-                let base = build_profile_config(&args.profile);
-                merge_project_into_base(base, &project_config)
-            }
-            _ => {
-                info!(
-                    "No project roles found in '{}', using profile",
-                    project_dir.display()
-                );
-                build_profile_config(&args.profile)
-            }
-        }
-    } else {
-        build_profile_config(&args.profile)
-    };
+    let config = resolve_config(&args.profile, args.config_dir.as_deref());
 
     // Initialize ConfigState from the config
     let mut temp_config = config.clone();
@@ -346,6 +388,92 @@ mod tests {
         assert!(config.roles.contains_key(&RoleName::new("devops")));
         assert_eq!(config.selected_role, RoleName::new("devops"));
         assert_eq!(config.default_role, RoleName::new("devops"));
+    }
+
+    fn write_role(dir: &Path, file: &str, name: &str) {
+        std::fs::write(
+            dir.join(file),
+            format!(
+                r#"{{"shortname":"{name}","name":"{name}","relevance_function":"title-scorer","terraphim_it":false,"theme":"default","haystacks":[]}}"#
+            ),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn config_dir_flag_is_parsed() {
+        let args = Args::try_parse_from(["terraphim_mcp_server", "--config-dir", "/some/project"])
+            .unwrap();
+        assert_eq!(args.config_dir, Some(PathBuf::from("/some/project")));
+
+        let args = Args::try_parse_from(["terraphim_mcp_server"]).unwrap();
+        assert_eq!(args.config_dir, None);
+    }
+
+    #[test]
+    fn resolve_config_uses_project_config_from_config_dir() {
+        let temp = tempfile::tempdir().unwrap();
+        let tp = temp.path().join(".terraphim");
+        std::fs::create_dir_all(&tp).unwrap();
+        write_role(&tp, "role-zedproject.json", "ZedProject");
+
+        let config = resolve_config(&ConfigProfile::Server, Some(temp.path()));
+
+        assert!(config.roles.contains_key(&RoleName::new("zedproject")));
+        assert_eq!(config.selected_role, RoleName::new("zedproject"));
+        assert_eq!(config.default_role, RoleName::new("zedproject"));
+    }
+
+    #[test]
+    fn resolve_config_discovers_from_subdirectory_of_config_dir() {
+        let temp = tempfile::tempdir().unwrap();
+        let tp = temp.path().join(".terraphim");
+        std::fs::create_dir_all(&tp).unwrap();
+        write_role(&tp, "role-zedproject.json", "ZedProject");
+        let sub = temp.path().join("src");
+        std::fs::create_dir_all(&sub).unwrap();
+
+        let config = resolve_config(&ConfigProfile::Server, Some(&sub));
+
+        assert!(config.roles.contains_key(&RoleName::new("zedproject")));
+    }
+
+    #[test]
+    fn resolve_config_falls_back_to_profile_when_config_dir_has_no_terraphim() {
+        let temp = tempfile::tempdir().unwrap();
+
+        let config = resolve_config(&ConfigProfile::Server, Some(temp.path()));
+        let expected = build_profile_config(&ConfigProfile::Server);
+
+        let mut got: Vec<_> = config.roles.keys().map(|k| k.to_string()).collect();
+        let mut want: Vec<_> = expected.roles.keys().map(|k| k.to_string()).collect();
+        got.sort();
+        want.sort();
+        assert_eq!(got, want);
+        assert_eq!(config.selected_role, expected.selected_role);
+    }
+
+    #[test]
+    fn resolve_config_falls_back_when_terraphim_dir_has_no_roles() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(temp.path().join(".terraphim")).unwrap();
+
+        let config = resolve_config(&ConfigProfile::Server, Some(temp.path()));
+        let expected = build_profile_config(&ConfigProfile::Server);
+
+        assert_eq!(config.selected_role, expected.selected_role);
+        assert_eq!(config.roles.len(), expected.roles.len());
+    }
+
+    #[test]
+    fn resolve_config_falls_back_when_config_dir_does_not_exist() {
+        let temp = tempfile::tempdir().unwrap();
+        let missing = temp.path().join("does-not-exist");
+
+        let config = resolve_config(&ConfigProfile::Server, Some(&missing));
+        let expected = build_profile_config(&ConfigProfile::Server);
+
+        assert_eq!(config.selected_role, expected.selected_role);
     }
 
     #[test]
