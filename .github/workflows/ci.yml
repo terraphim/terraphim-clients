@@ -12,7 +12,13 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Self-hosted: GitHub-hosted runners cannot download crates from the
+    # private Terraphim registry (Caddy on bigbox rejects off-tailnet requests
+    # without a Bearer header, and cargo sends no token on .crate downloads
+    # because the registry advertises auth-required:false). The release-linux
+    # runner resolves git.terraphim.cloud over the tailnet, as
+    # release-binaries.yml relies on (#366).
+    runs-on: [self-hosted, Linux, X64, release-linux]
     # The workspace pins twelve private-registry deps (Cargo.toml lines
     # 82-85 and others). Without this token the hosted runner cannot
     # resolve them, which has been the failure mode blocking every CI run
@@ -22,13 +28,17 @@ jobs:
     # and the rest.
     env:
       CARGO_REGISTRIES_TERRAPHIM_TOKEN: ${{ secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN }}
+      # The runner is a persistent host: select the toolchain per job through
+      # the environment so the host's default toolchain is never changed.
+      RUSTUP_TOOLCHAIN: 1.96.0
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+      - name: Install exact Rust toolchain
+        run: rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
       - uses: Swatinem/rust-cache@v2
       - name: Install release signature verifier
+        # Idempotent on a persistent host: cargo skips an already-installed
+        # identical version.
         run: cargo install zipsign --version 0.2.1 --locked
       - name: Install pinned actionlint
         run: .github/scripts/install-actionlint.sh
