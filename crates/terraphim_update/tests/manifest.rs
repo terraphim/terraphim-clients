@@ -89,13 +89,13 @@ fn test_generated_legacy_manifest_executes_pre12115_wire_contract() {
         old.notes_url.as_deref(),
         Some("https://github.com/terraphim/terraphim-clients/releases/tag/v1.21.15")
     );
-    // Host-independent: the fixture has no Windows asset, so pick the first
-    // current-host triple that is part of it (a Windows host would otherwise
-    // select the msvc triple and miss).
+    // Host-independent: pick the first current-host triple that the generated
+    // manifest actually advertises (the fixture has no Windows asset, and an
+    // aarch64 Linux host lists a -gnu triple the published set lacks).
     let current_target = terraphim_update::manifest::current_target_triples()
         .into_iter()
-        .find(|target| target != "x86_64-pc-windows-msvc")
-        .expect("a non-Windows current target");
+        .find(|target| old.assets.contains_key(target))
+        .expect("a current-host target present in the generated legacy manifest");
     let advertised = old.assets.get(&current_target).expect("current target");
     let expected_name = format!(
         "terraphim-agent-1.21.15-{current_target}{}",
