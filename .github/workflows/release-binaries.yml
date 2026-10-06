@@ -539,10 +539,18 @@ jobs:
               "aarch64/${binary}-aarch64-apple-darwin" \
               -output "universal/${binary}-universal-apple-darwin"
             chmod 755 "universal/${binary}-universal-apple-darwin"
-            # Xcode 16.4 lipo requires the input file before the
-            # -verify_arch command/arch flags; the legacy flags-first order
-            # parses the file path as an architecture and fails.
-            lipo "universal/${binary}-universal-apple-darwin" -verify_arch x86_64 arm64
+            # Newer lipo (Xcode 27) rejects several architectures in one
+            # -verify_arch ("requires exactly one input file"), and the
+            # input file must precede the flags: verify each architecture
+            # separately, then require exactly the two slices.
+            for arch in x86_64 arm64; do
+              lipo "universal/${binary}-universal-apple-darwin" -verify_arch "$arch"
+            done
+            archs="$(lipo -archs "universal/${binary}-universal-apple-darwin")"
+            [ "$(printf '%s' "$archs" | tr ' ' '\n' | LC_ALL=C sort | tr '\n' ' ')" = "arm64 x86_64 " ] || {
+              echo "unexpected architectures: $archs" >&2
+              exit 1
+            }
           done
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

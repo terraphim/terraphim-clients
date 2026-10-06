@@ -484,28 +484,31 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
                     self.assert_seal_package_result_contract(mutant)
 
     def assert_lipo_verify_arch_order(self, block: str) -> None:
-        # Xcode 16.4 lipo requires the input file before the -verify_arch
-        # command and its architecture flags: the legacy order
-        # `lipo -verify_arch x86_64 arm64 FILE` parses FILE as an
-        # architecture and fails the universal macOS step. The only safe
-        # order is `lipo FILE -verify_arch x86_64 arm64`.
+        # Newer lipo (Xcode 27) rejects several architectures in a single
+        # -verify_arch ("requires exactly one input file"), and the input file
+        # must precede the flags. Verify each architecture on its own, then
+        # require exactly the two slices from `lipo -archs`.
+        self.assertIn("for arch in x86_64 arm64; do", block)
         self.assertIn(
-            'lipo "universal/${binary}-universal-apple-darwin" -verify_arch x86_64 arm64',
-            block,
+            'lipo "universal/${binary}-universal-apple-darwin" -verify_arch "$arch"', block
         )
-        self.assertNotIn("lipo -verify_arch x86_64 arm64", block)
+        self.assertIn('lipo -archs "universal/${binary}-universal-apple-darwin"', block)
+        self.assertIn('= "arm64 x86_64 "', block)
+        self.assertNotIn("-verify_arch x86_64 arm64", block)
+        self.assertNotIn("lipo -verify_arch", block)
 
     def test_universal_lipo_verify_arch_uses_safe_argument_order(self) -> None:
         block = job_block("create-universal-macos")
         self.assert_lipo_verify_arch_order(block)
 
+        safe = 'lipo "universal/${binary}-universal-apple-darwin" -verify_arch "$arch"'
         mutations = {
             "flags-first": block.replace(
-                'lipo "universal/${binary}-universal-apple-darwin" -verify_arch x86_64 arm64',
-                'lipo -verify_arch x86_64 arm64 "universal/${binary}-universal-apple-darwin"',
-                1,
+                safe, 'lipo -verify_arch "$arch" "universal/${binary}-universal-apple-darwin"', 1
             ),
-            "verify-dropped": block.replace(" -verify_arch x86_64 arm64", "", 1),
+            "multi-arch": block.replace(safe, safe.replace('"$arch"', "x86_64 arm64"), 1),
+            "verify-dropped": block.replace(safe, "true", 1),
+            "archs-check-dropped": block.replace('= "arm64 x86_64 "', '= ""', 1),
         }
         for name, mutant in mutations.items():
             with self.subTest(mutation=name):

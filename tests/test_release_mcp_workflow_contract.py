@@ -159,6 +159,34 @@ class ReleaseMcpWorkflow(unittest.TestCase):
         self.assertIn("test -d release/assets", publish)
         self.assertIn("test -s release/checksums.txt", publish)
 
+    @staticmethod
+    def assert_lipo_verification(block: str) -> None:
+        # Newer lipo rejects several architectures in one -verify_arch and
+        # wants the file first: verify each separately, then require exactly
+        # the two slices.
+        assert "for arch in x86_64 arm64; do" in block
+        assert 'lipo "$out" -verify_arch "$arch"' in block
+        assert 'lipo -archs "$out"' in block
+        assert '= "arm64 x86_64 "' in block
+        assert "-verify_arch x86_64 arm64" not in block
+        assert "lipo -verify_arch" not in block
+
+    def test_universal_binary_verifies_each_architecture_separately(self) -> None:
+        block = job_block("universal-macos")
+        self.assert_lipo_verification(block)
+        safe = 'lipo "$out" -verify_arch "$arch"'
+        mutations = {
+            "flags-first": block.replace(safe, 'lipo -verify_arch "$arch" "$out"', 1),
+            "multi-arch": block.replace(safe, 'lipo "$out" -verify_arch x86_64 arm64', 1),
+            "verify-dropped": block.replace(safe, "true", 1),
+            "archs-check-dropped": block.replace('= "arm64 x86_64 "', '= ""', 1),
+        }
+        for name, mutant in mutations.items():
+            with self.subTest(mutation=name):
+                self.assertNotEqual(mutant, block)
+                with self.assertRaises(AssertionError):
+                    self.assert_lipo_verification(mutant)
+
     def test_source_is_trusted_before_any_self_hosted_job(self) -> None:
         preflight = job_block("preflight")
         self.assertIn('git merge-base --is-ancestor "$SOURCE_SHA" origin/main', preflight)
