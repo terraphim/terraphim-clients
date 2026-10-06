@@ -35,7 +35,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install exact Rust toolchain
         run: rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
-      - uses: Swatinem/rust-cache@v2
+      # No rust-cache: the self-hosted host keeps its own persistent cargo and
+      # target caches, and its rustup wrapper prints to stdout, which breaks
+      # the action's toolchain detection.
       - name: Install release signature verifier
         # Idempotent on a persistent host: cargo skips an already-installed
         # identical version.

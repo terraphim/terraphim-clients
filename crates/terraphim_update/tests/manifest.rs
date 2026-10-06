@@ -31,13 +31,14 @@ fn test_generated_legacy_manifest_executes_pre12115_wire_contract() {
     let root = tempfile::tempdir().expect("temporary stage");
     let assets = root.path().join("release-assets");
     std::fs::create_dir(&assets).expect("asset directory");
-    let targets = terraphim_update::manifest::all_target_triples();
+    // scripts/build-manifest.sh no longer accepts the Windows zip (#50), so the
+    // staged fixture must not contain one.
+    let targets: Vec<String> = terraphim_update::manifest::all_target_triples()
+        .into_iter()
+        .filter(|target| target != "x86_64-pc-windows-msvc")
+        .collect();
     for (index, target) in targets.iter().enumerate() {
-        let extension = if target == "x86_64-pc-windows-msvc" {
-            ".zip"
-        } else {
-            ".tar.gz"
-        };
+        let extension = ".tar.gz";
         std::fs::write(
             assets.join(format!("terraphim-agent-1.21.15-{target}{extension}")),
             format!("sealed-payload-{index}"),
