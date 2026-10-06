@@ -158,7 +158,7 @@ fn repair_selected_roles(config: &mut Config) {
 /// Project `.terraphim/` discovery starts from `config_dir` when given, or from
 /// the current working directory otherwise. When no usable project config is
 /// found, the hardcoded `profile` configuration is used.
-fn resolve_config(profile: &ConfigProfile, config_dir: Option<&Path>) -> Config {
+fn resolve_config(profile: &ConfigProfile, config_dir: Option<&Path>) -> Result<Config> {
     let discovered = terraphim_config::project::discover(config_dir);
     let project_dir = match discovered {
         Ok(Some(dir)) => dir,
@@ -169,7 +169,7 @@ fn resolve_config(profile: &ConfigProfile, config_dir: Option<&Path>) -> Config 
                     dir.display()
                 );
             }
-            return build_profile_config(profile);
+            return Ok(build_profile_config(profile));
         }
         Err(e) => {
             if let Some(dir) = config_dir {
@@ -179,7 +179,7 @@ fn resolve_config(profile: &ConfigProfile, config_dir: Option<&Path>) -> Config 
                     e
                 );
             }
-            return build_profile_config(profile);
+            return Ok(build_profile_config(profile));
         }
     };
 
@@ -190,9 +190,25 @@ fn resolve_config(profile: &ConfigProfile, config_dir: Option<&Path>) -> Config 
                 project_dir.display(),
                 project_config.roles.len()
             );
-            merge_project_into_base(build_profile_config(profile), &project_config)
+            Ok(merge_project_into_base(
+                build_profile_config(profile),
+                &project_config,
+            ))
         }
-        _ => {
+        Err(e) if config_dir.is_some() => anyhow::bail!(
+            "Failed to load project configuration from '{}': {}",
+            project_dir.display(),
+            e
+        ),
+        Err(e) => {
+            warn!(
+                "Failed to load project configuration from '{}': {}; using profile",
+                project_dir.display(),
+                e
+            );
+            Ok(build_profile_config(profile))
+        }
+        Ok(_) => {
             if config_dir.is_some() {
                 warn!(
                     "No project roles found in '{}', using profile",
@@ -204,7 +220,7 @@ fn resolve_config(profile: &ConfigProfile, config_dir: Option<&Path>) -> Config 
                     project_dir.display()
                 );
             }
-            build_profile_config(profile)
+            Ok(build_profile_config(profile))
         }
     }
 }
@@ -242,7 +258,7 @@ async fn main() -> Result<()> {
 
     // Build configuration based on selected profile
     // Priority: project .terraphim/ config > hardcoded profile
-    let config = resolve_config(&args.profile, args.config_dir.as_deref());
+    let config = resolve_config(&args.profile, args.config_dir.as_deref())?;
 
     // Initialize ConfigState from the config
     let mut temp_config = config.clone();
@@ -417,7 +433,7 @@ mod tests {
         std::fs::create_dir_all(&tp).unwrap();
         write_role(&tp, "role-zedproject.json", "ZedProject");
 
-        let config = resolve_config(&ConfigProfile::Server, Some(temp.path()));
+        let config = resolve_config(&ConfigProfile::Server, Some(temp.path())).unwrap();
 
         assert!(config.roles.contains_key(&RoleName::new("zedproject")));
         assert_eq!(config.selected_role, RoleName::new("zedproject"));
@@ -433,7 +449,7 @@ mod tests {
         let sub = temp.path().join("src");
         std::fs::create_dir_all(&sub).unwrap();
 
-        let config = resolve_config(&ConfigProfile::Server, Some(&sub));
+        let config = resolve_config(&ConfigProfile::Server, Some(&sub)).unwrap();
 
         assert!(config.roles.contains_key(&RoleName::new("zedproject")));
     }
@@ -442,7 +458,7 @@ mod tests {
     fn resolve_config_falls_back_to_profile_when_config_dir_has_no_terraphim() {
         let temp = tempfile::tempdir().unwrap();
 
-        let config = resolve_config(&ConfigProfile::Server, Some(temp.path()));
+        let config = resolve_config(&ConfigProfile::Server, Some(temp.path())).unwrap();
         let expected = build_profile_config(&ConfigProfile::Server);
 
         let mut got: Vec<_> = config.roles.keys().map(|k| k.to_string()).collect();
@@ -458,7 +474,7 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(temp.path().join(".terraphim")).unwrap();
 
-        let config = resolve_config(&ConfigProfile::Server, Some(temp.path()));
+        let config = resolve_config(&ConfigProfile::Server, Some(temp.path())).unwrap();
         let expected = build_profile_config(&ConfigProfile::Server);
 
         assert_eq!(config.selected_role, expected.selected_role);
@@ -470,10 +486,25 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let missing = temp.path().join("does-not-exist");
 
-        let config = resolve_config(&ConfigProfile::Server, Some(&missing));
+        let config = resolve_config(&ConfigProfile::Server, Some(&missing)).unwrap();
         let expected = build_profile_config(&ConfigProfile::Server);
 
         assert_eq!(config.selected_role, expected.selected_role);
+    }
+
+    #[test]
+    fn resolve_config_errors_on_malformed_project_config_with_config_dir() {
+        let temp = tempfile::tempdir().unwrap();
+        let tp = temp.path().join(".terraphim");
+        std::fs::create_dir_all(&tp).unwrap();
+        std::fs::write(tp.join("role-broken.json"), "{ not json").unwrap();
+
+        let err = resolve_config(&ConfigProfile::Server, Some(temp.path())).unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("Failed to load project configuration")
+        );
     }
 
     #[test]
