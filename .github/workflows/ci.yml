@@ -43,9 +43,10 @@ jobs:
     # runner resolves git.terraphim.cloud over the tailnet, as
     # release-binaries.yml relies on (#366).
     runs-on: [self-hosted, Linux, X64, release-linux]
-    # No registry token: the self-hosted runner resolves git.terraphim.cloud over
-    # the tailnet, where the registry needs no authentication (see
-    # release-binaries.yml), so job steps run without the secret.
+    # The registry token is exposed to the "Fetch dependencies" step only, which
+    # runs no repository code (cargo fetch executes no build scripts). Every
+    # later step runs offline without the secret. A fresh CARGO_HOME has no
+    # cached index, and the registry index then requires the token.
     env:
       # The runner is a persistent host: select the toolchain per job through
       # the environment so the host's default toolchain is never changed.
@@ -67,20 +68,11 @@ jobs:
         run: |
           set -euo pipefail
           cargo_home="$RUNNER_TEMP/cargo-home"
-          echo "DIAG"; sed -n '/credential-provider/p' "$HOME/.cargo/config.toml" | sed -E 's/[A-Za-z0-9_+\/=-]{24,}/<long>/g' | sed -E 's/\$\{?[A-Z_]+/<var>/g' | cut -c1-120
           mkdir -p "$cargo_home" "$RUNNER_TEMP/tools/bin"
           # Keep the registry definitions, drop the host-only rustc wrapper.
           if [ -f "$HOME/.cargo/config.toml" ]; then
             sed '/rustc-wrapper/d' "$HOME/.cargo/config.toml" > "$cargo_home/config.toml"
           fi
-          # The registry index requires the host's registry credential (cargo
-          # reads it from CARGO_HOME). Copy it into the per-run home, which the
-          # cleanup step removes; the job never receives the repository secret.
-          for credentials in credentials.toml credentials; do
-            if [ -f "$HOME/.cargo/$credentials" ]; then
-              install -m 0600 "$HOME/.cargo/$credentials" "$cargo_home/$credentials"
-            fi
-          done
           {
             echo "CARGO_HOME=$cargo_home"
             echo "CARGO_TARGET_DIR=$RUNNER_TEMP/target"
@@ -88,12 +80,19 @@ jobs:
           echo "$RUNNER_TEMP/tools/bin" >> "$GITHUB_PATH"
       - name: Install exact Rust toolchain
         run: rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
-      # No rust-cache: the self-hosted host keeps its own persistent cargo and
-      # target caches, and its rustup wrapper prints to stdout, which breaks
-      # the action's toolchain detection.
+      # No rust-cache: its toolchain detection breaks on the host's rustup
+      # wrapper output, and cargo state is deliberately per run (cold cache).
       - name: Install release signature verifier
         # Per-run root: never writes into the shared ~/.cargo/bin.
         run: cargo install zipsign --version 0.2.1 --locked --root "$RUNNER_TEMP/tools"
+      - name: Fetch dependencies (the only step holding the registry token)
+        env:
+          CARGO_REGISTRIES_TERRAPHIM_TOKEN: ${{ secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN }}
+        run: |
+          set -euo pipefail
+          cargo fetch --locked
+          # Everything after this point resolves from the per-run cache.
+          echo "CARGO_NET_OFFLINE=true" >> "$GITHUB_ENV"
       - name: Install pinned actionlint
         run: .github/scripts/install-actionlint.sh
       - name: Release workflow and sealing contracts

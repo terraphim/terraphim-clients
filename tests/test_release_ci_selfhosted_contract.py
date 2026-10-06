@@ -57,7 +57,6 @@ class SelfHostedCi(unittest.TestCase):
         self.assertIn('cargo_home="$RUNNER_TEMP/cargo-home"', block)
         self.assertIn("CARGO_TARGET_DIR=$RUNNER_TEMP/target", block)
         self.assertIn("sed '/rustc-wrapper/d'", block)
-        self.assertIn('install -m 0600 "$HOME/.cargo/$credentials"', block)
         self.assertIn('--root "$RUNNER_TEMP/tools"', block)
         self.assertIn('echo "$RUNNER_TEMP/tools/bin" >> "$GITHUB_PATH"', block)
         cleanup = block[block.index("Remove per-run state") :]
@@ -89,8 +88,20 @@ class SelfHostedCi(unittest.TestCase):
         self.assertNotIn("release-linux-runner", RELEASE_BINARIES.read_text())
         self.assertNotIn("release-linux-runner", text())
 
-    def test_no_registry_token_in_the_job(self) -> None:
-        self.assertNotIn("CARGO_REGISTRIES_TERRAPHIM_TOKEN", job_block("build"))
+    def test_registry_token_is_confined_to_the_fetch_step_and_the_rest_is_offline(self) -> None:
+        block = job_block("build")
+        # Exactly one use of the secret, inside the fetch step.
+        self.assertEqual(block.count("secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN"), 1)
+        fetch = block[block.index("- name: Fetch dependencies") :]
+        fetch = fetch[: fetch.index("- name: Install pinned actionlint")]
+        self.assertIn("secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN", fetch)
+        self.assertIn("cargo fetch --locked", fetch)
+        self.assertIn('echo "CARGO_NET_OFFLINE=true" >> "$GITHUB_ENV"', fetch)
+        # The only steps before it that run cargo must not need the registry
+        # (zipsign comes from crates.io), and nothing repository-controlled
+        # runs before the fetch.
+        for later in ("cargo clippy", "cargo build", "cargo test"):
+            self.assertGreater(block.index(later), block.index("cargo fetch --locked"))
 
 
 if __name__ == "__main__":
