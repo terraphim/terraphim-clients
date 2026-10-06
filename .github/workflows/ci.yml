@@ -6,12 +6,19 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
 
 jobs:
   build:
+    # Never run fork PR code on the persistent self-hosted host.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
     # Self-hosted: GitHub-hosted runners cannot download crates from the
     # private Terraphim registry (Caddy on bigbox rejects off-tailnet requests
     # without a Bearer header, and cargo sends no token on .crate downloads
@@ -19,20 +26,15 @@ jobs:
     # runner resolves git.terraphim.cloud over the tailnet, as
     # release-binaries.yml relies on (#366).
     runs-on: [self-hosted, Linux, X64, release-linux]
-    # The workspace pins twelve private-registry deps (Cargo.toml lines
-    # 82-85 and others). Without this token the hosted runner cannot
-    # resolve them, which has been the failure mode blocking every CI run
-    # on this workflow (#26, run 36156158322 and earlier). release-binaries.yml
-    # already maps the same secret; ci.yml just needs it in job env so the
-    # build and updater integration steps can fetch terraphim-markdown-parser
-    # and the rest.
+    # No registry token: the self-hosted runner resolves git.terraphim.cloud over
+    # the tailnet, where the registry needs no authentication (see
+    # release-binaries.yml), so job steps run without the secret.
     env:
-      CARGO_REGISTRIES_TERRAPHIM_TOKEN: ${{ secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN }}
       # The runner is a persistent host: select the toolchain per job through
       # the environment so the host's default toolchain is never changed.
       RUSTUP_TOOLCHAIN: 1.96.0
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Install exact Rust toolchain
         run: rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
       # No rust-cache: the self-hosted host keeps its own persistent cargo and
