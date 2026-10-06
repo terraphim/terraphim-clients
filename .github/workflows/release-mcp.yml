@@ -81,6 +81,8 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: refs/tags/${{ steps.tag.outputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
       - name: Check tag version against the crate version
         id: contract
         shell: bash
@@ -92,6 +94,32 @@ jobs:
           cargo metadata --locked --no-deps --format-version 1 > "$RUNNER_TEMP/metadata.json"
           .github/scripts/release-mcp/check-tag.py "$TAG" "$RUNNER_TEMP/metadata.json" >> "$GITHUB_OUTPUT"
           echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Require the tagged commit to be on main before any self-hosted job
+        # Cargo build scripts and proc macros run arbitrary code on the
+        # self-hosted runners with the registry token, so only reviewed code
+        # that reached main may be built.
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ steps.contract.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main || {
+            echo "tagged commit $SOURCE_SHA is not an ancestor of origin/main" >&2
+            exit 1
+          }
+      - name: Refuse to publish over an existing release
+        if: steps.tag.outputs.dry_run != 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "a release for $TAG already exists; delete it deliberately before retrying" >&2
+            exit 1
+          fi
 
   build:
     name: Build ${{ matrix.target }}
@@ -122,6 +150,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ needs.preflight.outputs.source_sha }}
+          persist-credentials: false
       - name: Assert clean exact source checkout
         shell: bash
         run: |
@@ -218,6 +247,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ needs.preflight.outputs.source_sha }}
+          persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: mcp-binary-x86_64-apple-darwin
@@ -254,17 +284,19 @@ jobs:
           if-no-files-found: error
           overwrite: false
 
-  release:
-    name: Assemble assets and publish the pre-release
+  assemble:
+    name: Assemble assets and checksums
     needs: [preflight, build, universal-macos]
-    # Needs no registry: stays on a GitHub-hosted runner.
+    # Needs no registry: stays on a GitHub-hosted runner. Read-only, no
+    # persisted credentials, because it runs repository-controlled scripts.
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ needs.preflight.outputs.source_sha }}
+          persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: mcp-binary-*
@@ -279,20 +311,46 @@ jobs:
             release/checksums.txt
           if-no-files-found: error
           overwrite: false
-      - name: Create the GitHub pre-release
-        if: needs.preflight.outputs.dry_run != 'true'
+      - name: Report dry run
+        if: needs.preflight.outputs.dry_run == 'true'
+        run: echo 'Dry run, assets assembled and uploaded as a workflow artefact, no release created.'
+
+  publish:
+    name: Publish the pre-release
+    needs: [preflight, assemble]
+    if: needs.preflight.outputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    # The only job with write access. It checks out nothing and runs no
+    # repository-controlled code: it publishes the already assembled artefact.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: mcp-release-assets-${{ needs.preflight.outputs.tag }}
+          path: release
+      - name: Create a draft, verify the remote assets, then publish
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.preflight.outputs.tag }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          # A draft never becomes visible half-uploaded: it is published only
+          # after the remote asset list matches the local files exactly.
           gh release create "$TAG" release/assets/* release/checksums.txt \
-            --repo "${{ github.repository }}" \
+            --repo "$REPO" \
             --verify-tag \
+            --draft \
             --prerelease \
             --title "$TAG" \
             --notes "terraphim_mcp_server pre-release. Raw binaries per target and checksums.txt (sha256sum)."
-      - name: Report dry run
-        if: needs.preflight.outputs.dry_run == 'true'
-        run: echo 'Dry run, assets assembled and uploaded as a workflow artefact, no release created.' 
+          want="$( (cd release/assets && printf '%s\n' *; echo checksums.txt) | LC_ALL=C sort)"
+          have="$(gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name' | LC_ALL=C sort)"
+          [ "$want" = "$have" ] || {
+            echo "remote assets differ from the local set; the draft release is left for inspection" >&2
+            printf 'want:\n%s\nhave:\n%s\n' "$want" "$have" >&2
+            exit 1
+          }
+          gh release edit "$TAG" --repo "$REPO" --draft=false --prerelease

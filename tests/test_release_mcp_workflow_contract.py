@@ -85,7 +85,7 @@ class ReleaseMcpWorkflow(unittest.TestCase):
         self.assertNotIn("macos-15", build)
         self.assertNotIn("pc-windows", text())
         self.assertNotIn("windows-", text())
-        for job in ("preflight", "build", "universal-macos", "release"):
+        for job in ("preflight", "build", "universal-macos", "assemble"):
             block = job_block(job)
             if "cargo " in block and job != "preflight":
                 self.assertTrue(
@@ -130,19 +130,38 @@ class ReleaseMcpWorkflow(unittest.TestCase):
         for name in ASSETS:
             self.assertIn(name, script)
 
-    def test_release_is_a_prerelease_named_after_the_tag_and_dry_run_skips_it(self) -> None:
-        release = job_block("release")
-        self.assertIn("gh release create", release)
-        self.assertIn("--prerelease", release)
-        self.assertIn('--title "$TAG"', release)
-        self.assertIn("--verify-tag", release)
-        self.assertIn("release/checksums.txt", release)
-        creation = release[release.index("Create the GitHub pre-release") :]
-        self.assertIn("needs.preflight.outputs.dry_run != 'true'", creation)
+    def test_publish_is_an_isolated_draft_then_prerelease_and_dry_run_skips_it(self) -> None:
+        publish = job_block("publish")
+        self.assertIn("needs.preflight.outputs.dry_run != 'true'", publish)
+        self.assertIn("gh release create", publish)
+        self.assertIn("--draft", publish)
+        self.assertIn("--prerelease", publish)
+        self.assertIn('--title "$TAG"', publish)
+        self.assertIn("--verify-tag", publish)
+        self.assertIn("release/checksums.txt", publish)
+        self.assertIn('--draft=false --prerelease', publish)
+        self.assertLess(publish.index("--json assets"), publish.index("--draft=false"))
+        # The write-scoped job checks out nothing and runs no repository script.
+        self.assertNotIn("actions/checkout", publish)
+        self.assertNotIn(".github/scripts", publish)
         self.assertEqual(
-            len(re.findall(r"contents: write", text())), 1, "only the release job may write"
+            len(re.findall(r"contents: write", text())), 1, "only publish may write"
         )
-        self.assertIn("contents: write", release)
+        self.assertIn("contents: write", publish)
+        self.assertIn("contents: read", job_block("assemble"))
+        self.assertNotIn("gh release", job_block("assemble"))
+
+    def test_source_is_trusted_before_any_self_hosted_job(self) -> None:
+        preflight = job_block("preflight")
+        self.assertIn('git merge-base --is-ancestor "$SOURCE_SHA" origin/main', preflight)
+        self.assertIn("gh release view", preflight)
+        for job in ("build", "universal-macos"):
+            self.assertIn("preflight", job_block(job).split("steps:")[0])
+
+    def test_checkouts_do_not_persist_credentials(self) -> None:
+        body = text()
+        checkouts = body.count("actions/checkout@")
+        self.assertEqual(body.count("persist-credentials: false"), checkouts)
 
     def test_untrusted_dispatch_inputs_never_reach_shell_inline(self) -> None:
         for match in re.finditer(r"run: \|\n((?:\s{10,}.*\n)+)", text()):
@@ -169,6 +188,9 @@ class CheckTag(unittest.TestCase):
         exact = self.run_check("terraphim_mcp_server-v1.21.18")
         self.assertEqual(exact.returncode, 0, exact.stderr)
         self.assertIn("crate_version=1.21.18", exact.stdout)
+        self.assertEqual(
+            self.run_check("terraphim_mcp_server-v1.21.18-rc.0-x.1a").returncode, 0
+        )
         rc = self.run_check("terraphim_mcp_server-v1.21.18-rc.1")
         self.assertEqual(rc.returncode, 0, rc.stderr)
         self.assertIn("version=1.21.18-rc.1", rc.stdout)
@@ -182,6 +204,9 @@ class CheckTag(unittest.TestCase):
             "terraphim_mcp_server-v1.21",
             "terraphim_mcp_server-v1.21.18-",
             "terraphim_mcp_server-v01.21.18",
+            "terraphim_mcp_server-v1.21.18-alpha..1",
+            "terraphim_mcp_server-v1.21.18-01",
+            "terraphim_mcp_server-v1.21.18+build.1",
         ):
             with self.subTest(tag=tag):
                 self.assertNotEqual(self.run_check(tag).returncode, 0)

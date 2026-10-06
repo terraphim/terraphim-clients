@@ -20,8 +20,12 @@ import sys
 PACKAGE = "terraphim_mcp_server"
 TAG_PATTERN = re.compile(
     rf"^{PACKAGE}-v(?P<version>(?P<core>(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))"
-    r"(?:-(?P<pre>[0-9A-Za-z][0-9A-Za-z.-]*))?)$"
+    r"(?:-(?P<pre>(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)"
+    r"(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?)$"
 )
+# SemVer 2.0.0 without build metadata: numeric pre-release identifiers have no
+# leading zeros and no identifier is empty. The workflow's shell guard is only
+# a coarse character filter; this is the authoritative grammar.
 
 
 def main(argv: list[str]) -> int:
