@@ -269,8 +269,17 @@ jobs:
             aarch64/terraphim_mcp_server-aarch64-apple-darwin \
             -output "$out"
           chmod 755 "$out"
-          # The input file must precede -verify_arch with Xcode 16.4 lipo.
-          lipo "$out" -verify_arch x86_64 arm64
+          # Newer lipo (Xcode 27) rejects several architectures in one
+          # -verify_arch ("requires exactly one input file"): verify each
+          # separately, then require exactly the two slices.
+          for arch in x86_64 arm64; do
+            lipo "$out" -verify_arch "$arch"
+          done
+          archs="$(lipo -archs "$out")"
+          [ "$(printf '%s' "$archs" | tr ' ' '\n' | LC_ALL=C sort | tr '\n' ' ')" = "arm64 x86_64 " ] || {
+            echo "unexpected architectures: $archs" >&2
+            exit 1
+          }
           scripts/validate_release_binary.py universal-apple-darwin "$out"
           reported="$("$out" --version | tail -n1 | awk '{print $NF}')"
           [ "$reported" = "$CRATE_VERSION" ] || {

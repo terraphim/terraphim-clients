@@ -159,6 +159,14 @@ class ReleaseMcpWorkflow(unittest.TestCase):
         self.assertIn("test -d release/assets", publish)
         self.assertIn("test -s release/checksums.txt", publish)
 
+    def test_universal_binary_verifies_each_architecture_separately(self) -> None:
+        block = job_block("universal-macos")
+        self.assertIn("for arch in x86_64 arm64; do", block)
+        self.assertIn('lipo "$out" -verify_arch "$arch"', block)
+        self.assertIn('lipo -archs "$out"', block)
+        self.assertIn('= "arm64 x86_64 "', block)
+        self.assertNotIn("-verify_arch x86_64 arm64", block)
+
     def test_source_is_trusted_before_any_self_hosted_job(self) -> None:
         preflight = job_block("preflight")
         self.assertIn('git merge-base --is-ancestor "$SOURCE_SHA" origin/main', preflight)
