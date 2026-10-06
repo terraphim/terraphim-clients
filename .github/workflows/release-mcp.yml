@@ -306,9 +306,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: mcp-release-assets-${{ needs.preflight.outputs.tag }}
-          path: |
-            release/assets/*
-            release/checksums.txt
+          path: release/
           if-no-files-found: error
           overwrite: false
       - name: Report dry run
@@ -337,6 +335,8 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          test -d release/assets
+          test -s release/checksums.txt
           # A draft never becomes visible half-uploaded: it is published only
           # after the remote asset list matches the local files exactly.
           gh release create "$TAG" release/assets/* release/checksums.txt \

@@ -151,6 +151,14 @@ class ReleaseMcpWorkflow(unittest.TestCase):
         self.assertIn("contents: read", job_block("assemble"))
         self.assertNotIn("gh release", job_block("assemble"))
 
+    def test_assembled_artefact_preserves_the_assets_directory(self) -> None:
+        assemble = job_block("assemble")
+        self.assertIn("path: release/\n", assemble)
+        self.assertNotIn("release/assets/*", assemble)
+        publish = job_block("publish")
+        self.assertIn("test -d release/assets", publish)
+        self.assertIn("test -s release/checksums.txt", publish)
+
     def test_source_is_trusted_before_any_self_hosted_job(self) -> None:
         preflight = job_block("preflight")
         self.assertIn('git merge-base --is-ancestor "$SOURCE_SHA" origin/main', preflight)
