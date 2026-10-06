@@ -1,13 +1,13 @@
 [package]
 name = "terraphim_mcp_server"
-version = "1.0.0"
+version.workspace = true
 edition.workspace = true
 description = "Model Context Protocol (MCP) server for Terraphim AI"
 documentation = "https://terraphim.ai"
 homepage = "https://terraphim.ai"
-repository = "https://github.com/terraphim/terraphim-ai"
+repository = "https://github.com/terraphim/terraphim-clients"
 keywords = ["ai", "mcp", "server"]
-license = "MIT"
+license = "Apache-2.0"
 readme = "../../README.md"
 
 [[bin]]
