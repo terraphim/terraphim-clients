@@ -65,27 +65,14 @@ fn initialize_result() -> Value {
 }
 
 #[test]
-fn initialize_declares_tools_and_resources_capabilities() {
+fn initialize_declares_exactly_the_implemented_capabilities() {
     let result = initialize_result();
-    let capabilities = &result["capabilities"];
-    assert!(
-        capabilities.get("tools").is_some_and(Value::is_object),
-        "initialize must declare the tools capability, got: {capabilities}"
+    // Exactly tools and resources, with no sub-capabilities (listChanged,
+    // subscribe) and nothing for prompts, logging, completions or
+    // experimental, none of which the ServerHandler implements.
+    assert_eq!(
+        result["capabilities"],
+        serde_json::json!({"tools": {}, "resources": {}}),
+        "initialize capabilities must match the implemented ServerHandler methods"
     );
-    assert!(
-        capabilities.get("resources").is_some_and(Value::is_object),
-        "initialize must declare the resources capability, got: {capabilities}"
-    );
-}
-
-#[test]
-fn initialize_does_not_declare_unimplemented_capabilities() {
-    let result = initialize_result();
-    let capabilities = &result["capabilities"];
-    for unimplemented in ["prompts", "logging", "completions"] {
-        assert!(
-            capabilities.get(unimplemented).is_none(),
-            "{unimplemented} is not implemented but was declared: {capabilities}"
-        );
-    }
 }
