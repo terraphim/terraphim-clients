@@ -281,7 +281,10 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
             "change-nfpm-version": text.replace(f"NFPM_VERSION: {NFPM_VERSION}", "NFPM_VERSION: 2.46.0", 1),
             "change-nfpm-archive-sha": text.replace(NFPM_X86_ARCHIVE_SHA256, "0" * 64, 1),
             "change-nfpm-binary-sha": text.replace(NFPM_X86_BINARY_SHA256, "0" * 64, 1),
-            "unpin-checkout": text.replace(f"actions/checkout@{CHECKOUT_SHA}", "actions/checkout@v4", 1),
+            # The build job is SHA-pinned too, so mutate inside the packaging block.
+            "unpin-checkout": text.replace(
+                block, block.replace(f"actions/checkout@{CHECKOUT_SHA}", "actions/checkout@v4", 1), 1
+            ),
             "unpin-setup-python": text.replace(f"actions/setup-python@{SETUP_PYTHON_SHA}", "actions/setup-python@v5", 1),
             "delete-archive-verification": text.replace(
                 '          printf \'%s  %s\\n\' "$NFPM_ARCHIVE_SHA256" "$archive" | sha256sum -c -\n',
