@@ -67,6 +67,7 @@ jobs:
         run: |
           set -euo pipefail
           cargo_home="$RUNNER_TEMP/cargo-home"
+          echo "DIAG home=$HOME"; ls -A "$HOME/.cargo" | tr '\n' ' '; echo; env | cut -d= -f1 | sed -n '/CARGO\|RUSTUP\|TERRAPHIM/p' | tr '\n' ' '; echo; sed -E 's/=.*/=/' "$HOME/.cargo/config.toml" | sed '/^$/d' | tr '\n' ' '
           mkdir -p "$cargo_home" "$RUNNER_TEMP/tools/bin"
           # Keep the registry definitions, drop the host-only rustc wrapper.
           if [ -f "$HOME/.cargo/config.toml" ]; then
