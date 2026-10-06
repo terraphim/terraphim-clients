@@ -89,7 +89,13 @@ fn test_generated_legacy_manifest_executes_pre12115_wire_contract() {
         old.notes_url.as_deref(),
         Some("https://github.com/terraphim/terraphim-clients/releases/tag/v1.21.15")
     );
-    let current_target = terraphim_update::manifest::current_target_triples()[0].clone();
+    // Host-independent: the fixture has no Windows asset, so pick the first
+    // current-host triple that is part of it (a Windows host would otherwise
+    // select the msvc triple and miss).
+    let current_target = terraphim_update::manifest::current_target_triples()
+        .into_iter()
+        .find(|target| target != "x86_64-pc-windows-msvc")
+        .expect("a non-Windows current target");
     let advertised = old.assets.get(&current_target).expect("current target");
     let expected_name = format!(
         "terraphim-agent-1.21.15-{current_target}{}",

@@ -14,6 +14,23 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
+  reject-fork-pr:
+    # A skipped job is not a failed check, so without this a fork PR would look
+    # green while the Rust build below never ran. Fail closed instead.
+    name: Reject fork PR (Rust CI needs the tailnet runner)
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Explain and fail
+        run: |
+          echo "Fork PRs cannot run the Rust CI: it needs the tailnet-only cargo registry and runs on a persistent self-hosted host that must not execute fork code."
+          echo "A maintainer must push the branch to this repository to get a real run."
+          exit 1
+
   build:
     # Never run fork PR code on the persistent self-hosted host.
     if: >-
@@ -32,18 +49,42 @@ jobs:
     env:
       # The runner is a persistent host: select the toolchain per job through
       # the environment so the host's default toolchain is never changed.
+      # RUSTUP_HOME stays shared on purpose: the toolchain is pinned and the
+      # step only installs it, so sharing saves a download without letting job
+      # code change what other workflows resolve. Everything else mutable is
+      # per-run (see "Isolate cargo state").
       RUSTUP_TOOLCHAIN: 1.96.0
+      # The host config sets a host-only rustc wrapper; disable it.
+      RUSTC_WRAPPER: ""
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Assert clean checkout
+        run: test -z "$(git status --porcelain)"
+      - name: Isolate cargo state per run
+        # PR code (build scripts, proc macros, tests) must not mutate
+        # ~/.cargo, which release-binaries.yml also uses on this host. The
+        # runner.* context is not available in job-level env, hence this step.
+        run: |
+          set -euo pipefail
+          cargo_home="$RUNNER_TEMP/cargo-home"
+          mkdir -p "$cargo_home" "$RUNNER_TEMP/tools/bin"
+          # Keep the registry definitions, drop the host-only rustc wrapper.
+          if [ -f "$HOME/.cargo/config.toml" ]; then
+            sed '/rustc-wrapper/d' "$HOME/.cargo/config.toml" > "$cargo_home/config.toml"
+          fi
+          {
+            echo "CARGO_HOME=$cargo_home"
+            echo "CARGO_TARGET_DIR=$RUNNER_TEMP/target"
+          } >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/tools/bin" >> "$GITHUB_PATH"
       - name: Install exact Rust toolchain
         run: rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
       # No rust-cache: the self-hosted host keeps its own persistent cargo and
       # target caches, and its rustup wrapper prints to stdout, which breaks
       # the action's toolchain detection.
       - name: Install release signature verifier
-        # Idempotent on a persistent host: cargo skips an already-installed
-        # identical version.
-        run: cargo install zipsign --version 0.2.1 --locked
+        # Per-run root: never writes into the shared ~/.cargo/bin.
+        run: cargo install zipsign --version 0.2.1 --locked --root "$RUNNER_TEMP/tools"
       - name: Install pinned actionlint
         run: .github/scripts/install-actionlint.sh
       - name: Release workflow and sealing contracts
@@ -62,6 +103,14 @@ jobs:
       # On Gitea these lanes live in .gitea/workflows/native-ci.yml, which is
       # intentionally not part of the GitHub port.
       - run: cargo test -p terraphim_update --test manifest --test r2_update --test managed_mode --test policy --no-fail-fast
+      - name: Assert the build left the checkout and lockfile untouched
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- Cargo.toml Cargo.lock
+          test -z "$(git status --porcelain)"
+      - name: Remove per-run state
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/cargo-home" "$RUNNER_TEMP/target" "$RUNNER_TEMP/tools"
 
   client-packaging-contracts:
     name: Client DEB/RPM packaging producer contracts
