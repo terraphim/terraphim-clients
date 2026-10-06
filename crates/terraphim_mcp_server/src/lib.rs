@@ -2931,6 +2931,13 @@ impl ServerHandler for McpService {
 
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
+            // Declare exactly what is implemented: tools (call_tool/list_tools)
+            // and resources (list_resources/read_resource). Clients that gate
+            // on capabilities otherwise show no tools.
+            capabilities: rmcp::model::ServerCapabilities::builder()
+                .enable_tools()
+                .enable_resources()
+                .build(),
             server_info: rmcp::model::Implementation {
                 name: "terraphim-mcp".to_string(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
