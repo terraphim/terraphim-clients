@@ -57,6 +57,7 @@ class SelfHostedCi(unittest.TestCase):
         self.assertIn('cargo_home="$RUNNER_TEMP/cargo-home"', block)
         self.assertIn("CARGO_TARGET_DIR=$RUNNER_TEMP/target", block)
         self.assertIn("sed '/rustc-wrapper/d'", block)
+        self.assertIn('install -m 0600 "$HOME/.cargo/$credentials"', block)
         self.assertIn('--root "$RUNNER_TEMP/tools"', block)
         self.assertIn('echo "$RUNNER_TEMP/tools/bin" >> "$GITHUB_PATH"', block)
         cleanup = block[block.index("Remove per-run state") :]

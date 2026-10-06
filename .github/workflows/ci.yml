@@ -72,6 +72,14 @@ jobs:
           if [ -f "$HOME/.cargo/config.toml" ]; then
             sed '/rustc-wrapper/d' "$HOME/.cargo/config.toml" > "$cargo_home/config.toml"
           fi
+          # The registry index requires the host's registry credential (cargo
+          # reads it from CARGO_HOME). Copy it into the per-run home, which the
+          # cleanup step removes; the job never receives the repository secret.
+          for credentials in credentials.toml credentials; do
+            if [ -f "$HOME/.cargo/$credentials" ]; then
+              install -m 0600 "$HOME/.cargo/$credentials" "$cargo_home/$credentials"
+            fi
+          done
           {
             echo "CARGO_HOME=$cargo_home"
             echo "CARGO_TARGET_DIR=$RUNNER_TEMP/target"
