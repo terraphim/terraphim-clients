@@ -234,3 +234,66 @@ async fn grep_files_files_mode_returns_paths() {
         }
     }
 }
+
+/// `grep_files` must refuse a tree whose entry names are not valid UTF-8,
+/// naming the offending entry.
+///
+/// fff-search stores relative paths lossily, so each invalid byte becomes a
+/// three-byte U+FFFD; `ChunkedString::read_to_buf` then truncates the inflated
+/// path into a 4096-byte buffer and returns it through `from_utf8_unchecked`,
+/// so the cut lands inside a replacement character. The `path` argument is
+/// attacker-chosen, which is what makes this reachable. See UF-040 / #296.
+///
+/// Real directories, no mocks. Linux only in practice: APFS rejects non-UTF-8
+/// entry names, so `create_dir` fails on macOS before the guard is reached.
+/// `ignore`d rather than `cfg`'d out so the body still compiles and lints here.
+#[tokio::test]
+#[cfg_attr(
+    not(target_os = "linux"),
+    ignore = "APFS refuses non-UTF-8 entry names, so the tree cannot be built here"
+)]
+#[cfg(unix)]
+async fn grep_files_refuses_non_utf8_tree() {
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+
+    // 6 x 250 invalid bytes is 1500 raw, inflating to 4500 under lossy storage
+    // -- comfortably past fff-search's 4096-byte path buffer.
+    let raw = vec![0xFFu8; 250];
+    let segment = OsStr::from_bytes(&raw);
+    let mut dir = tmp.path().to_path_buf();
+    for _ in 0..6 {
+        dir = dir.join(segment);
+        std::fs::create_dir(&dir).expect("create nested directory");
+    }
+    std::fs::write(dir.join("payload.rs"), "fn needle() {}\n").expect("write payload");
+
+    let config_state = minimal_config_state().await;
+    let service = McpService::new(config_state);
+
+    let err = service
+        .grep_files(
+            "needle".to_string(),
+            Some(tmp.path().to_string_lossy().to_string()),
+            Some(10),
+            None,
+            None,
+        )
+        .await
+        .expect_err("grep_files over a hostile tree must fail");
+
+    // Assert on the structured field, not `Display`: this test can never run on
+    // macOS, so a wrong guess about rmcp's `ErrorData` formatting would only
+    // surface as a red Linux CI.
+    let message = err.message.to_string();
+    assert!(
+        message.contains("not valid UTF-8"),
+        "error must say why the tree was refused, got: {message}"
+    );
+    assert!(
+        message.contains("\\xff") || message.contains("\\xFF"),
+        "error must name the offending entry's bytes, got: {message}"
+    );
+}

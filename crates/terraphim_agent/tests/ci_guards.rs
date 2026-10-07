@@ -761,6 +761,20 @@ fn every_file_picker_refuses_the_mmap_cache() {
                  (UF-039 / #293)",
                 i + 1,
             );
+            // fff-search stores relative paths lossily and then truncates them
+            // into a fixed 4096-byte buffer behind `from_utf8_unchecked`, so a
+            // non-UTF-8 or over-long entry name yields an invalid `&str` and can
+            // panic in `DirItem::dir_name`. The base path is attacker-chosen, so
+            // the tree must be refused before the picker sees it. UF-040 / #296.
+            let preceding = lines[i.saturating_sub(40)..i].join("\n");
+            assert!(
+                preceding.contains("reject_hostile_tree("),
+                "{display}:{} opens a FilePicker without a `reject_hostile_tree(` \
+                 call in the preceding 40 lines; a hostile entry name would then \
+                 reach fff-search's `from_utf8_unchecked` (UF-040 / #296)",
+                i + 1,
+            );
+
             assert!(
                 block.contains("follow_symlinks: false"),
                 "{display}:{} opens a FilePicker without an explicit \
