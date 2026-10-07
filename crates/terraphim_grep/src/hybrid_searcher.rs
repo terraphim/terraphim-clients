@@ -395,6 +395,11 @@ impl HybridSearcher {
                 parse_grep_query,
             };
 
+            // Refuse the tree before its base path reaches fff-search: a
+            // non-UTF-8 or over-long entry name defeats the library's
+            // `from_utf8_unchecked` on the stored relative path. UF-040 / #296.
+            crate::path_guard::reject_hostile_tree(&search_path)?;
+
             let mut picker = FilePicker::new(FilePickerOptions {
                 base_path: search_path.to_string_lossy().to_string(),
                 mode: FFFMode::Ai,

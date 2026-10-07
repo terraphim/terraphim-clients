@@ -25,6 +25,7 @@ pub mod hybrid_searcher;
 pub mod kg_curation;
 #[cfg(feature = "llm")]
 pub mod openrouter_client;
+pub mod path_guard;
 pub mod rlm_context;
 pub mod signatures;
 pub mod sufficiency_judge;
@@ -37,6 +38,7 @@ pub use hybrid_searcher::{
     RetrievedChunk, boost_chunks_with_kg, score_kg_boost,
 };
 pub use kg_curation::KgCurationRlm;
+pub use path_guard::reject_hostile_tree;
 pub use rlm_context::RlmContext;
 pub use signatures::{AnswerWithCitations, Citation, Match, NewConcept, RlmSignature};
 pub use sufficiency_judge::{
