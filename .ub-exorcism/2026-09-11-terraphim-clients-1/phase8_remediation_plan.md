@@ -513,3 +513,222 @@ Axes as elsewhere in this plan, 0-4 each: correctness margin, perf delta, diff b
 ### Caveat on candidate A
 
 The reachability argument is a property of fff-search 0.8.4's source as read today, not a guarantee. If the pin is ever raised, or if fff-search adds a remote or blame feature, the argument lapses. The `ci_guards` pin assertion is what keeps that from happening silently, which is why requirement 2 is not optional cosmetics.
+
+## Delta 6 (2026-10-07, lead: re-baseline on `main@c7ae820` after four weeks)
+
+**Status**: Draft, awaiting user sign-off (Phase 2 approval gate).
+**Research doc**: `RESEARCH.md` (this scratchpad), Phase 1 of the re-baseline.
+**Date verified**: `date '+%Y-%m-%d %H:%M %Z'` -> 2026-10-07 10:03 BST.
+**Why this is a delta, not a new plan**: no `crates/` change since `1120180` touched any
+mechanism the audit proved, so every candidate set, rubric and winner in sections 3-7 and
+Deltas 2, 3 and 5 stands unchanged. What changed is the *ground*: the exposure table, the
+file:line map, the writer inventory and four supporting files. Re-deriving the winners
+would discard the audit's evidence for no gain.
+**Traceability note**: this repository tracks work in Gitea, not Linear. The design-skill
+`Linear:` marker is read as `Gitea:` throughout; `General:` and `Out-of-scope:` keep their
+meaning.
+
+### D6.1 Corrected scope-of-exposure table (supersedes section 1 entirely)
+
+Section 1's table was written against tree `ae06cd2` on `task/254-ci-pipeline`, the branch
+that *introduces* nextest. `git merge-base --is-ancestor 1120180 main` is false: the audit
+baseline is not on `main`, and `main` has never run the test suite under nextest. The
+exposure is the inverse of what section 1 recorded.
+
+| Lane | Command on `main@c7ae820` | Process model | Exposed? |
+|---|---|---|---|
+| GitHub `build` | `.github/workflows/ci.yml:45` `cargo test --workspace --lib --no-fail-fast` | plain libtest, in-process, ubuntu-latest (glibc) | **Yes**: terraphim_grep lib (UF-001 x2 after D6.2), terraphim_update lib (UF-004, UF-036) |
+| GitHub updater | `ci.yml:50` `cargo test -p terraphim_update --test manifest --test r2_update --test managed_mode --test policy` | plain libtest | **Yes**: `managed_mode` (D6.2 writer 2) |
+| native-ci `test` | `.gitea/workflows/native-ci.yml:130` `cargo test --workspace --all-targets --no-fail-fast` | plain libtest, bigbox glibc 2.39 | **Yes**: all of the above, plus UF-002 (`--all-targets` reaches `--test` binaries) |
+| native-ci `coverage` | `native-ci.yml:199` `cargo llvm-cov nextest --workspace --all-targets` | **nextest** | No (#313 landed, 2026-09; the one piece of remediation that did) |
+| GitHub coverage | absent | n/a | n/a |
+| Developer default | `BUILD.md:13` `cargo test --workspace --no-fail-fast` | plain libtest | Yes |
+
+Consequences:
+1. **The CONFIRMED_UB verdicts strengthen.** Both exposed lanes are glibc, where the
+   `setenv`/`getenv` pair is a C11 data race, not merely an Apple Libc contract violation.
+   The wording "both coverage lanes and every `cargo test` invocation" in section 1 and in
+   `phase4_unified_findings.md` rows UF-001/UF-002 becomes "both CI test lanes, every
+   `cargo test` invocation, and not the coverage lane".
+2. **The regression-instrument rule is unchanged and now matters more**: EXP-801/802/803
+   must run the libtest binary directly under the LD_PRELOAD shim. It cannot become a CI
+   gate, because native-ci's runner allowlist rejects any program that is not `cargo` or a
+   repo script (`native-ci.yml:164-167`). It stays a manual bigbox step, recorded in
+   `UB_RUNBOOK.md`.
+3. `.config/nextest.toml` does not exist on `main`, so section 4.2 candidate C's
+   `serial-external-state` co-location note is void here. It does not change C's score;
+   C is a runner-up in both places.
+
+### D6.2 Two new writers of the confirmed shape, both committed after the audit baseline
+
+The `unsafe` inventory grew from 6 blocks to 14 (`rg -n 'unsafe \{|unsafe impl|unsafe fn' crates/`).
+Neither new cluster is an ancestor of `1120180`. Both carry a SAFETY comment of the kind
+the audit disproved. Both are in scope for Delta 6 as new commits.
+
+**Writer A: `crates/terraphim_grep/src/lib.rs:905-953`** — `rlm_max_tokens_default_and_override`,
+added by `e672f13` on 2026-10-04 (#349, "raise RLM max_tokens to 8000"). Six `unsafe`
+blocks on `TERRAPHIM_GREP_MAX_TOKENS` under the comment *"test code, single-threaded, no
+concurrent env access"* — the same sentence EXP-001b falsified for this crate. It lives in
+the `terraphim_grep` **lib** binary with roughly eleven sibling tests that call `.search(...)`
+-> `HybridSearcher::search_code` -> fff-search -> `git2::init` -> libgit2 `getenv`
+(`lib.rs:651,678,711,744,788,819,868,1013,1059,1111`). This is UF-001's mechanism, same
+binary, on a lane D6.1 verifies exposed. **Classification: UF-001 second instance**, not a
+new finding; it inherits EXP-001b as its proof of mechanism (an EXP-801 arm on
+`TERRAPHIM_GREP_MAX_TOKENS` would confirm it directly and is the honest next instrument).
+
+Remedy: the same winner as section 3, candidate A. The reader under test is
+`TerraphimGrep::rlm_max_tokens()`. Split the env read from the parse:
+
+```rust
+// crates/terraphim_grep/src/lib.rs (sketch; implementation is Phase 3)
+const DEFAULT_RLM_MAX_TOKENS: u32 = 8000;
+/// Pure: the value `TERRAPHIM_GREP_MAX_TOKENS` would select, given its observed content.
+/// Invalid, zero and absent all fall back to the default.
+fn parse_rlm_max_tokens(raw: Option<&str>) -> u32 {
+    raw.and_then(|s| s.parse::<u32>().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(DEFAULT_RLM_MAX_TOKENS)
+}
+impl TerraphimGrep {
+    fn rlm_max_tokens() -> u32 {
+        parse_rlm_max_tokens(std::env::var("TERRAPHIM_GREP_MAX_TOKENS").ok().as_deref())
+    }
+}
+```
+
+The test becomes five env-free assertions over `parse_rlm_max_tokens` (`None` -> 8000;
+`Some("4000")` -> 4000; `Some("not-a-number")` -> 8000; `Some("0")` -> 8000; and one
+boundary of the implementer's choosing), and all six `unsafe` blocks plus the false SAFETY
+comment go. Behaviour is preserved exactly as the current test asserts it: the `filter`
+reproduces today's zero-falls-back rule, which the existing assertions pin.
+
+**Writer B: `crates/terraphim_update/tests/managed_mode.rs:320-347`** — writes `HOME`
+under `#[serial(update_home_env)]`. The file holds 9 tests; exactly one carries that
+attribute. This is EXP-014's proven defeat condition: `serial_test` excludes only other
+`#[serial]` tests sharing the key, so the eight unannotated siblings run concurrently with
+the writer. The SAFETY comment ("serialized via `#[serial]` within this test binary; no
+other thread in this process mutates HOME concurrently") is true of *writers* and silent
+about *readers*, which is the precise error EXP-014 exists to expose. The binary is run by
+name on both exposed lanes (`ci.yml:50`, `native-ci.yml:130`).
+
+Remedy: the same winner, candidate A, applied to the seam the test already names. The test
+comment states that `check_for_updates_auto_with_policy` "is the injectable seam this test
+exercises directly"; the fake `HOME` exists only so the zero-write assertion does not
+depend on the real home directory. So inject the home root rather than setting it:
+`check_for_updates_auto_with_policy_in(bin, version, policy, home: &Path)`, with the
+existing function delegating with the resolved home. The test then passes
+`temp_home.path()` and mutates nothing. If that seam cannot take the parameter without
+disturbing the updater's policy resolution, the fallback is section 4.2 candidate C (its
+own one-test binary plus a `ci_guards` arm asserting the one-test invariant) — **not**
+candidate B, which is what the file does today and what EXP-014 refuted.
+
+**Classification**: UF-004 second instance (same crate, same variable class, same
+mechanism), inheriting EXP-010's window evidence.
+
+**Design note on recurrence.** The shape spread twice in four weeks, both times with a
+plausible-sounding SAFETY comment, in commits whose reviewers were looking at an updater
+fix and a token-limit fix. That is evidence for the plan's own headline conclusion: review
+does not catch this, and only the compile-time lever does. Until the lever lands, the
+cheapest interim stop is a `ci_guards` arm scanning `crates/**/*.rs` for
+`env::set_var`/`env::remove_var` against an explicit allow-list of the known sites, so a
+*new* site fails a test even while the known ones are still being fixed. This is added to
+the commit sequence as commit 6b and is the one genuinely new design element in Delta 6.
+
+### D6.3 Corrected file:line map (supersedes the touch lists' line numbers)
+
+Only two plan-touched files drifted (`git diff --stat 1120180..main -- <plan files>`):
+`openrouter_client.rs` (+87 lines) and `ci_guards.rs` (+557, now 656 lines, 5 tests).
+
+| Finding / issue | Plan said | `main@c7ae820` says |
+|---|---|---|
+| UF-039 / #293 `cache_budget: None` | hybrid_searcher.rs:354-360; mcp lib.rs:1274-1280, :1372-1378, :1485-1491 | `hybrid_searcher.rs:358`; `mcp_server/src/lib.rs:1278`, `:1376`, `:1489` (constructors at `:354`, `:1274`, `:1372`, `:1485` — unchanged) |
+| UF-040 / #296 guard sites | same four constructors | unchanged; `reject_hostile_tree` absent |
+| UF-001 / #280 writer | openrouter_client.rs:166 (SAFETY), :170, :177, :185, :189 | `openrouter_client.rs:191` (SAFETY), `:195`, `:202`, `:210`, `:214` |
+| UF-001 second instance | n/a | `terraphim_grep/src/lib.rs:908` (SAFETY), `:911`, `:920`, `:925`, `:934`, `:945`, `:949` |
+| UF-004 / #299 writer | state.rs:131 | `state.rs:131` (unchanged) |
+| UF-004 second instance | n/a | `terraphim_update/tests/managed_mode.rs:326`, `:343` |
+| UF-013 writer | test_mcp_stdio.rs:15 | unchanged |
+| Guard-test host | "append to ci_guards.rs" | `crates/terraphim_agent/tests/ci_guards.rs`, 656 lines, append after `publish_gate_tests_pass` |
+| `terraphim_test_utils` dev-dep | mcp :66, agent :112 | mcp_server/Cargo.toml:66 (unchanged), **agent/Cargo.toml:114** (was :112) |
+
+### D6.4 Four supporting files are branch-only; two are prerequisites, two are not
+
+| File | Plan dependency | Disposition |
+|---|---|---|
+| `deny.toml` | Delta 5 item 4 (advisory-reachability note); commit 7 (ban `terraphim_test_utils`) | **Absent on `main`, and no `cargo deny` step in either workflow.** Porting it is a prerequisite of commit 7's ban clause only. Decision: drop the ban clause from commit 7 and move the whole `cargo deny` gate — config plus workflow step plus the reachability note — to #254/#257 as separate work. Rationale: a UB remediation train should not carry a new supply-chain gate, and the gate adds nothing to the UB fix. |
+| `rust-toolchain.toml` | Delta 4 precondition ("pins 1.97.1, so `set_var` is `unsafe fn` everywhere") | **Absent, and not a blocker.** `set_var` is `unsafe fn` because the root manifest sets `edition = "2024"` (`Cargo.toml:19`) and all eleven members inherit it; that is an edition property, not a toolchain property. The headline lever remains a true compile-time gate. The missing pin is a separate CI-reproducibility gap, noted for #254. **This corrects Delta 4's stated reasoning without changing its conclusion.** |
+| `.config/nextest.toml` | section 1; 4.2 candidate C | Absent; void on `main` (D6.1 item 3). No action. |
+| `.ub-exorcism/` workspace | every artefact, `UB_RUNBOOK.md`, the LD_PRELOAD probe sources | **Prerequisite.** The regression instruments for #288/#291/#300 are only reachable from `task/254-ci-pipeline`. Execution step 0 below. |
+
+### D6.5 Execution order (unchanged from section 10 and Delta 2/3, with the new commits slotted)
+
+| # | Branch / PR | Commit | Issue | Why here |
+|---|---|---|---|---|
+| 0 | `task/252-audit-record` off `main` | cherry-pick `c8b3599`, `bc3261b`, `9b455e9` (`.ub-exorcism/` only; the path does not exist on `main`, so no conflict) plus Delta 6 appended to `phase8_remediation_plan.md` | #252 | Makes the plan, runbook and probe sources reachable from `main`. Prerequisite for every regression test. |
+| 1 | `task/293-fff-hardening` off `main`, **own PR** | commit 0: `fix(grep,mcp_server): refuse fff-search mmap content cache at every FilePicker call site` | #293 | Only production-path fix; must not wait for the test train. Delta 2 winner A, unchanged. |
+| 2 | same branch/PR | commit 0b: `fix(grep,mcp_server): refuse trees with non-UTF-8 or over-long entry names before fff-search indexes them` | #296 | Delta 3 winner B, unchanged. Separate commit so either reverts alone. |
+| 3 | same branch/PR | `chore(deps): pin fff-search to =0.8.4 and assert the pin in ci_guards` | #293, #257 | Delta 5 requirement 2. Caret `^0.8.4` cannot reach 0.10.6 today, so this is prudence, not urgency — but it is the only thing that keeps the reachability argument from lapsing silently. |
+| 4 | `task/252-env-unsafe-remediation` off `main`, **second PR** | commits 1-5 of section 10, unchanged, with D6.3's line numbers | #280, #290, #299, #252 | Test-only; one lever per commit. |
+| 5 | same | **commit 5b (new)**: `fix(grep): inject the RLM max-tokens parse; no env mutation in lib tests` | new issue (D6.2 writer A) | Must precede the lever. |
+| 6 | same | **commit 5c (new)**: `fix(update): inject the home root in the managed-mode zero-write test` | new issue (D6.2 writer B) | Must precede the lever. |
+| 7 | same | commit 6: remove the dead `rust_has_unsafe_env_setters` build script | #252 | unchanged |
+| 8 | same | **commit 6b (new)**: `test(workspace): ci_guards arm rejecting new env::set_var sites against an allow-list` | new issue (D6.2 design note) | The interim stop that would have caught both new writers. Lands before the lever so it is useful during the train, not after. |
+| 9 | same | commit 7: `chore(workspace): forbid unsafe_code in every crate and target` — **ban clause on `terraphim_test_utils` dropped per D6.4** | #310 | Will not compile until commits 1-6c close all 14 blocks. Last by construction. |
+| 10 | same | commits 8, 9: docs; `#[ignore]` the live-network GitHub check | #289, #292, #295, #298, #301, #303, #312, #302 | unchanged |
+
+### D6.6 Test strategy (what proves each change; no mocks, per project policy)
+
+| Change | Proves original | Proves remediation | Runs where |
+|---|---|---|---|
+| commit 0 (#293) | EXP-104 (done) | EXP-805: EXP-104 harness with the post-fix option block; `cached_count = 0`, no mapped temp files, 0 invalid `line_content` in 200 greps, truncate arm returns `Err`/short rather than SIGBUS | bigbox, manual (#294) |
+| commit 0b (#296) | EXP-201 (done) | EXP-806: the seven hostile geometries through `HybridSearcher::search` and the three MCP tools return an error naming the entry; controls search normally; raw fff-search still reproduces EXP-201 | Linux container + `#[cfg(target_os = "linux")]` integration tests (#297) |
+| commit 3 (pin) | n/a | `ci_guards` arm asserting `=0.8.4` in both manifests | both CI lanes |
+| commits 1-5, 5b, 5c | EXP-001b, EXP-002c, EXP-010, EXP-014 (done) | EXP-801/802/803: post-fix libtest binary under the LD_PRELOAD shim shows `setenv=0 unsetenv=0`, zero overlaps; pre-fix binary is the control | bigbox, manual only — the runner allowlist bars the shim from CI (D6.1 item 2) |
+| commit 6b | n/a | the arm fails when a new `env::set_var` is added outside the allow-list; it passes on `main` today only if the allow-list is seeded with all 14 known sites | both CI lanes |
+| commit 7 (#310) | n/a | EXP-804: the stored fault-injection patch re-adding one `unsafe { set_var }` fails `cargo check` | both CI lanes |
+
+### D6.7 Eliminated options
+
+| Option rejected | Why rejected | Risk of including | Trace |
+|---|---|---|---|
+| Re-derive candidates and rubrics for UF-001/002/004/039/040 | No mechanism changed; the audit's evidence is intact | Discards proofs; invites a different, unproven winner | `Gitea: #252` (audit is converged and closed to new rounds) |
+| Rebase or merge `task/254-ci-pipeline` to recover the workspace | 19 conflicting files of unrelated CI work | Couples two urgent UB fixes to a stalled CI port | `Gitea: #254` |
+| Treat the new writers as new findings needing new experiments | Same mechanism, same binary class, same proven readers | Re-opens a converged audit for no new information | `Gitea: #252` |
+| `#[serial]` on the new writers (candidate B shape) | EXP-014 refuted it, and writer B *is* this option already failing | Would ship the refuted remedy as the fix | `Gitea: #290` (EXP-014 recorded there) |
+| Carry the `cargo deny` gate inside the UB train | `deny.toml` is absent on `main`; a supply-chain gate is a separate lever | Commit 7 grows a second purpose and a second failure mode | `Gitea: #257` |
+| Port `rust-toolchain.toml` as part of this work | The lever does not depend on it (edition, not toolchain) | Scope creep into CI reproducibility | `Gitea: #254` |
+
+**Avoid at all cost** (5/25):
+- Upgrading fff-search to 0.10.6 to clear RUSTSEC-2026-0183/0184 — `Gitea: #257`: Delta 5 proved both advisories' APIs unreachable and 0.10.6 reintroduces a *reachable* UB on the grep path. This is the trade the audit most wants not made.
+- Using `ContentCacheBudget::zero()` or `max_file_size: 0` as the no-mmap budget — `Gitea: #293`: both also close the slow path, silencing grep entirely. Only `max_files: 0`, `max_bytes: 0`, `max_file_size: 10 * 1024 * 1024` is correct.
+- Landing the `forbid(unsafe_code)` lever before the writer commits — `Gitea: #310`: the workspace will not compile, and the failure will look like the lever being wrong.
+- Making the LD_PRELOAD probe a CI step — `Gitea: #288`: the runner allowlist rejects non-cargo programs; the lane would fail for a reason unrelated to the finding.
+- Any `#[cfg(test)]`-gated `unsafe` left in source as a "temporary" measure — `General:` it defeats the only compile-time gate the plan has.
+- Fixing the UTF-8 conversion in fff-search's sink instead of the mapping — `Gitea: #293`: Delta 2 candidate D, recorded precisely so nobody "fixes" it there; it cannot address the SIGBUS arm.
+
+### D6.8 Simplicity check
+
+What if this could be easy? It nearly is: commits 0 and 0b are roughly 12 lines at each of
+four call sites plus one 30-line helper per crate, and they close both urgent findings
+without touching any test. Everything else in the train is test-only and mechanical. The
+only non-obvious judgement in Delta 6 is commit 6b, and it is a 40-line scan in a test file
+that already does four such scans. Nothing speculative: no new abstraction, no feature
+flag, no trait, and the two new commits reuse the injection pattern commits 1-3 already
+establish.
+
+### D6.9 Open items for the user
+
+| Item | Needs |
+|---|---|
+| Step 0 cherry-pick of the audit workspace onto `main` | Go-ahead |
+| Two new Gitea issues for the D6.2 writers (plus a third for commit 6b) | Go-ahead; I can file them |
+| Moving `cargo deny` / `deny.toml` / `rust-toolchain.toml` to #254/#257 | Confirmation that is the right home |
+| Whether commits 1-10 should be one PR or the two the plan specifies | Default is the plan's two |
+
+### D6.10 Amendments made after review (2026-10-07, same day)
+
+1. **D6.2 writer B provenance corrected.** `47c5d11` is dated 2026-09-11 23:40 BST (the day the audit started) and is **not** on `main`. The site reached `main` via `e814910` ("ci: semantic GitHub v1.21.16 release port (#26)") on 2026-09-25, through the lineage divergence tracked by #342. Accurate claim: two sites exist on `main` that the audit never saw -- one authored after convergence (#373, 2026-10-04), one authored concurrently with the audit and imported later by a release port (#374). The plan consequence is unchanged.
+2. **D6.2 writer B reader corrected.** Not sqlite: `cargo tree -p terraphim_update` shows neither `rusqlite` nor `libsqlite3-sys`. The reader is the glibc resolver via `self_update`/`reqwest`, the EXP-010-a chain.
+3. **D6.4 amended.** Moving the whole `cargo deny` gate to #254/#257 would have dropped the `terraphim_test_utils` ban, which was the only stop on re-entry through the *safe* wrapper (`EnvVarGuard`/`set_env_var`, the UF-003/UF-014 shape). `forbid(unsafe_code)` is structurally blind to a safe fn wrapping `unsafe`. The ban's function moves to commit 6b / #375, which now also matches the wrapper forms (seed list 14 direct + 11 wrapper uses) and asserts no member manifest lists `terraphim_test_utils`. The `cargo deny` gate itself still goes to #254/#257.
+4. Issues filed: #373 (high), #374 (high), #375 (medium); all three added as blockers of #310 (direction verified: #310 `dependencies` = [280, 290, 299, 311, 312, 373, 374, 375], `blocks` = []).
+5. Delta 6 and this amendment are recorded on #252 as comments 95871 and 95913.
