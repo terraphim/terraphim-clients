@@ -786,3 +786,36 @@ fn every_file_picker_refuses_the_mmap_cache() {
         }
     }
 }
+
+/// Both crates that depend on fff-search must pin it exactly.
+///
+/// fff-search 0.10.6 adds a second, unbudgeted `memmap2::Mmap::map` in
+/// `get_content_for_search`, reached exactly when the zero-file cache budget
+/// from #293 makes `get_cached_content` return `None` -- so a minor bump would
+/// reintroduce UF-039 for every file at or above its 256 KiB threshold while
+/// leaving the mitigation visibly in place. `^0.8.4` already confines cargo to
+/// 0.8.x and no stable 0.8.x above 0.8.4 exists, so this pin is not urgent; it
+/// guards against a deliberate bump and keeps the decision from lapsing
+/// silently. See Delta 5 of the audit; Refs #293, #257.
+#[test]
+fn fff_search_is_pinned_exactly() {
+    let root = workspace_root();
+    for crate_name in ["terraphim_grep", "terraphim_mcp_server"] {
+        let manifest = root.join("crates").join(crate_name).join("Cargo.toml");
+        let text = std::fs::read_to_string(&manifest)
+            .unwrap_or_else(|e| panic!("read {}: {e}", manifest.display()));
+
+        let decl = text
+            .lines()
+            .find(|l| l.trim_start().starts_with("fff-search = "))
+            .unwrap_or_else(|| panic!("{} declares no fff-search dependency", manifest.display()));
+
+        assert!(
+            decl.contains(r#"version = "=0.8.4""#),
+            "{} must pin fff-search exactly (`version = \"=0.8.4\"`); a caret \
+             requirement lets a minor bump reintroduce UF-039 (Refs #293, #257). \
+             Found: {decl}",
+            manifest.display(),
+        );
+    }
+}

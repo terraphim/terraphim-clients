@@ -22,7 +22,28 @@ clap = { version = "4.5", features = ["derive"] }
 rmcp = { version = "0.9.0", features = ["server", "transport-sse-server", "transport-io"] }
 serde_json = { workspace = true }
 
-fff-search = { version = "0.8.4" }
+# Pinned exactly, not `^0.8.4` (Refs #293, #257).
+#
+# fff-search 0.10.6 is the first release requiring a git2 that patches
+# RUSTSEC-2026-0183/0184, but it also adds a SECOND, unbudgeted
+# `memmap2::Mmap::map` at `types.rs:762` in `get_content_for_search`, gated only
+# by a 256 KiB threshold on Linux and reached exactly when a zero-file cache
+# budget makes `get_cached_content` return `None`. Upgrading would therefore
+# reintroduce UF-039 for every file at or above that size while leaving the
+# mitigation visibly in place.
+#
+# Staying on 0.8.4 is safe because both advisories are API-specific and neither
+# vulnerable API is reachable: fff-search 0.8.4 references only
+# `git2::Repository`, `git2::Error` and the `git2::Status` flags, with no
+# `Remote`, `Blame` or `blame_buffer` anywhere, and no workspace crate depends
+# on git2 directly.
+#
+# Urgency, stated accurately: `^0.8.4` already confines cargo to 0.8.x and
+# crates.io has no stable 0.8.x above 0.8.4 (only `0.8.5-nightly.*`
+# pre-releases, which cargo will not select), so a routine `cargo update` cannot
+# reach 0.10.6 today. The pin guards against a deliberate minor bump, and it is
+# what stops the reachability argument above lapsing silently.
+fff-search = { version = "=0.8.4" }
 terraphim_automata = { version = "1.21.0", registry = "terraphim", features = ["tokio-runtime"] }
 terraphim_config = { version = "1.20.2" }
 terraphim_file_search = { version = "1.20.3" }
