@@ -654,3 +654,121 @@ fn publish_gate_tests_pass() {
         String::from_utf8_lossy(&out.stderr),
     );
 }
+
+/// Collect every `.rs` file under `crates/`, skipping build directories.
+///
+/// Uses `std::fs` rather than shelling out to `fd`/`rg`: the Gitea runner's
+/// program allowlist rejects anything that is not `cargo` or a repo script, and
+/// a guard that silently cannot run is worse than no guard.
+fn workspace_rust_sources() -> Vec<PathBuf> {
+    fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if file_type.is_dir() {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                // Build output and vendored sources are not this repo's code.
+                if name.starts_with("target") || name == ".git" {
+                    continue;
+                }
+                walk(&path, out);
+            } else if file_type.is_file() && path.extension().is_some_and(|e| e == "rs") {
+                out.push(path);
+            }
+        }
+    }
+
+    let mut out = Vec::new();
+    walk(&workspace_root().join("crates"), &mut out);
+    // This guard file quotes the very literals it forbids, so exclude it.
+    let own_name = Path::new(file!())
+        .file_name()
+        .expect("guard file name")
+        .to_owned();
+    out.retain(|p| p.file_name() != Some(own_name.as_os_str()));
+    out.sort();
+    out
+}
+
+/// Every `FilePicker::new` call must refuse fff-search's mmap content cache.
+///
+/// fff-search's only `memmap2::Mmap::map` call sits in `get_cached_content`, and
+/// its safety contract requires that the mapped file is not modified
+/// concurrently. The crate delegates that guarantee to a background watcher
+/// which `FilePicker::new` never installs, so a concurrent writer produces
+/// invalid-UTF-8 match text and an in-place truncation raises SIGBUS (EXP-302
+/// killed `terraphim_mcp_server --sse` with exit 135 this way). The remedy is a
+/// budget whose `max_files` is 0, which makes `get_cached_content` bail at its
+/// count guard before it maps anything.
+///
+/// Leaving `cache_budget` at `None` -- or omitting it, which `Default` turns
+/// into `None` -- asks fff-search to size a budget from the repo and reopens the
+/// finding. Hence: no `cache_budget: None` anywhere, and every picker must name
+/// `no_mmap_budget()` and `follow_symlinks: false` in its options block.
+///
+/// See UF-039 / #293.
+#[test]
+fn every_file_picker_refuses_the_mmap_cache() {
+    // Built by concatenation so this test's own source does not contain the
+    // literal it forbids (the walk excludes this file too, belt and braces).
+    let forbidden = concat!("cache_budget: ", "None");
+
+    for path in workspace_rust_sources() {
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let display = path.display();
+
+        for (i, line) in text.lines().enumerate() {
+            assert!(
+                !line.contains(forbidden),
+                "{display}:{} relies on fff-search sizing its own mmap cache budget; \
+                 pass `Some(no_mmap_budget())` instead (UF-039 / #293)",
+                i + 1,
+            );
+        }
+
+        let lines: Vec<&str> = text.lines().collect();
+        for (i, line) in lines.iter().enumerate() {
+            if !line.contains("FilePicker::new(") {
+                continue;
+            }
+            // The options block runs from the call to the struct-update tail.
+            let end = lines[i..]
+                .iter()
+                .position(|l| l.contains("..FilePickerOptions::default()"))
+                .map(|off| i + off)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{display}:{} opens a FilePicker without a \
+                         `..FilePickerOptions::default()` tail; this guard cannot \
+                         establish what its options are",
+                        i + 1
+                    )
+                });
+            let block = lines[i..=end].join("\n");
+
+            assert!(
+                block.contains("no_mmap_budget()"),
+                "{display}:{} opens a FilePicker without `no_mmap_budget()`; \
+                 fff-search would then mmap file content with no invalidation \
+                 (UF-039 / #293)",
+                i + 1,
+            );
+            assert!(
+                block.contains("follow_symlinks: false"),
+                "{display}:{} opens a FilePicker without an explicit \
+                 `follow_symlinks: false`; the guard reasoning assumes symlinks \
+                 are not followed and must not rest on an upstream default \
+                 (Refs #293)",
+                i + 1,
+            );
+        }
+    }
+}
