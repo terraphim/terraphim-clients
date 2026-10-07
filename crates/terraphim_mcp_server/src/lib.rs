@@ -91,6 +91,54 @@ impl From<TerraphimMcpError> for ErrorData {
     }
 }
 
+/// Upper bound on the size of a file the grep tools will read.
+///
+/// Shared between the content-cache budget and `GrepSearchOptions` so the two
+/// cannot drift apart: a file large enough to be refused by one but not the
+/// other would be a silent inconsistency.
+const MAX_GREP_FILE_SIZE: u64 = 10 * 1024 * 1024;
+
+/// A content-cache budget that refuses fff-search's mmap content cache outright.
+///
+/// fff-search maps file content through `memmap2::Mmap::map` (the crate's only
+/// such call, in `get_cached_content`), whose safety contract requires that the
+/// mapped file is not modified concurrently. The crate delegates that guarantee
+/// to a background watcher, but `FilePicker::new` never installs one, so a
+/// concurrent writer yields invalid-UTF-8 match text and an in-place truncation
+/// raises SIGBUS -- which killed the shipped `terraphim_mcp_server --sse` with
+/// exit 135 during the audit. `max_files: 0` makes `get_cached_content` return
+/// `None` at its count guard before it reaches `absolute_path` or `Mmap::map`,
+/// so every read takes the slow path and lands in an owned buffer that no other
+/// process can mutate. On Windows `get_cached_content` is already a stub
+/// returning `None`, so this simply makes Unix behave the same way.
+/// See UF-039 / #293.
+///
+/// `max_file_size` must stay non-zero. It also gates the *slow* path
+/// (`get_content_for_search` rejects any file whose `size > max_file_size`), so
+/// zeroing it -- or using `ContentCacheBudget::zero()` -- would silence grep
+/// entirely rather than harden it: zero matches, looking like a working fix.
+/// `ContentCacheBudget::from_overrides` cannot express this budget either, as it
+/// reads `max_files: 0` as "use the library default", hence the struct literal.
+///
+/// Scope: this removes *fff-search's* mapping, not all mapping in the process.
+/// `FrecencyTracker::open` still memory-maps an LMDB data file and libgit2 maps
+/// pack files; neither is covered here.
+///
+/// This duplicates `terraphim_grep`'s helper deliberately: this crate does not
+/// depend on `terraphim_grep`, and adding a dependency to share eight lines
+/// would couple two binaries for no benefit.
+fn no_mmap_budget() -> fff_search::ContentCacheBudget {
+    use std::sync::atomic::{AtomicU64, AtomicUsize};
+
+    fff_search::ContentCacheBudget {
+        max_files: 0,
+        max_bytes: 0,
+        max_file_size: MAX_GREP_FILE_SIZE,
+        cached_count: AtomicUsize::new(0),
+        cached_bytes: AtomicU64::new(0),
+    }
+}
+
 /// The main service type for the Terraphim MCP server
 #[derive(Clone)]
 pub struct McpService {
@@ -1275,7 +1323,13 @@ impl McpService {
             base_path: base_path.clone(),
             mode: FFFMode::Ai,
             watch: false,
-            cache_budget: None,
+            // See `no_mmap_budget` -- UF-039 / #293.
+            cache_budget: Some(no_mmap_budget()),
+            // Asserted rather than inherited from `FilePickerOptions::default()`
+            // so that reasoning about which entries fff-search will index rests
+            // on a value this crate states, not on an upstream default that a
+            // minor release could change. Refs #293.
+            follow_symlinks: false,
             ..FilePickerOptions::default()
         })
         .map_err(|e| ErrorData::internal_error(format!("FilePicker init failed: {e}"), None))?;
@@ -1373,7 +1427,13 @@ impl McpService {
             base_path: base_path.clone(),
             mode: FFFMode::Ai,
             watch: false,
-            cache_budget: None,
+            // See `no_mmap_budget` -- UF-039 / #293.
+            cache_budget: Some(no_mmap_budget()),
+            // Asserted rather than inherited from `FilePickerOptions::default()`
+            // so that reasoning about which entries fff-search will index rests
+            // on a value this crate states, not on an upstream default that a
+            // minor release could change. Refs #293.
+            follow_symlinks: false,
             ..FilePickerOptions::default()
         })
         .map_err(|e| ErrorData::internal_error(format!("FilePicker init failed: {e}"), None))?;
@@ -1390,7 +1450,7 @@ impl McpService {
 
         let fff_query = parse_grep_query(&query);
         let options = GrepSearchOptions {
-            max_file_size: 10 * 1024 * 1024,
+            max_file_size: MAX_GREP_FILE_SIZE,
             max_matches_per_file: 200,
             smart_case: true,
             file_offset,
@@ -1486,7 +1546,13 @@ impl McpService {
             base_path: base_path.clone(),
             mode: FFFMode::Ai,
             watch: false,
-            cache_budget: None,
+            // See `no_mmap_budget` -- UF-039 / #293.
+            cache_budget: Some(no_mmap_budget()),
+            // Asserted rather than inherited from `FilePickerOptions::default()`
+            // so that reasoning about which entries fff-search will index rests
+            // on a value this crate states, not on an upstream default that a
+            // minor release could change. Refs #293.
+            follow_symlinks: false,
             ..FilePickerOptions::default()
         })
         .map_err(|e| ErrorData::internal_error(format!("FilePicker init failed: {e}"), None))?;
@@ -1509,7 +1575,7 @@ impl McpService {
         let parsed_constraints = parsed.constraints.as_slice();
 
         let options = GrepSearchOptions {
-            max_file_size: 10 * 1024 * 1024,
+            max_file_size: MAX_GREP_FILE_SIZE,
             max_matches_per_file: 200,
             smart_case: true,
             file_offset,
