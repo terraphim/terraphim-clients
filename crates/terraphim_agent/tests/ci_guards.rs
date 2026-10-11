@@ -654,3 +654,207 @@ fn publish_gate_tests_pass() {
         String::from_utf8_lossy(&out.stderr),
     );
 }
+
+/// Collect every `.rs` file under `crates/`, skipping build directories.
+///
+/// Uses `std::fs` rather than shelling out to `fd`/`rg`: the Gitea runner's
+/// program allowlist rejects anything that is not `cargo` or a repo script, and
+/// a guard that silently cannot run is worse than no guard.
+fn workspace_rust_sources() -> Vec<PathBuf> {
+    fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if file_type.is_dir() {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                // Build output and vendored sources are not this repo's code.
+                if name.starts_with("target") || name == ".git" {
+                    continue;
+                }
+                walk(&path, out);
+            } else if file_type.is_file() && path.extension().is_some_and(|e| e == "rs") {
+                out.push(path);
+            }
+        }
+    }
+
+    let mut out = Vec::new();
+    walk(&workspace_root().join("crates"), &mut out);
+    // This guard file quotes the very literals it forbids, so exclude it.
+    let own_name = Path::new(file!())
+        .file_name()
+        .expect("guard file name")
+        .to_owned();
+    out.retain(|p| p.file_name() != Some(own_name.as_os_str()));
+    out.sort();
+    out
+}
+
+/// Every `FilePicker::new` call must refuse fff-search's mmap content cache.
+///
+/// fff-search's only `memmap2::Mmap::map` call sits in `get_cached_content`, and
+/// its safety contract requires that the mapped file is not modified
+/// concurrently. The crate delegates that guarantee to a background watcher
+/// which `FilePicker::new` never installs, so a concurrent writer produces
+/// invalid-UTF-8 match text and an in-place truncation raises SIGBUS (EXP-302
+/// killed `terraphim_mcp_server --sse` with exit 135 this way). The remedy is a
+/// budget whose `max_files` is 0, which makes `get_cached_content` bail at its
+/// count guard before it maps anything.
+///
+/// Leaving `cache_budget` at `None` -- or omitting it, which `Default` turns
+/// into `None` -- asks fff-search to size a budget from the repo and reopens the
+/// finding. Hence: no `cache_budget: None` anywhere, and every picker must name
+/// `no_mmap_budget()` and `follow_symlinks: false` in its options block.
+///
+/// See UF-039 / #293.
+#[test]
+fn every_file_picker_refuses_the_mmap_cache() {
+    // Built by concatenation so this test's own source does not contain the
+    // literal it forbids (the walk excludes this file too, belt and braces).
+    let forbidden = concat!("cache_budget: ", "None");
+
+    for path in workspace_rust_sources() {
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let display = path.display();
+
+        for (i, line) in text.lines().enumerate() {
+            assert!(
+                !line.contains(forbidden),
+                "{display}:{} relies on fff-search sizing its own mmap cache budget; \
+                 pass `Some(no_mmap_budget())` instead (UF-039 / #293)",
+                i + 1,
+            );
+        }
+
+        let lines: Vec<&str> = text.lines().collect();
+        for (i, line) in lines.iter().enumerate() {
+            if !line.contains("FilePicker::new(") {
+                continue;
+            }
+            // The options block runs from the call to the struct-update tail.
+            let end = lines[i..]
+                .iter()
+                .position(|l| l.contains("..FilePickerOptions::default()"))
+                .map(|off| i + off)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{display}:{} opens a FilePicker without a \
+                         `..FilePickerOptions::default()` tail; this guard cannot \
+                         establish what its options are",
+                        i + 1
+                    )
+                });
+            let block = lines[i..=end].join("\n");
+
+            assert!(
+                block.contains("no_mmap_budget()"),
+                "{display}:{} opens a FilePicker without `no_mmap_budget()`; \
+                 fff-search would then mmap file content with no invalidation \
+                 (UF-039 / #293)",
+                i + 1,
+            );
+            // fff-search stores relative paths lossily and then truncates them
+            // into a fixed 4096-byte buffer behind `from_utf8_unchecked`, so a
+            // non-UTF-8 or over-long entry name yields an invalid `&str` and can
+            // panic in `DirItem::dir_name`. The base path is attacker-chosen, so
+            // the tree must be refused before the picker sees it. UF-040 / #296.
+            let preceding = lines[i.saturating_sub(40)..i].join("\n");
+            assert!(
+                preceding.contains("reject_hostile_tree("),
+                "{display}:{} opens a FilePicker without a `reject_hostile_tree(` \
+                 call in the preceding 40 lines; a hostile entry name would then \
+                 reach fff-search's `from_utf8_unchecked` (UF-040 / #296)",
+                i + 1,
+            );
+
+            assert!(
+                block.contains("follow_symlinks: false"),
+                "{display}:{} opens a FilePicker without an explicit \
+                 `follow_symlinks: false`; the guard reasoning assumes symlinks \
+                 are not followed and must not rest on an upstream default \
+                 (Refs #293)",
+                i + 1,
+            );
+        }
+    }
+}
+
+/// Both crates that depend on fff-search must pin it exactly.
+///
+/// fff-search 0.10.6 adds a second, unbudgeted `memmap2::Mmap::map` in
+/// `get_content_for_search`, reached exactly when the zero-file cache budget
+/// from #293 makes `get_cached_content` return `None` -- so a minor bump would
+/// reintroduce UF-039 for every file at or above its 256 KiB threshold while
+/// leaving the mitigation visibly in place. `^0.8.4` already confines cargo to
+/// 0.8.x and no stable 0.8.x above 0.8.4 exists, so this pin is not urgent; it
+/// guards against a deliberate bump and keeps the decision from lapsing
+/// silently. See Delta 5 of the audit; Refs #293, #257.
+#[test]
+fn fff_search_is_pinned_exactly() {
+    let root = workspace_root();
+    for crate_name in ["terraphim_grep", "terraphim_mcp_server"] {
+        let manifest = root.join("crates").join(crate_name).join("Cargo.toml");
+        let text = std::fs::read_to_string(&manifest)
+            .unwrap_or_else(|e| panic!("read {}: {e}", manifest.display()));
+
+        let decl = text
+            .lines()
+            .find(|l| l.trim_start().starts_with("fff-search = "))
+            .unwrap_or_else(|| panic!("{} declares no fff-search dependency", manifest.display()));
+
+        assert!(
+            decl.contains(r#"version = "=0.8.4""#),
+            "{} must pin fff-search exactly (`version = \"=0.8.4\"`); a caret \
+             requirement lets a minor bump reintroduce UF-039 (Refs #293, #257). \
+             Found: {decl}",
+            manifest.display(),
+        );
+    }
+}
+
+/// Native jobs must not inherit the shared host compiler-cache wrapper. Other
+/// jobs can collect that cache while this job compiles; keep all checks intact
+/// and use ordinary rustc for this workflow, including nested Cargo processes.
+/// Both artifact directories must also be checkout-local so ordinary rustc
+/// never rewrites old read-only cache materializations in the shared target.
+#[test]
+fn native_ci_disables_shared_compiler_wrappers() {
+    let text = std::fs::read_to_string(workspace_root().join(".gitea/workflows/native-ci.yml"))
+        .expect("read native workflow");
+    let lines: Vec<_> = text.lines().collect();
+    let mut commands = 0;
+    for (index, raw) in lines.iter().enumerate() {
+        let line = raw.trim();
+        if line.starts_with('#') || line.starts_with("- name:") || !line.contains("cargo ") {
+            continue;
+        }
+        commands += 1;
+        let scoped = line.contains("RUSTC_WRAPPER=\"\" RUSTC_WORKSPACE_WRAPPER=\"\"");
+        let exported = previous_shell_line(&lines, index).is_some_and(|previous| {
+            previous.starts_with("export RUSTC_WRAPPER=\"\" RUSTC_WORKSPACE_WRAPPER=\"\" ")
+        });
+        assert!(
+            scoped || exported,
+            "native Cargo command inherits a shared wrapper: {line}"
+        );
+        let artifact_scope = "CARGO_TARGET_DIR=\"$PWD/target/native-ci\" CARGO_BUILD_BUILD_DIR=\"$PWD/target/native-ci/build\"";
+        assert!(
+            line.contains(artifact_scope)
+                || previous_shell_line(&lines, index)
+                    .is_some_and(|previous| previous.contains(artifact_scope)),
+            "native Cargo command reuses shared compiler outputs: {line}"
+        );
+    }
+    assert!(
+        commands >= 15,
+        "native workflow unexpectedly lost Cargo checks"
+    );
+}
