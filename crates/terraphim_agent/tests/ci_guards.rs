@@ -819,3 +819,32 @@ fn fff_search_is_pinned_exactly() {
         );
     }
 }
+
+/// Native jobs must not inherit the shared host compiler-cache wrapper. Other
+/// jobs can collect that cache while this job compiles; keep all checks intact
+/// and use ordinary rustc for this workflow, including nested Cargo processes.
+#[test]
+fn native_ci_disables_shared_compiler_wrappers() {
+    let text = std::fs::read_to_string(workspace_root().join(".gitea/workflows/native-ci.yml"))
+        .expect("read native workflow");
+    let lines: Vec<_> = text.lines().collect();
+    let mut commands = 0;
+    for (index, raw) in lines.iter().enumerate() {
+        let line = raw.trim();
+        if line.starts_with('#') || line.starts_with("- name:") || !line.contains("cargo ") {
+            continue;
+        }
+        commands += 1;
+        let scoped = line.contains("RUSTC_WRAPPER=\"\" RUSTC_WORKSPACE_WRAPPER=\"\"");
+        let exported = previous_shell_line(&lines, index)
+            == Some("export RUSTC_WRAPPER=\"\" RUSTC_WORKSPACE_WRAPPER=\"\"");
+        assert!(
+            scoped || exported,
+            "native Cargo command inherits a shared wrapper: {line}"
+        );
+    }
+    assert!(
+        commands >= 15,
+        "native workflow unexpectedly lost Cargo checks"
+    );
+}
