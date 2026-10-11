@@ -70,7 +70,7 @@ impl SufficiencyJudge {
         let metrics = SufficiencyMetrics {
             chunk_count: chunks.len(),
             kg_hits: results.kg_concepts.len(),
-            coverage: self.calculate_coverage(query, &chunks),
+            coverage: self.calculate_semantic_coverage(query, &chunks, &results.kg_concepts),
             kg_confidence: self.calculate_kg_confidence(&results.kg_concepts),
             diversity: self.calculate_diversity(&chunks),
         };
@@ -96,6 +96,29 @@ impl SufficiencyJudge {
             Sufficiency::Insufficient(chunks)
         };
         (decision, metrics)
+    }
+
+    fn calculate_semantic_coverage(
+        &self,
+        query: &str,
+        chunks: &[RetrievedChunk],
+        concepts: &[super::hybrid_searcher::KgConcept],
+    ) -> f64 {
+        // Only an exact KG term can substitute its aliases. Compound queries
+        // still require their literal terms; KG hits without retrieved evidence
+        // cannot establish coverage.
+        if concepts
+            .iter()
+            .any(|c| c.name.eq_ignore_ascii_case(query.trim()))
+            && chunks.iter().any(|chunk| {
+                concepts.iter().any(|concept| {
+                    super::hybrid_searcher::automata_concept_matches(&chunk.content, &concept.name)
+                })
+            })
+        {
+            return 1.0;
+        }
+        self.calculate_coverage(query, chunks)
     }
 
     fn calculate_coverage(&self, query: &str, chunks: &[RetrievedChunk]) -> f64 {
@@ -220,6 +243,35 @@ mod tests {
 
         let coverage2 = judge.calculate_coverage("missing term", &chunks);
         assert!(coverage2 < 0.5);
+    }
+
+    #[test]
+    fn semantic_coverage_requires_exact_query_and_real_boundary_match() {
+        let judge = SufficiencyJudge::default();
+        let concepts = ["judgment", "decision"].map(|name| KgConcept {
+            id: 1,
+            name: name.into(),
+            display_value: None,
+            score: 1.0,
+        });
+        let chunks = vec![make_chunk("Decision: public preview", "brief.md", "code")];
+        assert_eq!(
+            judge.calculate_semantic_coverage("judgment", &chunks, &concepts),
+            1.0
+        );
+        assert_eq!(
+            judge.calculate_semantic_coverage("judgment missing", &chunks, &concepts),
+            0.0
+        );
+        let unrelated = vec![make_chunk("indecision", "decision.md", "code")];
+        assert_eq!(
+            judge.calculate_semantic_coverage("judgment", &unrelated, &concepts),
+            0.0
+        );
+        assert_eq!(
+            judge.calculate_semantic_coverage("judgment", &[], &concepts),
+            0.0
+        );
     }
 
     #[test]
