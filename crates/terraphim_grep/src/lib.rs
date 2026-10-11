@@ -195,6 +195,17 @@ impl TerraphimGrep {
         let thresholds = self.sufficiency_judge.thresholds();
 
         match sufficiency {
+            sufficiency_judge::Sufficiency::Sufficient(chunks) if Self::rlm_requested(&options) => {
+                self.search_with_rlm_fallback(
+                    query,
+                    options,
+                    chunks,
+                    hybrid_results,
+                    start,
+                    metrics,
+                )
+                .await
+            }
             sufficiency_judge::Sufficiency::Sufficient(chunks) => Ok(Self::search_only_result(
                 chunks,
                 hybrid_results,

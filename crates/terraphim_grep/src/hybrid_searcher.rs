@@ -126,7 +126,7 @@ pub fn score_kg_boost(chunk: &RetrievedChunk, concepts: &[KgConcept], weight: f6
     (boost * weight).min(weight * concepts.len() as f64)
 }
 
-fn automata_concept_matches(text: &str, concept: &str) -> bool {
+pub(crate) fn automata_concept_matches(text: &str, concept: &str) -> bool {
     let role = terraphim_types::RoleName::new("terraphim-grep-kg-boost");
     let thesaurus = terraphim_automata::thesaurus_from_terms(&role, std::iter::once(concept));
     match terraphim_automata::find_matches(text, &thesaurus, true) {
@@ -194,6 +194,35 @@ fn thesaurus_query_concepts(
             Vec::new()
         }
     }
+}
+
+/// Expand an exact KG term into its existing normalized concept's aliases.
+/// Compound/free-text queries retain their original constraints.
+fn retrieval_queries(query: &str, thesaurus: &terraphim_types::Thesaurus) -> Vec<String> {
+    let mut queries = vec![query.to_owned()];
+    let Ok(matches) = terraphim_automata::find_matches(query.trim(), thesaurus, false) else {
+        return queries;
+    };
+    let exact = matches
+        .into_iter()
+        .find(|m| m.term.eq_ignore_ascii_case(query.trim()));
+    if let Some(matched) = exact {
+        // Resolve exact membership before the presentation limit, and always include
+        // the canonical term even when an alias group exceeds that limit.
+        let canonical = matched.normalized_term.value.to_string();
+        if !queries.iter().any(|q| q.eq_ignore_ascii_case(&canonical)) {
+            queries.push(canonical);
+        }
+        for concept in thesaurus_query_concepts(query, thesaurus, 32) {
+            if !queries
+                .iter()
+                .any(|q| q.eq_ignore_ascii_case(&concept.name))
+            {
+                queries.push(concept.name);
+            }
+        }
+    }
+    queries
 }
 
 /// Apply KG boost to a batch of chunks and sort by boosted score (descending).
@@ -318,11 +347,27 @@ impl HybridSearcher {
                 } else {
                     max_results.saturating_mul(5).max(max_results).min(1000)
                 };
+                let queries = retrieval_queries(&query_owned, &thesaurus);
                 let mut all_results = Vec::new();
                 for path in search_paths.iter() {
-                    let mut results =
-                        Self::search_code(&query_owned, candidate_limit, path.clone()).await?;
-                    all_results.append(&mut results);
+                    // Deduplicate one actual line matched by several aliases. Keep
+                    // path roots distinct: relative filenames can coincide in two roots.
+                    let mut seen = std::collections::HashSet::new();
+                    for query in &queries {
+                        let results =
+                            Self::search_code(query, candidate_limit, path.clone()).await?;
+                        for result in results {
+                            let key = (
+                                result.source.clone(),
+                                result.line_start,
+                                result.line_end,
+                                result.content.clone(),
+                            );
+                            if seen.insert(key) {
+                                all_results.push(result);
+                            }
+                        }
+                    }
                 }
                 // Boost KG matches above generic matches; the boosted score is what the
                 // JSON output reports so downstream tools see why a chunk ranked where
@@ -678,6 +723,17 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(names, vec!["auth", "authentication", "authorisation"]);
+    }
+
+    #[test]
+    fn retrieval_preserves_compound_and_unknown_queries() {
+        let thesaurus = test_thesaurus(&["auth", "authorisation"]);
+        assert_eq!(
+            retrieval_queries("auth AND deployment", &thesaurus),
+            vec!["auth AND deployment"]
+        );
+        assert_eq!(retrieval_queries("author", &thesaurus), vec!["author"]);
+        assert_eq!(retrieval_queries("unknown", &thesaurus), vec!["unknown"]);
     }
 
     #[test]
