@@ -27,12 +27,12 @@ CARGO = ROOT / "Cargo.toml"
 
 D = chr(36)  # dollar sign, kept out of template literals in the test source
 
-# Tracks the last *published* release, not the workspace version: the PKGBUILD
-# pins the release asset SHA-256 digests, which only exist once the release is
-# sealed. During a release window (workspace bumped, assets not yet
-# published) this contract intentionally fails until the follow-up PKGBUILD
+# Tracks the sealed immutable release: the PKGBUILD pins the signed archive
+# SHA-256 digests from its verified release stage, which can be checked before
+# publication. During a release window (workspace bumped, signed assets not
+# yet sealed) this contract intentionally fails until the follow-up PKGBUILD
 # bump lands.
-PKGVER = "1.21.18"
+PKGVER = "1.21.19"
 REPO = "terraphim/terraphim-clients"
 RELEASE_BASE = f"https://github.com/{REPO}/releases/download/v{PKGVER}"
 
@@ -41,21 +41,21 @@ ASSETS = {
     "x86_64": {
         "terraphim-agent": (
             f"terraphim-agent-{PKGVER}-x86_64-unknown-linux-musl.tar.gz",
-            "767ee6cdaa375f838cf69607a7346cb89195480dbfccc45ecefde7820a89ad4c",
+            "6970a26f1d33cad67a78397c6d18d6ca0b5d56200b7d86be3027199ca5d1d5d9",
         ),
         "terraphim-grep": (
             f"terraphim-grep-{PKGVER}-x86_64-unknown-linux-musl.tar.gz",
-            "8e463f780e3683e909613a4dd01fb47da36e5736a6a51ea62f36a3ce235b7167",
+            "d95ae22a7a84c294e700e957ff94ad25195481fce80ea7673a240c6240257220",
         ),
     },
     "aarch64": {
         "terraphim-agent": (
             f"terraphim-agent-{PKGVER}-aarch64-unknown-linux-musl.tar.gz",
-            "1f4265ad8756378d101d35dc21d0362460cb858d9be99aa7486aafe83e8caa0f",
+            "5c763fb2308f3d83d3e83f935bfa77a9c90414ec7567eac275bedbc7c179e103",
         ),
         "terraphim-grep": (
             f"terraphim-grep-{PKGVER}-aarch64-unknown-linux-musl.tar.gz",
-            "1b02796312162b59cd0165aa302aa683e8f57b00c72f283ab0bd15d569d3b395",
+            "1332b48c1ca67e0d2ffd534f5a112c77ffea5885004cbd1909e7ac0aecd2f086",
         ),
     },
 }

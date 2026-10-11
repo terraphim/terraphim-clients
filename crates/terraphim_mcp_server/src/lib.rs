@@ -91,6 +91,273 @@ impl From<TerraphimMcpError> for ErrorData {
     }
 }
 
+/// Upper bound on the size of a file the grep tools will read.
+///
+/// Shared between the content-cache budget and `GrepSearchOptions` so the two
+/// cannot drift apart: a file large enough to be refused by one but not the
+/// other would be a silent inconsistency.
+const MAX_GREP_FILE_SIZE: u64 = 10 * 1024 * 1024;
+
+/// A content-cache budget that refuses fff-search's mmap content cache outright.
+///
+/// fff-search maps file content through `memmap2::Mmap::map` (the crate's only
+/// such call, in `get_cached_content`), whose safety contract requires that the
+/// mapped file is not modified concurrently. The crate delegates that guarantee
+/// to a background watcher, but `FilePicker::new` never installs one, so a
+/// concurrent writer yields invalid-UTF-8 match text and an in-place truncation
+/// raises SIGBUS -- which killed the shipped `terraphim_mcp_server --sse` with
+/// exit 135 during the audit. `max_files: 0` makes `get_cached_content` return
+/// `None` at its count guard before it reaches `absolute_path` or `Mmap::map`,
+/// so every read takes the slow path and lands in an owned buffer that no other
+/// process can mutate. On Windows `get_cached_content` is already a stub
+/// returning `None`, so this simply makes Unix behave the same way.
+/// See UF-039 / #293.
+///
+/// `max_file_size` must stay non-zero. It also gates the *slow* path
+/// (`get_content_for_search` rejects any file whose `size > max_file_size`), so
+/// zeroing it -- or using `ContentCacheBudget::zero()` -- would silence grep
+/// entirely rather than harden it: zero matches, looking like a working fix.
+/// `ContentCacheBudget::from_overrides` cannot express this budget either, as it
+/// reads `max_files: 0` as "use the library default", hence the struct literal.
+///
+/// Scope: this removes *fff-search's* mapping, not all mapping in the process.
+/// `FrecencyTracker::open` still memory-maps an LMDB data file and libgit2 maps
+/// pack files; neither is covered here.
+///
+/// This duplicates `terraphim_grep`'s helper deliberately: this crate does not
+/// depend on `terraphim_grep`, and adding a dependency to share eight lines
+/// would couple two binaries for no benefit.
+fn no_mmap_budget() -> fff_search::ContentCacheBudget {
+    use std::sync::atomic::{AtomicU64, AtomicUsize};
+
+    fff_search::ContentCacheBudget {
+        max_files: 0,
+        max_bytes: 0,
+        max_file_size: MAX_GREP_FILE_SIZE,
+        cached_count: AtomicUsize::new(0),
+        cached_bytes: AtomicU64::new(0),
+    }
+}
+
+/// Mirrors fff-search's `PATH_BUF_SIZE` (`simd_path.rs`).
+///
+/// Not configurable upstream, so it is reproduced here. If a future fff-search
+/// changes it, the guard below becomes conservative rather than unsound.
+const PATH_BUF_SIZE: usize = 4096;
+
+/// The number of bytes `write_absolute_path` consumes before the relative path.
+///
+/// Mirrors that function's own arithmetic exactly (`types.rs:343-351`) so the
+/// two cannot drift: the base path's encoded bytes, plus one separator unless
+/// the base already ends in `MAIN_SEPARATOR`.
+///
+/// This counts the root's *raw* bytes, while `terraphim_grep`'s call site hands fff-search
+/// `base_path: search_path.to_string_lossy().to_string()`. The two agree only
+/// because `reject_hostile_tree` has already refused a root that is not valid
+/// UTF-8, which makes `to_string_lossy` a no-op on it. That is the invariant the
+/// whole length rule rests on: without it a root with invalid bytes would be
+/// stored up to three times longer than measured here, and the arithmetic would
+/// understate what the buffer actually holds.
+fn base_prefix_len(base: &std::path::Path) -> usize {
+    let bytes = base.as_os_str().as_encoded_bytes();
+    let base_len = bytes.len();
+    let sep_len =
+        usize::from(base_len > 0 && bytes[base_len - 1] != std::path::MAIN_SEPARATOR as u8);
+    base_len + sep_len
+}
+
+/// Decide one directory entry, returning its length relative to the search root.
+///
+/// `base_end_idx` is what `base_prefix_len` returned for the search root: the
+/// buffer is shared, so the length rule has to be applied to the total, not to
+/// the relative portion alone.
+///
+/// Split out from the walk to mirror `terraphim_grep::path_guard`, where both
+/// rules are unit-tested. The host filesystem will not create every geometry
+/// fff-search mishandles -- macOS caps a single pathname at 1024 bytes and Linux
+/// at 4096 -- so the arithmetic has to be exercised through this function.
+fn check_entry(
+    base: &std::path::Path,
+    dir: &std::path::Path,
+    name: &std::ffi::OsStr,
+    base_end_idx: usize,
+    parent_rel_len: usize,
+) -> Result<usize, String> {
+    if name.to_str().is_none() {
+        return Err(format!(
+            "refusing to search {}: entry {:?} under {} has a name that is not \
+             valid UTF-8. fff-search stores paths lossily, which inflates each \
+             invalid byte threefold, and the shared {PATH_BUF_SIZE}-byte path \
+             buffer then truncates inside a replacement character and returns \
+             the result through `from_utf8_unchecked` (UF-040 / #296).",
+            base.display(),
+            name,
+            dir.display(),
+        ));
+    }
+
+    // Relative length as fff-search stores it: the parent's relative length, a
+    // separator once there is a parent component, and the name.
+    let name_len = name.as_encoded_bytes().len();
+    let rel_len = if parent_rel_len == 0 {
+        name_len
+    } else {
+        parent_rel_len + 1 + name_len
+    };
+
+    // `write_absolute_path` fills one buffer with base, separator and relative,
+    // so the budget is shared.
+    //
+    // Its exact truncation threshold is `base_end_idx + rel_len > PATH_BUF_SIZE`:
+    // the relative portion is read into `&mut buf[base_end_idx..]`, and
+    // `read_to_buf` takes `byte_len.min(buf.len())`, so a total of exactly
+    // `PATH_BUF_SIZE` fits and nothing is cut. This guard uses `>=`, one byte
+    // stricter, DELIBERATELY -- do not "correct" it to `>`:
+    //
+    // - One rule then also covers `write_relative_cstr`, whose own threshold is
+    //   `rel_len >= PATH_BUF_SIZE` because it reserves its buffer's last byte for
+    //   a NUL (`types.rs:366-375`). Since `base_end_idx >= 0`, this condition
+    //   subsumes that one and no second branch is needed.
+    // - It keeps the guard off the exact dependency boundary, which would
+    //   otherwise have to be re-derived on every fff-search upgrade.
+    //
+    // The cost is that an absolute path summing to exactly `PATH_BUF_SIZE` bytes
+    // is refused although `write_absolute_path` alone would handle it. That is
+    // intended.
+    if base_end_idx + rel_len >= PATH_BUF_SIZE {
+        return Err(format!(
+            "refusing to search {}: the absolute path to {:?} under {} would be \
+             {} bytes ({base_end_idx} for the search root and its separator, plus \
+             {rel_len} relative), at or over fff-search's {PATH_BUF_SIZE}-byte path \
+             buffer. `write_absolute_path` writes both halves into that one buffer \
+             and truncates whatever does not fit, then returns the result through \
+             `from_utf8_unchecked` -- which cuts a multi-byte character in half. \
+             Searching from a shorter root is usually enough to fix this \
+             (UF-040 / #296).",
+            base.display(),
+            name,
+            dir.display(),
+            base_end_idx + rel_len,
+        ));
+    }
+
+    Ok(rel_len)
+}
+
+/// Reject a tree that would defeat fff-search's `from_utf8_unchecked`.
+///
+/// fff-search stores every relative path as `to_string_lossy().into_owned()`.
+/// On Linux each invalid byte in an entry name becomes a three-byte U+FFFD, so
+/// a hostile name inflates threefold. `ChunkedString::read_to_buf`
+/// (`simd_path.rs`) then copies `byte_len.min(buf.len())` bytes into a
+/// 4096-byte buffer and returns `core::str::from_utf8_unchecked(&buf[..total])`
+/// -- so once the inflated path exceeds the buffer the cut lands inside a
+/// U+FFFD and the returned `&str` is not valid UTF-8. That is reached from
+/// `FileItem::absolute_path`, which both `get_content_for_search` and
+/// `collect_files`' git-status lookup call for every file. The `path` argument
+/// of these tools is attacker-chosen, so the check has to run before it reaches
+/// the library; upstream offers no path-length cap, no strict-UTF-8 mode and no
+/// non-lossy storage switch. See UF-040 / #296.
+///
+/// Fails, naming the offending entry, when the search root's own path is not
+/// valid UTF-8 (it would be stored lossily, inflating it and leaving a name that
+/// no longer refers to the directory), when an entry name is not valid UTF-8,
+/// when the search root alone fills `PATH_BUF_SIZE` (which makes
+/// `write_absolute_path`'s `copy_from_slice` panic rather than truncate), or
+/// when the root plus a relative path reaches `PATH_BUF_SIZE`. Base and relative
+/// share one buffer (`types.rs:337-357`), so the budget is joint -- the third
+/// rule covers ordinary trees of *valid* names reached from a long root, where
+/// the truncation cuts a multi-byte character in half with no hostile name
+/// involved. EXP-201 did not test that combination, so it is reasoned from
+/// `write_absolute_path` and `read_to_buf` rather than observed.
+///
+/// Names only -- `DirEntry::file_type` uses the directory entry's type, with no
+/// `stat` -- and symbolic links are not descended into, matching the
+/// `follow_symlinks: false` the pickers now assert. An unreadable directory is
+/// skipped rather than reported: fff-search will skip it too, and failing here
+/// would turn a permission quirk into a refused search.
+///
+/// Residual risk: a TOCTOU window remains. An entry created between this walk
+/// and fff-search's `collect_files` still reaches the inflation. That needs an
+/// active concurrent writer inside the searched tree, whereas the confirmed
+/// exposure is a static hostile checkout. The walk also does not honour
+/// `.gitignore`, so `target/` and `node_modules/` are walked; for a per-call
+/// picker that already pays a full `collect_files` scan immediately after, the
+/// cost is acceptable.
+///
+/// This duplicates `terraphim_grep::path_guard` deliberately: this crate does
+/// not depend on `terraphim_grep`, and adding a dependency to share one function
+/// would couple two binaries for no benefit.
+fn reject_hostile_tree(base: &std::path::Path) -> Result<(), String> {
+    // fff-search receives `base_path` as a `String`. `terraphim_grep`'s call site
+    // builds it with `to_string_lossy()`, which replaces each invalid byte with a
+    // three-byte U+FFFD, so a root with invalid bytes would be stored up to three
+    // times longer than `base_prefix_len` measures -- defeating the arithmetic
+    // below, and panicking `copy_from_slice` outright once the inflated root
+    // alone reaches the buffer. Refusing such a root restores the invariant.
+    //
+    // It is the right answer regardless of the arithmetic: the lossily stored
+    // name no longer names the on-disk entry, so fff-search cannot open anything
+    // under it. That is the same silent-drop defect the audit recorded for
+    // hostile entry names, and a named error beats searching and finding nothing.
+    //
+    // Reachable through `terraphim-grep --paths` and `with_search_paths`, since
+    // clap builds `Vec<PathBuf>` from `OsString` and invalid bytes survive on
+    // Linux. The MCP tools are immune -- their `path` arrives as JSON and is
+    // always valid UTF-8 -- but both copies carry the check so neither depends on
+    // where it was called from.
+    //
+    // The root is never an entry the walk discovers, so the per-entry UTF-8 rule
+    // in `check_entry` does not cover it.
+    if base.to_str().is_none() {
+        return Err(format!(
+            "refusing to search {:?}: the search root's own path is not valid \
+             UTF-8. fff-search stores it lossily, which both inflates each invalid \
+             byte threefold past the {PATH_BUF_SIZE}-byte path buffer and leaves a \
+             stored name that no longer refers to the directory on disk, so no file \
+             under it could be opened (UF-040 / #296).",
+            base.as_os_str(),
+        ));
+    }
+
+    // `write_absolute_path` writes the base path into the same fixed buffer as
+    // the relative path, so the root's own length is part of the budget -- and a
+    // root at or over the buffer makes `copy_from_slice` panic outright.
+    let base_end_idx = base_prefix_len(base);
+    if base_end_idx >= PATH_BUF_SIZE {
+        return Err(format!(
+            "refusing to search {}: the search root alone is {base_end_idx} bytes \
+             with its separator, at or over fff-search's {PATH_BUF_SIZE}-byte path \
+             buffer, which leaves no room for any relative path. \
+             `write_absolute_path` copies the root into that buffer unconditionally, \
+             so a root this long panics the library rather than merely truncating \
+             (UF-040 / #296).",
+            base.display(),
+        ));
+    }
+
+    let mut stack = vec![(base.to_path_buf(), 0usize)];
+
+    while let Some((dir, rel_len)) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let entry_rel_len = check_entry(base, &dir, &name, base_end_idx, rel_len)?;
+
+            // `file_type` reports a symbolic link as such, so links are never
+            // descended into -- no `metadata` call, and no loop to detect.
+            if entry.file_type().is_ok_and(|t| t.is_dir()) {
+                stack.push((entry.path(), entry_rel_len));
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// The main service type for the Terraphim MCP server
 #[derive(Clone)]
 pub struct McpService {
@@ -1268,6 +1535,12 @@ impl McpService {
         limit: Option<usize>,
     ) -> Result<CallToolResult, ErrorData> {
         let base_path = path.unwrap_or_else(|| ".".to_string());
+
+        // Refuse the tree before its base path reaches fff-search: a non-UTF-8
+        // or over-long entry name defeats the library's `from_utf8_unchecked`
+        // on the stored relative path. UF-040 / #296.
+        reject_hostile_tree(std::path::Path::new(&base_path))
+            .map_err(|e| ErrorData::invalid_params(e, None))?;
         let max_results = limit.unwrap_or(20);
 
         // Build index synchronously (no background threads needed for MCP tool use)
@@ -1275,7 +1548,13 @@ impl McpService {
             base_path: base_path.clone(),
             mode: FFFMode::Ai,
             watch: false,
-            cache_budget: None,
+            // See `no_mmap_budget` -- UF-039 / #293.
+            cache_budget: Some(no_mmap_budget()),
+            // Asserted rather than inherited from `FilePickerOptions::default()`
+            // so that reasoning about which entries fff-search will index rests
+            // on a value this crate states, not on an upstream default that a
+            // minor release could change. Refs #293.
+            follow_symlinks: false,
             ..FilePickerOptions::default()
         })
         .map_err(|e| ErrorData::internal_error(format!("FilePicker init failed: {e}"), None))?;
@@ -1355,6 +1634,12 @@ impl McpService {
         cursor: Option<String>,
     ) -> Result<CallToolResult, ErrorData> {
         let base_path = path.unwrap_or_else(|| ".".to_string());
+
+        // Refuse the tree before its base path reaches fff-search: a non-UTF-8
+        // or over-long entry name defeats the library's `from_utf8_unchecked`
+        // on the stored relative path. UF-040 / #296.
+        reject_hostile_tree(std::path::Path::new(&base_path))
+            .map_err(|e| ErrorData::invalid_params(e, None))?;
         let max_results = limit.unwrap_or(50);
         let files_only = output_mode.as_deref() == Some("files");
 
@@ -1373,7 +1658,13 @@ impl McpService {
             base_path: base_path.clone(),
             mode: FFFMode::Ai,
             watch: false,
-            cache_budget: None,
+            // See `no_mmap_budget` -- UF-039 / #293.
+            cache_budget: Some(no_mmap_budget()),
+            // Asserted rather than inherited from `FilePickerOptions::default()`
+            // so that reasoning about which entries fff-search will index rests
+            // on a value this crate states, not on an upstream default that a
+            // minor release could change. Refs #293.
+            follow_symlinks: false,
             ..FilePickerOptions::default()
         })
         .map_err(|e| ErrorData::internal_error(format!("FilePicker init failed: {e}"), None))?;
@@ -1390,7 +1681,7 @@ impl McpService {
 
         let fff_query = parse_grep_query(&query);
         let options = GrepSearchOptions {
-            max_file_size: 10 * 1024 * 1024,
+            max_file_size: MAX_GREP_FILE_SIZE,
             max_matches_per_file: 200,
             smart_case: true,
             file_offset,
@@ -1462,6 +1753,12 @@ impl McpService {
         output_mode: Option<String>,
     ) -> Result<CallToolResult, ErrorData> {
         let base_path = path.unwrap_or_else(|| ".".to_string());
+
+        // Refuse the tree before its base path reaches fff-search: a non-UTF-8
+        // or over-long entry name defeats the library's `from_utf8_unchecked`
+        // on the stored relative path. UF-040 / #296.
+        reject_hostile_tree(std::path::Path::new(&base_path))
+            .map_err(|e| ErrorData::invalid_params(e, None))?;
         let max_results = limit.unwrap_or(50);
         let files_only = output_mode.as_deref() == Some("files");
 
@@ -1486,7 +1783,13 @@ impl McpService {
             base_path: base_path.clone(),
             mode: FFFMode::Ai,
             watch: false,
-            cache_budget: None,
+            // See `no_mmap_budget` -- UF-039 / #293.
+            cache_budget: Some(no_mmap_budget()),
+            // Asserted rather than inherited from `FilePickerOptions::default()`
+            // so that reasoning about which entries fff-search will index rests
+            // on a value this crate states, not on an upstream default that a
+            // minor release could change. Refs #293.
+            follow_symlinks: false,
             ..FilePickerOptions::default()
         })
         .map_err(|e| ErrorData::internal_error(format!("FilePicker init failed: {e}"), None))?;
@@ -1509,7 +1812,7 @@ impl McpService {
         let parsed_constraints = parsed.constraints.as_slice();
 
         let options = GrepSearchOptions {
-            max_file_size: 10 * 1024 * 1024,
+            max_file_size: MAX_GREP_FILE_SIZE,
             max_matches_per_file: 200,
             smart_case: true,
             file_offset,
