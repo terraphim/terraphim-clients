@@ -196,33 +196,29 @@ fn thesaurus_query_concepts(
     }
 }
 
-/// Expand an exact KG term into its existing normalized concept's aliases.
-/// Compound/free-text queries retain their original constraints.
-fn retrieval_queries(query: &str, thesaurus: &terraphim_types::Thesaurus) -> Vec<String> {
-    let mut queries = vec![query.to_owned()];
+/// Resolve every alias of an exact KG term independently of display limits.
+/// Compound/free-text queries return no aliases and retain query-parser semantics.
+fn exact_query_aliases(query: &str, thesaurus: &terraphim_types::Thesaurus) -> Vec<String> {
     let Ok(matches) = terraphim_automata::find_matches(query.trim(), thesaurus, false) else {
-        return queries;
+        return Vec::new();
     };
-    let exact = matches
+    let Some(matched) = matches
         .into_iter()
-        .find(|m| m.term.eq_ignore_ascii_case(query.trim()));
-    if let Some(matched) = exact {
-        // Resolve exact membership before the presentation limit, and always include
-        // the canonical term even when an alias group exceeds that limit.
-        let canonical = matched.normalized_term.value.to_string();
-        if !queries.iter().any(|q| q.eq_ignore_ascii_case(&canonical)) {
-            queries.push(canonical);
-        }
-        for concept in thesaurus_query_concepts(query, thesaurus, 32) {
-            if !queries
-                .iter()
-                .any(|q| q.eq_ignore_ascii_case(&concept.name))
-            {
-                queries.push(concept.name);
-            }
-        }
-    }
-    queries
+        .find(|m| m.term.eq_ignore_ascii_case(query.trim()))
+    else {
+        return Vec::new();
+    };
+    let canonical = matched.normalized_term.value;
+    let mut aliases: Vec<String> = thesaurus
+        .into_iter()
+        .filter(|(_, term)| term.value == canonical)
+        .map(|(alias, _)| alias.to_string())
+        .chain(std::iter::once(canonical.to_string()))
+        .filter(|alias| !alias.trim().is_empty())
+        .collect();
+    aliases.sort();
+    aliases.dedup();
+    aliases
 }
 
 /// Apply KG boost to a batch of chunks and sort by boosted score (descending).
@@ -325,6 +321,11 @@ impl HybridSearcher {
         self
     }
 
+    /// Full exact membership used by retrieval and sufficiency, not presentation.
+    pub(crate) fn exact_query_aliases(&self, query: &str) -> Vec<String> {
+        exact_query_aliases(query, &self.thesaurus)
+    }
+
     pub async fn search(
         &self,
         query: &str,
@@ -347,27 +348,13 @@ impl HybridSearcher {
                 } else {
                     max_results.saturating_mul(5).max(max_results).min(1000)
                 };
-                let queries = retrieval_queries(&query_owned, &thesaurus);
+                let aliases = exact_query_aliases(&query_owned, &thesaurus);
                 let mut all_results = Vec::new();
                 for path in search_paths.iter() {
-                    // Deduplicate one actual line matched by several aliases. Keep
-                    // path roots distinct: relative filenames can coincide in two roots.
-                    let mut seen = std::collections::HashSet::new();
-                    for query in &queries {
-                        let results =
-                            Self::search_code(query, candidate_limit, path.clone()).await?;
-                        for result in results {
-                            let key = (
-                                result.source.clone(),
-                                result.line_start,
-                                result.line_end,
-                                result.content.clone(),
-                            );
-                            if seen.insert(key) {
-                                all_results.push(result);
-                            }
-                        }
-                    }
+                    let results =
+                        Self::search_code(&query_owned, &aliases, candidate_limit, path.clone())
+                            .await?;
+                    all_results.extend(results);
                 }
                 // Boost KG matches above generic matches; the boosted score is what the
                 // JSON output reports so downstream tools see why a chunk ranked where
@@ -430,6 +417,7 @@ impl HybridSearcher {
 
     async fn search_code(
         query: &str,
+        aliases: &[String],
         limit: usize,
         search_path: PathBuf,
     ) -> Result<Vec<RetrievedChunk>, String> {
@@ -468,7 +456,6 @@ impl HybridSearcher {
                 return Ok(vec![]);
             }
 
-            let fff_query = parse_grep_query(query);
             let options = GrepSearchOptions {
                 max_file_size: MAX_GREP_FILE_SIZE,
                 max_matches_per_file: 200,
@@ -483,8 +470,19 @@ impl HybridSearcher {
                 ..GrepSearchOptions::default()
             };
 
-            let result = picker.grep(&fff_query, &options);
+            // Exact KG aliases are data, so bypass the query parser entirely.
+            // One Aho-Corasick batch scans each file once, including aliases that
+            // sort after the displayed concepts. Free-text queries retain filters.
+            let fff_query;
+            let result = if aliases.is_empty() {
+                fff_query = parse_grep_query(query);
+                picker.grep(&fff_query, &options)
+            } else {
+                let patterns: Vec<&str> = aliases.iter().map(String::as_str).collect();
+                picker.multi_grep(&patterns, &[], &options)
+            };
 
+            let mut seen = std::collections::HashSet::new();
             let chunks = result
                 .matches
                 .iter()
@@ -500,6 +498,16 @@ impl HybridSearcher {
                         haystack: "code",
                     })
                 })
+                // Keep one actual line even if several aliases match it. This
+                // set is local to a root, so equal filenames across roots survive.
+                .filter(|chunk| {
+                    seen.insert((
+                        chunk.source.clone(),
+                        chunk.line_start,
+                        chunk.line_end,
+                        chunk.content.clone(),
+                    ))
+                })
                 .collect();
 
             Ok(chunks)
@@ -507,7 +515,7 @@ impl HybridSearcher {
 
         #[cfg(not(feature = "code-search"))]
         {
-            let _ = (query, limit, search_path);
+            let _ = (query, aliases, limit, search_path);
             // `code-search` is a default feature, so reaching here means the binary was
             // built with `--no-default-features` (or a custom set omitting it). Returning
             // an empty Vec silently makes every query look like "0 results" with no
@@ -729,11 +737,11 @@ mod tests {
     fn retrieval_preserves_compound_and_unknown_queries() {
         let thesaurus = test_thesaurus(&["auth", "authorisation"]);
         assert_eq!(
-            retrieval_queries("auth AND deployment", &thesaurus),
-            vec!["auth AND deployment"]
+            exact_query_aliases("auth AND deployment", &thesaurus),
+            Vec::<String>::new()
         );
-        assert_eq!(retrieval_queries("author", &thesaurus), vec!["author"]);
-        assert_eq!(retrieval_queries("unknown", &thesaurus), vec!["unknown"]);
+        assert!(exact_query_aliases("author", &thesaurus).is_empty());
+        assert!(exact_query_aliases("unknown", &thesaurus).is_empty());
     }
 
     #[test]
