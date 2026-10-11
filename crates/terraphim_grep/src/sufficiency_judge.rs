@@ -65,12 +65,37 @@ impl SufficiencyJudge {
         results: &HybridResults,
         query: &str,
     ) -> (Sufficiency, SufficiencyMetrics) {
+        self.judge_with_aliases(results, query, None)
+    }
+
+    /// Use complete exact membership when the caller owns the thesaurus. `None`
+    /// preserves the standalone judge API; `Some` separates evidence from the
+    /// displayed concepts, including an empty set for non-exact queries.
+    pub(crate) fn judge_with_aliases(
+        &self,
+        results: &HybridResults,
+        query: &str,
+        exact_aliases: Option<&[String]>,
+    ) -> (Sufficiency, SufficiencyMetrics) {
         let chunks = results.to_chunks();
+        let coverage = match exact_aliases {
+            Some(aliases)
+                if chunks.iter().any(|chunk| {
+                    aliases.iter().any(|alias| {
+                        super::hybrid_searcher::automata_concept_matches(&chunk.content, alias)
+                    })
+                }) =>
+            {
+                1.0
+            }
+            Some(_) => self.calculate_coverage(query, &chunks),
+            None => self.calculate_semantic_coverage(query, &chunks, &results.kg_concepts),
+        };
 
         let metrics = SufficiencyMetrics {
             chunk_count: chunks.len(),
             kg_hits: results.kg_concepts.len(),
-            coverage: self.calculate_semantic_coverage(query, &chunks, &results.kg_concepts),
+            coverage,
             kg_confidence: self.calculate_kg_confidence(&results.kg_concepts),
             diversity: self.calculate_diversity(&chunks),
         };

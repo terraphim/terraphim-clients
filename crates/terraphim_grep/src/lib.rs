@@ -193,9 +193,11 @@ impl TerraphimGrep {
 
         let search_latency_ms = start.elapsed().as_millis() as u64;
 
-        let (sufficiency, metrics) = self
-            .sufficiency_judge
-            .judge_with_metrics(&hybrid_results, query);
+        let (sufficiency, metrics) = self.sufficiency_judge.judge_with_aliases(
+            &hybrid_results,
+            query,
+            Some(&self.hybrid_searcher.exact_query_aliases(query)),
+        );
         let thresholds = self.sufficiency_judge.thresholds();
 
         match sufficiency {
@@ -521,9 +523,11 @@ impl TerraphimGrep {
             .await
             .map_err(TerraphimGrepError::SearchFailed)?;
 
-        let (_sufficiency, metrics) = self
-            .sufficiency_judge
-            .judge_with_metrics(&hybrid_results, query);
+        let (_sufficiency, metrics) = self.sufficiency_judge.judge_with_aliases(
+            &hybrid_results,
+            query,
+            Some(&self.hybrid_searcher.exact_query_aliases(query)),
+        );
 
         self.search_with_rlm_fallback(
             query,
