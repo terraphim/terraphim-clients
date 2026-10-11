@@ -45,8 +45,10 @@ jobs:
       # "failed to open: /usr/local/.crates.toml ... Permission denied";
       # run 518 journal). The zipsign /usr/local precedent is host-side
       # (sudo install by an admin), not available to workflow steps.
-      # ~/.cargo/bin is not reliably on the VM PATH, so the coverage step
-      # below prepends this root's bin dir to PATH instead.
+      # Cargo install metadata can outlive missing binaries on a shared host;
+      # the version guard below must execute the installed tools, not trust
+      # an already-installed message. Their bin directory is also prepended
+      # on every lane that invokes the guard or nextest directly.
       # #342 removed the GitHub coverage lane and its `tool:` block, so
       # these --version pins are the canonical source of truth for the
       # coverage toolchain. Installing "latest" drifts on every upstream
@@ -127,7 +129,7 @@ jobs:
       # ci_guards.rs::native_ci_aliases_gitea_token_for_packaged_graph_lanes.
       - run: |
           test -z "$GITEA_TOKEN" || export CARGO_REGISTRIES_TERRAPHIM_TOKEN="Bearer $GITEA_TOKEN"
-          TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo test --workspace --all-targets --no-fail-fast
+          PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH" TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo test --workspace --all-targets --no-fail-fast
       # #248: focused strict-manifest/integrity rollback attribution. Python
       # workflow contracts run on GitHub because the native runner command
       # policy allows cargo and repo scripts, not arbitrary Python commands.
@@ -165,7 +167,10 @@ jobs:
       # program that is not cargo ("policy rejected command: ... not on the
       # allowlist"), which is what took CI down from #112 until now. Also
       # covered by --all-targets above; kept for fast failure attribution.
-      - run: cargo test -p terraphim_agent --test ci_guards -- --nocapture
+      # The host runner PATH omits the default Cargo install bin directory.
+      # Cargo finds llvm-cov there itself, but the guard also executes
+      # cargo-nextest directly. Scope the same install path to this lane.
+      - run: PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH" cargo test -p terraphim_agent --test ci_guards -- --nocapture
       # #313: first coverage lane in the monorepo. nextest runs each test
       # binary in its own process so llvm-cov can attribute per-test
       # coverage. --workspace --all-targets mirrors the existing cargo
@@ -196,7 +201,7 @@ jobs:
         # in the same step shell.
         run: |
           test -z "$GITEA_TOKEN" || export CARGO_REGISTRIES_TERRAPHIM_TOKEN="Bearer $GITEA_TOKEN"
-          SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt SSL_CERT_DIR=/etc/ssl/certs TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo llvm-cov nextest --workspace --all-targets --no-fail-fast --lcov --output-path lcov.info
+          PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH" SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt SSL_CERT_DIR=/etc/ssl/certs TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo llvm-cov nextest --workspace --all-targets --no-fail-fast --lcov --output-path lcov.info
       # #328: the Gitea native runner does not execute `uses:` marketplace
       # steps (workflow/parser.rs skips them), so actions/upload-artifact
       # silently uploads nothing on this lane. Print lcov totals into the
