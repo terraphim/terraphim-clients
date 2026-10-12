@@ -25,6 +25,7 @@ pub mod hybrid_searcher;
 pub mod kg_curation;
 #[cfg(feature = "llm")]
 pub mod openrouter_client;
+pub mod path_guard;
 pub mod rlm_context;
 pub mod signatures;
 pub mod sufficiency_judge;
@@ -37,6 +38,7 @@ pub use hybrid_searcher::{
     RetrievedChunk, boost_chunks_with_kg, score_kg_boost,
 };
 pub use kg_curation::KgCurationRlm;
+pub use path_guard::reject_hostile_tree;
 pub use rlm_context::RlmContext;
 pub use signatures::{AnswerWithCitations, Citation, Match, NewConcept, RlmSignature};
 pub use sufficiency_judge::{
@@ -191,12 +193,25 @@ impl TerraphimGrep {
 
         let search_latency_ms = start.elapsed().as_millis() as u64;
 
-        let (sufficiency, metrics) = self
-            .sufficiency_judge
-            .judge_with_metrics(&hybrid_results, query);
+        let (sufficiency, metrics) = self.sufficiency_judge.judge_with_aliases(
+            &hybrid_results,
+            query,
+            Some(&self.hybrid_searcher.exact_query_aliases(query)),
+        );
         let thresholds = self.sufficiency_judge.thresholds();
 
         match sufficiency {
+            sufficiency_judge::Sufficiency::Sufficient(chunks) if Self::rlm_requested(&options) => {
+                self.search_with_rlm_fallback(
+                    query,
+                    options,
+                    chunks,
+                    hybrid_results,
+                    start,
+                    metrics,
+                )
+                .await
+            }
             sufficiency_judge::Sufficiency::Sufficient(chunks) => Ok(Self::search_only_result(
                 chunks,
                 hybrid_results,
@@ -508,9 +523,11 @@ impl TerraphimGrep {
             .await
             .map_err(TerraphimGrepError::SearchFailed)?;
 
-        let (_sufficiency, metrics) = self
-            .sufficiency_judge
-            .judge_with_metrics(&hybrid_results, query);
+        let (_sufficiency, metrics) = self.sufficiency_judge.judge_with_aliases(
+            &hybrid_results,
+            query,
+            Some(&self.hybrid_searcher.exact_query_aliases(query)),
+        );
 
         self.search_with_rlm_fallback(
             query,

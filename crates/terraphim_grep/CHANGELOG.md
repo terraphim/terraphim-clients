@@ -2,6 +2,23 @@
 
 All notable changes to terraphim_grep are documented here.
 
+## [1.21.19] - 2026-10-11
+
+### Fixed
+- Search an exact editor-exported synonym across its complete knowledge-graph
+  equivalence group. Display limits no longer omit aliases or synthesis evidence.
+- Treat graph alternatives as literal text, including slash and filter-looking
+  words, while preserving filters in compound user queries.
+- Honor requested `--answer` synthesis when retrieved evidence is sufficient and
+  preserve the source's decision/implementation status in the answer.
+- Pin fff-search and reject mmap content-cache configuration and unsupported
+  filesystem names before indexing. Concurrent-writer hazards remain outside
+  this partial mitigation.
+
+### Changed
+- Batch synonym searches into one scan per root and document the editor graph
+  export → search-only → optional synthesis workflow.
+
 ## [Unreleased]
 
 ### Fixed
