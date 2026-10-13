@@ -58,6 +58,8 @@ fn capture_medium_item(home: &Path) -> String {
             "json",
             "memory",
             "capture",
+            "--content",
+            "A baseline note for rubric inspection.",
             "--provenance-tag",
             "rubric-cli-test",
         ],

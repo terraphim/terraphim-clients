@@ -7,7 +7,7 @@
 //! `compute_risk`) that only this command uses. Extracted verbatim; only the
 //! imports are new.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use terraphim_agent::service::TuiService;
 
@@ -20,14 +20,28 @@ pub(crate) async fn run_memory_command(
     config_path: Option<String>,
 ) -> Result<()> {
     match sub {
-        MemorySub::Capture { provenance_tag } => {
+        MemorySub::Capture {
+            content,
+            file,
+            provenance_tag,
+        } => {
             use terraphim_agent_evolution::{ImportanceLevel, MemoryItem, MemoryItemType};
 
+            let content = match (content, file) {
+                (Some(content), None) => content,
+                (None, Some(path)) => std::fs::read_to_string(&path).with_context(|| {
+                    format!("Cannot read memory lesson from {}", path.display())
+                })?,
+                _ => anyhow::bail!("Provide exactly one of --content or --file"),
+            };
+            anyhow::ensure!(
+                !content.trim().is_empty(),
+                "Memory lesson must not be blank"
+            );
+            // Validate before loading or saving the store. The evolution crate
+            // enforces the same byte limit when adding the MemoryItem.
+            anyhow::ensure!(content.len() <= 1_000_000, "Memory lesson exceeds 1 MB");
             let mut evolution = load_evolution();
-            let content = provenance_tag
-                .as_ref()
-                .map(|tag| format!("Memory item captured via CLI with provenance: {}", tag))
-                .unwrap_or_else(|| "Memory item captured via CLI".to_string());
             let tags: Vec<String> = provenance_tag
                 .clone()
                 .map(|tag| vec![format!("provenance:{}", tag)])

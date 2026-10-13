@@ -782,9 +782,14 @@ pub(crate) enum RobotSub {
 
 #[derive(Subcommand, Debug)]
 pub(crate) enum MemorySub {
-    /// Capture a command or session event as an agentic memory item
-    /// (writes to evolution store with provenance metadata)
+    /// Save authored lesson text to the evolution store with provenance metadata
     Capture {
+        /// Exact lesson text to save (mutually exclusive with --file)
+        #[arg(long, required_unless_present = "file", conflicts_with = "file")]
+        content: Option<String>,
+        /// Read the lesson from a UTF-8 file (mutually exclusive with --content)
+        #[arg(long, required_unless_present = "content", conflicts_with = "content")]
+        file: Option<std::path::PathBuf>,
         /// Provenance tag for traceability (session ID, commit SHA)
         #[arg(long)]
         provenance_tag: Option<String>,
