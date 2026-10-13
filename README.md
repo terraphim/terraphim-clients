@@ -12,13 +12,14 @@ Consumes upstream crates (core, config-persistence, service, agents, kg-agents) 
 
 ## Memory Lifecycle
 
-The `terraphim-agent memory` CLI namespace implements the eight-stage agentic memory lifecycle:
+The `terraphim-agent memory` namespace saves authored lessons, inspects the
+evolution store and retrieves memories through a configured role's knowledge
+graph. See [capture and store isolation](docs/memory-capture.md) for a complete
+example and the required input change.
 
 ```
-terraphim-agent memory capture     # Write a memory item with provenance tags
-terraphim-agent memory distill     # Compile learnings into KG entries
+terraphim-agent memory capture --content 'Use the project validation command.'
 terraphim-agent memory scope       # Show role/project KG boundaries
-terraphim-agent memory provenance  # Search session history
 terraphim-agent memory retrieve    # Search memory items
 terraphim-agent memory apply       # Show hook injection effects
 terraphim-agent memory validate    # Score items against reliability rubric
@@ -29,5 +30,12 @@ terraphim-agent memory list        # Browse evolution store
 terraphim-agent memory show        # Inspect a specific item
 terraphim-agent memory export      # Dump as JSON or markdown
 ```
+
+The full eight-stage lifecycle is not qualified by these commands. In the
+current implementation, `memory distill` and `memory provenance` only report
+status; `memory scope --check` does not verify confidentiality. Use explicit
+`learn compile` / `learn export-kg` for the separate reviewed-learning store.
+`memory apply` previews context; it does not execute a command. Rubric and
+validation results use the named `heuristic-v1` scorer.
 
 See [MEMORY_POLICY.md](MEMORY_POLICY.md) for the public commons vs permissioned memory boundary.

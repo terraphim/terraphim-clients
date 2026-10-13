@@ -2505,7 +2505,11 @@ async fn run_cache_command(sub: &CacheSub) -> Result<()> {
 }
 
 fn evolution_path() -> std::path::PathBuf {
-    dirs::config_dir()
+    // Use the same explicit data root as learning capture. Existing users
+    // without an override retain the historical config-directory location.
+    std::env::var_os("TERRAPHIM_DEFAULT_DATA_PATH")
+        .map(std::path::PathBuf::from)
+        .or_else(dirs::config_dir)
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("terraphim")
         .join("evolution")

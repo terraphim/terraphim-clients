@@ -106,6 +106,8 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo build --workspace
       - run: cargo test --workspace --lib --no-fail-fast
+      - name: Persist and recover authored memory through the CLI
+        run: cargo test --locked -p terraphim_agent --test memory_capture_cli_tests --test memory_apply_cli_tests --test memory_rubric_cli_tests
       # Exercise the released grep command against real files and exported
       # synonym graphs, including Linux-only hostile filesystem names.
       - run: cargo test --locked -p terraphim_grep --test synonym_retrieval --test answer_request --test path_guard_hostile_tree

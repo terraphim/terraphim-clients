@@ -12,8 +12,8 @@
 //! at `tests/test_kg/`) and the evolution store lives under a temp `HOME`.
 //! No mocks: the store file is the one the binary writes.
 //!
-//! `memory capture` writes fixed content with no knowledge-graph term in it,
-//! so a captured item alone is never retrieved and the injected size is zero.
+//! The baseline captures content with no knowledge-graph term in it,
+//! so that item is not retrieved and the injected size is zero.
 //! The non-zero case adds an item whose content names the `trash` concept
 //! twice (`rm -rf` and `rm -r`), through the real `MemoryState::add_memory`,
 //! into the store the CLI created.
@@ -53,6 +53,8 @@ fn capture_item(root: &Path, tag: &str) -> String {
             "json",
             "memory",
             "capture",
+            "--content",
+            "A baseline note with no configured concepts.",
             "--provenance-tag",
             tag,
         ],

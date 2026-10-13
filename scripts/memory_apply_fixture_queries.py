@@ -96,7 +96,7 @@ table = "terraphim_kv"
         return json.loads(proc.stdout.strip().splitlines()[-1])
 
     # Create the store through the real CLI, then seed it with the fixture corpus.
-    run("memory", "capture", "--provenance-tag", "memory-benchmark-doc")
+    run("memory", "capture", "--content", "Benchmark baseline note.", "--provenance-tag", "memory-benchmark-doc")
     store = next(root.rglob("cli-agent.json"))
     envelope = json.load(open(store))
     items = [json.loads(line) for line in open(fixture / "corpus.jsonl") if line.strip()]
