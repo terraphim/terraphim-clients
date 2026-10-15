@@ -428,13 +428,45 @@ impl HybridSearcher {
                 parse_grep_query,
             };
 
-            // Refuse the tree before its base path reaches fff-search: a
+            let metadata = std::fs::symlink_metadata(&search_path).map_err(|error| {
+                format!(
+                    "Cannot inspect search path {}: {error}",
+                    search_path.display()
+                )
+            })?;
+            if !metadata.is_file() && !metadata.is_dir() {
+                return Err(format!(
+                    "Search path must be a regular file or directory, not a symlink or special file: {}",
+                    search_path.display()
+                ));
+            }
+            // An explicit file uses its parent only as the path base. Never
+            // scan that directory: neighbours were not selected by the caller.
+            let selected_file = if metadata.is_file() {
+                Some(std::fs::canonicalize(&search_path).map_err(|error| {
+                    format!(
+                        "Cannot resolve search file {}: {error}",
+                        search_path.display()
+                    )
+                })?)
+            } else {
+                None
+            };
+            let guarded_path = selected_file.as_deref().unwrap_or(&search_path);
+            // Refuse the tree or exact file before its path reaches fff-search: a
             // non-UTF-8 or over-long entry name defeats the library's
             // `from_utf8_unchecked` on the stored relative path. UF-040 / #296.
-            crate::path_guard::reject_hostile_tree(&search_path)?;
+            crate::path_guard::reject_hostile_tree(guarded_path)?;
+            let base_path = if selected_file.is_some() {
+                guarded_path
+                    .parent()
+                    .ok_or("Search file has no parent directory")?
+            } else {
+                &search_path
+            };
 
             let mut picker = FilePicker::new(FilePickerOptions {
-                base_path: search_path.to_string_lossy().to_string(),
+                base_path: base_path.to_string_lossy().to_string(),
                 mode: FFFMode::Ai,
                 watch: false,
                 // See `no_mmap_budget` -- UF-039 / #293.
@@ -448,9 +480,15 @@ impl HybridSearcher {
             })
             .map_err(|e| format!("FilePicker init failed: {}", e))?;
 
-            picker
-                .collect_files()
-                .map_err(|e| format!("File scan failed: {}", e))?;
+            if let Some(file) = &selected_file {
+                picker
+                    .add_new_file(file)
+                    .ok_or_else(|| format!("Cannot index selected file: {}", file.display()))?;
+            } else {
+                picker
+                    .collect_files()
+                    .map_err(|e| format!("File scan failed: {}", e))?;
+            }
 
             if picker.get_files().is_empty() {
                 return Ok(vec![]);
@@ -473,9 +511,43 @@ impl HybridSearcher {
             // Exact KG aliases are data, so bypass the query parser entirely.
             // One Aho-Corasick batch scans each file once, including aliases that
             // sort after the displayed concepts. Free-text queries retain filters.
-            let fff_query;
+            let mut fff_query;
             let result = if aliases.is_empty() {
                 fff_query = parse_grep_query(query);
+                if selected_file.is_some() && !fff_query.constraints.is_empty() {
+                    // Pinned FFF 0.8.4's grep constraint path uses the base
+                    // arena for overflow files. Its public file search splits
+                    // arenas correctly, so apply the same parsed constraints
+                    // there before running the unchanged content query.
+                    let mut filter = fff_search::FFFQuery {
+                        raw_query: "",
+                        constraints: fff_query.constraints.clone(),
+                        fuzzy_query: fff_search::FuzzyQuery::Empty,
+                        location: None,
+                    };
+                    let mut matched = !picker
+                        .fuzzy_search(&filter, None, fff_search::FuzzySearchOptions::default())
+                        .items
+                        .is_empty();
+                    // Match grep's existing filename-hint fallback as well.
+                    if !matched
+                        && filter.constraints.iter().any(|constraint| {
+                            matches!(constraint, fff_search::Constraint::FilePath(_))
+                        })
+                    {
+                        filter.constraints.retain(|constraint| {
+                            !matches!(constraint, fff_search::Constraint::FilePath(_))
+                        });
+                        matched = !picker
+                            .fuzzy_search(&filter, None, fff_search::FuzzySearchOptions::default())
+                            .items
+                            .is_empty();
+                    }
+                    if !matched {
+                        return Ok(vec![]);
+                    }
+                    fff_query.constraints.clear();
+                }
                 picker.grep(&fff_query, &options)
             } else {
                 let patterns: Vec<&str> = aliases.iter().map(String::as_str).collect();
