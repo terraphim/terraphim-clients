@@ -3,7 +3,7 @@
 Client + integration crates extracted from terraphim-ai (#1910):
 
 - `terraphim-cli` / `terraphim_agent` -- CLI + agent REPL
-- `terraphim_mcp_server` -- MCP server
+- `terraphim_mcp_server` -- MCP server (graph tools and optional [local agent memory/learning tools](docs/mcp/agent-tools.md))
 - `terraphim_sessions` -- session import/search
 - `terraphim_lsp` -- LSP server (EDM diagnostics)
 - `terraphim_grep`, `terraphim_hooks`, `terraphim_update`, `terraphim_command_runtime`, `terraphim_negative_contribution`

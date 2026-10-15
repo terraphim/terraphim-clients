@@ -68,6 +68,7 @@ jiff = { version = "0.2", features = ["serde"] }
 strsim = "0.11"  # For edit distance / fuzzy matching in forgiving CLI
 uuid = { workspace = true }
 dialoguer = "0.12"  # Interactive CLI prompts for onboarding wizard
+tempfile = { workspace = true }
 sha2 = "0.10"  # Corpus and thesaurus hashes for the judge-free memory benchmark (#260)
 
 # REPL dependencies - only compiled with features
