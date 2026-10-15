@@ -42,6 +42,7 @@ use terraphim_types::{
 use thiserror::Error;
 use tracing::{error, info};
 
+mod agent_tools;
 pub mod resource_mapper;
 
 use crate::resource_mapper::TerraphimResourceMapper;
@@ -408,6 +409,7 @@ pub struct McpService {
     kg_scorer: Option<Arc<KgPathScorer>>,
     /// Optional persistent frecency tracker (LMDB-backed) for access-frequency scoring.
     frecency: Option<SharedFrecency>,
+    agent_store: Option<Arc<tokio::sync::Mutex<terraphim_agent::agent_store::AgentStore>>>,
 }
 
 impl McpService {
@@ -433,7 +435,15 @@ impl McpService {
             autocomplete_index: Arc::new(tokio::sync::RwLock::new(AutocompleteState::default())),
             kg_scorer: None,
             frecency,
+            agent_store: None,
         }
+    }
+
+    /// Enable local agent tools with an already validated explicit storage root.
+    /// Default service instances expose no agent memory/learning tools.
+    pub fn with_agent_store(mut self, store: terraphim_agent::agent_store::AgentStore) -> Self {
+        self.agent_store = Some(Arc::new(tokio::sync::Mutex::new(store)));
+        self
     }
 
     /// Read-only access to the optional frecency tracker (for consumers that
@@ -2340,7 +2350,7 @@ impl ServerHandler for McpService {
         });
         let is_all_terms_connected_map = is_all_terms_connected_schema.as_object().unwrap().clone();
 
-        let tools = vec![
+        let mut tools = vec![
             Tool {
                 name: "search".into(),
                 title: Some("Search Knowledge Graph".into()),
@@ -2788,6 +2798,9 @@ impl ServerHandler for McpService {
             }
         ];
 
+        if self.agent_store.is_some() {
+            tools.extend(agent_tools::tools());
+        }
         tracing::debug!("Created {} tools", tools.len());
         tracing::debug!("First tool name: {:?}", tools.first().map(|t| &t.name));
 
@@ -2809,6 +2822,17 @@ impl ServerHandler for McpService {
         request: CallToolRequestParam,
         _context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
+        if request.name.starts_with("agent_") {
+            let store = self.agent_store.as_ref().ok_or_else(|| ErrorData::invalid_params(
+                "Agent tools are disabled; start the local stdio server with an explicit --agent-data-dir", None))?;
+            return agent_tools::call_guarded(
+                store,
+                &_context.ct,
+                &request.name,
+                serde_json::Value::Object(request.arguments.unwrap_or_default()),
+            )
+            .await;
+        }
         match request.name.as_ref() {
             "search" => {
                 let arguments = request.arguments.unwrap_or_default();

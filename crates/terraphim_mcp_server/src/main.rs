@@ -77,6 +77,11 @@ struct Args {
     /// such as Zed context servers, that cannot pass the project root.
     #[arg(long, value_name = "DIR")]
     config_dir: Option<PathBuf>,
+
+    /// Explicit absolute local root for agent memory/learning tools (stdio only).
+    /// Overrides no environment or role; omit to keep all agent tools disabled.
+    #[arg(long, value_name = "DIR", conflicts_with = "sse")]
+    agent_data_dir: Option<PathBuf>,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
@@ -283,6 +288,9 @@ async fn main() -> Result<()> {
     };
 
     let mut service = McpService::new(Arc::clone(&config_state));
+    if let Some(root) = args.agent_data_dir.as_ref() {
+        service = service.with_agent_store(terraphim_agent::agent_store::AgentStore::open(root)?);
+    }
 
     if let Some(kg_path) = kg_path {
         info!("Building KgPathScorer from KG path: {:?}", kg_path);
