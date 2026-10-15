@@ -16,14 +16,16 @@ use terraphim_agent_evolution::{
 };
 
 mod learnings;
+mod transaction_lock;
 pub use learnings::{CompiledCorrections, KgExport, KgNote, LearningRecord, SavedLearning};
+use transaction_lock::TransactionLock;
 
 const MAX_STORE_BYTES: u64 = 128 * 1024 * 1024;
 
 // Both the legacy CLI learning APIs and explicit MCP transactions hold this
 // same lock. Staged core operations acquire an independent staging-directory
 // lock; they cannot unlock or overwrite the destination transaction.
-pub(crate) fn lock_learning_directory(directory: &Path) -> Result<fs::File> {
+pub(crate) fn lock_learning_directory(directory: &Path) -> Result<TransactionLock> {
     let absolute = if directory.is_absolute() {
         directory.to_owned()
     } else {
@@ -193,7 +195,7 @@ impl AgentStore {
         }
     }
 
-    fn lock(&self, relative: &Path) -> Result<fs::File> {
+    fn lock(&self, relative: &Path) -> Result<TransactionLock> {
         let path = self.checked(relative, true)?;
         let file = fs::OpenOptions::new()
             .create(true)
@@ -205,10 +207,10 @@ impl AgentStore {
             file.metadata()?.is_file(),
             "Store lock is not a regular file"
         );
-        file.try_lock()
-            .context("Agent store is busy; retry this request")?;
+        let transaction =
+            TransactionLock::acquire(file).context("Agent store is busy; retry this request")?;
         self.checked(relative, false)?;
-        Ok(file)
+        Ok(transaction)
     }
 
     fn write_atomic(&self, relative: &Path, bytes: &[u8]) -> Result<()> {
