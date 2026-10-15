@@ -17,6 +17,9 @@ struct Fixture {
 }
 impl Fixture {
     async fn start() -> Result<Self> {
+        Self::with_fuzzy_candidate(false).await
+    }
+    async fn with_fuzzy_candidate(include_icon: bool) -> Result<Self> {
         let root = tempfile::tempdir()?;
         let project = root.path().join("project with spaces");
         let settings = root.path().join("settings");
@@ -46,6 +49,13 @@ impl Fixture {
                 fs::write(
                     corpus.join(format!("decision-{i}.md")),
                     format!("{canonical} {suffix}\n"),
+                )?;
+            }
+            if include_icon && name == "project" {
+                fs::write(concepts.join("Icon.md"), "# Icon\nsynonyms:: Pictogram\n")?;
+                fs::write(
+                    corpus.join("icon.md"),
+                    "Icon identifies the review action.\n",
                 )?;
             }
             roles.insert(name.into(), json!({"name":name,"relevance_function":"terraphim-graph","terraphim_it":false,"theme":"lumen","kg":{"automata_path":null,"knowledge_graph_local":{"input_type":"markdown","path":concepts},"public":false,"publish":false},"haystacks":[{"location":corpus,"service":"Ripgrep","read_only":true,"extra_parameters":{}}],"extra":{}}));
@@ -551,4 +561,138 @@ async fn fuzzy_autocomplete_returns_authored_terms_from_the_real_index() -> Resu
     assert_eq!(absent["content"].as_array().unwrap().len(), 1, "{absent}");
     f.client.cancel().await?;
     Ok(())
+}
+
+async fn check_unique_aliases_after_rebuild(tool: &str) -> Result<()> {
+    let f = Fixture::start().await?;
+    for (cycle, role) in ["project", "garden", "project"].iter().enumerate() {
+        f.call(
+            "build_autocomplete_index",
+            json!({"role":role}),
+            &format!("dedup-build-{tool}-{cycle}"),
+        )
+        .await?;
+        let query = if *role == "project" { "Con" } else { "Flo" };
+        let alias = if *role == "project" {
+            "concern"
+        } else {
+            "flower"
+        };
+        let canonical = if *role == "project" { "risk" } else { "orchid" };
+        for limit in [0, 1, 2, 5] {
+            let result = f
+                .call(
+                    tool,
+                    json!({"query":query,"role":role,"limit":limit}),
+                    &format!("dedup-{cycle}-{tool}-{limit}"),
+                )
+                .await?;
+            assert_ne!(result["isError"], true, "{result}");
+            let items: Vec<_> = result["content"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .skip(1)
+                .map(|x| x["text"].as_str().unwrap())
+                .collect();
+            let unique: std::collections::HashSet<_> = items.iter().copied().collect();
+            assert_eq!(unique.len(), items.len(), "duplicate suggestions: {result}");
+            let count = if tool == "autocomplete_terms" {
+                limit.min(2)
+            } else {
+                limit.min(1)
+            };
+            assert_eq!(
+                items.len(),
+                count,
+                "distinct aliases must fill their available slots: {result}"
+            );
+            assert_eq!(
+                result["content"][0]["text"],
+                format!("Found {count} suggestions")
+            );
+            if limit > 0 {
+                assert!(items[0].starts_with(alias), "{result}");
+            }
+            if tool == "autocomplete_terms" && limit >= 2 {
+                assert!(
+                    items.contains(&canonical),
+                    "same-concept alias must remain distinct: {result}"
+                );
+            }
+        }
+    }
+    f.client.cancel().await?;
+    Ok(())
+}
+
+async fn check_distinct_fuzzy_slot(tool: &str) -> Result<()> {
+    let f = Fixture::with_fuzzy_candidate(true).await?;
+    f.call(
+        "build_autocomplete_index",
+        json!({"role":"project"}),
+        &format!("dedup-fuzzy-build-{tool}"),
+    )
+    .await?;
+    // The real fuzzy index must contain the distinct candidate before checking
+    // that the combined autocomplete endpoints preserve its available slot.
+    let fuzzy = f
+        .call(
+            "fuzzy_autocomplete_search",
+            json!({"query":"con","similarity":0.6,"limit":2}),
+            &format!("dedup-fuzzy-available-{tool}"),
+        )
+        .await?;
+    assert!(texts(&fuzzy).contains("icon"), "{fuzzy}");
+    let result = f
+        .call(
+            tool,
+            json!({"query":"con","role":"project","limit":2}),
+            &format!("dedup-fuzzy-{tool}"),
+        )
+        .await?;
+    assert_ne!(result["isError"], true, "{result}");
+    let items: Vec<_> = result["content"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .skip(1)
+        .map(|x| x["text"].as_str().unwrap())
+        .collect();
+    assert_eq!(items.len(), 2, "{result}");
+    assert!(
+        items[0].starts_with("concern"),
+        "prefix remains first: {result}"
+    );
+    assert!(
+        items[1].starts_with("icon"),
+        "duplicate prefix must not consume the fuzzy slot: {result}"
+    );
+    if tool == "autocomplete_with_snippets" {
+        assert!(items[0].contains("Risk requires"), "{result}");
+        assert!(
+            items[1].contains("Icon identifies the review action."),
+            "{result}"
+        );
+    }
+    assert_eq!(result["content"][0]["text"], "Found 2 suggestions");
+    f.client.cancel().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn autocomplete_terms_deduplicates_authored_aliases_after_rebuild() -> Result<()> {
+    check_unique_aliases_after_rebuild("autocomplete_terms").await
+}
+#[tokio::test]
+async fn autocomplete_snippets_deduplicates_authored_aliases_after_rebuild() -> Result<()> {
+    check_unique_aliases_after_rebuild("autocomplete_with_snippets").await
+}
+#[tokio::test]
+async fn autocomplete_terms_deduplicates_before_limit() -> Result<()> {
+    check_distinct_fuzzy_slot("autocomplete_terms").await
+}
+#[tokio::test]
+async fn autocomplete_snippets_deduplicates_before_limit() -> Result<()> {
+    check_distinct_fuzzy_slot("autocomplete_with_snippets").await
 }
