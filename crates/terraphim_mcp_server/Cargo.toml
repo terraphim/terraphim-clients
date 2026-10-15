@@ -23,7 +23,7 @@ rmcp = { version = "0.9.0", features = ["server", "transport-sse-server", "trans
 serde_json = { workspace = true }
 serde = { workspace = true }
 schemars = "1.2"
-terraphim_agent = { path = "../terraphim_agent", version = "1.21.20", default-features = false }
+terraphim_agent = { path = "../terraphim_agent", version = "1.21.21", default-features = false }
 
 # Pinned exactly, not `^0.8.4` (Refs #293, #257).
 #
