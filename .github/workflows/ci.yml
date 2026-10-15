@@ -111,6 +111,8 @@ jobs:
       # Exercise the released grep command against real files and exported
       # synonym graphs, including Linux-only hostile filesystem names.
       - run: cargo test --locked -p terraphim_grep --test synonym_retrieval --test answer_request --test path_guard_hostile_tree
+      - name: Verify authored synonyms and role boundaries over real MCP stdio
+        run: cargo test --locked -p terraphim_mcp_server --test test_mcp_role_contract
       # GitHub-side home for the updater integration contracts (managed-mode
       # receipt/refusal, strict v2 manifest readers, R2 checksum fail-closed).
       # On Gitea these lanes live in .gitea/workflows/native-ci.yml, which is
