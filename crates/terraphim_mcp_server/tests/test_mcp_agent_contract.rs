@@ -309,15 +309,16 @@ async fn actual_failure_annotation_explicit_rule_compile_and_synonym_export() ->
     let failed = Command::new("printf").arg("%Z").output().await?;
     assert_eq!(failed.status.code(), Some(1));
     let error = String::from_utf8(failed.stderr)?;
-    let corrected = Command::new("printf")
-        .args(["%s\n", "reviewed correction"])
+    let corrected_command = r#"printf '%s\n' 'reviewed correction'"#;
+    let corrected = Command::new("/bin/sh")
+        .args(["-c", corrected_command])
         .output()
         .await?;
     assert!(corrected.status.success());
     assert_eq!(corrected.stdout, b"reviewed correction\n");
     evidence(
         "agent-learning-actual-execution",
-        &json!({"failed":{"argv":["printf","%Z"],"exit":failed.status.code(),"stderr":error},"corrected":{"argv":["printf","%s\n","reviewed correction"],"exit":corrected.status.code(),"stdout":String::from_utf8(corrected.stdout)?}}),
+        &json!({"failed":{"argv":["printf","%Z"],"exit":failed.status.code(),"stderr":error},"corrected":{"argv":["/bin/sh","-c",corrected_command],"exit":corrected.status.code(),"stdout":String::from_utf8(corrected.stdout)?}}),
     )?;
     let captured = call(
         &client,
@@ -332,7 +333,6 @@ async fn actual_failure_annotation_explicit_rule_compile_and_synonym_export() ->
         error.trim()
     );
     assert_eq!(data(&captured)["exit_code"], 1);
-    let corrected_command = "printf '%s\\n' 'reviewed correction'";
     let annotated = call(
         &client,
         "agent_learning_correct",
@@ -371,6 +371,25 @@ async fn actual_failure_annotation_explicit_rule_compile_and_synonym_export() ->
             .display(),
         corrected_command
     );
+    let stored_command = disk
+        .get(&terraphim_types::NormalizedTermValue::from("printf '%Z'"))
+        .unwrap()
+        .display()
+        .to_string();
+    let stored_execution = Command::new("/bin/sh")
+        .args(["-c", &stored_command])
+        .current_dir(f.root.path())
+        .output()
+        .await?;
+    assert!(stored_execution.status.success());
+    assert_eq!(stored_execution.stdout, b"reviewed correction\n");
+    let output_path = f.root.path().join("compiled-command.stdout");
+    fs::write(&output_path, &stored_execution.stdout)?;
+    assert_eq!(fs::read(&output_path)?, b"reviewed correction\n");
+    evidence(
+        "agent-learning-exact-compiled-execution",
+        &json!({"compiledPath":compiled_path,"storedCommand":stored_command,"argv":["/bin/sh","-c",stored_command],"exit":stored_execution.status.code(),"stdout":String::from_utf8(stored_execution.stdout)?,"stderr":String::from_utf8(stored_execution.stderr)?,"savedOutput":String::from_utf8(fs::read(output_path)?)?}),
+    )?;
     let exported = call(
         &client,
         "agent_correction_export_kg",
