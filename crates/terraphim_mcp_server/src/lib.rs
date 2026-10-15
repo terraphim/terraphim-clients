@@ -47,6 +47,43 @@ pub mod resource_mapper;
 
 use crate::resource_mapper::TerraphimResourceMapper;
 
+/// Merge prefix and fuzzy suggestions without letting repeated terms consume slots.
+///
+/// The fuzzy search already includes prefix matches. Keep distinct authored aliases
+/// of one concept, but accept each normalised displayed term/concept pair only once.
+fn prefix_fuzzy_suggestions(
+    index: &AutocompleteIndex,
+    query: &str,
+    limit: usize,
+) -> Vec<AutocompleteResult> {
+    let mut results = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    if limit == 0 {
+        return results;
+    }
+    if let Ok(prefix) = terraphim_automata::autocomplete_search(index, query, Some(limit)) {
+        for result in prefix {
+            if seen.insert((NormalizedTermValue::from(result.term.as_str()), result.id)) {
+                results.push(result);
+            }
+        }
+    }
+    if results.len() < limit
+        && let Ok(fuzzy) =
+            terraphim_automata::fuzzy_autocomplete_search(index, query, 0.6, Some(limit))
+    {
+        for result in fuzzy {
+            if seen.insert((NormalizedTermValue::from(result.term.as_str()), result.id)) {
+                results.push(result);
+                if results.len() == limit {
+                    break;
+                }
+            }
+        }
+    }
+    results
+}
+
 /// Find the terraphim_rlm binary in common locations.
 fn find_terraphim_rlm_binary() -> std::path::PathBuf {
     // Check ~/.cargo/bin first (typical cargo install location)
@@ -870,31 +907,23 @@ impl McpService {
             Err(result) => return Ok(result),
         };
         let max_results = limit.unwrap_or(10);
-        let mut combined: Vec<AutocompleteResult> = Vec::new();
-        // Prefer exact/prefix first
-        if let Ok(mut exact) =
-            terraphim_automata::autocomplete_search(&index, &query, Some(max_results))
-        {
-            combined.append(&mut exact);
-        }
-        // Fill remaining with fuzzy
-        if combined.len() < max_results {
-            let remaining = max_results - combined.len();
-            if let Ok(mut fuzzy) =
-                terraphim_automata::fuzzy_autocomplete_search(&index, &query, 0.6, Some(remaining))
-            {
-                combined.append(&mut fuzzy);
-            }
-        }
+        let mut combined = prefix_fuzzy_suggestions(&index, &query, max_results);
         // Graph embeddings-style expansion: include additional synonyms sharing the same concept id
         if combined.len() < max_results {
             use std::collections::HashSet;
-            let mut seen_terms: HashSet<String> = combined.iter().map(|r| r.term.clone()).collect();
+            let mut seen_terms: HashSet<_> = combined
+                .iter()
+                .map(|r| (NormalizedTermValue::from(r.term.as_str()), r.id))
+                .collect();
             let concept_ids: HashSet<u64> = combined.iter().map(|r| r.id).collect();
             let mut candidates: Vec<AutocompleteResult> = Vec::new();
             // Iterate over all metadata and pick terms with same concept id
-            for (term, meta) in terraphim_automata::autocomplete_helpers::iter_metadata(&index) {
-                if concept_ids.contains(&meta.id) && !seen_terms.contains(term) {
+            for (_, meta) in terraphim_automata::autocomplete_helpers::iter_metadata(&index) {
+                let identity = (
+                    NormalizedTermValue::from(meta.original_term.as_str()),
+                    meta.id,
+                );
+                if concept_ids.contains(&meta.id) && !seen_terms.contains(&identity) {
                     candidates.push(AutocompleteResult {
                         term: meta.original_term.clone(),
                         normalized_term: meta.normalized_term.clone(),
@@ -915,7 +944,7 @@ impl McpService {
                 if combined.len() >= max_results {
                     break;
                 }
-                if seen_terms.insert(cand.term.clone()) {
+                if seen_terms.insert((NormalizedTermValue::from(cand.term.as_str()), cand.id)) {
                     combined.push(cand);
                 }
             }
@@ -944,20 +973,7 @@ impl McpService {
             Err(result) => return Ok(result),
         };
         let max_results = limit.unwrap_or(10);
-        let mut results: Vec<AutocompleteResult> = Vec::new();
-        if let Ok(mut prefix) =
-            terraphim_automata::autocomplete_search(&index, &query, Some(max_results))
-        {
-            results.append(&mut prefix);
-        }
-        if results.len() < max_results {
-            let remaining = max_results - results.len();
-            if let Ok(mut fuzzy) =
-                terraphim_automata::fuzzy_autocomplete_search(&index, &query, 0.6, Some(remaining))
-            {
-                results.append(&mut fuzzy);
-            }
-        }
+        let results = prefix_fuzzy_suggestions(&index, &query, max_results);
 
         // Build snippets by searching for each term to fetch a related document and use its stub/description/body excerpt
         let mut service = self
