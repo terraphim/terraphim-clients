@@ -11,11 +11,15 @@ on:
       - "pkgbuilds/terraphim-clients-bin/**"
       - "tests/test_pkgbuild_release_contract.py"
       - ".github/workflows/pkgbuild-contract.yml"
+      - "scripts/prepare-pkgbuild-stage.py"
+      - "tests/test_pkgbuild_stage.py"
   pull_request:
     paths:
       - "pkgbuilds/terraphim-clients-bin/**"
       - "tests/test_pkgbuild_release_contract.py"
       - ".github/workflows/pkgbuild-contract.yml"
+      - "scripts/prepare-pkgbuild-stage.py"
+      - "tests/test_pkgbuild_stage.py"
 
 permissions:
   contents: read
@@ -32,6 +36,9 @@ jobs:
   arch-package:
     name: arch build + install
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
     container:
       image: archlinux:base-devel
       options: --privileged
@@ -39,5 +46,72 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Install namcap
         run: pacman -Sy --noconfirm --needed namcap
+      # Before public promotion the exact signed archives exist only in the
+      # sealed stage. Once all public archives exist, use makepkg's normal URL
+      # download path; do not depend on retained Actions artefacts indefinitely.
+      - name: Resolve reviewed stage identity
+        id: stage
+        run: python3 scripts/prepare-pkgbuild-stage.py pkgbuilds/terraphim-clients-bin/release-stage.json identity >> "$GITHUB_OUTPUT"
+      - name: Check whether the exact public release is complete
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.stage.outputs.version }}
+        run: |
+          set -euo pipefail
+          status="$(curl --silent --show-error -H "Authorization: Bearer $GH_TOKEN" \
+            -o "$RUNNER_TEMP/release.json" -w '%{http_code}' \
+            "https://api.github.com/repos/terraphim/terraphim-clients/releases/tags/v$VERSION")"
+          python3 scripts/prepare-pkgbuild-stage.py pkgbuilds/terraphim-clients-bin/release-stage.json \
+            mode "$status" "$RUNNER_TEMP/release.json" >> "$GITHUB_OUTPUT"
+      - name: Read exact producer and artefact metadata
+        if: steps.source.outputs.mode == 'stage'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.stage.outputs.run_id }}
+          ARTIFACT_ID: ${{ steps.stage.outputs.artifact_id }}
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/terraphim/terraphim-clients/actions/runs/$RUN_ID" > "$RUNNER_TEMP/stage-run.json"
+          curl --fail --silent --show-error -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/terraphim/terraphim-clients/actions/artifacts/$ARTIFACT_ID" > "$RUNNER_TEMP/stage-artifact.json"
+          python3 scripts/prepare-pkgbuild-stage.py pkgbuilds/terraphim-clients-bin/release-stage.json \
+            metadata "$RUNNER_TEMP/stage-run.json" "$RUNNER_TEMP/stage-artifact.json"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        if: steps.source.outputs.mode == 'stage'
+        with:
+          artifact-ids: ${{ steps.stage.outputs.artifact_id }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/${{ steps.stage.outputs.artifact_name }}
+          repository: terraphim/terraphim-clients
+          run-id: ${{ steps.stage.outputs.run_id }}
+          github-token: ${{ github.token }}
+      - name: Verify sealed provenance and cache exact native archives
+        if: steps.source.outputs.mode == 'stage'
+        env:
+          STAGE_NAME: ${{ steps.stage.outputs.artifact_name }}
+        run: |
+          set -euo pipefail
+          python3 scripts/prepare-pkgbuild-stage.py pkgbuilds/terraphim-clients-bin/release-stage.json \
+            prepare "$RUNNER_TEMP/$STAGE_NAME" "$RUNNER_TEMP/stage-run.json" \
+            "$RUNNER_TEMP/stage-artifact.json" pkgbuilds/terraphim-clients-bin "$(uname -m)" \
+            > "$RUNNER_TEMP/pkgbuild-stage-readback.json"
+          PKGBUILD_STAGE_TEST_DIR="$RUNNER_TEMP/$STAGE_NAME" \
+            PKGBUILD_STAGE_RUN_JSON="$RUNNER_TEMP/stage-run.json" \
+            PKGBUILD_STAGE_ARTIFACT_JSON="$RUNNER_TEMP/stage-artifact.json" \
+            python3 -W error::ResourceWarning -m unittest tests.test_pkgbuild_stage -v
       - name: Build, lint, install, smoke and remove
         run: ./pkgbuilds/terraphim-clients-bin/verify.sh
+      - name: Retain source-selection and cache readback
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pkgbuild-source-readback-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/release.json
+            ${{ runner.temp }}/stage-run.json
+            ${{ runner.temp }}/stage-artifact.json
+            ${{ runner.temp }}/pkgbuild-stage-readback.json
+          if-no-files-found: error
+          overwrite: false
