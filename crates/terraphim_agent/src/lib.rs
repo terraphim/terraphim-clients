@@ -3,6 +3,8 @@
 //! Bundles the interactive REPL, robot-mode JSON output, forgiving CLI parser,
 //! MCP tool index, onboarding workflows, and optional shared-learning store.
 //! Feature flags gate heavier subsystems: `server`, `repl`, `shared-learning`.
+/// Explicit local storage shared with the MCP adapter.
+pub mod agent_store;
 #[cfg(feature = "server")]
 pub mod client;
 pub mod logging;
