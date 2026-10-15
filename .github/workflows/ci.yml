@@ -110,7 +110,7 @@ jobs:
         run: cargo test --locked -p terraphim_agent --test memory_capture_cli_tests --test memory_apply_cli_tests --test memory_rubric_cli_tests --test agent_store_contract --test agent_learning_store_contract
       # Exercise the released grep command against real files and exported
       # synonym graphs, including Linux-only hostile filesystem names.
-      - run: cargo test --locked -p terraphim_grep --test synonym_retrieval --test answer_request --test path_guard_hostile_tree
+      - run: cargo test --locked -p terraphim_grep --test synonym_retrieval --test answer_request --test path_guard_hostile_tree --test single_file_search
       - name: Verify authored synonyms and role boundaries over real MCP stdio
         run: cargo test --locked -p terraphim_mcp_server --test test_mcp_role_contract --test test_mcp_agent_contract
       # GitHub-side home for the updater integration contracts (managed-mode
