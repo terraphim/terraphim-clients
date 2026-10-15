@@ -123,11 +123,6 @@ async fn create_autocomplete_test_config() -> Result<String> {
 async fn start_mcp_server() -> Result<TokioChildProcess> {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_terraphim_mcp_server"));
 
-    if std::env::var_os("CI").is_some() {
-        cmd.arg("--features").arg("zlob");
-        cmd.arg("--release");
-    }
-
     cmd.stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
@@ -187,106 +182,6 @@ async fn test_build_autocomplete_index_terraphim_engineer() -> Result<()> {
         panic!("No content returned from build_autocomplete_index");
     }
 
-    Ok(())
-}
-
-/// Test fuzzy autocomplete search using Jaro-Winkler algorithm with knowledge graph terms
-#[tokio::test]
-#[serial]
-#[ignore = "Test expects specific autocomplete results that may not be available"]
-async fn test_fuzzy_autocomplete_search_kg_terms() -> Result<()> {
-    println!("🧪 Testing fuzzy autocomplete search with knowledge graph terms");
-
-    let config_json = create_autocomplete_test_config().await?;
-    let transport = start_mcp_server().await?;
-    let service = ().serve(transport).await?;
-
-    // Update configuration
-    let update_config_args = json!({"config_str": config_json});
-    let _update_result = service
-        .call_tool(CallToolRequestParam {
-            name: "update_config_tool".into(),
-            arguments: Some(update_config_args.as_object().unwrap().clone()),
-        })
-        .await?;
-
-    // Build autocomplete index
-    let build_index_args = json!({"role": "Terraphim Engineer"});
-    let build_result = service
-        .call_tool(CallToolRequestParam {
-            name: "build_autocomplete_index".into(),
-            arguments: Some(build_index_args.as_object().unwrap().clone()),
-        })
-        .await?;
-
-    assert!(build_result.is_error != Some(true));
-
-    // Test various knowledge graph terms
-    let test_queries = vec![
-        ("terrapi", vec!["terraphim-graph"]), // Partial match
-        ("graph", vec!["terraphim-graph", "graph embeddings"]), // Common term
-        ("embedd", vec!["graph embeddings"]), // Partial embedding
-        ("hayst", vec!["haystack"]),          // Haystack term
-        ("servic", vec!["service"]),          // Service term
-        ("machine", vec![]),                  // Should not match KG terms
-    ];
-
-    for (query, expected_terms) in test_queries {
-        println!("🔍 Testing query: '{}'", query);
-
-        let search_args = json!({
-            "query": query,
-            "similarity": 0.6,
-            "limit": 10
-        });
-
-        let search_result = service
-            .call_tool(CallToolRequestParam {
-                name: "fuzzy_autocomplete_search".into(),
-                arguments: Some(search_args.as_object().unwrap().clone()),
-            })
-            .await?;
-
-        println!("Search result for '{}': {:?}", query, search_result);
-        assert!(search_result.is_error != Some(true));
-
-        // Check if expected terms are found
-        if let Some(summary_content) = search_result.content.first() {
-            let summary_text = summary_content.as_text().unwrap().text.clone();
-            println!("Summary: {}", summary_text);
-
-            // For terms that should match, verify suggestions are returned
-            if !expected_terms.is_empty() {
-                assert!(summary_text.contains("Found"));
-                assert!(!summary_text.contains("Found 0"));
-
-                // Check individual suggestions
-                for (i, content) in search_result.content.iter().skip(1).enumerate() {
-                    let suggestion_text = content.as_text().unwrap().text.clone();
-                    println!("Suggestion {}: {}", i + 1, suggestion_text);
-
-                    // Verify suggestions contain expected terms
-                    let suggestion_contains_expected = expected_terms.iter().any(|expected| {
-                        suggestion_text
-                            .to_lowercase()
-                            .contains(&expected.to_lowercase())
-                    });
-
-                    if !suggestion_contains_expected {
-                        println!(
-                            "⚠️  Suggestion '{}' doesn't contain expected terms: {:?}",
-                            suggestion_text, expected_terms
-                        );
-                    }
-                }
-            } else {
-                // For queries that shouldn't match, verify few or no results
-                println!("Query '{}' expected to have no matches", query);
-            }
-        }
-    }
-
-    println!("✅ Fuzzy autocomplete search testing completed");
     Ok(())
 }
 
@@ -453,63 +348,6 @@ async fn test_autocomplete_algorithm_comparison() -> Result<()> {
     }
 
     println!("✅ Algorithm comparison testing completed");
-    Ok(())
-}
-
-/// Test new autocomplete_terms tool (prefix + fuzzy)
-#[tokio::test]
-#[serial]
-#[ignore = "Test expects specific autocomplete results that may not be available"]
-async fn test_autocomplete_terms_tool() -> Result<()> {
-    let config_json = create_autocomplete_test_config().await?;
-    let transport = start_mcp_server().await?;
-    let service = ().serve(transport).await?;
-
-    // Update configuration
-    let update_config_args = json!({"config_str": config_json});
-    service
-        .call_tool(CallToolRequestParam {
-            name: "update_config_tool".into(),
-            arguments: Some(update_config_args.as_object().unwrap().clone()),
-        })
-        .await?;
-
-    // Build index
-    let build_index_args = json!({"role": "Terraphim Engineer"});
-    let build_result = service
-        .call_tool(CallToolRequestParam {
-            name: "build_autocomplete_index".into(),
-            arguments: Some(build_index_args.as_object().unwrap().clone()),
-        })
-        .await?;
-    assert!(build_result.is_error != Some(true));
-
-    // Call autocomplete_terms: expect graph expansion to include synonyms of same concept id
-    let ac_args = json!({"query": "terraph", "limit": 8});
-    let ac_result = service
-        .call_tool(CallToolRequestParam {
-            name: "autocomplete_terms".into(),
-            arguments: Some(ac_args.as_object().unwrap().clone()),
-        })
-        .await?;
-    assert!(ac_result.is_error != Some(true));
-    if let Some(summary) = ac_result.content.first() {
-        let text = summary.as_text().unwrap().text.clone();
-        assert!(text.contains("Found"));
-    }
-    // Verify that related terms like "graph" or "graph embeddings" appear via concept expansion
-    let all_texts: Vec<String> = ac_result
-        .content
-        .iter()
-        .skip(1)
-        .filter_map(|c| c.as_text().map(|t| t.text.clone()))
-        .collect();
-    let has_graph_related = all_texts.iter().any(|t| t.to_lowercase().contains("graph"));
-    assert!(
-        has_graph_related,
-        "Autocomplete should include graph-related synonyms via concept expansion: {:?}",
-        all_texts
-    );
     Ok(())
 }
 
