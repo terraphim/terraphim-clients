@@ -32,7 +32,7 @@ D = chr(36)  # dollar sign, kept out of template literals in the test source
 # publication. During a release window (workspace bumped, signed assets not
 # yet sealed) this contract intentionally fails until the follow-up PKGBUILD
 # bump lands.
-PKGVER = "1.21.21"
+PKGVER = "1.21.22"
 REPO = "terraphim/terraphim-clients"
 RELEASE_BASE = f"https://github.com/{REPO}/releases/download/v{PKGVER}"
 
@@ -41,21 +41,21 @@ ASSETS = {
     "x86_64": {
         "terraphim-agent": (
             f"terraphim-agent-{PKGVER}-x86_64-unknown-linux-musl.tar.gz",
-            "3520f60adebbf5ae79f386144550222f695567509a6da641e8c87b688bb901a1",
+            "3afe1ba64dfd7f19214f2171f8cba467f674f77317c0e05af44408627eb288e1",
         ),
         "terraphim-grep": (
             f"terraphim-grep-{PKGVER}-x86_64-unknown-linux-musl.tar.gz",
-            "bd0bf89c0d2806195f7dca3dc4cf9bc883744599ff5c927950993a52c4a129fe",
+            "34dfcf06f76e6737c9c4f208b01bdb5638f18d6c7325efa8f7be00efbf85f41f",
         ),
     },
     "aarch64": {
         "terraphim-agent": (
             f"terraphim-agent-{PKGVER}-aarch64-unknown-linux-musl.tar.gz",
-            "b8637ec876f272322dcb8ded38311b7f8c6156af0f5a41c2de991eda190a8ba0",
+            "36468a1ab4b3ee2f6781b623582a9044dc31768796a1a02b4d806fcc39dd6013",
         ),
         "terraphim-grep": (
             f"terraphim-grep-{PKGVER}-aarch64-unknown-linux-musl.tar.gz",
-            "b3902c6127b4ac3c67c7c09a6e724c9c42f80af48da998fbc172d7f86ac9f2bc",
+            "3c050c09668775dc709c098ed6bb4ac85493fb69f658848ff1ce4a62824480a9",
         ),
     },
 }
