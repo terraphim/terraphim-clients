@@ -593,6 +593,7 @@ fn run_tui_offline_mode(transparent: bool) -> Result<()> {
     run_tui(None, transparent)
 }
 
+#[cfg(feature = "server")]
 fn run_tui_server_mode(server_url: &str, transparent: bool) -> Result<()> {
     run_tui(Some(server_url.to_string()), transparent)
 }
