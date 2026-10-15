@@ -103,15 +103,23 @@ jobs:
             python3 -W error::ResourceWarning -m unittest tests.test_pkgbuild_stage -v
       - name: Build, lint, install, smoke and remove
         run: ./pkgbuilds/terraphim-clients-bin/verify.sh
+      - name: Collect source-selection and cache readback
+        if: always()
+        run: |
+          set -euo pipefail
+          receipt_dir="$RUNNER_TEMP/pkgbuild-source-readback"
+          mkdir -p "$receipt_dir"
+          for name in release.json stage-run.json stage-artifact.json pkgbuild-stage-readback.json; do
+            if [ -f "$RUNNER_TEMP/$name" ]; then
+              cp "$RUNNER_TEMP/$name" "$receipt_dir/$name"
+            fi
+          done
       - name: Retain source-selection and cache readback
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: pkgbuild-source-readback-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            ${{ runner.temp }}/release.json
-            ${{ runner.temp }}/stage-run.json
-            ${{ runner.temp }}/stage-artifact.json
-            ${{ runner.temp }}/pkgbuild-stage-readback.json
+          # One path lets Actions translate the host mount into the job container.
+          path: ${{ runner.temp }}/pkgbuild-source-readback/
           if-no-files-found: error
           overwrite: false
