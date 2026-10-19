@@ -11,8 +11,8 @@ Client + integration crates extracted from terraphim-ai (#1910):
 Consumes upstream crates (core, config-persistence, service, agents, kg-agents) from the `terraphim` Gitea cargo registry. Licensed Apache-2.0.
 
 ## Current downloads
-
-Verified release links as of 18 October 2026. Core services and CLI clients have
+<!-- terraphim-downloads:start -->
+Verified release links as of 19 October 2026. Core services and CLI clients have
 separate releases.
 
 | Component | Release | Use |
@@ -24,7 +24,7 @@ separate releases.
 | Cursor plugin | [v0.2.7](https://github.com/terraphim/terraphim-cursor-plugin/releases/tag/v0.2.7) | Native Cursor plugin; separate from the VSIX catalogue |
 | Stock Zed extension | [v0.2.1](https://github.com/terraphim/zed-terraphim/releases/tag/v0.2.1) | GitHub download; official Zed catalogue submission remains pending |
 | Continue integration | [0.1.1](https://github.com/terraphim/terraphim-ai/releases/tag/terraphim_continue-v0.1.1) | Continue integration package |
-
+<!-- terraphim-downloads:end -->
 For future stable releases, use [latest core
 downloads](https://github.com/terraphim/terraphim-ai/releases/latest) or [latest
 CLI client
