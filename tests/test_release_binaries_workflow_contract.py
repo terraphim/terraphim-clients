@@ -356,6 +356,15 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
             block,
         )
 
+    def test_rust_cache_never_runs_on_a_persistent_self_hosted_host(self) -> None:
+        # rust-cache's post step deletes every regular file in
+        # $CARGO_HOME/bin the job did not install and prunes the registry, so
+        # on a self-hosted runner it wipes the host user's cargo tools.
+        block = job_block("build-binaries")
+        step = block[block.index("- uses: Swatinem/rust-cache@") :]
+        step = step[: step.index("\n      - ", 1)]
+        self.assertIn("if: runner.environment == 'github-hosted'", step)
+
     def test_all_binaries_get_exact_version_and_architecture_checks(self) -> None:
         block = job_block("build-binaries")
         self.assertIn("for binary in terraphim-agent terraphim-cli terraphim-grep", block)
