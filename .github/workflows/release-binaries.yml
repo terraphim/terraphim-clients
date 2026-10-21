@@ -249,7 +249,14 @@ jobs:
           arch -x86_64 /usr/bin/true 2>/dev/null || \
             sudo softwareupdate --install-rosetta --agree-to-license
           arch -x86_64 /usr/bin/true
+      # Hosted runners only. On a persistent self-hosted host the post step
+      # runs against the host user's real ~/.cargo: it deletes every regular
+      # file in ~/.cargo/bin the job did not install (2026-10-04 onward it
+      # wiped the release-macos user's cargo tools on every release) and
+      # prunes the shared registry. Those hosts keep target/ between runs
+      # anyway, as ci.yml already relies on.
       - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.1
+        if: runner.environment == 'github-hosted'
         with:
           key: immutable-clients-v2-${{ matrix.target }}
       - name: Build all shipped binaries from the locked source
