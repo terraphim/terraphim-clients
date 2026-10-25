@@ -327,6 +327,7 @@ pub struct HookResult {
 }
 
 /// Command hook interface
+#[allow(clippy::double_must_use)]
 #[async_trait::async_trait]
 pub trait CommandHook {
     /// Hook name
