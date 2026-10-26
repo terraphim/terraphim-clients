@@ -190,8 +190,7 @@ impl OpenCodeConnector {
                 continue;
             }
 
-            let timestamp =
-                jiff::Timestamp::from_second((message_created / 1000).try_into().unwrap_or(0)).ok();
+            let timestamp = jiff::Timestamp::from_second(message_created / 1000).ok();
             let (_, messages) = session_map.entry(session_id.clone()).or_insert_with(|| {
                 (
                     Session {
