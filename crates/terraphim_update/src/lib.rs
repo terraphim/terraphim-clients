@@ -1,7 +1,7 @@
 //! Shared auto-update functionality for Terraphim AI binaries
 //!
-//! This crate provides a unified interface for self-updating Terraphim AI CLI tools
-//! using GitHub Releases as a distribution channel.
+//! This crate provides a unified interface for self-updating Terraphim CLI tools.
+//! It uses a strict release manifest by default and GitHub Releases as fallback.
 
 pub mod config;
 pub mod downloader;
@@ -639,6 +639,17 @@ impl TerraphimUpdater {
         }
     }
 
+    fn evaluate_version(latest_version: &str, current_version: &str) -> Result<UpdateStatus> {
+        match is_newer_version_static(latest_version, current_version) {
+            Ok(true) => Ok(UpdateStatus::Available {
+                current_version: current_version.to_string(),
+                latest_version: latest_version.to_string(),
+            }),
+            Ok(false) => Ok(UpdateStatus::UpToDate(current_version.to_string())),
+            Err(error) => Err(error),
+        }
+    }
+
     /// Check for an update via the GitHub Releases backend (fallback).
     async fn check_update_github(&self) -> Result<UpdateStatus> {
         if let Some(status) = self.managed_status() {
@@ -665,23 +676,7 @@ impl TerraphimUpdater {
                 Ok(updater) => {
                     // This will check without updating
                     match updater.get_latest_release() {
-                        Ok(release) => {
-                            let latest_version = release.version.clone();
-
-                            // Compare versions using semver
-                            match is_newer_version_static(&latest_version, &current_version) {
-                                Ok(true) => {
-                                    Ok::<UpdateStatus, anyhow::Error>(UpdateStatus::Available {
-                                        current_version,
-                                        latest_version,
-                                    })
-                                }
-                                Ok(false) => Ok::<UpdateStatus, anyhow::Error>(
-                                    UpdateStatus::UpToDate(current_version),
-                                ),
-                                Err(e) => Err(e),
-                            }
-                        }
+                        Ok(release) => Self::evaluate_version(&release.version, &current_version),
                         Err(e) => {
                             let err_msg = e.to_string();
                             if err_msg.contains("403") {
@@ -1542,7 +1537,7 @@ pub async fn check_for_updates_auto_with_policy(
     current_version: &str,
     policy: &policy::UpdatePolicy,
 ) -> Result<UpdateStatus> {
-    check_for_updates_auto_with_policy_and_detector(
+    check_for_updates_auto_with_detector(
         bin_name,
         current_version,
         policy,
@@ -1552,7 +1547,9 @@ pub async fn check_for_updates_auto_with_policy(
     .await
 }
 
-async fn check_for_updates_auto_with_policy_and_detector<D>(
+/// Internal detector seam used to re-check package-manager ownership directly
+/// before dispatching any network work.
+async fn check_for_updates_auto_with_detector<D>(
     bin_name: &str,
     current_version: &str,
     policy: &policy::UpdatePolicy,
@@ -2127,9 +2124,24 @@ mod tests {
         );
     }
 
+    #[test]
+    fn evaluate_version_returns_available_or_up_to_date() {
+        let status = TerraphimUpdater::evaluate_version("1.1.0", "1.0.0").unwrap();
+        assert!(matches!(
+            status,
+            UpdateStatus::Available {
+                current_version,
+                latest_version,
+            } if current_version == "1.0.0" && latest_version == "1.1.0"
+        ));
+        let status = TerraphimUpdater::evaluate_version("v1.0.0", "1.0.0").unwrap();
+        assert!(matches!(status, UpdateStatus::UpToDate(version) if version == "1.0.0"));
+        assert!(TerraphimUpdater::evaluate_version("invalid", "1.0.0").is_err());
+    }
+
     #[tokio::test]
     async fn check_for_updates_auto_with_self_managed_hint_redetects_before_dispatch() {
-        let status = check_for_updates_auto_with_policy_and_detector(
+        let status = check_for_updates_auto_with_detector(
             "terraphim-agent",
             "0.0.1",
             &crate::policy::UpdatePolicy::SelfManaged,
@@ -2150,7 +2162,7 @@ mod tests {
 
     #[tokio::test]
     async fn check_for_updates_auto_with_package_managed_hint_does_not_redetect() {
-        let status = check_for_updates_auto_with_policy_and_detector(
+        let status = check_for_updates_auto_with_detector(
             "terraphim-agent",
             "0.0.1",
             &crate::policy::UpdatePolicy::PackageManaged {
@@ -2318,7 +2330,7 @@ mod tests {
     async fn auto_check_queries_release_repo_with_token() {
         let server = RecordingServer::new(200, &release_json("v9.9.9"));
 
-        let status = check_for_updates_auto_with_policy_and_detector(
+        let status = check_for_updates_auto_with_detector(
             "terraphim-agent",
             "1.0.0",
             &crate::policy::UpdatePolicy::SelfManaged,
