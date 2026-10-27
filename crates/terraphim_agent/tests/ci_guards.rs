@@ -820,11 +820,8 @@ fn fff_search_is_pinned_exactly() {
     }
 }
 
-/// Native jobs must not inherit the shared host compiler-cache wrapper. Other
-/// jobs can collect that cache while this job compiles; keep all checks intact
-/// and use ordinary rustc for this workflow, including nested Cargo processes.
-/// Both artifact directories must also be checkout-local so ordinary rustc
-/// never rewrites old read-only cache materializations in the shared target.
+/// Native jobs must not inherit a host compiler-cache wrapper. Target and build
+/// directories are managed per checkout by the runner's mbx Cargo shim.
 #[test]
 fn native_ci_disables_shared_compiler_wrappers() {
     let text = std::fs::read_to_string(workspace_root().join(".gitea/workflows/native-ci.yml"))
@@ -839,18 +836,11 @@ fn native_ci_disables_shared_compiler_wrappers() {
         commands += 1;
         let scoped = line.contains("RUSTC_WRAPPER=\"\" RUSTC_WORKSPACE_WRAPPER=\"\"");
         let exported = previous_shell_line(&lines, index).is_some_and(|previous| {
-            previous.starts_with("export RUSTC_WRAPPER=\"\" RUSTC_WORKSPACE_WRAPPER=\"\" ")
+            previous.starts_with("export RUSTC_WRAPPER=\"\" RUSTC_WORKSPACE_WRAPPER=\"\"")
         });
         assert!(
             scoped || exported,
             "native Cargo command inherits a shared wrapper: {line}"
-        );
-        let artifact_scope = "CARGO_TARGET_DIR=\"$PWD/target/native-ci\" CARGO_BUILD_BUILD_DIR=\"$PWD/target/native-ci/build\"";
-        assert!(
-            line.contains(artifact_scope)
-                || previous_shell_line(&lines, index)
-                    .is_some_and(|previous| previous.contains(artifact_scope)),
-            "native Cargo command reuses shared compiler outputs: {line}"
         );
     }
     assert!(
