@@ -128,13 +128,13 @@ impl OpenCodeConnector {
             .query_map([], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, i64>(3)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, Option<i64>>(3)?,
                     row.get::<_, Option<String>>(4)?,
-                    row.get::<_, f64>(5)?,
-                    row.get::<_, i64>(6)?,
-                    row.get::<_, i64>(7)?,
+                    row.get::<_, Option<f64>>(5)?,
+                    row.get::<_, Option<i64>>(6)?,
+                    row.get::<_, Option<i64>>(7)?,
                     row.get::<_, String>(8)?,
                     row.get::<_, i64>(9)?,
                     row.get::<_, String>(10)?,
@@ -192,25 +192,31 @@ impl OpenCodeConnector {
 
             let timestamp = jiff::Timestamp::from_second(message_created / 1000).ok();
             let (_, messages) = session_map.entry(session_id.clone()).or_insert_with(|| {
+                let mut extra = serde_json::Map::new();
+                if let Some(cost) = cost {
+                    extra.insert("cost".into(), serde_json::json!(cost));
+                }
+                if let Some(tokens_input) = tokens_input {
+                    extra.insert("tokens_input".into(), serde_json::json!(tokens_input));
+                }
+                if let Some(tokens_output) = tokens_output {
+                    extra.insert("tokens_output".into(), serde_json::json!(tokens_output));
+                }
                 (
                     Session {
                         id: format!("opencode:{session_id}"),
                         source: "opencode".into(),
                         external_id: session_id,
-                        title: Some(title),
+                        title,
                         source_path: db_path.to_path_buf(),
                         started_at: timestamp,
                         ended_at: timestamp,
                         messages: Vec::new(),
                         metadata: SessionMetadata::new(
-                            Some(directory),
+                            directory,
                             model,
                             vec!["opencode".into()],
-                            serde_json::json!({
-                                "cost": cost,
-                                "tokens_input": tokens_input,
-                                "tokens_output": tokens_output,
-                            }),
+                            serde_json::Value::Object(extra),
                         ),
                     },
                     BTreeMap::new(),
@@ -421,6 +427,52 @@ mod tests {
 
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].messages.len(), 2);
+    }
+
+    #[cfg(feature = "opencode-connector")]
+    #[tokio::test]
+    async fn test_import_sqlite_accepts_nullable_session_metadata() {
+        use rusqlite::Connection;
+
+        let dir = tempfile::tempdir().unwrap();
+        let database = dir.path().join("opencode.db");
+        let connection = Connection::open(&database).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE session (
+                    id TEXT PRIMARY KEY, title TEXT, directory TEXT,
+                    time_created INTEGER, model TEXT, cost REAL,
+                    tokens_input INTEGER, tokens_output INTEGER
+                );
+                CREATE TABLE message (
+                    id TEXT PRIMARY KEY, session_id TEXT NOT NULL,
+                    time_created INTEGER NOT NULL, data TEXT NOT NULL
+                );
+                CREATE TABLE part (
+                    id TEXT PRIMARY KEY, message_id TEXT NOT NULL,
+                    time_created INTEGER NOT NULL, data TEXT NOT NULL
+                );
+                INSERT INTO session VALUES
+                    ('s1', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+                INSERT INTO message VALUES
+                    ('m1', 's1', 1000, '{\"role\":\"user\"}');
+                INSERT INTO part VALUES
+                    ('p1', 'm1', 1000, '{\"type\":\"text\",\"text\":\"question\"}');",
+            )
+            .unwrap();
+        drop(connection);
+
+        let sessions = OpenCodeConnector
+            .import_sqlite(&database, &ImportOptions::default())
+            .await
+            .unwrap();
+
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].title, None);
+        assert_eq!(sessions[0].metadata.project_path, None);
+        assert_eq!(sessions[0].metadata.model, None);
+        assert_eq!(sessions[0].metadata.extra, serde_json::json!({}));
+        assert_eq!(sessions[0].messages[0].content, "question");
     }
 
     #[cfg(feature = "opencode-connector")]
