@@ -64,18 +64,15 @@ jobs:
       # Three separate steps so a transient network failure on one
       # install can be retried without rerunning the others.
       # Runs 38919/38920 predate the current runner model. The mbx Cargo shim
-      # manages each checkout's ./target and collects it. Registry and git
-      # installs otherwise compile in unmanaged platform temporary directories,
-      # so route their build artefacts through a dedicated directory below the
-      # managed checkout target. Keep compiler wrappers disabled.
+      # manages each checkout's build artefacts. Keep compiler wrappers disabled.
       - name: Install cargo-llvm-cov (pinned; guarded by coverage_tool_pinning_matches_local_toolchain)
         run: |
           export RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER=""
-          cargo install cargo-llvm-cov --version 0.8.5 --locked --target-dir "$PWD/target/install"
+          cargo install cargo-llvm-cov --version 0.8.5 --locked
       - name: Install cargo-nextest (pinned; guarded by coverage_tool_pinning_matches_local_toolchain)
         run: |
           export RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER=""
-          cargo install cargo-nextest --version 0.9.144 --locked --target-dir "$PWD/target/install"
+          cargo install cargo-nextest --version 0.9.144 --locked
       - name: Add llvm-tools-preview component
         run: rustup component add llvm-tools-preview
       - run: RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER="" cargo fmt --all -- --check
@@ -101,7 +98,7 @@ jobs:
       # the v1.21.3 Cargo.lock; without it the [patch.crates-io] range
       # requirements (1.20.2) match both 1.20.2 and 1.21.0 in the registry
       # and cargo aborts with "patch resolved to more than one candidate".
-      - run: RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER="" cargo install --locked --git https://git.terraphim.cloud/terraphim/terraphim-ai --tag v1.21.3 --root /tmp/terraphim_server_install --target-dir "$PWD/target/install" --config 'registries.terraphim.index="sparse+https://git.terraphim.cloud/api/packages/terraphim/cargo/"' --config 'registry.global-credential-providers=["cargo:token"]' --bin terraphim_server terraphim_server
+      - run: RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER="" cargo install --locked --git https://git.terraphim.cloud/terraphim/terraphim-ai --tag v1.21.3 --root /tmp/terraphim_server_install --config 'registries.terraphim.index="sparse+https://git.terraphim.cloud/api/packages/terraphim/cargo/"' --config 'registry.global-credential-providers=["cargo:token"]' --bin terraphim_server terraphim_server
       # Refs terraphim/terraphim-agents#91: --all-targets exercises binaries,
       # examples, and the integration suite in tests/*.rs. --lib silently
       # excluded those, hiding the 2026-07-31 family of regressions. This step
