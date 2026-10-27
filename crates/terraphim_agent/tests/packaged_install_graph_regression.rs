@@ -15,7 +15,7 @@
 //!   3. the packaged dep points at the canonical terraphim sparse index
 //!      (the `registry` attribute is preserved through `cargo package`'s
 //!      normalization), so the manifest knows the source of truth,
-//!   4. the packaged Cargo.lock pins `terraphim_sessions` >= 1.21.2 with the
+//!   4. the packaged Cargo.lock pins `terraphim_sessions` >= 1.23.0 with the
 //!      `source` field set to the canonical sparse index, and the resolved
 //!      graph contains `terraphim-markdown-parser`,
 //!   5. `cargo install --path <unpacked crate> --locked --root <fresh>` from
@@ -31,9 +31,9 @@ use std::process::Command;
 use semver::{Version, VersionReq};
 use tempfile::TempDir;
 
-/// Minimum terraphim_sessions version that carries the cursor-connector
-/// feature and the terraphim-markdown-parser dependency (issue #95).
-const FIXED_SESSIONS_FLOOR: Version = Version::new(1, 21, 2);
+/// Minimum published terraphim_sessions version that includes the own-session
+/// connectors required by terraphim_agent while retaining the issue #95 fix.
+const FIXED_SESSIONS_FLOOR: Version = Version::new(1, 23, 0);
 
 /// Canonical sparse index for the terraphim registry. The packaged manifest
 /// must reference this URL (via the `registry-index` attribute that cargo
