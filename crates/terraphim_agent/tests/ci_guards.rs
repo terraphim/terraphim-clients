@@ -904,16 +904,20 @@ impl Drop for TestProcess {
 }
 
 fn copy_test_server(source: &Path, destination: &Path) {
-    std::fs::copy(source, destination).expect("copy real executable for cleanup test");
-    let mut permissions = std::fs::metadata(destination)
-        .expect("read copied executable metadata")
-        .permissions();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        permissions.set_mode(0o755);
-    }
-    std::fs::set_permissions(destination, permissions).expect("make copied executable runnable");
+    // Copy in a separate process so the multithreaded test runner cannot
+    // inherit the destination's writable descriptor while forking another
+    // child. Waiting for cp and syncing the closed copy prevents ETXTBSY when
+    // the test starts the copied executable below.
+    let status = Command::new("cp")
+        .arg(source)
+        .arg(destination)
+        .status()
+        .expect("copy real executable for cleanup test");
+    assert!(status.success(), "copying test executable failed: {status}");
+    std::fs::File::open(destination)
+        .expect("open copied executable for sync")
+        .sync_all()
+        .expect("sync copied executable");
 }
 
 /// The native lane must run the scoped server cleanup even after a failed test.
