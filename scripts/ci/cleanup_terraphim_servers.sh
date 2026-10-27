@@ -45,10 +45,25 @@ for proc_dir in /proc/[0-9]*; do
 done
 
 # Integration tests use this barrier to replace a scanned process before the
-# signal pass. Production CI leaves it unset.
+# signal pass. Production CI leaves it unset. Keep the hook bounded because a
+# failed test can otherwise leave this process holding the test harness output
+# descriptors open, which makes `cargo test` wait indefinitely.
 if test -n "${TERRAPHIM_CLEANUP_TEST_BARRIER:-}"; then
+    barrier_timeout=${TERRAPHIM_CLEANUP_TEST_BARRIER_TIMEOUT_SECONDS:-10}
+    case "$barrier_timeout" in
+        ''|*[!0-9]*)
+            printf 'invalid cleanup barrier timeout: %s\n' "$barrier_timeout" >&2
+            exit 2
+            ;;
+    esac
+    barrier_deadline=$((SECONDS + barrier_timeout))
     : > "${TERRAPHIM_CLEANUP_TEST_BARRIER}.scanned"
     while ! test -e "${TERRAPHIM_CLEANUP_TEST_BARRIER}.continue"; do
+        if test "$SECONDS" -ge "$barrier_deadline"; then
+            printf 'cleanup test barrier was not released within %s seconds: %s\n' \
+                "$barrier_timeout" "$TERRAPHIM_CLEANUP_TEST_BARRIER" >&2
+            exit 1
+        fi
         sleep 0.01
     done
 fi

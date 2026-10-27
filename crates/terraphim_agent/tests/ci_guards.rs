@@ -895,12 +895,19 @@ impl TestProcess {
             .is_none()
     }
 
-    fn wait_for_exit(&mut self) {
+    fn wait_for_exit(&mut self, context: &str) -> std::process::ExitStatus {
         let deadline = Instant::now() + Duration::from_secs(5);
-        while self.is_running() && Instant::now() < deadline {
+        loop {
+            if let Some(status) = self.0.try_wait().expect("inspect controlled process") {
+                return status;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "{context} process {} did not exit within 5 seconds",
+                self.id()
+            );
             thread::sleep(Duration::from_millis(10));
         }
-        assert!(!self.is_running(), "process {} was not stopped", self.id());
     }
 }
 
@@ -965,12 +972,14 @@ fn cleanup_script_only_signals_verified_checkout_processes() {
     let replaced_pid = replaced.id();
 
     let barrier = temp.path().join("barrier");
-    let mut cleanup = Command::new("bash")
-        .arg(root.join("scripts/ci/cleanup_terraphim_servers.sh"))
-        .current_dir(&checkout)
-        .env("TERRAPHIM_CLEANUP_TEST_BARRIER", &barrier)
-        .spawn()
-        .expect("run cleanup script");
+    let mut cleanup = TestProcess(
+        Command::new("bash")
+            .arg(root.join("scripts/ci/cleanup_terraphim_servers.sh"))
+            .current_dir(&checkout)
+            .env("TERRAPHIM_CLEANUP_TEST_BARRIER", &barrier)
+            .spawn()
+            .expect("run cleanup script"),
+    );
 
     let scanned = barrier.with_extension("scanned");
     let deadline = Instant::now() + Duration::from_secs(5);
@@ -1001,9 +1010,9 @@ fn cleanup_script_only_signals_verified_checkout_processes() {
     );
     std::fs::write(barrier.with_extension("continue"), b"").expect("release cleanup barrier");
 
-    let status = cleanup.wait().expect("wait for cleanup script");
+    let status = cleanup.wait_for_exit("cleanup script");
     assert!(status.success(), "cleanup script failed with {status}");
-    matching.wait_for_exit();
+    matching.wait_for_exit("matching checkout");
     assert!(
         other_checkout.is_running(),
         "process in another cwd was signalled"
@@ -1011,5 +1020,31 @@ fn cleanup_script_only_signals_verified_checkout_processes() {
     assert!(
         replaced.is_running(),
         "in-place replacement process was signalled"
+    );
+}
+
+/// The test-only scan barrier must never leave a cleanup process waiting
+/// indefinitely when its controlling test fails before releasing it.
+#[test]
+#[cfg(target_os = "linux")]
+fn cleanup_script_test_barrier_has_a_deadline() {
+    let root = workspace_root();
+    let temp = tempfile::tempdir().expect("create cleanup deadline directory");
+    let barrier = temp.path().join("unreleased-barrier");
+    let mut cleanup = TestProcess(
+        Command::new("bash")
+            .arg(root.join("scripts/ci/cleanup_terraphim_servers.sh"))
+            .current_dir(temp.path())
+            .env("TERRAPHIM_CLEANUP_TEST_BARRIER", &barrier)
+            .env("TERRAPHIM_CLEANUP_TEST_BARRIER_TIMEOUT_SECONDS", "1")
+            .spawn()
+            .expect("run cleanup script with unreleased barrier"),
+    );
+
+    let status = cleanup.wait_for_exit("cleanup script barrier deadline");
+    assert_eq!(
+        status.code(),
+        Some(1),
+        "unreleased cleanup barrier must fail with a diagnostic"
     );
 }
