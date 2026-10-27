@@ -226,9 +226,6 @@ impl OpenCodeConnector {
         let mut sessions = Vec::new();
         for (_, (mut session, messages)) in session_map {
             for (idx, (_, (role, text_parts))) in messages.into_iter().enumerate() {
-                if options.limit.is_some_and(|limit| limit > 0 && idx >= limit) {
-                    break;
-                }
                 let content = text_parts.join("\n");
                 session.messages.push(Message {
                     idx,
@@ -424,6 +421,56 @@ mod tests {
 
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].messages.len(), 2);
+    }
+
+    #[cfg(feature = "opencode-connector")]
+    #[tokio::test]
+    async fn test_sqlite_limit_applies_to_sessions_not_messages() {
+        use rusqlite::Connection;
+
+        let dir = tempfile::tempdir().unwrap();
+        let database = dir.path().join("opencode.db");
+        let connection = Connection::open(&database).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE session (
+                    id TEXT PRIMARY KEY, title TEXT NOT NULL, directory TEXT NOT NULL,
+                    time_created INTEGER NOT NULL, model TEXT, cost REAL NOT NULL,
+                    tokens_input INTEGER NOT NULL, tokens_output INTEGER NOT NULL
+                );
+                CREATE TABLE message (
+                    id TEXT PRIMARY KEY, session_id TEXT NOT NULL,
+                    time_created INTEGER NOT NULL, data TEXT NOT NULL
+                );
+                CREATE TABLE part (
+                    id TEXT PRIMARY KEY, message_id TEXT NOT NULL,
+                    time_created INTEGER NOT NULL, data TEXT NOT NULL
+                );
+                INSERT INTO session VALUES
+                    ('s1', 'First session', '/tmp/first', 1000, NULL, 0, 0, 0),
+                    ('s2', 'Second session', '/tmp/second', 3000, NULL, 0, 0, 0);
+                INSERT INTO message VALUES
+                    ('m1', 's1', 1000, '{\"role\":\"user\"}'),
+                    ('m2', 's1', 2000, '{\"role\":\"assistant\"}'),
+                    ('m3', 's2', 3000, '{\"role\":\"user\"}');
+                INSERT INTO part VALUES
+                    ('p1', 'm1', 1000, '{\"type\":\"text\",\"text\":\"question\"}'),
+                    ('p2', 'm2', 2000, '{\"type\":\"text\",\"text\":\"answer\"}'),
+                    ('p3', 'm3', 3000, '{\"type\":\"text\",\"text\":\"later\"}');",
+            )
+            .unwrap();
+        drop(connection);
+
+        let sessions = OpenCodeConnector
+            .import_sqlite(&database, &ImportOptions::default().with_limit(1))
+            .await
+            .unwrap();
+
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].id, "opencode:s1");
+        assert_eq!(sessions[0].messages.len(), 2);
+        assert_eq!(sessions[0].messages[0].content, "question");
+        assert_eq!(sessions[0].messages[1].content, "answer");
     }
 
     #[cfg(feature = "opencode-connector")]
