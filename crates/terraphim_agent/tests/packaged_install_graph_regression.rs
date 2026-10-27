@@ -1,46 +1,25 @@
-//! Regression test for terraphim-clients#95: the published `terraphim_agent`
-//! package must carry an install graph that actually resolves.
+//! Registry-free regression checks for terraphim-clients#95 and #431.
 //!
-//! Root cause of #95: `terraphim_agent` 1.21.1 declared
-//! `terraphim_sessions = "1.6.0"`, so the Cargo.lock packaged into the .crate
-//! pinned the stale/broken `terraphim_sessions` 1.21.0, and
-//! `cargo install --locked --registry terraphim terraphim_agent --version 1.21.1`
-//! failed with an unresolved `terraphim_markdown_parser` dependency.
-//!
-//! This test exercises the *packaged* artifact (`cargo package`), not the
-//! workspace path build, and asserts:
-//!   1. packaging succeeds (the publish-time dependency graph resolves),
-//!   2. the packaged manifest requires a `terraphim_sessions` floor that
-//!      excludes the broken 1.21.0/1.21.1 releases,
-//!   3. the packaged dep points at the canonical terraphim sparse index
-//!      (the `registry` attribute is preserved through `cargo package`'s
-//!      normalization), so the manifest knows the source of truth,
-//!   4. the packaged Cargo.lock pins `terraphim_sessions` >= 1.23.0 with the
-//!      `source` field set to the canonical sparse index, and the resolved
-//!      graph contains `terraphim-markdown-parser`,
-//!   5. `cargo install --path <unpacked crate> --locked --root <fresh>` from
-//!      the workspace root succeeds, produces `bin/terraphim-agent` (with the
-//!      platform `EXE_SUFFIX`), and the installed binary reports
-//!      `terraphim-agent 1.21.2` from `--version`. This is the end-to-end
-//!      proof that the published dependency graph is installable as shipped.
+//! These checks deliberately inspect the source manifest and workspace metadata
+//! only. The registry-dependent package and install verification lives in the
+//! `agent_package_release_gate` target and is run by the release script.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use semver::{Version, VersionReq};
-use tempfile::TempDir;
 
-/// Minimum published terraphim_sessions version that includes the own-session
-/// connectors required by terraphim_agent while retaining the issue #95 fix.
-const FIXED_SESSIONS_FLOOR: Version = Version::new(1, 23, 0);
-
-/// Canonical sparse index for the terraphim registry. The packaged manifest
-/// must reference this URL (via the `registry-index` attribute that cargo
-/// produces from `registry = "terraphim"`) and the packaged Cargo.lock must
-/// pin `terraphim_sessions` against this source.
-const CANONICAL_SPARSE_INDEX: &str =
-    "sparse+https://git.terraphim.cloud/api/packages/terraphim/cargo/";
+const KNOWN_BAD: [(&str, &str); 2] = [
+    ("1.21.0", "stale lock pin"),
+    ("1.21.1", "missing cursor-connector"),
+];
+const REQUIRED_FEATURES: [&str; 4] = [
+    "tsa-full",
+    "aider-connector",
+    "cursor-connector",
+    "search-index",
+];
 
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -51,305 +30,101 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
-/// Allocate a unique nested-Cargo target below Cargo's integration-test
-/// scratch directory. CARGO_TARGET_TMPDIR is inside the effective workspace
-/// target, so mbx still accounts for these potentially large build artefacts.
-/// The TempDir must remain alive for the nested Cargo operation.
-fn managed_nested_target(name: &str) -> TempDir {
-    tempfile::Builder::new()
-        .prefix(&format!("packaged-install-graph-regression-{name}-"))
-        .tempdir_in(env!("CARGO_TARGET_TMPDIR"))
-        .expect("create managed nested Cargo target")
-}
-
-#[test]
-fn managed_nested_targets_are_unique_and_cleaned_up() {
-    let managed_root = Path::new(env!("CARGO_TARGET_TMPDIR"));
-    let first_path;
-
-    {
-        let first = managed_nested_target("freshness-check");
-        let second = managed_nested_target("freshness-check");
-        first_path = first.path().to_path_buf();
-
-        assert_ne!(first.path(), second.path(), "nested targets must be unique");
-        assert!(first.path().starts_with(managed_root));
-        assert!(second.path().starts_with(managed_root));
-        assert!(first.path().is_dir());
-        assert!(second.path().is_dir());
-    }
-
+/// Obtain the floor from Cargo's view of the local workspace rather than
+/// copying the sessions version into this regression test.
+fn workspace_sessions_version(root: &Path) -> Version {
+    let output = Command::new(env!("CARGO"))
+        .args(["metadata", "--format-version", "1", "--no-deps"])
+        .current_dir(root)
+        .output()
+        .expect("spawn cargo metadata --format-version 1");
     assert!(
-        !first_path.exists(),
-        "managed nested target must be removed when its operation ends"
+        output.status.success(),
+        "cargo metadata --format-version 1 failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
     );
-}
 
-/// Resolve the terraphim_agent package version, expanding `version.workspace`.
-fn agent_version(root: &Path) -> Version {
-    let manifest = fs::read_to_string(root.join("crates/terraphim_agent/Cargo.toml"))
-        .expect("read agent manifest");
-    let doc: toml::Table = toml::from_str(&manifest).expect("parse agent manifest");
-    let package = doc.get("package").expect("[package]");
-    match package.get("version") {
-        Some(toml::Value::String(v)) => Version::parse(v).expect("agent version"),
-        Some(toml::Value::Table(t)) if t.get("workspace").is_some() => {
-            let root_manifest =
-                fs::read_to_string(root.join("Cargo.toml")).expect("read root manifest");
-            let root_doc: toml::Table = toml::from_str(&root_manifest).expect("parse root");
-            let v = root_doc["workspace"]["package"]["version"]
-                .as_str()
-                .expect("workspace version");
-            Version::parse(v).expect("workspace version")
-        }
-        other => panic!("unexpected version field: {other:?}"),
-    }
-}
-
-/// Parse `name`/`version` pairs out of a Cargo.lock without a TOML dep on the
-/// lock format details: every `[[package]]` block starts with name+version.
-fn lock_version_of(lock: &str, name: &str) -> Option<Version> {
-    let doc: toml::Table = toml::from_str(lock).expect("parse packaged Cargo.lock");
-    doc.get("package")?
-        .as_array()?
-        .iter()
-        .find(|p| p.get("name").and_then(|n| n.as_str()) == Some(name))
-        .and_then(|p| p.get("version").and_then(|v| v.as_str()))
-        .map(|v| Version::parse(v).expect("lock version"))
-}
-
-/// Return the `source` field of the first `[[package]]` block whose
-/// `name` and `version` both match. This is the registry URL the packaged
-/// Cargo.lock pins the dep against and must be the canonical sparse index.
-fn lock_source_of(lock: &str, name: &str, version: &Version) -> Option<String> {
-    let doc: toml::Table = toml::from_str(lock).expect("parse packaged Cargo.lock");
-    doc.get("package")?
-        .as_array()?
-        .iter()
-        .find(|p| {
-            p.get("name").and_then(|n| n.as_str()) == Some(name)
-                && p.get("version").and_then(|v| v.as_str()) == Some(version.to_string().as_str())
-        })
-        .and_then(|p| p.get("source").and_then(|s| s.as_str()))
-        .map(|s| s.to_string())
-}
-
-fn lock_has_package(lock: &str, name: &str) -> bool {
-    let doc: toml::Table = toml::from_str(lock).expect("parse packaged Cargo.lock");
-    doc.get("package")
-        .and_then(|p| p.as_array())
-        .map(|pkgs| {
-            pkgs.iter()
-                .any(|p| p.get("name").and_then(|n| n.as_str()) == Some(name))
-        })
-        .unwrap_or(false)
-}
-
-/// Extract the `version = "..."` requirement of a dependency from the
-/// packaged (normalized) Cargo.toml, e.g. `[dependencies.terraphim_sessions]`.
-fn packaged_dep_req(manifest: &str, dep: &str) -> VersionReq {
-    let doc: toml::Table = toml::from_str(manifest).expect("parse packaged manifest");
-    for section in ["dependencies", "build-dependencies", "dev-dependencies"] {
-        if let Some(deps) = doc.get(section).and_then(|d| d.as_table())
-            && let Some(entry) = deps.get(dep)
-        {
-            let req = entry
-                .get("version")
-                .and_then(|v| v.as_str())
-                .unwrap_or_else(|| panic!("packaged dep {dep} has no version req"));
-            return VersionReq::parse(req).expect("valid version req");
-        }
-    }
-    panic!("dependency {dep} not found in packaged manifest");
-}
-
-/// Read the registry URL the packaged manifest pins `dep` against. cargo
-/// normalizes `registry = "terraphim"` into the concrete `registry-index`
-/// URL, so we look for either key to keep the assertion robust against
-/// future cargo formatting changes.
-fn packaged_dep_registry(manifest: &str, dep: &str) -> String {
-    let doc: toml::Table = toml::from_str(manifest).expect("parse packaged manifest");
-    for section in ["dependencies", "build-dependencies", "dev-dependencies"] {
-        let Some(entry) = doc
-            .get(section)
-            .and_then(|d| d.as_table())
-            .and_then(|t| t.get(dep))
-        else {
-            continue;
-        };
-        let entry = entry
-            .as_table()
-            .expect("dep entry must be a table in packaged manifest");
-        if let Some(idx) = entry.get("registry-index").and_then(|v| v.as_str()) {
-            return idx.to_string();
-        }
-        if let Some(reg) = entry.get("registry").and_then(|v| v.as_str()) {
-            return reg.to_string();
-        }
-    }
-    panic!("dependency {dep} has no registry attribute in packaged manifest");
+    let metadata: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("parse cargo metadata JSON");
+    let packages = metadata["packages"]
+        .as_array()
+        .expect("cargo metadata packages array");
+    let mut local_sessions = packages.iter().filter(|package| {
+        package["name"].as_str() == Some("terraphim_sessions") && package["source"].is_null()
+    });
+    let package = local_sessions
+        .next()
+        .expect("local workspace terraphim_sessions package in cargo metadata");
+    assert!(
+        local_sessions.next().is_none(),
+        "cargo metadata contains more than one source-less terraphim_sessions package"
+    );
+    Version::parse(
+        package["version"]
+            .as_str()
+            .expect("workspace terraphim_sessions version"),
+    )
+    .expect("valid workspace terraphim_sessions version")
 }
 
 #[test]
-fn packaged_agent_install_graph_uses_canonical_sparse_index() {
+fn agent_manifest_tracks_workspace_sessions_release() {
     let root = workspace_root();
-    let version = agent_version(&root);
-    let package_target = managed_nested_target("package");
+    let workspace_version = workspace_sessions_version(&root);
+    let manifest = fs::read_to_string(root.join("crates/terraphim_agent/Cargo.toml"))
+        .expect("read terraphim_agent Cargo.toml");
+    let document: toml::Table = toml::from_str(&manifest).expect("parse agent manifest");
+    let dependency = document["dependencies"]["terraphim_sessions"]
+        .as_table()
+        .expect("terraphim_sessions must use an explicit dependency table");
 
-    // 1. Build the actual publish artifact. This regenerates the packaged
-    //    Cargo.lock against the registries exactly like `cargo publish` does.
-    //    An isolated target also avoids Cargo 1.93 leaving trailing bytes when
-    //    overwriting a previously larger .crate artifact.
-    let status = Command::new(env!("CARGO"))
-        .args([
-            "package",
-            "-p",
-            "terraphim_agent",
-            "--allow-dirty",
-            "--no-verify",
-        ])
-        .env("CARGO_TARGET_DIR", package_target.path())
-        .current_dir(&root)
-        .status()
-        .expect("spawn cargo package");
+    let requirement_text = dependency
+        .get("version")
+        .and_then(toml::Value::as_str)
+        .expect("terraphim_sessions must have an explicit version requirement");
+    let requirement = VersionReq::parse(requirement_text)
+        .expect("terraphim_sessions must have a valid version requirement");
     assert!(
-        status.success(),
-        "cargo package must succeed: the published install graph has to resolve (#95)"
+        requirement.matches(&workspace_version),
+        "terraphim_sessions requirement {requirement} must match workspace version {workspace_version}"
     );
 
-    let crate_file = package_target
-        .path()
-        .join(format!("package/terraphim_agent-{version}.crate"));
-    assert!(crate_file.exists(), "packaged .crate must exist");
+    for (version, reason) in KNOWN_BAD {
+        let version = Version::parse(version).expect("known-bad version must be valid semver");
+        assert!(
+            !requirement.matches(&version),
+            "terraphim_sessions requirement {requirement} must exclude known-bad {version}: {reason}"
+        );
+    }
 
-    // 2. Unpack the artifact into a TempDir that cleans itself up on drop,
-    //    so the test is hermetic and doesn't leave predictable temp dirs
-    //    behind on success or failure.
-    let extract_dir = TempDir::new().expect("create tempdir for packaged crate");
-    let status = Command::new("tar")
-        .arg("-xzf")
-        .arg(&crate_file)
-        .arg("-C")
-        .arg(extract_dir.path())
-        .status()
-        .expect("spawn tar");
-    assert!(status.success(), "extract packaged crate");
-    let pkg_dir = extract_dir
-        .path()
-        .join(format!("terraphim_agent-{version}"));
-
-    let packaged_manifest =
-        fs::read_to_string(pkg_dir.join("Cargo.toml")).expect("packaged Cargo.toml");
-    let packaged_lock = fs::read_to_string(pkg_dir.join("Cargo.lock"))
-        .expect("packaged Cargo.lock must ship with the binary crate");
-
-    // 3. The packaged manifest must not resolve terraphim_sessions via a
-    //    workspace path, and its version floor must exclude the broken
-    //    1.21.0 (stale lock pin) and 1.21.1 (missing cursor-connector).
-    let req = packaged_dep_req(&packaged_manifest, "terraphim_sessions");
-    assert!(
-        !req.matches(&Version::new(1, 21, 0)),
-        "packaged terraphim_sessions req {req} must exclude broken 1.21.0 (#95)"
-    );
-    assert!(
-        !req.matches(&Version::new(1, 21, 1)),
-        "packaged terraphim_sessions req {req} must exclude 1.21.1 without cursor-connector (#95)"
-    );
-    assert!(
-        req.matches(&FIXED_SESSIONS_FLOOR),
-        "packaged terraphim_sessions req {req} must accept {FIXED_SESSIONS_FLOOR} (#95)"
-    );
-
-    // 4. The packaged manifest must pin terraphim_sessions to the canonical
-    //    terraphim sparse index. cargo normalizes `registry = "terraphim"`
-    //    into the concrete `registry-index` URL, so we compare the resolved
-    //    URL against the canonical sparse index.
-    let registry = packaged_dep_registry(&packaged_manifest, "terraphim_sessions");
     assert_eq!(
-        registry, CANONICAL_SPARSE_INDEX,
-        "packaged terraphim_sessions must be sourced from the canonical terraphim sparse index (#95)"
+        dependency.get("registry").and_then(toml::Value::as_str),
+        Some("terraphim"),
+        "terraphim_sessions must use the canonical `registry = \"terraphim\"` attribute"
     );
 
-    // 5. The packaged lock (used by `cargo install --locked`) must pin the
-    //    fixed sessions crate against the canonical sparse index, and the
-    //    resolved graph must contain the markdown parser dependency that
-    //    was unresolved in the broken 1.21.1 release.
-    let locked_version = lock_version_of(&packaged_lock, "terraphim_sessions")
-        .expect("terraphim_sessions must be in the packaged lock");
-    assert!(
-        locked_version >= FIXED_SESSIONS_FLOOR,
-        "packaged lock pins terraphim_sessions {locked_version}, need >= {FIXED_SESSIONS_FLOOR} (#95)"
-    );
-    let locked_source = lock_source_of(&packaged_lock, "terraphim_sessions", &locked_version)
-        .expect("packaged lock must record a source for terraphim_sessions");
+    let features = dependency
+        .get("features")
+        .and_then(toml::Value::as_array)
+        .expect("terraphim_sessions must declare its required features");
+    for required in REQUIRED_FEATURES {
+        assert!(
+            features
+                .iter()
+                .any(|feature| feature.as_str() == Some(required)),
+            "terraphim_sessions must enable required feature {required}"
+        );
+    }
+
     assert_eq!(
-        locked_source, CANONICAL_SPARSE_INDEX,
-        "packaged lock must pin terraphim_sessions against the canonical terraphim sparse index (#95)"
+        dependency.get("optional").and_then(toml::Value::as_bool),
+        Some(true),
+        "terraphim_sessions must remain optional behind repl-sessions"
     );
-    assert!(
-        lock_has_package(&packaged_lock, "terraphim-markdown-parser"),
-        "packaged lock must resolve terraphim-markdown-parser (was unresolved in #95)"
-    );
-    assert!(
-        lock_has_package(&packaged_lock, "terraphim-session-analyzer"),
-        "packaged lock must resolve terraphim-session-analyzer"
-    );
-
-    // 6. End-to-end proof: a real `cargo install --path --debug` against the
-    //    unpacked packaged crate, using a fresh managed target subdirectory for
-    //    compile isolation and a fresh --root TempDir so the test does not
-    //    mutate the user's cargo home. Debug mode compiles the same locked
-    //    dependency graph without making this release-safety regression pay for
-    //    a full optimized build; the post-publication Guardian runs the exact
-    //    default release-profile registry install. Run cargo from the workspace
-    //    root so .cargo/config.toml supplies the named `terraphim` registry.
-    let install_target = managed_nested_target("install");
-    let install_root = TempDir::new().expect("create fresh install --root");
-    let install_output = Command::new(env!("CARGO"))
-        .args(["install", "--path"])
-        .arg(&pkg_dir)
-        .args(["--locked", "--debug", "--root"])
-        .arg(install_root.path())
-        .env("CARGO_TARGET_DIR", install_target.path())
-        .current_dir(&root)
-        .output()
-        .expect("spawn cargo install --path");
-    assert!(
-        install_output.status.success(),
-        "cargo install --path <unpacked {}-{version}> --locked --root <fresh> must succeed (#95);\nstdout:\n{}\nstderr:\n{}",
-        "terraphim_agent",
-        String::from_utf8_lossy(&install_output.stdout),
-        String::from_utf8_lossy(&install_output.stderr),
-    );
-
-    // The installed binary must be present at `<root>/bin/terraphim-agent`
-    // (plus the platform `EXE_SUFFIX`, e.g. ".exe" on Windows) and it must
-    // report the exact version we just packaged.
-    let bin_name = format!("terraphim-agent{}", std::env::consts::EXE_SUFFIX);
-    let installed_bin = install_root.path().join("bin").join(&bin_name);
-    assert!(
-        installed_bin.exists(),
-        "install --root must produce bin/{bin_name} (looked at {})",
-        installed_bin.display(),
-    );
-
-    let version_output = Command::new(&installed_bin)
-        .arg("--version")
-        .output()
-        .expect("spawn installed terraphim-agent --version");
-    assert!(
-        version_output.status.success(),
-        "installed {bin_name} --version must succeed (exit {:?})",
-        version_output.status.code(),
-    );
-    let stdout = String::from_utf8_lossy(&version_output.stdout);
-    let reported_version = stdout
-        .split_whitespace()
-        .last()
-        .expect("installed binary --version must report a version token");
-    let expected_version = version.to_string();
     assert_eq!(
-        reported_version, expected_version,
-        "installed {bin_name} must report exact version {expected_version} (#95); got: {stdout}",
+        dependency.get("path").and_then(toml::Value::as_str),
+        Some("../terraphim_sessions"),
+        "workspace builds must continue to use the sibling sessions crate"
     );
 }
