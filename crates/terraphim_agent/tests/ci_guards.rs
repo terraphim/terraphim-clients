@@ -874,10 +874,6 @@ impl TestProcess {
         )
     }
 
-    fn from_child(child: Child) -> Self {
-        Self(child)
-    }
-
     fn id(&self) -> u32 {
         self.0.id()
     }
@@ -952,7 +948,11 @@ fn native_ci_always_cleans_checkout_servers_by_verified_pid() {
         &other,
         "trap 'exit 0' TERM; while :; do sleep 1; done",
     );
-    let mut replaced = TestProcess::spawn(&server_binary, &checkout, "while :; do sleep 1; done");
+    let mut replaced = TestProcess::spawn(
+        &server_binary,
+        &checkout,
+        "trap 'exec /bin/sleep 30' USR1; while :; do sleep 1; done",
+    );
     let replaced_pid = replaced.id();
 
     let barrier = temp.path().join("barrier");
@@ -970,17 +970,26 @@ fn native_ci_always_cleans_checkout_servers_by_verified_pid() {
     }
     assert!(scanned.exists(), "cleanup did not reach scan barrier");
 
-    replaced
-        .0
-        .kill()
-        .expect("stop scanned process before signal pass");
-    replaced.0.wait().expect("reap replaced process");
-    let replacement = Command::new(&server_binary)
-        .args(["-c", "trap 'exit 0' TERM; while :; do sleep 1; done"])
-        .current_dir(&checkout)
-        .spawn()
-        .expect("spawn replacement at the scanned path");
-    let mut replacement = TestProcess::from_child(replacement);
+    // Keep the same PID while replacing its executable. The scan snapshot must
+    // therefore reject it before signalling, independently of PID allocation.
+    let signal_status = Command::new("kill")
+        .args(["-USR1", &replaced_pid.to_string()])
+        .status()
+        .expect("request in-place process replacement");
+    assert!(signal_status.success(), "failed to request replacement");
+    let replacement_deadline = Instant::now() + Duration::from_secs(5);
+    while std::fs::read_link(format!("/proc/{replaced_pid}/exe"))
+        .is_ok_and(|path| path == server_binary)
+        && Instant::now() < replacement_deadline
+    {
+        thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(
+        std::fs::read_link(format!("/proc/{replaced_pid}/exe"))
+            .expect("replacement process remains alive"),
+        Path::new("/usr/bin/sleep"),
+        "controlled process did not replace its executable"
+    );
     std::fs::write(barrier.with_extension("continue"), b"").expect("release cleanup barrier");
 
     let status = cleanup.wait().expect("wait for cleanup script");
@@ -991,16 +1000,7 @@ fn native_ci_always_cleans_checkout_servers_by_verified_pid() {
         "process in another cwd was signalled"
     );
     assert!(
-        replacement.is_running(),
-        "replacement process was signalled"
-    );
-
-    // PID reuse cannot be forced deterministically, but the barrier proves the
-    // scanned PID is revalidated after replacement. Usually Linux allocates a
-    // different PID, while the executable mismatch still exercises rejection.
-    assert_ne!(
-        replacement.id(),
-        replaced_pid,
-        "unexpected immediate PID reuse"
+        replaced.is_running(),
+        "in-place replacement process was signalled"
     );
 }
