@@ -14,7 +14,9 @@
 //! `cargo package` this way. Refs #118.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Child, Command};
+use std::thread;
+use std::time::{Duration, Instant};
 
 fn workspace_root() -> PathBuf {
     // CARGO_MANIFEST_DIR is crates/terraphim_agent
@@ -859,6 +861,65 @@ fn native_ci_disables_shared_compiler_wrappers() {
     );
 }
 
+struct TestProcess(Child);
+
+impl TestProcess {
+    fn spawn(binary: &Path, cwd: &Path, script: &str) -> Self {
+        Self(
+            Command::new(binary)
+                .args(["-c", script])
+                .current_dir(cwd)
+                .spawn()
+                .expect("spawn controlled cleanup process"),
+        )
+    }
+
+    fn from_child(child: Child) -> Self {
+        Self(child)
+    }
+
+    fn id(&self) -> u32 {
+        self.0.id()
+    }
+
+    fn is_running(&mut self) -> bool {
+        self.0
+            .try_wait()
+            .expect("inspect controlled process")
+            .is_none()
+    }
+
+    fn wait_for_exit(&mut self) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while self.is_running() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(!self.is_running(), "process {} was not stopped", self.id());
+    }
+}
+
+impl Drop for TestProcess {
+    fn drop(&mut self) {
+        if self.is_running() {
+            let _ = self.0.kill();
+        }
+        let _ = self.0.wait();
+    }
+}
+
+fn copy_test_server(source: &Path, destination: &Path) {
+    std::fs::copy(source, destination).expect("copy real executable for cleanup test");
+    let mut permissions = std::fs::metadata(destination)
+        .expect("read copied executable metadata")
+        .permissions();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        permissions.set_mode(0o755);
+    }
+    std::fs::set_permissions(destination, permissions).expect("make copied executable runnable");
+}
+
 /// The native lane must run the scoped server cleanup even after a failed test.
 #[test]
 fn native_ci_always_cleans_checkout_servers_by_verified_pid() {
@@ -872,22 +933,74 @@ fn native_ci_always_cleans_checkout_servers_by_verified_pid() {
         "native CI must always invoke the checkout-scoped server cleanup"
     );
 
-    let script = std::fs::read_to_string(root.join("scripts/ci/cleanup_terraphim_servers.sh"))
-        .expect("read server cleanup script");
-    for required in [
-        "/proc/[0-9]*",
-        "/exe",
-        "/cwd",
-        "kill -TERM \"$pid\"",
-        "kill -KILL \"$pid\"",
-    ] {
-        assert!(
-            script.contains(required),
-            "server cleanup must contain {required:?}"
-        );
+    let temp = tempfile::tempdir().expect("create cleanup test directory");
+    let checkout = temp.path().join("checkout");
+    let nested = checkout.join("nested");
+    let other = temp.path().join("other");
+    std::fs::create_dir_all(&nested).expect("create nested checkout directory");
+    std::fs::create_dir(&other).expect("create other checkout directory");
+
+    let server_binary = checkout.join("terraphim_server");
+    copy_test_server(Path::new("/usr/bin/dash"), &server_binary);
+    let mut matching = TestProcess::spawn(
+        &server_binary,
+        &nested,
+        "trap 'exit 0' TERM; while :; do sleep 1; done",
+    );
+    let mut other_checkout = TestProcess::spawn(
+        &server_binary,
+        &other,
+        "trap 'exit 0' TERM; while :; do sleep 1; done",
+    );
+    let mut replaced = TestProcess::spawn(&server_binary, &checkout, "while :; do sleep 1; done");
+    let replaced_pid = replaced.id();
+
+    let barrier = temp.path().join("barrier");
+    let mut cleanup = Command::new("bash")
+        .arg(root.join("scripts/ci/cleanup_terraphim_servers.sh"))
+        .current_dir(&checkout)
+        .env("TERRAPHIM_CLEANUP_TEST_BARRIER", &barrier)
+        .spawn()
+        .expect("run cleanup script");
+
+    let scanned = barrier.with_extension("scanned");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !scanned.exists() && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(10));
     }
+    assert!(scanned.exists(), "cleanup did not reach scan barrier");
+
+    replaced
+        .0
+        .kill()
+        .expect("stop scanned process before signal pass");
+    replaced.0.wait().expect("reap replaced process");
+    let replacement = Command::new(&server_binary)
+        .args(["-c", "trap 'exit 0' TERM; while :; do sleep 1; done"])
+        .current_dir(&checkout)
+        .spawn()
+        .expect("spawn replacement at the scanned path");
+    let mut replacement = TestProcess::from_child(replacement);
+    std::fs::write(barrier.with_extension("continue"), b"").expect("release cleanup barrier");
+
+    let status = cleanup.wait().expect("wait for cleanup script");
+    assert!(status.success(), "cleanup script failed with {status}");
+    matching.wait_for_exit();
     assert!(
-        !script.contains("pkill"),
-        "server cleanup must signal verified PIDs, never process-name patterns"
+        other_checkout.is_running(),
+        "process in another cwd was signalled"
+    );
+    assert!(
+        replacement.is_running(),
+        "replacement process was signalled"
+    );
+
+    // PID reuse cannot be forced deterministically, but the barrier proves the
+    // scanned PID is revalidated after replacement. Usually Linux allocates a
+    // different PID, while the executable mismatch still exercises rejection.
+    assert_ne!(
+        replacement.id(),
+        replaced_pid,
+        "unexpected immediate PID reuse"
     );
 }
