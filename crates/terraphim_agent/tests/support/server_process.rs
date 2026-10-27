@@ -24,28 +24,47 @@ unsafe extern "C" {
 /// surviving cancellation, while `Drop` also covers test panic unwinding.
 pub struct ServerProcessGuard {
     child: Child,
-    child_reaped: bool,
 }
 
 impl ServerProcessGuard {
     pub fn spawn(command: &mut Command) -> io::Result<Self> {
         command.process_group(0);
-        command.spawn().map(|child| Self {
-            child,
-            child_reaped: false,
-        })
+        command.spawn().map(|child| Self { child })
     }
 
     pub fn id(&self) -> u32 {
         self.child.id()
     }
 
+    /// Poll the leader without reaping it.
+    ///
+    /// `WNOWAIT` keeps an exited leader as a zombie, reserving its PID and the
+    /// process-group identity until `Drop` has signalled the group.
     pub fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
-        let status = self.child.try_wait()?;
-        if status.is_some() {
-            self.child_reaped = true;
+        let mut info = std::mem::MaybeUninit::<libc::siginfo_t>::zeroed();
+        // SAFETY: `info` points to writable storage and waitid initialises it
+        // when reporting a child state. WNOWAIT deliberately leaves the child
+        // waitable for the final `Child::wait` in Drop.
+        let result = unsafe {
+            libc::waitid(
+                libc::P_PID,
+                self.child.id(),
+                info.as_mut_ptr(),
+                libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+            )
+        };
+        if result == -1 {
+            return Err(io::Error::last_os_error());
         }
-        Ok(status)
+
+        // SAFETY: waitid returned successfully, so the siginfo storage is
+        // initialised. si_pid == 0 means WNOHANG found no state change.
+        let info = unsafe { info.assume_init() };
+        if unsafe { info.si_pid() } == 0 {
+            return Ok(None);
+        }
+
+        Ok(Some(exit_status_from_siginfo(&info)))
     }
 
     pub fn take_stdout(&mut self) -> Option<ChildStdout> {
@@ -73,15 +92,20 @@ impl ServerProcessGuard {
         let result = unsafe { kill(self.process_group(), SIGNAL_EXISTS) };
         result == 0 || io::Error::last_os_error().raw_os_error() != Some(ESRCH)
     }
+}
 
-    fn reap_if_exited(&mut self) {
-        if self.child_reaped {
-            return;
-        }
-        if matches!(self.child.try_wait(), Ok(Some(_))) {
-            self.child_reaped = true;
-        }
-    }
+fn exit_status_from_siginfo(info: &libc::siginfo_t) -> ExitStatus {
+    use std::os::unix::process::ExitStatusExt;
+
+    let code = info.si_code;
+    let status = unsafe { info.si_status() };
+    let raw = match code {
+        libc::CLD_EXITED => status << 8,
+        libc::CLD_KILLED => status,
+        libc::CLD_DUMPED => status | 0x80,
+        _ => status << 8,
+    };
+    ExitStatus::from_raw(raw)
 }
 
 impl Drop for ServerProcessGuard {
@@ -89,16 +113,12 @@ impl Drop for ServerProcessGuard {
         self.signal_group(SIGTERM);
         let deadline = Instant::now() + SHUTDOWN_GRACE;
         while self.group_exists() && Instant::now() < deadline {
-            self.reap_if_exited();
             thread::sleep(POLL_INTERVAL);
         }
 
         if self.group_exists() {
             self.signal_group(SIGKILL);
         }
-        if !self.child_reaped {
-            let _ = self.child.wait();
-            self.child_reaped = true;
-        }
+        let _ = self.child.wait();
     }
 }

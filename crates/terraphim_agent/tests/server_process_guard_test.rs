@@ -3,6 +3,8 @@
 use serial_test::serial;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::thread;
+use std::time::{Duration, Instant};
 
 mod support;
 use support::server_process::ServerProcessGuard;
@@ -52,6 +54,34 @@ fn drop_stops_and_reaps_server() {
 
     drop(server);
 
+    assert_process_reaped(pid);
+}
+
+#[test]
+#[serial]
+fn leader_exit_is_observed_without_reaping_before_drop() {
+    let mut command = Command::new("/bin/sh");
+    command.args(["-c", "exit 23"]);
+    let mut server = ServerProcessGuard::spawn(&mut command).expect("start short-lived leader");
+    let pid = server.id();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let status = loop {
+        if let Some(status) = server.try_wait().expect("poll leader without reaping") {
+            break status;
+        }
+        assert!(Instant::now() < deadline, "leader did not exit");
+        thread::sleep(Duration::from_millis(10));
+    };
+
+    assert_eq!(status.code(), Some(23));
+    let proc_status = std::fs::read_to_string(format!("/proc/{pid}/status"))
+        .expect("leader remains present until guard drop");
+    assert!(
+        proc_status.lines().any(|line| line == "State:\tZ (zombie)"),
+        "leader was reaped before group shutdown:\n{proc_status}"
+    );
+
+    drop(server);
     assert_process_reaped(pid);
 }
 
