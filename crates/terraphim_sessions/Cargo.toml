@@ -81,7 +81,7 @@ regex = "1.10"
 rusqlite = { version = "0.32", features = ["bundled"], optional = true }
 
 # Feature-gated: Terraphim Session Analyzer
-terraphim-session-analyzer = { path = "../../crates/terraphim-session-analyzer", version = "1.21.0", optional = true, registry = "terraphim" }
+terraphim-session-analyzer = { version = "1.23.0", registry = "terraphim", optional = true }
 
 # Feature-gated: Markdown parsing for Aider/Cline connectors
 terraphim-markdown-parser = { version = "1.20.2", optional = true }
