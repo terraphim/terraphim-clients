@@ -8,6 +8,7 @@ use std::process::{Command, Output};
 use std::time::Duration;
 
 mod support;
+use support::cli_test_env::apply_hermetic_env;
 use support::server_process::ServerProcessGuard;
 
 /// Run a command with a timeout, killing the child if it exceeds the deadline.
@@ -50,12 +51,16 @@ fn start_test_server() -> Result<(ServerProcessGuard, u16)> {
     println!("Starting test server on port {}...", port);
 
     let mut cmd = Command::new(server_binary());
-    cmd.args(["--port", &port.to_string()])
-        .env("TERRAPHIM_SERVER_PORT", port.to_string())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
+    cmd.args([
+        "--config",
+        "terraphim_server/default/terraphim_engineer_config.json",
+    ])
+    .env("TERRAPHIM_SERVER_HOSTNAME", format!("127.0.0.1:{port}"))
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped());
+    apply_hermetic_env(&mut cmd)?;
 
-    let child = ServerProcessGuard::spawn(&mut cmd)?;
+    let mut child = ServerProcessGuard::spawn(&mut cmd)?;
 
     let client = reqwest::blocking::Client::new();
     let health_url = format!("http://127.0.0.1:{}/health", port);
@@ -71,6 +76,19 @@ fn start_test_server() -> Result<(ServerProcessGuard, u16)> {
         {
             println!("Test server is ready on port {}", port);
             return Ok((child, port));
+        }
+        if let Ok(Some(status)) = child.try_wait() {
+            let stderr = child
+                .take_stderr()
+                .map(|mut stderr| {
+                    let mut output = String::new();
+                    std::io::Read::read_to_string(&mut stderr, &mut output).ok();
+                    output
+                })
+                .unwrap_or_default();
+            return Err(anyhow::anyhow!(
+                "Server exited during startup with {status}: {stderr}"
+            ));
         }
         std::thread::sleep(backoff);
         backoff = backoff.saturating_mul(2);
