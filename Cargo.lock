@@ -6772,7 +6772,7 @@ dependencies = [
 
 [[package]]
 name = "terraphim_sessions"
-version = "1.21.2"
+version = "1.23.0"
 dependencies = [
  "anyhow",
  "async-trait",
