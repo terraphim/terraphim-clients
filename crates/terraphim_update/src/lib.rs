@@ -266,6 +266,9 @@ pub struct UpdaterConfig {
     /// avoid rate limiting. Picked up from `GITHUB_TOKEN` or `GH_TOKEN` by
     /// [`Self::new`].
     pub auth_token: Option<String>,
+    /// Whether R2 transport and manifest failures may fall back to GitHub.
+    /// Defaults to `true`; disable this for mirror-only or air-gapped use.
+    pub github_fallback: bool,
     /// GitHub API base URL for the fallback backend's release lookups; `None`
     /// means `https://api.github.com`. Only API calls use it: the verified
     /// update still downloads assets from `https://github.com/.../releases/download`.
@@ -324,6 +327,7 @@ impl UpdaterConfig {
             backend,
             manifest,
             auth_token: github_token_from_env(),
+            github_fallback: true,
             github_api_url: None,
             policy,
         }
@@ -353,6 +357,12 @@ impl UpdaterConfig {
     /// Override the manifest base URL (e.g. for a staging bucket).
     pub fn with_manifest_base_url(mut self, url: impl Into<String>) -> Self {
         self.manifest = self.manifest.with_base_url(url);
+        self
+    }
+
+    /// Enable or disable GitHub fallback after an R2 transport or manifest failure.
+    pub fn with_github_fallback(mut self, enabled: bool) -> Self {
+        self.github_fallback = enabled;
         self
     }
 
@@ -424,9 +434,9 @@ impl TerraphimUpdater {
     /// Check if an update is available without installing.
     ///
     /// Dispatches to the configured [`UpdateBackend`]: R2 (manifest) by
-    /// default, GitHub as fallback. R2 fetch or parse failures fall back to a
-    /// real GitHub release check; validated integrity failures during install
-    /// remain definitive.
+    /// default, GitHub as an enabled-by-default fallback. Disable fallback with
+    /// [`UpdaterConfig::with_github_fallback`]. Validated integrity failures
+    /// during install remain definitive.
     pub async fn check_update(&self) -> Result<UpdateStatus> {
         if let Some(status) = self.managed_status() {
             return Ok(status);
@@ -438,10 +448,13 @@ impl TerraphimUpdater {
         match self.config.backend {
             UpdateBackend::R2 => match self.check_update_r2().await {
                 Ok(status) => Ok(status),
-                Err(error) => {
+                Err(error) if self.config.github_fallback => {
                     warn!("R2 update check failed ({error}); falling back to GitHub backend");
                     self.check_update_github().await
                 }
+                Err(error) => Ok(UpdateStatus::Failed(format!(
+                    "R2 update check failed and GitHub fallback is disabled: {error}"
+                ))),
             },
             UpdateBackend::GitHub => self.check_update_github().await,
         }
@@ -746,8 +759,9 @@ impl TerraphimUpdater {
     /// Update the binary to the latest version.
     ///
     /// Dispatches by backend. On the R2 backend, a transport/manifest failure
-    /// (`Err`) transparently falls back to the GitHub backend; a definitive
-    /// failure (`Ok(Failed)`, e.g. signature rejection) does **not** fall back.
+    /// (`Err`) falls back to GitHub when [`UpdaterConfig::github_fallback`] is
+    /// enabled; a definitive failure (`Ok(Failed)`, e.g. signature rejection)
+    /// does **not** fall back.
     pub async fn update(&self) -> Result<UpdateStatus> {
         if let Some(status) = self.managed_status() {
             return Ok(status);
@@ -755,10 +769,13 @@ impl TerraphimUpdater {
         match self.config.backend {
             UpdateBackend::R2 => match self.update_r2().await {
                 Ok(status) => Ok(status),
-                Err(e) => {
+                Err(e) if self.config.github_fallback => {
                     warn!("R2 update failed ({e}); falling back to GitHub backend");
                     self.update_github().await
                 }
+                Err(error) => Ok(UpdateStatus::Failed(format!(
+                    "R2 update failed and GitHub fallback is disabled: {error}"
+                ))),
             },
             UpdateBackend::GitHub => self.update_github().await,
         }
@@ -1410,7 +1427,8 @@ impl TerraphimUpdater {
     /// Check for update and install if available with signature verification.
     ///
     /// Dispatches by backend. The R2 path checks the manifest, then installs
-    /// via `update_r2()` with automatic GitHub fallback on transport failure.
+    /// via `update_r2()`, with GitHub fallback controlled by
+    /// [`UpdaterConfig::github_fallback`].
     pub async fn check_and_update(&self) -> Result<UpdateStatus> {
         if let Some(status) = self.managed_status() {
             return Ok(status);
@@ -1421,14 +1439,17 @@ impl TerraphimUpdater {
         }
     }
 
-    /// `check_and_update` for the R2 backend: manifest check then R2 install
-    /// with GitHub fallback on transport failure.
+    /// `check_and_update` for the R2 backend: manifest check then R2 install,
+    /// with optional GitHub fallback on transport failure.
     async fn check_and_update_r2(&self) -> Result<UpdateStatus> {
         match self.check_update_r2().await {
-            Err(error) => {
+            Err(error) if self.config.github_fallback => {
                 warn!("R2 update check failed ({error}); falling back to GitHub backend");
                 self.check_and_update_github().await
             }
+            Err(error) => Ok(UpdateStatus::Failed(format!(
+                "R2 update check failed and GitHub fallback is disabled: {error}"
+            ))),
             Ok(UpdateStatus::Available {
                 current_version,
                 latest_version,
@@ -1439,10 +1460,13 @@ impl TerraphimUpdater {
                 );
                 match self.update_r2().await {
                     Ok(status) => Ok(status),
-                    Err(e) => {
+                    Err(e) if self.config.github_fallback => {
                         warn!("R2 install failed ({e}); falling back to GitHub backend");
                         self.update_github().await
                     }
+                    Err(error) => Ok(UpdateStatus::Failed(format!(
+                        "R2 update failed and GitHub fallback is disabled: {error}"
+                    ))),
                 }
             }
             Ok(status) => Ok(status),
@@ -1884,6 +1908,7 @@ mod tests {
         // Regression guard: releases live on terraphim-clients, not terraphim-ai.
         assert_eq!(config.repo_name, "terraphim-clients");
         assert_eq!(config.backend, UpdateBackend::R2);
+        assert!(config.github_fallback);
         assert_eq!(config.manifest.base_url, "https://downloads.terraphim.ai");
         assert_eq!(config.auth_token, github_token_from_env());
     }

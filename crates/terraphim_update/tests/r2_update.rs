@@ -18,16 +18,20 @@ use terraphim_update::{
 /// Serves any number of requests until the test ends (thread is detached).
 struct MultiPathServer {
     addr: String,
+    requests: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
 }
 
 impl MultiPathServer {
     fn new(routes: std::collections::HashMap<String, (u16, Vec<u8>, String)>) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
         let addr = listener.local_addr().expect("addr").to_string();
+        let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let recorded_requests = requests.clone();
         thread::spawn(move || {
             for stream in listener.incoming() {
                 let Ok(mut stream) = stream else { break };
                 let routes = routes.clone();
+                let recorded_requests = recorded_requests.clone();
                 thread::spawn(move || {
                     let mut buf = [0u8; 4096];
                     let _ = stream.read(&mut buf);
@@ -38,6 +42,7 @@ impl MultiPathServer {
                         .next()
                         .and_then(|l| l.split_whitespace().nth(1))
                         .unwrap_or("/");
+                    recorded_requests.lock().unwrap().push(path.to_string());
                     let (status, body, ct) = routes.get(path).cloned().unwrap_or((
                         404,
                         b"Not Found".to_vec(),
@@ -61,7 +66,11 @@ impl MultiPathServer {
                 });
             }
         });
-        Self { addr }
+        Self { addr, requests }
+    }
+
+    fn request_count(&self) -> usize {
+        self.requests.lock().unwrap().len()
     }
 }
 
@@ -119,6 +128,25 @@ fn r2_config_for(bin: &str, base_url: String, current_version: &str) -> UpdaterC
         .with_backend(UpdateBackend::R2)
         .with_manifest_base_url(base_url)
         .with_progress(false)
+        .with_policy(terraphim_update::policy::UpdatePolicy::SelfManaged)
+}
+
+fn fallback_config(r2: &MultiPathServer, github: &MultiPathServer) -> UpdaterConfig {
+    r2_config(format!("http://{}", r2.addr), "1.0.0")
+        .with_github_api_url(format!("http://{}", github.addr))
+}
+
+fn github_release_routes() -> std::collections::HashMap<String, (u16, Vec<u8>, String)> {
+    let mut routes = std::collections::HashMap::new();
+    routes.insert(
+        "/repos/terraphim/terraphim-clients/releases/latest".to_string(),
+        (
+            200,
+            br#"{"tag_name":"v1.0.0","name":"v1.0.0","created_at":"2026-10-04T22:20:41Z","assets":[]}"#.to_vec(),
+            "application/json".to_string(),
+        ),
+    );
+    routes
 }
 
 /// Where install_verified_archive will write: current_exe().parent().
@@ -128,6 +156,47 @@ fn install_dir() -> std::path::PathBuf {
         .parent()
         .unwrap()
         .to_path_buf()
+}
+
+#[tokio::test]
+async fn default_fallback_contacts_github_after_r2_check_failure() {
+    let r2 = MultiPathServer::new(std::collections::HashMap::new());
+    let github = MultiPathServer::new(github_release_routes());
+    let updater = TerraphimUpdater::new(fallback_config(&r2, &github));
+
+    let status = updater.check_update().await.expect("fallback result");
+
+    assert!(matches!(status, UpdateStatus::UpToDate(_)), "{status:?}");
+    assert!(r2.request_count() >= 1);
+    assert_eq!(github.request_count(), 1);
+}
+
+#[tokio::test]
+async fn disabled_fallback_makes_zero_github_requests_for_public_paths() {
+    async fn assert_failed_without_github(
+        operation: impl std::future::Future<Output = anyhow::Result<UpdateStatus>>,
+        github: &MultiPathServer,
+    ) {
+        let status = operation.await.expect("fail-closed status");
+        assert!(
+            matches!(&status, UpdateStatus::Failed(message) if message.contains("fallback is disabled")),
+            "{status:?}"
+        );
+        assert_eq!(github.request_count(), 0);
+    }
+
+    let r2 = MultiPathServer::new(std::collections::HashMap::new());
+    let github = MultiPathServer::new(github_release_routes());
+    let config = fallback_config(&r2, &github).with_github_fallback(false);
+
+    assert_failed_without_github(
+        TerraphimUpdater::new(config.clone()).check_update(),
+        &github,
+    )
+    .await;
+    assert_failed_without_github(TerraphimUpdater::new(config.clone()).update(), &github).await;
+    assert_failed_without_github(TerraphimUpdater::new(config).check_and_update(), &github).await;
+    assert!(r2.request_count() >= 3);
 }
 
 #[tokio::test]
