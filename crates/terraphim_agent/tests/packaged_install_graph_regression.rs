@@ -51,6 +51,17 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
+/// Allocate an isolated nested-Cargo target below Cargo's integration-test
+/// scratch directory. CARGO_TARGET_TMPDIR is inside the effective workspace
+/// target, so mbx still accounts for these potentially large build artefacts.
+fn managed_nested_target(name: &str) -> PathBuf {
+    let path = Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join("packaged-install-graph-regression")
+        .join(name);
+    fs::create_dir_all(&path).expect("create managed nested Cargo target");
+    path
+}
+
 /// Resolve the terraphim_agent package version, expanding `version.workspace`.
 fn agent_version(root: &Path) -> Version {
     let manifest = fs::read_to_string(root.join("crates/terraphim_agent/Cargo.toml"))
@@ -160,7 +171,7 @@ fn packaged_dep_registry(manifest: &str, dep: &str) -> String {
 fn packaged_agent_install_graph_uses_canonical_sparse_index() {
     let root = workspace_root();
     let version = agent_version(&root);
-    let package_target = TempDir::new().expect("create isolated cargo package target");
+    let package_target = managed_nested_target("package");
 
     // 1. Build the actual publish artifact. This regenerates the packaged
     //    Cargo.lock against the registries exactly like `cargo publish` does.
@@ -174,7 +185,7 @@ fn packaged_agent_install_graph_uses_canonical_sparse_index() {
             "--allow-dirty",
             "--no-verify",
         ])
-        .env("CARGO_TARGET_DIR", package_target.path())
+        .env("CARGO_TARGET_DIR", &package_target)
         .current_dir(&root)
         .status()
         .expect("spawn cargo package");
@@ -183,9 +194,7 @@ fn packaged_agent_install_graph_uses_canonical_sparse_index() {
         "cargo package must succeed: the published install graph has to resolve (#95)"
     );
 
-    let crate_file = package_target
-        .path()
-        .join(format!("package/terraphim_agent-{version}.crate"));
+    let crate_file = package_target.join(format!("package/terraphim_agent-{version}.crate"));
     assert!(crate_file.exists(), "packaged .crate must exist");
 
     // 2. Unpack the artifact into a TempDir that cleans itself up on drop,
@@ -262,21 +271,21 @@ fn packaged_agent_install_graph_uses_canonical_sparse_index() {
     );
 
     // 6. End-to-end proof: a real `cargo install --path --debug` against the
-    //    unpacked packaged crate, using a fresh CARGO_TARGET_DIR for compile
-    //    isolation and a fresh --root TempDir so the test does not mutate the
-    //    user's cargo home. Debug mode compiles the same locked dependency
-    //    graph without making this release-safety regression pay for a full
-    //    optimized build; the post-publication Guardian runs the exact default
-    //    release-profile registry install. Run cargo from the workspace root
-    //    so .cargo/config.toml supplies the named `terraphim` registry.
-    let install_target = TempDir::new().expect("create isolated cargo install target");
+    //    unpacked packaged crate, using a fresh managed target subdirectory for
+    //    compile isolation and a fresh --root TempDir so the test does not
+    //    mutate the user's cargo home. Debug mode compiles the same locked
+    //    dependency graph without making this release-safety regression pay for
+    //    a full optimized build; the post-publication Guardian runs the exact
+    //    default release-profile registry install. Run cargo from the workspace
+    //    root so .cargo/config.toml supplies the named `terraphim` registry.
+    let install_target = managed_nested_target("install");
     let install_root = TempDir::new().expect("create fresh install --root");
     let install_output = Command::new(env!("CARGO"))
         .args(["install", "--path"])
         .arg(&pkg_dir)
         .args(["--locked", "--debug", "--root"])
         .arg(install_root.path())
-        .env("CARGO_TARGET_DIR", install_target.path())
+        .env("CARGO_TARGET_DIR", &install_target)
         .current_dir(&root)
         .output()
         .expect("spawn cargo install --path");
