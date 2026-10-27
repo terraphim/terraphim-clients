@@ -858,3 +858,36 @@ fn native_ci_disables_shared_compiler_wrappers() {
         "native workflow unexpectedly lost Cargo checks"
     );
 }
+
+/// The native lane must run the scoped server cleanup even after a failed test.
+#[test]
+fn native_ci_always_cleans_checkout_servers_by_verified_pid() {
+    let root = workspace_root();
+    let workflow = std::fs::read_to_string(root.join(".gitea/workflows/native-ci.yml"))
+        .expect("read native workflow");
+    assert!(
+        workflow.contains(
+            "- name: Stop checkout terraphim_server processes\n        if: always()\n        run: bash ./scripts/ci/cleanup_terraphim_servers.sh"
+        ),
+        "native CI must always invoke the checkout-scoped server cleanup"
+    );
+
+    let script = std::fs::read_to_string(root.join("scripts/ci/cleanup_terraphim_servers.sh"))
+        .expect("read server cleanup script");
+    for required in [
+        "/proc/[0-9]*",
+        "/exe",
+        "/cwd",
+        "kill -TERM \"$pid\"",
+        "kill -KILL \"$pid\"",
+    ] {
+        assert!(
+            script.contains(required),
+            "server cleanup must contain {required:?}"
+        );
+    }
+    assert!(
+        !script.contains("pkill"),
+        "server cleanup must signal verified PIDs, never process-name patterns"
+    );
+}
