@@ -8,11 +8,15 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 - **R2 manifest backend** (`manifest` module): storage-agnostic distribution via
-  a per-binary `stable.json` on `downloads.terraphim.ai` (Cloudflare R2). No
-  GitHub API, no embedded secrets, no per-IP rate limit.
+  a strict per-binary `stable-v2.json` on `downloads.terraphim.ai` (Cloudflare
+  R2). No GitHub API, no embedded secrets, no per-IP rate limit.
 - `UpdateBackend` selector (`R2` default, `GitHub` fallback). `TerraphimUpdater`
   dispatches `check_update` / `update` / `check_and_update` by backend; R2
   transport failures transparently fall back to the GitHub backend.
+- Package-manager receipt detection and fail-closed update guards for every
+  public check and installation path.
+- Strict R2 asset size and SHA-256 verification before signature verification
+  and installation.
 - `UpdaterConfig::with_backend`, `with_manifest_base_url`, `with_auth_token`
   builders. Runtime env overrides: `TERRAPHIM_UPDATE_BACKEND` (`r2`|`github`)
   and `TERRAPHIM_UPDATE_BASE_URL`.

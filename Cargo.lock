@@ -6708,7 +6708,7 @@ dependencies = [
 
 [[package]]
 name = "terraphim_negative_contribution"
-version = "1.21.16"
+version = "0.1.1"
 dependencies = [
  "log",
  "terraphim_automata",
@@ -6958,7 +6958,7 @@ dependencies = [
 
 [[package]]
 name = "terraphim_update"
-version = "1.20.2"
+version = "1.23.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
