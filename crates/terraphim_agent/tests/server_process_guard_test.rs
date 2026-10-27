@@ -1,5 +1,7 @@
 //! Regression tests for the real server process lifetime guard.
 
+#![cfg(target_os = "linux")]
+
 use serial_test::serial;
 use std::path::{Path, PathBuf};
 use std::process::Command;

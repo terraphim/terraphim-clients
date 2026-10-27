@@ -14,8 +14,12 @@
 //! `cargo package` this way. Refs #118.
 
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
+#[cfg(target_os = "linux")]
+use std::process::Child;
+use std::process::Command;
+#[cfg(target_os = "linux")]
 use std::thread;
+#[cfg(target_os = "linux")]
 use std::time::{Duration, Instant};
 
 fn workspace_root() -> PathBuf {
@@ -851,8 +855,24 @@ fn native_ci_disables_shared_compiler_wrappers() {
     );
 }
 
+/// The native lane must run the scoped server cleanup even after a failed test.
+#[test]
+fn native_ci_cleanup_step_is_always_run() {
+    let root = workspace_root();
+    let workflow = std::fs::read_to_string(root.join(".gitea/workflows/native-ci.yml"))
+        .expect("read native workflow");
+    assert!(
+        workflow.contains(
+            "- name: Stop checkout terraphim_server processes\n        if: always()\n        run: bash ./scripts/ci/cleanup_terraphim_servers.sh"
+        ),
+        "native CI must always invoke the checkout-scoped server cleanup"
+    );
+}
+
+#[cfg(target_os = "linux")]
 struct TestProcess(Child);
 
+#[cfg(target_os = "linux")]
 impl TestProcess {
     fn spawn(binary: &Path, cwd: &Path, script: &str) -> Self {
         Self(
@@ -884,6 +904,7 @@ impl TestProcess {
     }
 }
 
+#[cfg(target_os = "linux")]
 impl Drop for TestProcess {
     fn drop(&mut self) {
         if self.is_running() {
@@ -893,6 +914,7 @@ impl Drop for TestProcess {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn copy_test_server(source: &Path, destination: &Path) {
     // Copy in a separate process so the multithreaded test runner cannot
     // inherit the destination's writable descriptor while forking another
@@ -910,18 +932,11 @@ fn copy_test_server(source: &Path, destination: &Path) {
         .expect("sync copied executable");
 }
 
-/// The native lane must run the scoped server cleanup even after a failed test.
+/// Linux regression coverage for checkout-scoped process identity checks.
 #[test]
-fn native_ci_always_cleans_checkout_servers_by_verified_pid() {
+#[cfg(target_os = "linux")]
+fn cleanup_script_only_signals_verified_checkout_processes() {
     let root = workspace_root();
-    let workflow = std::fs::read_to_string(root.join(".gitea/workflows/native-ci.yml"))
-        .expect("read native workflow");
-    assert!(
-        workflow.contains(
-            "- name: Stop checkout terraphim_server processes\n        if: always()\n        run: bash ./scripts/ci/cleanup_terraphim_servers.sh"
-        ),
-        "native CI must always invoke the checkout-scoped server cleanup"
-    );
 
     let temp = tempfile::tempdir().expect("create cleanup test directory");
     let checkout = temp.path().join("checkout");
