@@ -51,15 +51,38 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
-/// Allocate an isolated nested-Cargo target below Cargo's integration-test
+/// Allocate a unique nested-Cargo target below Cargo's integration-test
 /// scratch directory. CARGO_TARGET_TMPDIR is inside the effective workspace
 /// target, so mbx still accounts for these potentially large build artefacts.
-fn managed_nested_target(name: &str) -> PathBuf {
-    let path = Path::new(env!("CARGO_TARGET_TMPDIR"))
-        .join("packaged-install-graph-regression")
-        .join(name);
-    fs::create_dir_all(&path).expect("create managed nested Cargo target");
-    path
+/// The TempDir must remain alive for the nested Cargo operation.
+fn managed_nested_target(name: &str) -> TempDir {
+    tempfile::Builder::new()
+        .prefix(&format!("packaged-install-graph-regression-{name}-"))
+        .tempdir_in(env!("CARGO_TARGET_TMPDIR"))
+        .expect("create managed nested Cargo target")
+}
+
+#[test]
+fn managed_nested_targets_are_unique_and_cleaned_up() {
+    let managed_root = Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let first_path;
+
+    {
+        let first = managed_nested_target("freshness-check");
+        let second = managed_nested_target("freshness-check");
+        first_path = first.path().to_path_buf();
+
+        assert_ne!(first.path(), second.path(), "nested targets must be unique");
+        assert!(first.path().starts_with(managed_root));
+        assert!(second.path().starts_with(managed_root));
+        assert!(first.path().is_dir());
+        assert!(second.path().is_dir());
+    }
+
+    assert!(
+        !first_path.exists(),
+        "managed nested target must be removed when its operation ends"
+    );
 }
 
 /// Resolve the terraphim_agent package version, expanding `version.workspace`.
@@ -185,7 +208,7 @@ fn packaged_agent_install_graph_uses_canonical_sparse_index() {
             "--allow-dirty",
             "--no-verify",
         ])
-        .env("CARGO_TARGET_DIR", &package_target)
+        .env("CARGO_TARGET_DIR", package_target.path())
         .current_dir(&root)
         .status()
         .expect("spawn cargo package");
@@ -194,7 +217,9 @@ fn packaged_agent_install_graph_uses_canonical_sparse_index() {
         "cargo package must succeed: the published install graph has to resolve (#95)"
     );
 
-    let crate_file = package_target.join(format!("package/terraphim_agent-{version}.crate"));
+    let crate_file = package_target
+        .path()
+        .join(format!("package/terraphim_agent-{version}.crate"));
     assert!(crate_file.exists(), "packaged .crate must exist");
 
     // 2. Unpack the artifact into a TempDir that cleans itself up on drop,
@@ -285,7 +310,7 @@ fn packaged_agent_install_graph_uses_canonical_sparse_index() {
         .arg(&pkg_dir)
         .args(["--locked", "--debug", "--root"])
         .arg(install_root.path())
-        .env("CARGO_TARGET_DIR", &install_target)
+        .env("CARGO_TARGET_DIR", install_target.path())
         .current_dir(&root)
         .output()
         .expect("spawn cargo install --path");
