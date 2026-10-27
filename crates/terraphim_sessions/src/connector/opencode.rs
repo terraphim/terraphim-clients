@@ -103,9 +103,17 @@ impl OpenCodeConnector {
 
     #[cfg(feature = "opencode-connector")]
     async fn import_sqlite(&self, db_path: &Path, options: &ImportOptions) -> Result<Vec<Session>> {
-        use std::collections::BTreeMap;
+        use std::collections::{BTreeMap, HashMap};
 
         use rusqlite::Connection;
+
+        struct PendingMessage {
+            role: MessageRole,
+            created_at: Option<jiff::Timestamp>,
+            parts: Vec<String>,
+        }
+
+        type PendingSession = (Session, Vec<PendingMessage>, HashMap<String, usize>);
 
         let uri = format!("file:{}?mode=ro", db_path.display());
         let connection = Connection::open_with_flags(
@@ -145,8 +153,7 @@ impl OpenCodeConnector {
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
 
-        type Messages = BTreeMap<String, (MessageRole, Vec<String>)>;
-        let mut session_map: BTreeMap<String, (Session, Messages)> = BTreeMap::new();
+        let mut session_map: BTreeMap<String, PendingSession> = BTreeMap::new();
 
         for (
             session_id,
@@ -191,58 +198,73 @@ impl OpenCodeConnector {
             }
 
             let timestamp = jiff::Timestamp::from_second(message_created / 1000).ok();
-            let (_, messages) = session_map.entry(session_id.clone()).or_insert_with(|| {
-                let mut extra = serde_json::Map::new();
-                if let Some(cost) = cost {
-                    extra.insert("cost".into(), serde_json::json!(cost));
-                }
-                if let Some(tokens_input) = tokens_input {
-                    extra.insert("tokens_input".into(), serde_json::json!(tokens_input));
-                }
-                if let Some(tokens_output) = tokens_output {
-                    extra.insert("tokens_output".into(), serde_json::json!(tokens_output));
-                }
-                (
-                    Session {
-                        id: format!("opencode:{session_id}"),
-                        source: "opencode".into(),
-                        external_id: session_id,
-                        title,
-                        source_path: db_path.to_path_buf(),
-                        started_at: timestamp,
-                        ended_at: timestamp,
-                        messages: Vec::new(),
-                        metadata: SessionMetadata::new(
-                            directory,
-                            model,
-                            vec!["opencode".into()],
-                            serde_json::Value::Object(extra),
-                        ),
-                    },
-                    BTreeMap::new(),
-                )
+            let (_, messages, message_indices) =
+                session_map.entry(session_id.clone()).or_insert_with(|| {
+                    let mut extra = serde_json::Map::new();
+                    if let Some(cost) = cost {
+                        extra.insert("cost".into(), serde_json::json!(cost));
+                    }
+                    if let Some(tokens_input) = tokens_input {
+                        extra.insert("tokens_input".into(), serde_json::json!(tokens_input));
+                    }
+                    if let Some(tokens_output) = tokens_output {
+                        extra.insert("tokens_output".into(), serde_json::json!(tokens_output));
+                    }
+                    (
+                        Session {
+                            id: format!("opencode:{session_id}"),
+                            source: "opencode".into(),
+                            external_id: session_id,
+                            title,
+                            source_path: db_path.to_path_buf(),
+                            started_at: timestamp,
+                            ended_at: timestamp,
+                            messages: Vec::new(),
+                            metadata: SessionMetadata::new(
+                                directory,
+                                model,
+                                vec!["opencode".into()],
+                                serde_json::Value::Object(extra),
+                            ),
+                        },
+                        Vec::new(),
+                        HashMap::new(),
+                    )
+                });
+            let message_index = *message_indices.entry(message_id).or_insert_with(|| {
+                let index = messages.len();
+                messages.push(PendingMessage {
+                    role,
+                    created_at: timestamp,
+                    parts: Vec::new(),
+                });
+                index
             });
-            messages
-                .entry(message_id)
-                .or_insert_with(|| (role, Vec::new()))
-                .1
-                .push(text);
+            messages[message_index].parts.push(text);
         }
 
         let mut sessions = Vec::new();
-        for (_, (mut session, messages)) in session_map {
-            for (idx, (_, (role, text_parts))) in messages.into_iter().enumerate() {
-                let content = text_parts.join("\n");
+        for (_, (mut session, messages, _)) in session_map {
+            for (idx, message) in messages.into_iter().enumerate() {
+                let content = message.parts.join("\n");
                 session.messages.push(Message {
                     idx,
-                    role,
+                    role: message.role,
                     author: None,
                     content: content.clone(),
                     blocks: vec![ContentBlock::Text { text: content }],
-                    created_at: None,
+                    created_at: message.created_at,
                     extra: serde_json::Value::Null,
                 });
             }
+            session.started_at = session
+                .messages
+                .first()
+                .and_then(|message| message.created_at);
+            session.ended_at = session
+                .messages
+                .last()
+                .and_then(|message| message.created_at);
             if !session.messages.is_empty() {
                 sessions.push(session);
                 if options
@@ -427,6 +449,62 @@ mod tests {
 
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].messages.len(), 2);
+    }
+
+    #[cfg(feature = "opencode-connector")]
+    #[tokio::test]
+    async fn test_import_sqlite_preserves_chronological_message_order() {
+        use rusqlite::Connection;
+
+        let dir = tempfile::tempdir().unwrap();
+        let database = dir.path().join("opencode.db");
+        let connection = Connection::open(&database).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE session (
+                    id TEXT PRIMARY KEY, title TEXT, directory TEXT,
+                    time_created INTEGER, model TEXT, cost REAL,
+                    tokens_input INTEGER, tokens_output INTEGER
+                );
+                CREATE TABLE message (
+                    id TEXT PRIMARY KEY, session_id TEXT NOT NULL,
+                    time_created INTEGER NOT NULL, data TEXT NOT NULL
+                );
+                CREATE TABLE part (
+                    id TEXT PRIMARY KEY, message_id TEXT NOT NULL,
+                    time_created INTEGER NOT NULL, data TEXT NOT NULL
+                );
+                INSERT INTO session VALUES
+                    ('s1', 'Ordered', NULL, NULL, NULL, NULL, NULL, NULL);
+                INSERT INTO message VALUES
+                    ('z-first', 's1', 1000, '{\"role\":\"user\"}'),
+                    ('a-second', 's1', 3000, '{\"role\":\"assistant\"}');
+                INSERT INTO part VALUES
+                    ('p1', 'z-first', 1000, '{\"type\":\"text\",\"text\":\"first part\"}'),
+                    ('p2', 'z-first', 2000, '{\"type\":\"text\",\"text\":\"continued\"}'),
+                    ('p3', 'a-second', 3000, '{\"type\":\"text\",\"text\":\"second\"}');",
+            )
+            .unwrap();
+        drop(connection);
+
+        let sessions = OpenCodeConnector
+            .import_sqlite(&database, &ImportOptions::default())
+            .await
+            .unwrap();
+
+        let session = &sessions[0];
+        assert_eq!(session.messages[0].content, "first part\ncontinued");
+        assert_eq!(session.messages[1].content, "second");
+        assert_eq!(
+            session.messages[0].created_at,
+            jiff::Timestamp::from_second(1).ok()
+        );
+        assert_eq!(
+            session.messages[1].created_at,
+            jiff::Timestamp::from_second(3).ok()
+        );
+        assert_eq!(session.started_at, session.messages[0].created_at);
+        assert_eq!(session.ended_at, session.messages[1].created_at);
     }
 
     #[cfg(feature = "opencode-connector")]
