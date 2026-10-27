@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 
 use anyhow::Result;
@@ -11,6 +11,7 @@ use std::time::Duration;
 
 mod support;
 use support::cli_test_env::apply_hermetic_env;
+use support::server_process::ServerProcessGuard;
 
 /// Cache the path to the pre-built terraphim-agent binary. We build it ONCE
 /// per `cargo test` invocation (with the `server` feature enabled) and then
@@ -78,7 +79,7 @@ fn get_workspace_root() -> Result<PathBuf> {
 }
 
 /// Test helper to start a real terraphim server
-async fn start_test_server() -> Result<(Child, String)> {
+async fn start_test_server() -> Result<(ServerProcessGuard, String)> {
     let port = portpicker::pick_unused_port().expect("Failed to find unused port");
     let server_url = format!("http://localhost:{}", port);
 
@@ -106,7 +107,7 @@ async fn start_test_server() -> Result<(Child, String)> {
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
     apply_hermetic_env(&mut server_cmd)?;
-    let mut server = server_cmd.spawn()?;
+    let mut server = ServerProcessGuard::spawn(&mut server_cmd)?;
 
     // Wait for server to be ready
     let client = reqwest::Client::new();
@@ -138,7 +139,6 @@ async fn start_test_server() -> Result<(Child, String)> {
         }
     }
 
-    let _ = server.kill();
     Err(anyhow::anyhow!(
         "Server failed to become ready within 120 seconds"
     ))
@@ -342,7 +342,7 @@ async fn test_end_to_end_offline_workflow() -> Result<()> {
 async fn test_end_to_end_server_workflow() -> Result<()> {
     println!("=== Testing Complete Server Workflow ===");
 
-    let (mut server, server_url) = start_test_server().await?;
+    let (server, server_url) = start_test_server().await?;
 
     // Give server time to initialize
     thread::sleep(Duration::from_secs(3));
@@ -549,8 +549,7 @@ async fn test_end_to_end_server_workflow() -> Result<()> {
     println!("✓ Server role selection completed");
 
     // Cleanup
-    let _ = server.kill();
-    let _ = server.wait();
+    drop(server);
 
     println!("=== Server Workflow Complete ===");
 
@@ -563,7 +562,7 @@ async fn test_offline_vs_server_mode_comparison() -> Result<()> {
     cleanup_test_files()?;
     println!("=== Comparing Offline vs Server Modes ===");
 
-    let (mut server, server_url) = start_test_server().await?;
+    let (server, server_url) = start_test_server().await?;
     thread::sleep(Duration::from_secs(2));
 
     // Test the same commands in both modes and compare behavior
@@ -635,8 +634,7 @@ async fn test_offline_vs_server_mode_comparison() -> Result<()> {
     }
 
     // Cleanup
-    let _ = server.kill();
-    let _ = server.wait();
+    drop(server);
 
     println!("=== Mode Comparison Complete ===");
 
@@ -836,7 +834,7 @@ async fn test_full_feature_matrix() -> Result<()> {
     }
 
     // Test server mode if available
-    if let Some((mut server, server_url)) = server_info {
+    if let Some((server, server_url)) = server_info {
         thread::sleep(Duration::from_secs(2));
         println!("Testing mode: server");
 
@@ -889,8 +887,7 @@ async fn test_full_feature_matrix() -> Result<()> {
         }
 
         // Cleanup server
-        let _ = server.kill();
-        let _ = server.wait();
+        drop(server);
     }
 
     println!("=== Full Feature Matrix Test Complete ===");

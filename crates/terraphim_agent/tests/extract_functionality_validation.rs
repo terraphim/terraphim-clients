@@ -4,9 +4,11 @@
 
 use anyhow::Result;
 use serial_test::serial;
-use std::process::{Child, Command, Output};
-use std::sync::{Mutex, OnceLock};
+use std::process::{Command, Output};
 use std::time::Duration;
+
+mod support;
+use support::server_process::ServerProcessGuard;
 
 /// Run a command with a timeout, killing the child if it exceeds the deadline.
 fn run_command_with_timeout(cmd: &mut Command, timeout: Duration) -> Result<Output> {
@@ -41,10 +43,8 @@ fn run_command_with_timeout(cmd: &mut Command, timeout: Duration) -> Result<Outp
 mod binary;
 use binary::{agent_binary, server_binary};
 
-static SERVER_PORT: OnceLock<u16> = OnceLock::new();
-static SERVER_CHILD: Mutex<Option<Child>> = Mutex::new(None);
 /// Start the terraphim server for tests on a random available port
-fn start_test_server() -> Result<(Child, u16)> {
+fn start_test_server() -> Result<(ServerProcessGuard, u16)> {
     let port = find_available_port()?;
 
     println!("Starting test server on port {}...", port);
@@ -55,7 +55,7 @@ fn start_test_server() -> Result<(Child, u16)> {
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
 
-    let child = cmd.spawn()?;
+    let child = ServerProcessGuard::spawn(&mut cmd)?;
 
     let client = reqwest::blocking::Client::new();
     let health_url = format!("http://127.0.0.1:{}/health", port);
@@ -91,23 +91,9 @@ fn find_available_port() -> Result<u16> {
     Ok(port)
 }
 
-/// Initialize server once for all tests
-fn ensure_server_running() -> Result<u16> {
-    if let Some(&port) = SERVER_PORT.get() {
-        return Ok(port);
-    }
-
-    match start_test_server() {
-        Ok((child, port)) => {
-            *SERVER_CHILD.lock().unwrap() = Some(child);
-            let _ = SERVER_PORT.set(port);
-            Ok(port)
-        }
-        Err(e) => {
-            eprintln!("Failed to start test server: {}", e);
-            Err(e)
-        }
-    }
+/// Start a server owned by the calling test.
+fn ensure_server_running() -> Result<(ServerProcessGuard, u16)> {
+    start_test_server()
 }
 
 /// Detect if running in CI environment (GitHub Actions, Docker containers in CI, etc.)
@@ -182,14 +168,7 @@ fn test_extract_basic_functionality_validation() -> Result<()> {
     println!("Validating extract basic functionality");
 
     // Try to start server, but don't fail if it doesn't work
-    let port = match ensure_server_running() {
-        Ok(p) => p,
-        Err(e) => {
-            println!("Warning: Could not start test server: {}", e);
-            println!("Skipping test - server unavailable");
-            return Ok(());
-        }
-    };
+    let (_server, port) = ensure_server_running()?;
 
     // Test with simple text first
     let simple_text = "This is a test paragraph.";
@@ -235,14 +214,7 @@ fn test_extract_matching_capability() -> Result<()> {
     println!("Testing extract matching capability with various inputs");
 
     // Try to start server, but don't fail if it doesn't work
-    let port = match ensure_server_running() {
-        Ok(p) => p,
-        Err(e) => {
-            println!("Warning: Could not start test server: {}", e);
-            println!("Skipping test - server unavailable");
-            return Ok(());
-        }
-    };
+    let (_server, port) = ensure_server_running()?;
 
     let long_content = format!(
         "{} {} {}",
@@ -398,14 +370,7 @@ fn test_extract_with_known_technical_terms() -> Result<()> {
     println!("Testing extract with well-known technical terms");
 
     // Try to start server, but don't fail if it doesn't work
-    let port = match ensure_server_running() {
-        Ok(p) => p,
-        Err(e) => {
-            println!("Warning: Could not start test server: {}", e);
-            println!("Skipping test - server unavailable");
-            return Ok(());
-        }
-    };
+    let (_server, port) = ensure_server_running()?;
 
     // These are terms that are very likely to appear in any technical thesaurus
     let known_terms = vec![
