@@ -6356,13 +6356,14 @@ dependencies = [
 
 [[package]]
 name = "terraphim-session-analyzer"
-version = "1.21.16"
+version = "1.23.0"
+source = "sparse+https://git.terraphim.cloud/api/packages/terraphim/cargo/"
+checksum = "7364bd0115288887c3993140cac8e90b7de5759874446f788fdf654af021b9eb"
 dependencies = [
  "aho-corasick",
  "anyhow",
  "clap",
  "colored 2.2.0",
- "criterion",
  "csv",
  "dialoguer",
  "glob",
@@ -6370,11 +6371,9 @@ dependencies = [
  "home",
  "indexmap 2.14.0",
  "indicatif 0.18.4",
- "insta",
  "jiff",
  "lazy_static",
  "libc",
- "proptest",
  "rayon",
  "regex",
  "rusqlite",
@@ -6382,10 +6381,6 @@ dependencies = [
  "serde_json",
  "shell-words",
  "tabled",
- "tempfile",
- "terraphim_automata",
- "terraphim_config",
- "terraphim_types",
  "thiserror 1.0.69",
  "toml 0.8.23",
  "tracing",
