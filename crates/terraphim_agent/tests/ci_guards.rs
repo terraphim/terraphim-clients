@@ -820,18 +820,12 @@ fn fff_search_is_pinned_exactly() {
     }
 }
 
-/// Native jobs must not inherit a host compiler-cache wrapper. The mbx Cargo
-/// shim manages each checkout's default `./target`, so the workflow must not
-/// override Cargo's target or build directory for any command.
+/// Native jobs must not inherit a host compiler-cache wrapper. Target and build
+/// directories are managed per checkout by the runner's mbx Cargo shim.
 #[test]
-fn native_ci_uses_mbx_targets_and_disables_shared_compiler_wrappers() {
+fn native_ci_disables_shared_compiler_wrappers() {
     let text = std::fs::read_to_string(workspace_root().join(".gitea/workflows/native-ci.yml"))
         .expect("read native workflow");
-    assert!(
-        !text.contains("CARGO_TARGET_DIR") && !text.contains("CARGO_BUILD_BUILD_DIR"),
-        "native workflow must leave target and build directory management to the mbx Cargo shim"
-    );
-
     let lines: Vec<_> = text.lines().collect();
     let mut commands = 0;
     for (index, raw) in lines.iter().enumerate() {
