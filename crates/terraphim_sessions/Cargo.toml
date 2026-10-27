@@ -1,8 +1,8 @@
 [package]
 name = "terraphim_sessions"
-# Pinned ahead of the workspace (1.21.1): #95 requires the 1.21.2 release
+# Pinned ahead of the workspace: #411 requires the 1.23.0 release
 # on the terraphim registry, which is what terraphim_agent depends on.
-version = "1.21.2"
+version = "1.23.0"
 edition.workspace = true
 description = "Session management for AI coding assistant history - search across Claude Code, Cursor, Aider sessions"
 license = "Apache-2.0"
@@ -29,7 +29,7 @@ aider-connector = ["dep:terraphim-markdown-parser"]
 cline-connector = []
 
 # Enable OpenCode session connector
-opencode-connector = []
+opencode-connector = ["dep:rusqlite"]
 
 # Enable Codex (OpenAI) session connector
 codex-connector = []
