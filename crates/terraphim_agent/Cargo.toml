@@ -58,7 +58,7 @@ log = { workspace = true }
 env_logger = "0.11"
 urlencoding = { version = "2.1", optional = true }
 ahash = "0.8"
-terraphim_update = { path = "../terraphim_update", version = "1.20.2", registry = "terraphim" }
+terraphim_update = { path = "../terraphim_update", version = "1.23.0", registry = "terraphim" }
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 regex = "1.12"
 glob = "0.3"
