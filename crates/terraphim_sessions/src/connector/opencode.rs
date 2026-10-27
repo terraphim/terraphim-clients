@@ -103,6 +103,15 @@ impl OpenCodeConnector {
 
     #[cfg(feature = "opencode-connector")]
     async fn import_sqlite(&self, db_path: &Path, options: &ImportOptions) -> Result<Vec<Session>> {
+        let db_path = db_path.to_path_buf();
+        let limit = options.limit;
+        tokio::task::spawn_blocking(move || Self::import_sqlite_sync(&db_path, limit))
+            .await
+            .context("OpenCode SQLite import task failed")?
+    }
+
+    #[cfg(feature = "opencode-connector")]
+    fn import_sqlite_sync(db_path: &Path, limit: Option<usize>) -> Result<Vec<Session>> {
         use std::collections::{BTreeMap, HashMap};
 
         use rusqlite::Connection;
@@ -267,10 +276,7 @@ impl OpenCodeConnector {
                 .and_then(|message| message.created_at);
             if !session.messages.is_empty() {
                 sessions.push(session);
-                if options
-                    .limit
-                    .is_some_and(|limit| limit > 0 && sessions.len() >= limit)
-                {
+                if limit.is_some_and(|limit| limit > 0 && sessions.len() >= limit) {
                     break;
                 }
             }
@@ -449,6 +455,48 @@ mod tests {
 
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].messages.len(), 2);
+    }
+
+    #[cfg(feature = "opencode-connector")]
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_import_sqlite_runs_on_blocking_pool() {
+        use rusqlite::Connection;
+
+        let dir = tempfile::tempdir().unwrap();
+        let database = dir.path().join("opencode.db");
+        let connection = Connection::open(&database).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE session (
+                    id TEXT PRIMARY KEY, title TEXT, directory TEXT,
+                    time_created INTEGER, model TEXT, cost REAL,
+                    tokens_input INTEGER, tokens_output INTEGER
+                );
+                CREATE TABLE message (
+                    id TEXT PRIMARY KEY, session_id TEXT NOT NULL,
+                    time_created INTEGER NOT NULL, data TEXT NOT NULL
+                );
+                CREATE TABLE part (
+                    id TEXT PRIMARY KEY, message_id TEXT NOT NULL,
+                    time_created INTEGER NOT NULL, data TEXT NOT NULL
+                );
+                INSERT INTO session VALUES
+                    ('s1', 'Blocking pool', NULL, NULL, NULL, NULL, NULL, NULL);
+                INSERT INTO message VALUES
+                    ('m1', 's1', 1000, '{\"role\":\"user\"}');
+                INSERT INTO part VALUES
+                    ('p1', 'm1', 1000, '{\"type\":\"text\",\"text\":\"question\"}');",
+            )
+            .unwrap();
+        drop(connection);
+
+        let sessions = OpenCodeConnector
+            .import_sqlite(&database, &ImportOptions::default())
+            .await
+            .unwrap();
+
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].messages[0].content, "question");
     }
 
     #[cfg(feature = "opencode-connector")]
