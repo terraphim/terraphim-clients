@@ -820,16 +820,171 @@ fn fff_search_is_pinned_exactly() {
     }
 }
 
-/// Native jobs must not inherit a host compiler-cache wrapper. The mbx Cargo
-/// shim manages each checkout's default `./target`, so the workflow must not
-/// override Cargo's target or build directory for any command.
+/// Validate one workflow, test, script, or Cargo configuration file for Cargo
+/// output-directory overrides that bypass mbx. Only the checkout-relative
+/// install target and integration-test scratch targets introduced for #418 are
+/// managed exceptions.
+fn validate_managed_cargo_output_paths(path: &Path, text: &str) -> Result<(), String> {
+    let display = path.display();
+    for (index, raw) in text.lines().enumerate() {
+        let line = raw.trim();
+        if line.starts_with('#') || line.starts_with("//") || line.starts_with("///") {
+            continue;
+        }
+
+        let managed_install_target = "--target-dir \"$PWD/target/install\"";
+        let managed_install = path.ends_with(".gitea/workflows/native-ci.yml")
+            && line.contains("cargo install ")
+            && line.matches("--target-dir").count() == 1
+            && line.contains(managed_install_target);
+        if line.contains("--target-dir") && !managed_install {
+            return Err(format!(
+                "{display}:{} uses an unmanaged --target-dir: {line}",
+                index + 1
+            ));
+        }
+
+        for key in ["build.target-dir", "build.build-dir"] {
+            if line.contains(key) {
+                return Err(format!(
+                    "{display}:{} uses unmanaged Cargo configuration `{key}`: {line}",
+                    index + 1
+                ));
+            }
+        }
+        let is_cargo_config = path
+            .parent()
+            .and_then(Path::file_name)
+            .is_some_and(|parent| parent == ".cargo");
+        if is_cargo_config
+            && ["target-dir", "build-dir"]
+                .iter()
+                .any(|key| line.starts_with(key))
+        {
+            return Err(format!(
+                "{display}:{} configures an unmanaged Cargo output directory: {line}",
+                index + 1
+            ));
+        }
+
+        if line.contains("CARGO_BUILD_BUILD_DIR") {
+            return Err(format!(
+                "{display}:{} overrides Cargo's managed build directory: {line}",
+                index + 1
+            ));
+        }
+
+        if line.contains("CARGO_TARGET_DIR") {
+            let reads_effective_target = line.contains("std::env::var_os(\"CARGO_TARGET_DIR\")");
+            let managed_nested_target = path
+                .ends_with("crates/terraphim_agent/tests/packaged_install_graph_regression.rs")
+                && (line == ".env(\"CARGO_TARGET_DIR\", &package_target)"
+                    || line == ".env(\"CARGO_TARGET_DIR\", &install_target)");
+            if !reads_effective_target && !managed_nested_target {
+                return Err(format!(
+                    "{display}:{} sets an unmanaged CARGO_TARGET_DIR: {line}",
+                    index + 1
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn cargo_output_guard_files() -> Vec<PathBuf> {
+    fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
+        let entries = std::fs::read_dir(dir)
+            .unwrap_or_else(|e| panic!("read guard directory {}: {e}", dir.display()));
+        for entry in entries {
+            let entry = entry.expect("read guard directory entry");
+            let path = entry.path();
+            let file_type = entry.file_type().expect("read guard entry type");
+            if file_type.is_dir() {
+                walk(&path, out);
+            } else if file_type.is_file() {
+                out.push(path);
+            }
+        }
+    }
+
+    fn find_cargo_configs(dir: &Path, out: &mut Vec<PathBuf>) {
+        let entries = std::fs::read_dir(dir)
+            .unwrap_or_else(|e| panic!("read config search directory {}: {e}", dir.display()));
+        for entry in entries {
+            let entry = entry.expect("read config search entry");
+            let path = entry.path();
+            let file_type = entry.file_type().expect("read config search entry type");
+            if file_type.is_dir() {
+                let name = entry.file_name();
+                if name != ".git" && !name.to_string_lossy().starts_with("target") {
+                    find_cargo_configs(&path, out);
+                }
+            } else if file_type.is_file()
+                && matches!(
+                    path.file_name().and_then(|name| name.to_str()),
+                    Some("config" | "config.toml")
+                )
+                && path
+                    .parent()
+                    .and_then(Path::file_name)
+                    .is_some_and(|parent| parent == ".cargo")
+            {
+                out.push(path);
+            }
+        }
+    }
+
+    let root = workspace_root();
+    let mut files = Vec::new();
+    find_cargo_configs(&root, &mut files);
+    for relative in [".gitea/workflows", "scripts"] {
+        walk(&root.join(relative), &mut files);
+    }
+    for entry in std::fs::read_dir(root.join("crates")).expect("read crates directory") {
+        let tests = entry.expect("read crate entry").path().join("tests");
+        if tests.is_dir() {
+            walk(&tests, &mut files);
+        }
+    }
+    let own_file = Path::new(file!()).file_name().expect("guard file name");
+    files.retain(|path| path.file_name() != Some(own_file));
+    files.sort();
+    files
+}
+
+/// Native jobs and nested Cargo processes must keep all compilation artefacts
+/// under the checkout target managed by mbx. Registry and git installs compile
+/// in a platform temporary directory by default, so each workflow install uses
+/// the exact `$PWD/target/install` exception. The packaged-install regression
+/// derives its isolated targets from CARGO_TARGET_TMPDIR, which Cargo places
+/// below the effective integration-test target.
 #[test]
 fn native_ci_uses_mbx_targets_and_disables_shared_compiler_wrappers() {
-    let text = std::fs::read_to_string(workspace_root().join(".gitea/workflows/native-ci.yml"))
-        .expect("read native workflow");
+    let root = workspace_root();
+    for path in cargo_output_guard_files() {
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read guarded file {}: {e}", path.display()));
+        if let Err(diagnostic) = validate_managed_cargo_output_paths(&path, &text) {
+            panic!("{diagnostic}");
+        }
+    }
+
+    let workflow = root.join(".gitea/workflows/native-ci.yml");
+    let text = std::fs::read_to_string(&workflow).expect("read native workflow");
+    let install_commands: Vec<_> = text
+        .lines()
+        .filter(|line| !line.trim_start().starts_with('#') && line.contains("cargo install "))
+        .collect();
+    assert_eq!(
+        install_commands.len(),
+        3,
+        "native workflow unexpectedly changed its Cargo install command count"
+    );
     assert!(
-        !text.contains("CARGO_TARGET_DIR") && !text.contains("CARGO_BUILD_BUILD_DIR"),
-        "native workflow must leave target and build directory management to the mbx Cargo shim"
+        install_commands
+            .iter()
+            .all(|line| line.contains("--target-dir \"$PWD/target/install\"")),
+        "every native cargo install must compile below the mbx-managed checkout target"
     );
 
     let lines: Vec<_> = text.lines().collect();
@@ -852,5 +1007,51 @@ fn native_ci_uses_mbx_targets_and_disables_shared_compiler_wrappers() {
     assert!(
         commands >= 15,
         "native workflow unexpectedly lost Cargo checks"
+    );
+}
+
+#[test]
+fn unmanaged_cargo_output_path_mutations_are_rejected() {
+    let path = Path::new("scripts/mutated.sh");
+    for forbidden in [
+        "cargo build --target-dir /tmp/build",
+        "cargo build --config build.target-dir=/tmp/build",
+        "cargo build --config build.build-dir=/tmp/build",
+        "CARGO_TARGET_DIR=/tmp/build cargo test",
+        "CARGO_BUILD_BUILD_DIR=/tmp/build cargo test",
+    ] {
+        assert!(
+            validate_managed_cargo_output_paths(path, forbidden).is_err(),
+            "guard must reject unmanaged output mutation: {forbidden}"
+        );
+    }
+
+    let cargo_config = Path::new(".cargo/config.toml");
+    for forbidden in [
+        "[build]\ntarget-dir = \"/tmp/build\"",
+        "[build]\nbuild-dir = \"/tmp/build\"",
+    ] {
+        assert!(
+            validate_managed_cargo_output_paths(cargo_config, forbidden).is_err(),
+            "guard must reject unmanaged Cargo config mutation: {forbidden}"
+        );
+    }
+
+    let workflow = Path::new(".gitea/workflows/native-ci.yml");
+    assert!(
+        validate_managed_cargo_output_paths(
+            workflow,
+            "cargo install cargo-nextest --target-dir \"$PWD/target/install\"",
+        )
+        .is_ok(),
+        "guard must accept the exact mbx-managed install target"
+    );
+    assert!(
+        validate_managed_cargo_output_paths(
+            workflow,
+            "cargo install cargo-nextest --target-dir /tmp/install",
+        )
+        .is_err(),
+        "guard must reject an install target outside the checkout"
     );
 }
