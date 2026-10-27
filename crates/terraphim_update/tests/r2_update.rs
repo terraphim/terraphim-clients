@@ -146,6 +146,14 @@ fn github_release_routes() -> std::collections::HashMap<String, (u16, Vec<u8>, S
             "application/json".to_string(),
         ),
     );
+    routes.insert(
+        "/repos/terraphim/terraphim-clients/releases".to_string(),
+        (
+            200,
+            br#"[{"tag_name":"v1.0.0","name":"v1.0.0","created_at":"2026-10-04T22:20:41Z","assets":[]}]"#.to_vec(),
+            "application/json".to_string(),
+        ),
+    );
     routes
 }
 
@@ -159,16 +167,40 @@ fn install_dir() -> std::path::PathBuf {
 }
 
 #[tokio::test]
-async fn default_fallback_contacts_github_after_r2_check_failure() {
+async fn default_fallback_contacts_github_for_all_public_paths() {
     let r2 = MultiPathServer::new(std::collections::HashMap::new());
     let github = MultiPathServer::new(github_release_routes());
-    let updater = TerraphimUpdater::new(fallback_config(&r2, &github));
+    let config = fallback_config(&r2, &github);
 
-    let status = updater.check_update().await.expect("fallback result");
+    let check_status = TerraphimUpdater::new(config.clone())
+        .check_update()
+        .await
+        .expect("check fallback result");
+    assert!(
+        matches!(check_status, UpdateStatus::UpToDate(_)),
+        "{check_status:?}"
+    );
 
-    assert!(matches!(status, UpdateStatus::UpToDate(_)), "{status:?}");
-    assert!(r2.request_count() >= 1);
-    assert_eq!(github.request_count(), 1);
+    let update_status = TerraphimUpdater::new(config.clone())
+        .update()
+        .await
+        .expect("update fallback result");
+    assert!(
+        matches!(update_status, UpdateStatus::UpToDate(_)),
+        "{update_status:?}"
+    );
+
+    let combined_status = TerraphimUpdater::new(config)
+        .check_and_update()
+        .await
+        .expect("check-and-update fallback result");
+    assert!(
+        matches!(combined_status, UpdateStatus::UpToDate(_)),
+        "{combined_status:?}"
+    );
+
+    assert!(r2.request_count() >= 3);
+    assert_eq!(github.request_count(), 3);
 }
 
 #[tokio::test]
