@@ -51,6 +51,40 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
+/// Allocate a unique nested-Cargo target below Cargo's integration-test
+/// scratch directory. CARGO_TARGET_TMPDIR is inside the effective workspace
+/// target, so mbx still accounts for these potentially large build artefacts.
+/// The TempDir must remain alive for the nested Cargo operation.
+fn managed_nested_target(name: &str) -> TempDir {
+    tempfile::Builder::new()
+        .prefix(&format!("packaged-install-graph-regression-{name}-"))
+        .tempdir_in(env!("CARGO_TARGET_TMPDIR"))
+        .expect("create managed nested Cargo target")
+}
+
+#[test]
+fn managed_nested_targets_are_unique_and_cleaned_up() {
+    let managed_root = Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let first_path;
+
+    {
+        let first = managed_nested_target("freshness-check");
+        let second = managed_nested_target("freshness-check");
+        first_path = first.path().to_path_buf();
+
+        assert_ne!(first.path(), second.path(), "nested targets must be unique");
+        assert!(first.path().starts_with(managed_root));
+        assert!(second.path().starts_with(managed_root));
+        assert!(first.path().is_dir());
+        assert!(second.path().is_dir());
+    }
+
+    assert!(
+        !first_path.exists(),
+        "managed nested target must be removed when its operation ends"
+    );
+}
+
 /// Resolve the terraphim_agent package version, expanding `version.workspace`.
 fn agent_version(root: &Path) -> Version {
     let manifest = fs::read_to_string(root.join("crates/terraphim_agent/Cargo.toml"))
@@ -160,7 +194,7 @@ fn packaged_dep_registry(manifest: &str, dep: &str) -> String {
 fn packaged_agent_install_graph_uses_canonical_sparse_index() {
     let root = workspace_root();
     let version = agent_version(&root);
-    let package_target = TempDir::new().expect("create isolated cargo package target");
+    let package_target = managed_nested_target("package");
 
     // 1. Build the actual publish artifact. This regenerates the packaged
     //    Cargo.lock against the registries exactly like `cargo publish` does.
@@ -262,14 +296,14 @@ fn packaged_agent_install_graph_uses_canonical_sparse_index() {
     );
 
     // 6. End-to-end proof: a real `cargo install --path --debug` against the
-    //    unpacked packaged crate, using a fresh CARGO_TARGET_DIR for compile
-    //    isolation and a fresh --root TempDir so the test does not mutate the
-    //    user's cargo home. Debug mode compiles the same locked dependency
-    //    graph without making this release-safety regression pay for a full
-    //    optimized build; the post-publication Guardian runs the exact default
-    //    release-profile registry install. Run cargo from the workspace root
-    //    so .cargo/config.toml supplies the named `terraphim` registry.
-    let install_target = TempDir::new().expect("create isolated cargo install target");
+    //    unpacked packaged crate, using a fresh managed target subdirectory for
+    //    compile isolation and a fresh --root TempDir so the test does not
+    //    mutate the user's cargo home. Debug mode compiles the same locked
+    //    dependency graph without making this release-safety regression pay for
+    //    a full optimized build; the post-publication Guardian runs the exact
+    //    default release-profile registry install. Run cargo from the workspace
+    //    root so .cargo/config.toml supplies the named `terraphim` registry.
+    let install_target = managed_nested_target("install");
     let install_root = TempDir::new().expect("create fresh install --root");
     let install_output = Command::new(env!("CARGO"))
         .args(["install", "--path"])
