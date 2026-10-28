@@ -6573,6 +6573,7 @@ dependencies = [
  "fff-search",
  "regex",
  "rmcp",
+ "serde",
  "serde_json",
  "serial_test",
  "tempfile",
