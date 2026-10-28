@@ -291,7 +291,12 @@ fn traversal_resolving_into_prefix_is_package_managed() {
     let other = prefix.join("other");
     fs::create_dir_all(&other).unwrap();
     let traversal_exe = other.join("..").join("bin").join("terraphim-agent");
-    assert_eq!(fs::canonicalize(&traversal_exe).unwrap(), exe);
+    // Canonicalise both sides: the tempdir itself may sit behind a symlink
+    // (macOS /var -> /private/var), which is not what this precondition tests.
+    assert_eq!(
+        fs::canonicalize(&traversal_exe).unwrap(),
+        fs::canonicalize(&exe).unwrap()
+    );
     write_receipt(&prefix, "terraphim-agent", b"pacman\n");
 
     let policy = detect_update_policy(&traversal_exe);

@@ -4,14 +4,12 @@ members = [
     "crates/terraphim_cli",
     "crates/terraphim_mcp_server",
     "crates/terraphim_sessions",
-    "crates/terraphim_lsp",
     "crates/terraphim_grep",
     "crates/terraphim_agent",
     "crates/terraphim_command_runtime",
     "crates/terraphim_hooks",
     "crates/terraphim_update",
     "crates/terraphim_negative_contribution",
-    "crates/terraphim-session-analyzer",
 ]
 
 [workspace.package]

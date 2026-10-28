@@ -46,7 +46,10 @@ impl RlmContext {
     }
 
     pub fn build_prompt(&self) -> String {
-        let mut prompt = format!("Query: {}\n\n", self.query);
+        let mut prompt = String::from(
+            "Preserve source modality, tense and action status. Describe Decision, Plan and Policy items as decisions, plans and policies; never imply implementation or completion unless the retrieved source explicitly confirms it. If completion status is absent, say it is not established.\n\n",
+        );
+        prompt.push_str(&format!("Query: {}\n\n", self.query));
 
         if !self.retrieved_chunks.is_empty() {
             prompt.push_str("## Retrieved Context\n\n");
@@ -166,6 +169,23 @@ mod tests {
         assert!(prompt.contains("retry configuration"));
         assert!(prompt.contains("Knowledge Graph Concepts"));
         assert!(prompt.contains("retry"));
+    }
+
+    #[test]
+    fn synthesis_preserves_decisions_without_claiming_completed_actions() {
+        let source = "Risk: Rain may delay planting. Decision: Reserve a covered area.";
+        let ctx = RlmContext::new("concern".into()).with_chunks(vec![make_chunk(
+            source,
+            "project-brief.md",
+            "code",
+        )]);
+        let prompt = ctx.build_prompt();
+        assert!(prompt.contains(source));
+        assert!(prompt.contains("Preserve source modality, tense and action status"));
+        assert!(prompt.contains("never imply implementation or completion"));
+        assert!(
+            prompt.find("Preserve source").unwrap() < prompt.find("## Retrieved Context").unwrap()
+        );
     }
 
     #[test]

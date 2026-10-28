@@ -18,6 +18,7 @@ use super::{
 };
 
 /// Trait for command executors
+#[allow(clippy::double_must_use)]
 #[async_trait::async_trait]
 pub trait CommandExecutor {
     /// Execute a command with the given definition and parameters
