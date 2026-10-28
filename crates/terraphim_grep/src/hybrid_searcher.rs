@@ -126,7 +126,7 @@ pub fn score_kg_boost(chunk: &RetrievedChunk, concepts: &[KgConcept], weight: f6
     (boost * weight).min(weight * concepts.len() as f64)
 }
 
-fn automata_concept_matches(text: &str, concept: &str) -> bool {
+pub(crate) fn automata_concept_matches(text: &str, concept: &str) -> bool {
     let role = terraphim_types::RoleName::new("terraphim-grep-kg-boost");
     let thesaurus = terraphim_automata::thesaurus_from_terms(&role, std::iter::once(concept));
     match terraphim_automata::find_matches(text, &thesaurus, true) {
@@ -196,6 +196,31 @@ fn thesaurus_query_concepts(
     }
 }
 
+/// Resolve every alias of an exact KG term independently of display limits.
+/// Compound/free-text queries return no aliases and retain query-parser semantics.
+fn exact_query_aliases(query: &str, thesaurus: &terraphim_types::Thesaurus) -> Vec<String> {
+    let Ok(matches) = terraphim_automata::find_matches(query.trim(), thesaurus, false) else {
+        return Vec::new();
+    };
+    let Some(matched) = matches
+        .into_iter()
+        .find(|m| m.term.eq_ignore_ascii_case(query.trim()))
+    else {
+        return Vec::new();
+    };
+    let canonical = matched.normalized_term.value;
+    let mut aliases: Vec<String> = thesaurus
+        .into_iter()
+        .filter(|(_, term)| term.value == canonical)
+        .map(|(alias, _)| alias.to_string())
+        .chain(std::iter::once(canonical.to_string()))
+        .filter(|alias| !alias.trim().is_empty())
+        .collect();
+    aliases.sort();
+    aliases.dedup();
+    aliases
+}
+
 /// Apply KG boost to a batch of chunks and sort by boosted score (descending).
 /// Mutates `relevance_score` in place so downstream consumers can see the boost reflected
 /// in the JSON output -- otherwise the ordering would be inexplicable.
@@ -213,6 +238,50 @@ pub fn boost_chunks_with_kg(
             .unwrap_or(std::cmp::Ordering::Equal)
     });
     chunks
+}
+
+/// Upper bound on the size of a file `search_code` will read.
+///
+/// Shared between the content-cache budget and `GrepSearchOptions` so the two
+/// cannot drift apart: a file large enough to be refused by one but not the
+/// other would be a silent inconsistency.
+#[cfg(feature = "code-search")]
+const MAX_GREP_FILE_SIZE: u64 = 10 * 1024 * 1024;
+
+/// A content-cache budget that refuses fff-search's mmap content cache outright.
+///
+/// fff-search maps file content through `memmap2::Mmap::map` (the crate's only
+/// such call, in `get_cached_content`), whose safety contract requires that the
+/// mapped file is not modified concurrently. The crate delegates that guarantee
+/// to a background watcher, but `FilePicker::new` never installs one, so a
+/// concurrent writer yields invalid-UTF-8 match text and an in-place truncation
+/// raises SIGBUS. `max_files: 0` makes `get_cached_content` return `None` at its
+/// count guard before it reaches `absolute_path` or `Mmap::map`, so every read
+/// takes the slow path and lands in an owned buffer that no other process can
+/// mutate. On Windows `get_cached_content` is already a stub returning `None`,
+/// so this simply makes Unix behave the same way. See UF-039 / #293.
+///
+/// `max_file_size` must stay non-zero. It also gates the *slow* path
+/// (`get_content_for_search` rejects any file whose `size > max_file_size`), so
+/// zeroing it -- or using `ContentCacheBudget::zero()` -- would silence grep
+/// entirely rather than harden it: zero matches, looking like a working fix.
+/// `ContentCacheBudget::from_overrides` cannot express this budget either, as it
+/// reads `max_files: 0` as "use the library default", hence the struct literal.
+///
+/// Scope: this removes *fff-search's* mapping, not all mapping in the process.
+/// `FrecencyTracker::open` still memory-maps an LMDB data file and libgit2 maps
+/// pack files; neither is covered here.
+#[cfg(feature = "code-search")]
+fn no_mmap_budget() -> fff_search::ContentCacheBudget {
+    use std::sync::atomic::{AtomicU64, AtomicUsize};
+
+    fff_search::ContentCacheBudget {
+        max_files: 0,
+        max_bytes: 0,
+        max_file_size: MAX_GREP_FILE_SIZE,
+        cached_count: AtomicUsize::new(0),
+        cached_bytes: AtomicU64::new(0),
+    }
 }
 
 pub struct HybridSearcher {
@@ -252,6 +321,11 @@ impl HybridSearcher {
         self
     }
 
+    /// Full exact membership used by retrieval and sufficiency, not presentation.
+    pub(crate) fn exact_query_aliases(&self, query: &str) -> Vec<String> {
+        exact_query_aliases(query, &self.thesaurus)
+    }
+
     pub async fn search(
         &self,
         query: &str,
@@ -274,11 +348,13 @@ impl HybridSearcher {
                 } else {
                     max_results.saturating_mul(5).max(max_results).min(1000)
                 };
+                let aliases = exact_query_aliases(&query_owned, &thesaurus);
                 let mut all_results = Vec::new();
                 for path in search_paths.iter() {
-                    let mut results =
-                        Self::search_code(&query_owned, candidate_limit, path.clone()).await?;
-                    all_results.append(&mut results);
+                    let results =
+                        Self::search_code(&query_owned, &aliases, candidate_limit, path.clone())
+                            .await?;
+                    all_results.extend(results);
                 }
                 // Boost KG matches above generic matches; the boosted score is what the
                 // JSON output reports so downstream tools see why a chunk ranked where
@@ -341,6 +417,7 @@ impl HybridSearcher {
 
     async fn search_code(
         query: &str,
+        aliases: &[String],
         limit: usize,
         search_path: PathBuf,
     ) -> Result<Vec<RetrievedChunk>, String> {
@@ -351,11 +428,22 @@ impl HybridSearcher {
                 parse_grep_query,
             };
 
+            // Refuse the tree before its base path reaches fff-search: a
+            // non-UTF-8 or over-long entry name defeats the library's
+            // `from_utf8_unchecked` on the stored relative path. UF-040 / #296.
+            crate::path_guard::reject_hostile_tree(&search_path)?;
+
             let mut picker = FilePicker::new(FilePickerOptions {
                 base_path: search_path.to_string_lossy().to_string(),
                 mode: FFFMode::Ai,
                 watch: false,
-                cache_budget: None,
+                // See `no_mmap_budget` -- UF-039 / #293.
+                cache_budget: Some(no_mmap_budget()),
+                // Asserted rather than inherited from `FilePickerOptions::default()`
+                // so that reasoning about which entries fff-search will index rests
+                // on a value this crate states, not on an upstream default that a
+                // minor release could change. Refs #293.
+                follow_symlinks: false,
                 ..FilePickerOptions::default()
             })
             .map_err(|e| format!("FilePicker init failed: {}", e))?;
@@ -368,9 +456,8 @@ impl HybridSearcher {
                 return Ok(vec![]);
             }
 
-            let fff_query = parse_grep_query(query);
             let options = GrepSearchOptions {
-                max_file_size: 10 * 1024 * 1024,
+                max_file_size: MAX_GREP_FILE_SIZE,
                 max_matches_per_file: 200,
                 smart_case: true,
                 file_offset: 0,
@@ -383,8 +470,19 @@ impl HybridSearcher {
                 ..GrepSearchOptions::default()
             };
 
-            let result = picker.grep(&fff_query, &options);
+            // Exact KG aliases are data, so bypass the query parser entirely.
+            // One Aho-Corasick batch scans each file once, including aliases that
+            // sort after the displayed concepts. Free-text queries retain filters.
+            let fff_query;
+            let result = if aliases.is_empty() {
+                fff_query = parse_grep_query(query);
+                picker.grep(&fff_query, &options)
+            } else {
+                let patterns: Vec<&str> = aliases.iter().map(String::as_str).collect();
+                picker.multi_grep(&patterns, &[], &options)
+            };
 
+            let mut seen = std::collections::HashSet::new();
             let chunks = result
                 .matches
                 .iter()
@@ -400,6 +498,16 @@ impl HybridSearcher {
                         haystack: "code",
                     })
                 })
+                // Keep one actual line even if several aliases match it. This
+                // set is local to a root, so equal filenames across roots survive.
+                .filter(|chunk| {
+                    seen.insert((
+                        chunk.source.clone(),
+                        chunk.line_start,
+                        chunk.line_end,
+                        chunk.content.clone(),
+                    ))
+                })
                 .collect();
 
             Ok(chunks)
@@ -407,7 +515,7 @@ impl HybridSearcher {
 
         #[cfg(not(feature = "code-search"))]
         {
-            let _ = (query, limit, search_path);
+            let _ = (query, aliases, limit, search_path);
             // `code-search` is a default feature, so reaching here means the binary was
             // built with `--no-default-features` (or a custom set omitting it). Returning
             // an empty Vec silently makes every query look like "0 results" with no
@@ -623,6 +731,17 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(names, vec!["auth", "authentication", "authorisation"]);
+    }
+
+    #[test]
+    fn retrieval_preserves_compound_and_unknown_queries() {
+        let thesaurus = test_thesaurus(&["auth", "authorisation"]);
+        assert_eq!(
+            exact_query_aliases("auth AND deployment", &thesaurus),
+            Vec::<String>::new()
+        );
+        assert!(exact_query_aliases("author", &thesaurus).is_empty());
+        assert!(exact_query_aliases("unknown", &thesaurus).is_empty());
     }
 
     #[test]

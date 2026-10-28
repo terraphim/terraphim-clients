@@ -26,7 +26,7 @@ terraphim_automata = { version = "1.21.0", registry = "terraphim" }
 terraphim_rolegraph = { version = "1.0.0" }
 terraphim_settings = { version = "1.0.0" }
 terraphim_persistence = { version = "1.0.0" }
-terraphim_update = { path = "../terraphim_update", version = "1.0.0", registry = "terraphim" }
+terraphim_update = { path = "../terraphim_update", version = "1.23.0", registry = "terraphim" }
 terraphim_hooks = { path = "../terraphim_hooks", version = "1.0.0", registry = "terraphim" }
 
 # Usage tracking (feature-gated)

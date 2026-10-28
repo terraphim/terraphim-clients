@@ -881,17 +881,36 @@ async fn handle_check_update() -> Result<serde_json::Value> {
             });
             Ok(result)
         }
+        // Semver-compatible fallback (Gitea #247 packaged-install
+        // regression): this production source must keep compiling against
+        // the currently published `terraphim_update`, which predates the
+        // `PackageManaged` variant, so it can't be named here. Generic
+        // guidance via `Display` (which embeds the stable
+        // `sudo pacman -Syu` command when linked against a pacman-aware
+        // `terraphim_update`) is acceptable for this informational
+        // check-only path; this arm is unreachable against the published
+        // crate.
+        ref other => {
+            let result = serde_json::json!({
+                "update_available": false,
+                "message": other.to_string(),
+            });
+            Ok(result)
+        }
     }
 }
 
-async fn handle_update() -> Result<serde_json::Value> {
-    let bin_name = "terraphim-cli";
-    let current_version = env!("CARGO_PKG_VERSION");
-
-    let config = terraphim_update::UpdaterConfig::new(bin_name).with_version(current_version);
-    let updater = terraphim_update::TerraphimUpdater::new(config);
-    let status = updater.check_and_update().await?;
-
+/// Classify a completed `check_and_update()` status into the JSON success
+/// payload `handle_update` returns -- except `PackageManaged` (Gitea #247
+/// review, P2): unlike every other arm, a package-managed install must
+/// refuse as an *error*, not `Ok` success. `terraphim-cli update` exiting 0
+/// on a pacman-owned install would silently mislead scripts/automation into
+/// believing an update path exists. `check-update` (informational) keeps
+/// its separate, unchanged `Ok` handling in `handle_check_update` above.
+fn classify_update_status(
+    bin_name: &str,
+    status: terraphim_update::UpdateStatus,
+) -> Result<serde_json::Value> {
     match status {
         terraphim_update::UpdateStatus::Updated {
             ref from_version,
@@ -933,7 +952,27 @@ async fn handle_update() -> Result<serde_json::Value> {
             });
             Ok(result)
         }
+        // Semver-compatible fallback (Gitea #247 packaged-install
+        // regression): this production source must keep compiling against
+        // the currently published `terraphim_update`, which predates the
+        // `PackageManaged` variant, so it can't be named here. `Display`
+        // covers it (and any future variant) with the stable
+        // `sudo pacman -Syu` guidance when linked against a pacman-aware
+        // `terraphim_update`, routed through `Err` so this explicit update
+        // path exits non-zero; this arm is unreachable against the
+        // published crate.
+        ref other => Err(anyhow::anyhow!("{bin_name} update was refused: {other}")),
     }
+}
+
+async fn handle_update() -> Result<serde_json::Value> {
+    let bin_name = "terraphim-cli";
+    let current_version = env!("CARGO_PKG_VERSION");
+
+    let config = terraphim_update::UpdaterConfig::new(bin_name).with_version(current_version);
+    let updater = terraphim_update::TerraphimUpdater::new(config);
+    let status = updater.check_and_update().await?;
+    classify_update_status(bin_name, status)
 }
 
 async fn handle_rollback(version: &str) -> Result<serde_json::Value> {
@@ -984,4 +1023,39 @@ async fn handle_usage(action: terraphim_usage::cli::UsageAction) -> Result<serde
         .await
         .map_err(|e| anyhow::anyhow!("{}", e))?;
     Ok(serde_json::json!({ "output": output }))
+}
+
+#[cfg(test)]
+mod managed_mode_tests {
+    use super::*;
+
+    /// P2 (Gitea #247 review): `terraphim-cli update` must not report a
+    /// package-managed refusal as `Ok` success -- it needs a non-zero exit,
+    /// same as `terraphim-agent`/`terraphim-grep`. Narrowest practical test:
+    /// exercise the pure classifier directly with a hand-built
+    /// `UpdateStatus::PackageManaged`, no `TerraphimUpdater`/network needed.
+    #[test]
+    fn classify_update_status_refuses_package_managed_with_nonzero_error() {
+        let status = terraphim_update::UpdateStatus::PackageManaged {
+            manager: terraphim_update::policy::PackageManager::Pacman,
+            update_command: "sudo pacman -Syu".to_string(),
+        };
+        let result = classify_update_status("terraphim-cli", status);
+        let err = result.expect_err("PackageManaged must classify as an error, not Ok success");
+        assert!(
+            err.to_string().contains("sudo pacman -Syu"),
+            "error message missing update command: {err}"
+        );
+    }
+
+    /// Control: non-managed statuses must keep their existing `Ok` success
+    /// semantics (this classifier must not turn everything into an error).
+    #[test]
+    fn classify_update_status_reports_up_to_date_as_ok() {
+        let status = terraphim_update::UpdateStatus::UpToDate("1.2.3".to_string());
+        let result =
+            classify_update_status("terraphim-cli", status).expect("UpToDate must remain Ok");
+        assert_eq!(result["updated"], false);
+        assert_eq!(result["current_version"], "1.2.3");
+    }
 }

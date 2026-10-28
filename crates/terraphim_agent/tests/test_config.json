@@ -31,28 +31,25 @@
       "llm_system_prompt": "You are a test assistant.",
       "extra": {}
     },
-    "Quickwit Logs": {
-      "shortname": "QuickwitLogs",
-      "name": "Quickwit Logs",
+    "Local BM25": {
+      "shortname": "LocalBm25",
+      "name": "Local BM25",
       "relevance_function": "bm25",
       "terraphim_it": false,
       "theme": "darkly",
       "kg": null,
       "haystacks": [
         {
-          "location": "http://localhost:7280",
-          "service": "Quickwit",
+          "location": "terraphim_server/fixtures/haystack",
+          "service": "Ripgrep",
           "read_only": true,
           "atomic_server_secret": null,
-          "extra_parameters": {
-            "max_hits": "100",
-            "sort_by": "-timestamp"
-          }
+          "extra_parameters": {}
         }
       ],
       "llm_provider": null,
       "llm_auto_summarize": false,
-      "llm_system_prompt": "You are a log analysis expert.",
+      "llm_system_prompt": "You are a test assistant.",
       "extra": {}
     },
     "Default": {

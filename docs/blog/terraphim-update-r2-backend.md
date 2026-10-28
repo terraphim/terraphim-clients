@@ -1,83 +1,82 @@
 # Self-update R2 backend
 
-`terraphim-agent update` downloads and verifies the next binary
-release. The default backend is Cloudflare R2; if R2 is
-unreachable, the updater falls back to GitHub Releases. This post
-walks through the manifest, the verification path, and how to
-override the backend.
+`terraphim-agent`, `terraphim-cli`, and `terraphim-grep` discover stable client
+releases through strict per-binary manifests at
+`https://downloads.terraphim.ai/<binary>/stable-v2.json`. R2 is the default
+read backend; fetch and parse failures fall back to GitHub Releases so a bad
+or unavailable pointer cannot strand an installation. Once strict metadata
+has selected and downloaded an archive, size, digest, or signature failures
+are definitive and never fall back.
 
-## Quick start
+The legacy `stable.json` remains a string-valued manifest for every client
+older than 1.21.15. It must not be replaced with the strict schema. Publication
+stores immutable v1 and v2 candidates, advances `stable-v2.json`, verifies it,
+and advances legacy `stable.json` last.
 
-```bash
-# Check whether a newer version exists (stateless, no install)
-terraphim-agent check-update
+## Strict v2 stable manifest
 
-# Download and replace the running binary
-terraphim-agent update
-```
-
-## The manifest
-
-R2 hosts a `manifest.json` keyed by platform:
+The manifest schema has four exact top-level keys. Unknown or missing keys,
+legacy string asset values, duplicate targets, invalid filenames, zero sizes,
+or malformed checksums are rejected.
 
 ```json
 {
-  "version": "1.21.13",
-  "platforms": {
-    "darwin-aarch64": {
-      "url": "https://downloads.terraphim.ai/v1.21.13/terraphim-agent-darwin-aarch64.tar.gz",
-      "sha256": "...",
-      "signature": "..."
-    },
-    "linux-x86_64": { "...": "..." }
-  }
+  "assets": {
+    "x86_64-unknown-linux-musl": {
+      "path": "terraphim-agent/terraphim-agent-1.21.15-x86_64-unknown-linux-musl.tar.gz",
+      "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "size": 12345678
+    }
+  },
+  "notes_url": "https://github.com/terraphim/terraphim-clients/releases/tag/v1.21.15",
+  "released_at": "2026-09-18T00:00:00Z",
+  "version": "1.21.15"
 }
 ```
 
-The manifest itself is fetched over HTTPS; the archive signature
-is verified against the embedded public-key list
-(`terraphim_update::signature::EMBEDDED_PUBLIC_KEYS`, see
-`adr/ADR-001`).
+Official manifests use closed target sets. Agent and grep have the six matrix
+targets plus `universal-apple-darwin`; CLI has the six matrix targets and no
+universal entry. Windows uses ZIP; other targets use `tar.gz`.
 
-## Verification
+## Verification and rollback safety
 
-The updater tries every key in the embedded list and accepts the
-archive on the first match. A tampered archive (signature present,
-no trusted key matches) is rejected as `Invalid`. An unsigned
-archive is currently `MissingSignature` — historically
-`warn-and-proceed`, scheduled to flip to `Reject` in a follow-up
-ADR.
+The updater performs these steps in order:
 
-## Fallback chain
+1. parse and validate the strict manifest and filename/version identity;
+2. select the current target;
+3. download to a temporary directory;
+4. compare positive byte size and SHA-256 against the final archive metadata;
+5. verify the embedded zipsign Ed25519 signature against the trusted key list;
+6. extract and atomically replace the installed executable.
 
-```
-R2 manifest (default)
-  └── 200 OK → use R2 URL
-  └── 4xx/5xx → GitHub Releases (latest) as fallback
-        └── 200 OK → use GitHub asset URL
-        └── 4xx/5xx → exit with ERROR_NETWORK
-```
+An unsigned archive is rejected. A size, checksum, or signature mismatch occurs
+before installation, leaving the installed binary untouched.
 
-The fallback is automatic; users do not need to configure it.
+## Production and publication boundaries
 
-## Overriding the backend
+`release-binaries.yml` builds one exact source SHA, notarizes macOS binaries,
+creates archives containing the executable and both repository licenses,
+signs them, validates the exact post-sign bytes, then emits `SHA256SUMS`, dual
+candidate manifests, canonical stripped Linux binaries with
+`BINARY_SHA256SUMS`, and provenance in one immutable workflow artifact. Linux
+and Windows outputs are byte-reproducible. Timestamped/notarized macOS outputs
+are deterministic in structure and correlation, not byte-identical across
+independent rebuilds. It has no GitHub release or R2 write path.
 
-Set `TERRAPHIM_UPDATE_BACKEND=github` (or `r2`) to force one or the
-other. Useful for air-gapped environments where R2 is unreachable
-and you want the updater to skip the R2 probe entirely.
+Publication is separately authorized and uses the candidate-first procedure in
+[the release operator checklist](../release-operator-checklist.md). Stable
+manifests are advanced only after every immutable object and candidate has been
+uploaded and verified.
+
+## Backend override
+
+Set `TERRAPHIM_UPDATE_BACKEND=github` or `r2` to force a backend. For staging
+or tests, `TERRAPHIM_UPDATE_BASE_URL` overrides the manifest host.
 
 ```bash
-TERRAPHIM_UPDATE_BACKEND=github terraphim-agent update
+TERRAPHIM_UPDATE_BACKEND=github terraphim-agent check-update
 ```
 
-## Cross-platform support
-
-The updater knows the current platform triple via
-`cargo_metadata::BuildInfo` or uname. Cross-compiled binaries can
-override with `TERRAPHIM_TARGET_TRIPLE=aarch64-unknown-linux-musl`.
-
-## References
-
-* Source: `crates/terraphim_update/`
-* ADR: `adr/ADR-001-release-signing-key-rotation.md`
-* Reference: `docs/agent-reference.md` (`check-update`, `update`)
+The signing trust roots are documented in
+`adr/ADR-001-release-signing-key-rotation.md`; implementation lives under
+`crates/terraphim_update/`.

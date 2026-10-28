@@ -150,13 +150,15 @@ async fn test_version_comparison_logic() {
 /// Test update configuration
 #[tokio::test]
 async fn test_updater_configuration() {
-    use terraphim_update::{TerraphimUpdater, UpdaterConfig};
+    use terraphim_update::{
+        DEFAULT_REPO_NAME, DEFAULT_REPO_OWNER, TerraphimUpdater, UpdaterConfig,
+    };
 
     // Test default configuration
     let config = UpdaterConfig::new("terraphim-agent");
     assert_eq!(config.bin_name, "terraphim-agent");
-    assert_eq!(config.repo_owner, "terraphim");
-    assert_eq!(config.repo_name, "terraphim-ai");
+    assert_eq!(config.repo_owner, DEFAULT_REPO_OWNER);
+    assert_eq!(config.repo_name, DEFAULT_REPO_NAME);
 
     assert!(config.show_progress);
 

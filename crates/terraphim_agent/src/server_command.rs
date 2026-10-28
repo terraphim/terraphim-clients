@@ -503,13 +503,17 @@ pub(crate) async fn run_server_command(
             let config =
                 UpdaterConfig::new("terraphim-agent").with_version(env!("CARGO_PKG_VERSION"));
             let updater = TerraphimUpdater::new(config);
-            match updater.check_and_update().await {
-                Ok(status) => {
+            match crate::classify_update_result(&updater).await {
+                crate::UpdateCommandOutcome::Applied(status) => {
                     println!("{}", status);
                     Ok(())
                 }
-                Err(e) => {
-                    eprintln!("❌ Update failed: {}", e);
+                crate::UpdateCommandOutcome::PackageManagedRefusal { message } => {
+                    eprintln!("❌ {}", message);
+                    std::process::exit(1);
+                }
+                crate::UpdateCommandOutcome::Failed { message } => {
+                    eprintln!("❌ Update failed: {}", message);
                     std::process::exit(1);
                 }
             }
@@ -975,6 +979,37 @@ pub(crate) async fn run_server_command(
             eprintln!("error: cache commands are not available in server mode");
             eprintln!("Cache management runs in offline mode only.");
             std::process::exit(1);
+        }
+    }
+}
+
+#[cfg(test)]
+mod managed_mode_tests {
+    use terraphim_update::policy::{PackageManager, UpdatePolicy};
+    use terraphim_update::{TerraphimUpdater, UpdaterConfig};
+
+    /// Proves the server-mode `Command::Update` arm (above) is wired to the
+    /// same `classify_update_result` core as the offline arm in `main.rs`,
+    /// so both agent adapter paths (Gitea #247 §3.5) share one tested
+    /// decision: package-managed installs are refused, never dispatched to
+    /// a backend.
+    #[tokio::test]
+    async fn server_mode_classify_update_result_refuses_when_package_managed() {
+        let config = UpdaterConfig::new("terraphim-agent-server-managed-mode-test").with_policy(
+            UpdatePolicy::PackageManaged {
+                manager: PackageManager::Pacman,
+                update_command: "sudo pacman -Syu".to_string(),
+            },
+        );
+        let updater = TerraphimUpdater::new(config);
+        match crate::classify_update_result(&updater).await {
+            crate::UpdateCommandOutcome::PackageManagedRefusal { message } => {
+                assert!(
+                    message.contains("sudo pacman -Syu"),
+                    "refusal message missing update command: {message}"
+                );
+            }
+            other => panic!("expected PackageManagedRefusal, got {other:?}"),
         }
     }
 }
