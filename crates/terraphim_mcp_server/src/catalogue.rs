@@ -90,10 +90,11 @@ pub async fn documents() -> Option<Arc<Vec<Document>>> {
     let cell = CATALOGUE.get_or_init(|| async { Mutex::new(None) }).await;
     let mut guard = cell.lock().await;
 
-    if let Some(cached) = guard.as_ref() {
-        if cached.path == path && cached.mtime == mtime {
-            return Some(cached.documents.clone());
-        }
+    if let Some(cached) = guard.as_ref()
+        && cached.path == path
+        && cached.mtime == mtime
+    {
+        return Some(cached.documents.clone());
     }
 
     let raw = tokio::fs::read_to_string(&path).await.ok()?;
