@@ -65,12 +65,37 @@ impl SufficiencyJudge {
         results: &HybridResults,
         query: &str,
     ) -> (Sufficiency, SufficiencyMetrics) {
+        self.judge_with_aliases(results, query, None)
+    }
+
+    /// Use complete exact membership when the caller owns the thesaurus. `None`
+    /// preserves the standalone judge API; `Some` separates evidence from the
+    /// displayed concepts, including an empty set for non-exact queries.
+    pub(crate) fn judge_with_aliases(
+        &self,
+        results: &HybridResults,
+        query: &str,
+        exact_aliases: Option<&[String]>,
+    ) -> (Sufficiency, SufficiencyMetrics) {
         let chunks = results.to_chunks();
+        let coverage = match exact_aliases {
+            Some(aliases)
+                if chunks.iter().any(|chunk| {
+                    aliases.iter().any(|alias| {
+                        super::hybrid_searcher::automata_concept_matches(&chunk.content, alias)
+                    })
+                }) =>
+            {
+                1.0
+            }
+            Some(_) => self.calculate_coverage(query, &chunks),
+            None => self.calculate_semantic_coverage(query, &chunks, &results.kg_concepts),
+        };
 
         let metrics = SufficiencyMetrics {
             chunk_count: chunks.len(),
             kg_hits: results.kg_concepts.len(),
-            coverage: self.calculate_coverage(query, &chunks),
+            coverage,
             kg_confidence: self.calculate_kg_confidence(&results.kg_concepts),
             diversity: self.calculate_diversity(&chunks),
         };
@@ -96,6 +121,29 @@ impl SufficiencyJudge {
             Sufficiency::Insufficient(chunks)
         };
         (decision, metrics)
+    }
+
+    fn calculate_semantic_coverage(
+        &self,
+        query: &str,
+        chunks: &[RetrievedChunk],
+        concepts: &[super::hybrid_searcher::KgConcept],
+    ) -> f64 {
+        // Only an exact KG term can substitute its aliases. Compound queries
+        // still require their literal terms; KG hits without retrieved evidence
+        // cannot establish coverage.
+        if concepts
+            .iter()
+            .any(|c| c.name.eq_ignore_ascii_case(query.trim()))
+            && chunks.iter().any(|chunk| {
+                concepts.iter().any(|concept| {
+                    super::hybrid_searcher::automata_concept_matches(&chunk.content, &concept.name)
+                })
+            })
+        {
+            return 1.0;
+        }
+        self.calculate_coverage(query, chunks)
     }
 
     fn calculate_coverage(&self, query: &str, chunks: &[RetrievedChunk]) -> f64 {
@@ -220,6 +268,35 @@ mod tests {
 
         let coverage2 = judge.calculate_coverage("missing term", &chunks);
         assert!(coverage2 < 0.5);
+    }
+
+    #[test]
+    fn semantic_coverage_requires_exact_query_and_real_boundary_match() {
+        let judge = SufficiencyJudge::default();
+        let concepts = ["judgment", "decision"].map(|name| KgConcept {
+            id: 1,
+            name: name.into(),
+            display_value: None,
+            score: 1.0,
+        });
+        let chunks = vec![make_chunk("Decision: public preview", "brief.md", "code")];
+        assert_eq!(
+            judge.calculate_semantic_coverage("judgment", &chunks, &concepts),
+            1.0
+        );
+        assert_eq!(
+            judge.calculate_semantic_coverage("judgment missing", &chunks, &concepts),
+            0.0
+        );
+        let unrelated = vec![make_chunk("indecision", "decision.md", "code")];
+        assert_eq!(
+            judge.calculate_semantic_coverage("judgment", &unrelated, &concepts),
+            0.0
+        );
+        assert_eq!(
+            judge.calculate_semantic_coverage("judgment", &[], &concepts),
+            0.0
+        );
     }
 
     #[test]

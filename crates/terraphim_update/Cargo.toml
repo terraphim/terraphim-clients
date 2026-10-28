@@ -1,15 +1,15 @@
 [package]
 name = "terraphim_update"
-version = "1.20.2"
+version = "1.23.0"
 edition.workspace = true
 authors = ["Terraphim Contributors"]
 description = "Shared auto-update functionality for Terraphim AI binaries"
 documentation = "https://terraphim.ai"
 homepage = "https://terraphim.ai"
-repository = "https://github.com/terraphim/terraphim-ai"
+repository = "https://git.terraphim.cloud/terraphim/terraphim-clients"
 keywords = ["ai", "auto-update", "self-update", "binary", "release"]
 license = "Apache-2.0"
-readme = "../../README.md"
+readme = "README.md"
 
 [dependencies]
 anyhow = { workspace = true }

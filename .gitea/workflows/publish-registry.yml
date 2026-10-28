@@ -38,9 +38,13 @@ jobs:
       - name: Publish ${{ github.event.inputs.crate }}
         run: |
           CRATE="${{ github.event.inputs.crate }}"
-          # Find the crate directory
-          CRATE_DIR=$(find crates -maxdepth 1 -name "${CRATE}" -type d | head -1)
-          if [ -z "${CRATE_DIR}" ]; then
+          if [ "${CRATE}" = "terraphim_lsp" ] || [ "${CRATE}" = "terraphim-lsp" ]; then
+            echo "ERROR: terraphim-ai owns terraphim_lsp and the terraphim-lsp binary"
+            exit 1
+          fi
+          # Find the crate directory without allowing arbitrary paths.
+          CRATE_DIR="crates/${CRATE}"
+          if [ ! -d "${CRATE_DIR}" ]; then
             echo "ERROR: crate directory crates/${CRATE} not found"
             exit 1
           fi

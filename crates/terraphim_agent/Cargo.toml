@@ -58,7 +58,7 @@ log = { workspace = true }
 env_logger = "0.11"
 urlencoding = { version = "2.1", optional = true }
 ahash = "0.8"
-terraphim_update = { path = "../terraphim_update", version = "1.20.2", registry = "terraphim" }
+terraphim_update = { path = "../terraphim_update", version = "1.23.0", registry = "terraphim" }
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 regex = "1.12"
 glob = "0.3"
@@ -99,7 +99,7 @@ terraphim_orchestrator = { version = "1.21.0", registry = "terraphim" }
 # published package is the release artifact being validated.
 # Sibling workspace crate: must be a path dep, otherwise the workspace compiles
 # two different terraphim_sessions (the local one and a published copy). Refs #112.
-terraphim_sessions = { path = "../terraphim_sessions", version = "1.21.2", optional = true, features = ["tsa-full", "aider-connector", "cursor-connector", "search-index"], registry = "terraphim" }
+terraphim_sessions = { path = "../terraphim_sessions", version = "1.23.0", optional = true, features = ["tsa-full", "aider-connector", "cursor-connector", "search-index"], registry = "terraphim" }
 
 [dev-dependencies]
 assert_cmd = "2"

@@ -4,7 +4,7 @@ Auto-update functionality for Terraphim AI binaries.
 
 ## Overview
 
-This crate provides a unified interface for self-updating Terraphim AI CLI tools using GitHub Releases as a distribution channel. It includes:
+This crate provides a unified interface for self-updating Terraphim CLI tools. It uses the strict `stable-v2.json` manifest served from `downloads.terraphim.ai` by default, with GitHub Releases as a fallback. It includes:
 
 - **Update checking**: Check for available updates from GitHub Releases
 - **Binary updating**: Self-update to the latest version
@@ -14,8 +14,9 @@ This crate provides a unified interface for self-updating Terraphim AI CLI tools
 
 ## Features
 
-- Automatic update detection from GitHub Releases
-- Safe self-update with signature verification (PGP)
+- Automatic update detection from the R2-backed strict release manifest, with GitHub fallback
+- Safe self-update with SHA-256 size and checksum checks plus Ed25519 signature verification
+- Package-manager receipt detection that refuses unsafe self-updates
 - Backup and rollback support
 - Configurable update intervals
 - Tokio-based async scheduler for background checks
@@ -126,7 +127,7 @@ Add to `Cargo.toml`:
 
 ```toml
 [dependencies]
-terraphim_update = { path = "../terraphim_update", version = "1.0.0" }
+terraphim_update = { path = "../terraphim_update", version = "1.23.0" }
 ```
 
 Add CLI commands:
@@ -213,8 +214,10 @@ sudo cp /usr/local/bin/terraphim.bak-1.0.0 /usr/local/bin/terraphim
 
 ## Security
 
-- Updates are downloaded from GitHub Releases over HTTPS
-- PGP signature verification is supported (requires manual setup)
+- Release manifests and assets are downloaded over HTTPS
+- Manifest assets require an exact positive size and lowercase SHA-256 digest
+- Ed25519 signatures embedded by zipsign are verified against the trusted release keys
+- Package-managed installations are detected from per-binary receipts and self-update is refused
 - Binary permissions are preserved during updates
 - Backup files are created before updating
 
