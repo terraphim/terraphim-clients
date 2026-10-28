@@ -44,6 +44,7 @@ line on current main and carries everything landed there since.
 
 ## Versions
 
-- Workspace crates (`terraphim-cli`, `terraphim_grep`, `terraphim_lsp`,
+- Workspace crates (`terraphim-cli`, `terraphim_grep`,
   `terraphim_negative_contribution`, `terraphim-session-analyzer`): **1.21.12**
+- `terraphim_lsp` moved to terraphim-ai after this release; terraphim-clients no longer ships it.
 - `terraphim_agent`: **1.21.12** (explicit package version, kept >= 1.21.2 per #95)
