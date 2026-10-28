@@ -10,6 +10,8 @@ use std::process::Command;
 
 use semver::{Version, VersionReq};
 
+const CANONICAL_SPARSE_INDEX: &str =
+    "sparse+https://git.terraphim.cloud/api/packages/terraphim/cargo/";
 const KNOWN_BAD: [(&str, &str); 2] = [
     ("1.21.0", "stale lock pin"),
     ("1.21.1", "missing cursor-connector"),
@@ -28,6 +30,28 @@ fn workspace_root() -> PathBuf {
         .parent()
         .expect("workspace root")
         .to_path_buf()
+}
+
+fn verify_terraphim_registry_alias(config_path: &Path) -> Result<(), String> {
+    let cargo_config = fs::read_to_string(config_path)
+        .map_err(|error| format!("read {}: {error}", config_path.display()))?;
+    let config: toml::Table = toml::from_str(&cargo_config)
+        .map_err(|error| format!("parse {}: {error}", config_path.display()))?;
+    let index = config
+        .get("registries")
+        .and_then(toml::Value::as_table)
+        .and_then(|registries| registries.get("terraphim"))
+        .and_then(toml::Value::as_table)
+        .and_then(|terraphim| terraphim.get("index"))
+        .and_then(toml::Value::as_str);
+
+    if index == Some(CANONICAL_SPARSE_INDEX) {
+        Ok(())
+    } else {
+        Err(format!(
+            "the `terraphim` registry alias must map to {CANONICAL_SPARSE_INDEX}, found {index:?}"
+        ))
+    }
 }
 
 /// Obtain the floor from Cargo's view of the local workspace rather than
@@ -103,6 +127,8 @@ fn agent_manifest_tracks_workspace_sessions_release() {
         Some("terraphim"),
         "terraphim_sessions must use the canonical `registry = \"terraphim\"` attribute"
     );
+    verify_terraphim_registry_alias(&root.join(".cargo/config.toml"))
+        .expect("the `terraphim` registry alias must map to the canonical sparse index");
 
     let features = dependency
         .get("features")
@@ -126,5 +152,27 @@ fn agent_manifest_tracks_workspace_sessions_release() {
         dependency.get("path").and_then(toml::Value::as_str),
         Some("../terraphim_sessions"),
         "workspace builds must continue to use the sibling sessions crate"
+    );
+}
+
+#[test]
+fn rejects_noncanonical_terraphim_registry_alias() {
+    let source = workspace_root().join(".cargo/config.toml");
+    let config = fs::read_to_string(&source).expect("read Cargo config fixture");
+    let modified = config.replace(
+        CANONICAL_SPARSE_INDEX,
+        "sparse+https://example.invalid/cargo/",
+    );
+    assert_ne!(modified, config, "fixture must contain the canonical index");
+
+    let temp_dir = tempfile::tempdir().expect("create temporary directory");
+    let config_path = temp_dir.path().join("config.toml");
+    fs::write(&config_path, modified).expect("write modified Cargo config fixture");
+
+    let error = verify_terraphim_registry_alias(&config_path)
+        .expect_err("a noncanonical registry index must fail verification");
+    assert!(
+        error.contains("must map to") && error.contains("example.invalid"),
+        "failure must identify the invalid registry mapping: {error}"
     );
 }
