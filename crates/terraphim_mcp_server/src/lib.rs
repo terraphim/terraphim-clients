@@ -359,6 +359,9 @@ fn reject_hostile_tree(base: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Upper bound on documents remembered from `resources/list` pages.
+const LISTED_DOCUMENTS_CAP: usize = 512;
+
 /// The main service type for the Terraphim MCP server
 #[derive(Clone)]
 pub struct McpService {
@@ -369,6 +372,14 @@ pub struct McpService {
     kg_scorer: Option<Arc<KgPathScorer>>,
     /// Optional persistent frecency tracker (LMDB-backed) for access-frequency scoring.
     frecency: Option<SharedFrecency>,
+    /// Documents returned by the most recent `resources/list` pages.
+    ///
+    /// `read_resource` must be able to serve every URI it advertised. Haystack
+    /// search results are not persistence keys, so the page documents are kept
+    /// here instead of re-searching, which used to re-index the corpus for
+    /// every read. Bounded by [`LISTED_DOCUMENTS_CAP`].
+    listed_documents:
+        Arc<std::sync::Mutex<std::collections::HashMap<String, terraphim_types::Document>>>,
 }
 
 impl McpService {
@@ -394,6 +405,7 @@ impl McpService {
             autocomplete_index: Arc::new(tokio::sync::RwLock::new(None)),
             kg_scorer: None,
             frecency,
+            listed_documents: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         }
     }
 
@@ -3176,6 +3188,17 @@ impl ServerHandler for McpService {
             .take(catalogue::PAGE_SIZE)
             .cloned()
             .collect();
+
+        // Remember what we advertised so `read_resource` can serve it without
+        // searching. See the field documentation.
+        if let Ok(mut cache) = self.listed_documents.lock() {
+            if cache.len() + page.len() > LISTED_DOCUMENTS_CAP {
+                cache.clear();
+            }
+            for document in &page {
+                cache.insert(document.id.clone(), document.clone());
+            }
+        }
         let next_offset = offset + page.len();
         let next_cursor = (next_offset < total).then(|| next_offset.to_string());
 
@@ -3209,10 +3232,18 @@ impl ServerHandler for McpService {
             .map_err(TerraphimMcpError::Service)?;
 
         // Catalogue ids are haystack ids, not necessarily persistence keys.
-        // Fall back to the catalogue (and the file it points at) instead of
-        // failing the read. See Gitea #448.
+        // Fall back to the catalogue (and the file it points at), then to the
+        // documents advertised by the last listing, instead of searching.
+        // See Gitea #448.
         if document.is_none() {
             document = catalogue::document_by_id(&doc_id).await;
+        }
+        if document.is_none() {
+            document = self
+                .listed_documents
+                .lock()
+                .ok()
+                .and_then(|cache| cache.get(&doc_id).cloned());
         }
 
         if let Some(doc) = document {
