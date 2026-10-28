@@ -28,6 +28,48 @@ use tokio::sync::OnceCell;
 
 static SHARED_SERVER_URL: OnceCell<String> = OnceCell::const_new();
 
+/// BM25 baseline role in `tests/test_config.json`.
+///
+/// Refs #275: this role MUST stay backed by the local Ripgrep haystack
+/// (`terraphim_server/fixtures/haystack`) so the BM25 baseline is hermetic.
+/// The previous `Quickwit Logs` role pointed at an external Quickwit server
+/// on localhost:7280, making CI results depend on whatever happened to be
+/// listening on that port.
+const BM25_BASELINE_ROLE: &str = "Local BM25";
+
+/// Regression guard for Refs #275: the BM25 baseline role in
+/// `tests/test_config.json` must use the `bm25` relevance function backed by
+/// the local Ripgrep haystack fixture, so an external service (e.g. Quickwit
+/// on localhost:7280) cannot be reintroduced silently.
+fn assert_bm25_baseline_is_local() -> Result<()> {
+    let config_path = get_workspace_root()?.join("crates/terraphim_agent/tests/test_config.json");
+    let config: serde_json::Value = serde_json::from_str(&fs::read_to_string(&config_path)?)?;
+    let role = config["roles"].get(BM25_BASELINE_ROLE).ok_or_else(|| {
+        anyhow::anyhow!(
+            "BM25 baseline role '{}' missing from test_config.json",
+            BM25_BASELINE_ROLE
+        )
+    })?;
+    assert_eq!(
+        role["relevance_function"], "bm25",
+        "BM25 baseline role '{}' must use the 'bm25' relevance function",
+        BM25_BASELINE_ROLE
+    );
+    let haystack = role["haystacks"]
+        .as_array()
+        .and_then(|h| h.first())
+        .expect("BM25 baseline role must define at least one haystack");
+    assert_eq!(
+        haystack["service"], "Ripgrep",
+        "BM25 baseline haystack must use the local Ripgrep service, not an external service"
+    );
+    assert_eq!(
+        haystack["location"], "terraphim_server/fixtures/haystack",
+        "BM25 baseline haystack must point at the local Ripgrep fixture"
+    );
+    Ok(())
+}
+
 /// Get workspace root directory
 fn get_workspace_root() -> Result<PathBuf> {
     // Try to find workspace root by looking for Cargo.toml with workspace definition
@@ -495,6 +537,10 @@ async fn test_knowledge_graph_ranking_impact() -> Result<()> {
     thread::sleep(Duration::from_secs(3));
 
     println!("\nStep 2: Loading configuration...");
+    // Regression guard (Refs #275): BM25 baseline must be the local Ripgrep
+    // role, never an external service like Quickwit on localhost:7280.
+    assert_bm25_baseline_is_local()?;
+    println!("  ✓ BM25 baseline role is local and hermetic");
     let config_resp = api_client.get_config().await?;
     let available_roles: Vec<String> = config_resp
         .config
@@ -507,9 +553,9 @@ async fn test_knowledge_graph_ranking_impact() -> Result<()> {
     // Test with different roles
     println!("\nStep 3: Searching with different relevance functions...");
 
-    // BM25 baseline
+    // BM25 baseline (local Ripgrep role, Refs #275)
     let (bm25_docs, bm25_ranks) =
-        search_via_server(&api_client, "machine learning", "Quickwit Logs").await?;
+        search_via_server(&api_client, "machine learning", BM25_BASELINE_ROLE).await?;
     println!("  BM25: {} results", bm25_docs.len());
 
     // Title scorer
@@ -701,7 +747,6 @@ async fn test_role_switching() -> Result<()> {
     thread::sleep(Duration::from_secs(5));
 
     // Only test with Default role which is reliable
-    // Quickwit Logs requires external Quickwit server
     // Test Engineer has terraphim-graph which can timeout
     let roles = vec!["Default"];
 

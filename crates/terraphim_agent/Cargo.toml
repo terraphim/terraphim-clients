@@ -10,9 +10,11 @@ authors = ["Terraphim Contributors"]
 description = "Terraphim AI Agent CLI - Command-line interface with interactive REPL and ASCII graph visualization"
 documentation = "https://terraphim.ai"
 homepage = "https://terraphim.ai"
-repository = "https://github.com/terraphim/terraphim-ai"
+repository = "https://git.terraphim.cloud/terraphim/terraphim-clients"
 keywords = ["cli", "ai", "agent", "search", "repl"]
 license = "Apache-2.0"
+# Include the canonical license in Cargo package output (#246).
+license-file = "../../LICENSE-Apache-2.0"
 readme = "README.md"
 
 [features]
@@ -56,7 +58,7 @@ log = { workspace = true }
 env_logger = "0.11"
 urlencoding = { version = "2.1", optional = true }
 ahash = "0.8"
-terraphim_update = { path = "../terraphim_update", version = "1.20.2", registry = "terraphim" }
+terraphim_update = { path = "../terraphim_update", version = "1.23.0", registry = "terraphim" }
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 regex = "1.12"
 glob = "0.3"
@@ -66,6 +68,7 @@ jiff = { version = "0.2", features = ["serde"] }
 strsim = "0.11"  # For edit distance / fuzzy matching in forgiving CLI
 uuid = { workspace = true }
 dialoguer = "0.12"  # Interactive CLI prompts for onboarding wizard
+sha2 = "0.10"  # Corpus and thesaurus hashes for the judge-free memory benchmark (#260)
 
 # REPL dependencies - only compiled with features
 rustyline = { version = "17.0", optional = true }
@@ -96,7 +99,7 @@ terraphim_orchestrator = { version = "1.21.0", registry = "terraphim" }
 # published package is the release artifact being validated.
 # Sibling workspace crate: must be a path dep, otherwise the workspace compiles
 # two different terraphim_sessions (the local one and a published copy). Refs #112.
-terraphim_sessions = { path = "../terraphim_sessions", version = "1.21.2", optional = true, features = ["tsa-full", "aider-connector", "cursor-connector", "search-index"], registry = "terraphim" }
+terraphim_sessions = { path = "../terraphim_sessions", version = "1.23.0", optional = true, features = ["tsa-full", "aider-connector", "cursor-connector", "search-index"], registry = "terraphim" }
 
 [dev-dependencies]
 assert_cmd = "2"
@@ -108,12 +111,13 @@ reqwest = { workspace = true }
 tokio = { workspace = true }
 tempfile = { workspace = true }
 wiremock = "0.6"
-
 terraphim_test_utils = { version = "1.20.3", registry = "terraphim" }
 insta = { version = "1.41", features = ["yaml", "redactions"] }
 # Packaged-install-graph regression test (#95)
 toml = "0.8"
 semver = "1"
+# Retrieval latency bench (#261); same version and features as terraphim_sessions.
+criterion = { version = "0.8", features = ["html_reports"] }
 
 # Enable REPL features for testing
 terraphim_agent = { path = ".", features = ["repl-full"] }
@@ -125,6 +129,12 @@ rustc_version = "0.4"
 [[bin]]
 name = "terraphim-agent"
 path = "src/main.rs"
+
+# Retrieval latency bench over the committed memory fixture tiled to 100, 1k
+# and 10k items (#261, epic #255).
+[[bench]]
+name = "memory_retrieve"
+harness = false
 
 [package.metadata.deb]
 maintainer = "Terraphim Contributors <team@terraphim.ai>"

@@ -1828,6 +1828,19 @@ impl ReplHandler {
                         UpdateStatus::Failed(error) => {
                             println!("Update failed: {}", error);
                         }
+                        // Semver-compatible fallback (Gitea #247
+                        // packaged-install regression): this production
+                        // source must keep compiling against the currently
+                        // published `terraphim_update`, which predates the
+                        // `PackageManaged` variant, so it can't be named
+                        // here. `Display` covers it (and any future
+                        // variant) with the stable `sudo pacman -Syu`
+                        // guidance when linked against a pacman-aware
+                        // `terraphim_update`; this arm is unreachable
+                        // against the published crate.
+                        other => {
+                            println!("{}", other);
+                        }
                     },
                     Err(e) => {
                         println!("Failed to update: {}", e);

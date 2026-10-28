@@ -1,2 +1,2 @@
 # bun install
-synonyms:: npm install, yarn install, pnpm install
+synonyms:: npm install, npm i, yarn install, pnpm install

@@ -1,13 +1,14 @@
 //! Shared auto-update functionality for Terraphim AI binaries
 //!
-//! This crate provides a unified interface for self-updating Terraphim AI CLI tools
-//! using GitHub Releases as a distribution channel.
+//! This crate provides a unified interface for self-updating Terraphim CLI tools.
+//! It uses a strict release manifest by default and GitHub Releases as fallback.
 
 pub mod config;
 pub mod downloader;
 pub mod manifest;
 pub mod notification;
 pub mod platform;
+pub mod policy;
 pub mod rollback;
 pub mod scheduler;
 pub mod signature;
@@ -17,8 +18,10 @@ use anyhow::{Context, Result, anyhow};
 use base64::Engine;
 use self_update::cargo_crate_version;
 use self_update::version::bump_is_greater;
+use sha2::{Digest, Sha256};
 use std::fmt;
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 use tracing::{error, info, warn};
@@ -26,6 +29,108 @@ use tracing::{error, info, warn};
 // Re-export the backend types for ergonomic access from binaries, e.g.
 // `terraphim_update::UpdateBackend` rather than `...::manifest::UpdateBackend`.
 pub use manifest::{ManifestConfig, ManifestError, ReleaseManifest, UpdateBackend};
+
+/// GitHub owner of the repository that publishes Terraphim release assets.
+pub const DEFAULT_REPO_OWNER: &str = "terraphim";
+/// GitHub repository that publishes Terraphim release assets.
+pub const DEFAULT_REPO_NAME: &str = "terraphim-clients";
+
+/// Resolve a GitHub API token from the environment: `GITHUB_TOKEN`, then
+/// `GH_TOKEN` (the variable the `gh` CLI uses). Blank values count as unset.
+pub fn github_token_from_env() -> Option<String> {
+    first_token([
+        std::env::var("GITHUB_TOKEN").ok(),
+        std::env::var("GH_TOKEN").ok(),
+    ])
+}
+
+/// First candidate that is non-empty after trimming, trimmed.
+fn first_token<const N: usize>(candidates: [Option<String>; N]) -> Option<String> {
+    candidates
+        .into_iter()
+        .flatten()
+        .map(|token| token.trim().to_string())
+        .find(|token| !token.is_empty())
+}
+
+/// Where and how to reach GitHub Releases.
+///
+/// Every `self_update` GitHub builder is created through
+/// [`GitHubSource::builder`], so the repository and auth token cannot drift
+/// between call sites (terraphim-ai#3428: `update` used to drop the token and
+/// fail with 403 while `check-update` succeeded).
+#[derive(Clone)]
+struct GitHubSource {
+    repo_owner: String,
+    repo_name: String,
+    auth_token: Option<String>,
+    /// API base URL override; `None` means `https://api.github.com`.
+    api_url: Option<String>,
+}
+
+impl GitHubSource {
+    fn from_config(config: &UpdaterConfig) -> Self {
+        Self {
+            repo_owner: config.repo_owner.clone(),
+            repo_name: config.repo_name.clone(),
+            auth_token: config.auth_token.clone(),
+            api_url: config.github_api_url.clone(),
+        }
+    }
+
+    /// The default release repository, authenticated from the environment.
+    fn from_env() -> Self {
+        Self {
+            repo_owner: DEFAULT_REPO_OWNER.to_string(),
+            repo_name: DEFAULT_REPO_NAME.to_string(),
+            auth_token: github_token_from_env(),
+            api_url: None,
+        }
+    }
+
+    /// A `self_update` GitHub builder with repository, binary name, version,
+    /// auth token, API URL and install path applied.
+    fn builder(
+        &self,
+        bin_name: &str,
+        current_version: &str,
+    ) -> Result<self_update::backends::github::UpdateBuilder> {
+        let mut builder = self_update::backends::github::Update::configure();
+        builder.repo_owner(&self.repo_owner);
+        builder.repo_name(&self.repo_name);
+        // Release assets use hyphenated names (terraphim_agent -> terraphim-agent)
+        builder.bin_name(&bin_name.replace('_', "-"));
+        builder.current_version(current_version);
+        if let Some(token) = &self.auth_token {
+            builder.auth_token(token);
+        }
+        if let Some(url) = &self.api_url {
+            builder.with_url(url);
+        }
+        // Install path keeps the original (possibly underscored) name
+        builder.bin_install_path(platform::get_binary_path(bin_name)?);
+        Ok(builder)
+    }
+
+    /// Operator-facing message for a GitHub API error. Only suggests setting
+    /// a token when none was sent.
+    fn describe_error(&self, error: &str) -> String {
+        if !error.contains("403") {
+            return error.to_string();
+        }
+        if self.auth_token.is_some() {
+            format!(
+                "GitHub API returned 403 although an auth token was sent (rate limit reached, or the token is invalid or lacks access). Error: {}",
+                error
+            )
+        } else {
+            format!(
+                "GitHub API rate limit exceeded. Set GITHUB_TOKEN (or GH_TOKEN) for authenticated access (higher rate limit). Error: {}",
+                error
+            )
+        }
+    }
+}
 
 /// Represents the status of an update operation
 #[derive(Debug, Clone)]
@@ -44,6 +149,15 @@ pub enum UpdateStatus {
     },
     /// Update failed with error
     Failed(String),
+    /// The running binary is managed by a system package manager; self-update
+    /// is refused as a no-op and the operator should use the manager's own
+    /// update command instead (Gitea #247). Distinct from `Failed`: this is
+    /// the deterministic, correct answer for a package-managed install, not
+    /// an error.
+    PackageManaged {
+        manager: policy::PackageManager,
+        update_command: String,
+    },
 }
 
 /// Compare two version strings to determine if the first is newer than the second
@@ -80,6 +194,14 @@ fn log_status(status: &UpdateStatus) {
             from_version, to_version
         ),
         UpdateStatus::Failed(error) => error!("Update check failed: {}", error),
+        UpdateStatus::PackageManaged {
+            manager,
+            update_command,
+        } => info!(
+            "Package-managed install ({}); run `{}` to update",
+            manager.name(),
+            update_command
+        ),
     }
 }
 
@@ -108,6 +230,17 @@ impl fmt::Display for UpdateStatus {
             UpdateStatus::Failed(error) => {
                 write!(f, "[ERROR] Update failed: {}", error)
             }
+            UpdateStatus::PackageManaged {
+                manager,
+                update_command,
+            } => {
+                write!(
+                    f,
+                    "[OK] Managed by {}; run `{}` to update",
+                    manager.name(),
+                    update_command
+                )
+            }
         }
     }
 }
@@ -130,8 +263,22 @@ pub struct UpdaterConfig {
     /// Configuration for the manifest (R2) backend.
     pub manifest: manifest::ManifestConfig,
     /// Optional GitHub auth token, forwarded to the GitHub fallback backend to
-    /// avoid rate limiting. Picked up from `GITHUB_TOKEN` by [`Self::new`].
+    /// avoid rate limiting. Picked up from `GITHUB_TOKEN` or `GH_TOKEN` by
+    /// [`Self::new`].
     pub auth_token: Option<String>,
+    /// Whether R2 transport and manifest failures may fall back to GitHub.
+    /// Defaults to `true`; disable this for mirror-only or air-gapped use.
+    pub github_fallback: bool,
+    /// GitHub API base URL for the fallback backend's release lookups; `None`
+    /// means `https://api.github.com`. Only API calls use it: the verified
+    /// update still downloads assets from `https://github.com/.../releases/download`.
+    pub github_api_url: Option<String>,
+    /// Runtime update policy (Gitea #247): whether self-update is safe, or
+    /// whether the running binary is package-managed and self-update must be
+    /// refused. Resolved via [`policy::detect_update_policy_default`] by
+    /// [`Self::new`]; override with [`Self::with_policy`] for injection
+    /// (tests, or a call site that needs an explicit policy).
+    pub policy: policy::UpdatePolicy,
 }
 
 impl UpdaterConfig {
@@ -141,7 +288,7 @@ impl UpdaterConfig {
     /// base url = `https://downloads.terraphim.ai`. The backend and base url
     /// can be overridden at runtime via the `TERRAPHIM_UPDATE_BACKEND`
     /// (`r2`|`github`) and `TERRAPHIM_UPDATE_BASE_URL` env vars, and the
-    /// GitHub fallback picks up `GITHUB_TOKEN` automatically.
+    /// GitHub fallback picks up `GITHUB_TOKEN` (or `GH_TOKEN`) automatically.
     ///
     /// **IMPORTANT**: The default version returned by this constructor is the
     /// version of the `terraphim_update` library crate, NOT the version of the
@@ -170,20 +317,19 @@ impl UpdaterConfig {
             }
             _ => manifest::ManifestConfig::new(&bin),
         };
+        let policy = policy::detect_update_policy_default();
         Self {
             bin_name: bin,
-            repo_owner: "terraphim".to_string(),
-            // FIX: releases live on terraphim-clients, not terraphim-ai.
-            repo_name: "terraphim-clients".to_string(),
+            repo_owner: DEFAULT_REPO_OWNER.to_string(),
+            repo_name: DEFAULT_REPO_NAME.to_string(),
             current_version: cargo_crate_version!().to_string(),
             show_progress: true,
             backend,
             manifest,
-            // FIX: pick up GITHUB_TOKEN so the fallback backend isn't rate-limited.
-            auth_token: std::env::var("GITHUB_TOKEN")
-                .ok()
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty()),
+            auth_token: github_token_from_env(),
+            github_fallback: true,
+            github_api_url: None,
+            policy,
         }
     }
 
@@ -214,10 +360,34 @@ impl UpdaterConfig {
         self
     }
 
+    /// Enable or disable GitHub fallback after an R2 transport or manifest failure.
+    pub fn with_github_fallback(mut self, enabled: bool) -> Self {
+        self.github_fallback = enabled;
+        self
+    }
+
     /// Explicitly set the GitHub auth token for the fallback backend.
     pub fn with_auth_token(mut self, token: impl Into<String>) -> Self {
         let t = token.into();
         self.auth_token = if t.is_empty() { None } else { Some(t) };
+        self
+    }
+
+    /// Override the GitHub API base URL used for release lookups (see
+    /// [`Self::github_api_url`]; asset downloads are unaffected).
+    pub fn with_github_api_url(mut self, url: impl Into<String>) -> Self {
+        self.github_api_url = Some(url.into());
+        self
+    }
+
+    /// Explicitly inject the update policy, overriding the automatic
+    /// [`policy::detect_update_policy_default`] resolution done by
+    /// [`Self::new`]. Used by production call sites that need to
+    /// short-circuit before constructing a `Runtime`, and by tests that want
+    /// to exercise [`TerraphimUpdater`] under a specific policy without
+    /// relying on real `/usr` state.
+    pub fn with_policy(mut self, policy: policy::UpdatePolicy) -> Self {
+        self.policy = policy;
         self
     }
 }
@@ -233,54 +403,100 @@ impl TerraphimUpdater {
         Self { config }
     }
 
+    fn managed_status(&self) -> Option<UpdateStatus> {
+        Self::managed_status_with_detector(
+            &self.config.policy,
+            policy::detect_update_policy_default,
+        )
+    }
+
+    fn managed_status_with_detector(
+        configured_policy: &policy::UpdatePolicy,
+        detect_policy: impl FnOnce() -> policy::UpdatePolicy,
+    ) -> Option<UpdateStatus> {
+        let resolved_policy = match configured_policy {
+            policy::UpdatePolicy::PackageManaged { .. } => configured_policy.clone(),
+            policy::UpdatePolicy::SelfManaged => detect_policy(),
+        };
+
+        match resolved_policy {
+            policy::UpdatePolicy::PackageManaged {
+                manager,
+                update_command,
+            } => Some(UpdateStatus::PackageManaged {
+                manager,
+                update_command,
+            }),
+            policy::UpdatePolicy::SelfManaged => None,
+        }
+    }
+
     /// Check if an update is available without installing.
     ///
     /// Dispatches to the configured [`UpdateBackend`]: R2 (manifest) by
-    /// default, GitHub as fallback. On the R2 backend, a manifest fetch
-    /// failure does **not** fall back here — callers that want fallback
-    /// behaviour should use [`Self::check_and_update`].
+    /// default, GitHub as an enabled-by-default fallback. Disable fallback with
+    /// [`UpdaterConfig::with_github_fallback`]. Validated integrity failures
+    /// during install remain definitive.
     pub async fn check_update(&self) -> Result<UpdateStatus> {
+        if let Some(status) = self.managed_status() {
+            return Ok(status);
+        }
         info!(
             "Checking for updates: {} v{} (backend: {:?})",
             self.config.bin_name, self.config.current_version, self.config.backend
         );
         match self.config.backend {
-            UpdateBackend::R2 => self.check_update_r2().await,
+            UpdateBackend::R2 => match self.check_update_r2().await {
+                Ok(status) => Ok(status),
+                Err(error) if self.config.github_fallback => {
+                    warn!("R2 update check failed ({error}); falling back to GitHub backend");
+                    self.check_update_github().await
+                }
+                Err(error) => Ok(UpdateStatus::Failed(format!(
+                    "R2 update check failed and GitHub fallback is disabled: {error}"
+                ))),
+            },
             UpdateBackend::GitHub => self.check_update_github().await,
         }
     }
 
     /// Check for an update via the R2 manifest backend.
     ///
-    /// Fetches `{base_url}/{bin}/stable.json`, compares the manifest version
+    /// Fetches `{base_url}/{bin}/stable-v2.json`, compares the manifest version
     /// against the current version using semver. No secrets, no per-IP rate
     /// limit.
     pub async fn check_update_r2(&self) -> Result<UpdateStatus> {
+        if let Some(status) = self.managed_status() {
+            return Ok(status);
+        }
         let cfg = self.config.manifest.clone();
         let current_version = self.config.current_version.clone();
         let bin_name = self.config.bin_name.clone();
 
-        let result = tokio::task::spawn_blocking(move || match manifest::fetch_manifest(&cfg) {
-            Ok(m) => match is_newer_version_static(&m.version, &current_version) {
-                Ok(true) => UpdateStatus::Available {
-                    current_version: current_version.clone(),
-                    latest_version: m.version,
+        let result = tokio::task::spawn_blocking(move || -> Result<UpdateStatus> {
+            let manifest = manifest::fetch_manifest(&cfg)?;
+            Ok(
+                match is_newer_version_static(&manifest.version, &current_version) {
+                    Ok(true) => UpdateStatus::Available {
+                        current_version: current_version.clone(),
+                        latest_version: manifest.version,
+                    },
+                    Ok(false) => UpdateStatus::UpToDate(current_version),
+                    Err(e) => UpdateStatus::Failed(format!("version compare for {bin_name}: {e}")),
                 },
-                Ok(false) => UpdateStatus::UpToDate(current_version),
-                Err(e) => UpdateStatus::Failed(format!("version compare for {bin_name}: {e}")),
-            },
-            Err(e) => UpdateStatus::Failed(format!("manifest fetch: {e}")),
+            )
         })
         .await;
 
         match result {
-            Ok(status) => {
+            Ok(Ok(status)) => {
                 log_status(&status);
                 Ok(status)
             }
-            Err(e) => {
-                error!("Failed to spawn blocking task: {}", e);
-                Ok(UpdateStatus::Failed(format!("Task spawn error: {}", e)))
+            Ok(Err(error)) => Err(error),
+            Err(error) => {
+                error!("Failed to spawn blocking task: {}", error);
+                Err(anyhow!("R2 update check task failed: {error}"))
             }
         }
     }
@@ -299,6 +515,9 @@ impl TerraphimUpdater {
     /// - `Err` — transport/manifest failure (network, parse). Caller SHOULD
     ///   fall back to the GitHub backend.
     pub async fn update_r2(&self) -> Result<UpdateStatus> {
+        if let Some(status) = self.managed_status() {
+            return Ok(status);
+        }
         let cfg = self.config.manifest.clone();
         let current_version = self.config.current_version.clone();
         let bin_name = self.config.bin_name.clone();
@@ -324,14 +543,15 @@ impl TerraphimUpdater {
             // 3. Resolve the asset URL for the current target triple. An
             //    absent asset is definitive (the manifest is wrong, not the
             //    transport) -> Ok(Failed), do not fall back.
-            let asset_url = match manifest::resolve_asset_url(&release, &cfg) {
-                Ok(u) => u,
+            let asset = match manifest::resolve_asset(&release, &cfg) {
+                Ok(asset) => asset,
                 Err(e) => {
                     return Ok(UpdateStatus::Failed(format!(
                         "no asset for current target: {e}"
                     )));
                 }
             };
+            let asset_url = asset.url.clone();
             info!("Downloading {} from R2", asset_url);
 
             // 4. Download to a temp file named after the original asset so
@@ -354,7 +574,34 @@ impl TerraphimUpdater {
                 return Err(anyhow!("download failed: {e}"));
             }
 
-            // 5. Verify the zipsign Ed25519 signature using the named path
+            // 5. Verify exact final-byte integrity before parsing a signature
+            //    or touching the installed binary.
+            let downloaded_size = fs::metadata(&archive_path)?.len();
+            if downloaded_size != asset.size {
+                return Ok(UpdateStatus::Failed(format!(
+                    "download size mismatch: expected {}, got {}",
+                    asset.size, downloaded_size
+                )));
+            }
+            let mut archive = fs::File::open(&archive_path)?;
+            let mut hasher = Sha256::new();
+            let mut buffer = [0_u8; 64 * 1024];
+            loop {
+                let read = archive.read(&mut buffer)?;
+                if read == 0 {
+                    break;
+                }
+                hasher.update(&buffer[..read]);
+            }
+            let downloaded_sha256 = format!("{:x}", hasher.finalize());
+            if downloaded_sha256 != asset.sha256 {
+                return Ok(UpdateStatus::Failed(format!(
+                    "download checksum mismatch: expected {}, got {}",
+                    asset.sha256, downloaded_sha256
+                )));
+            }
+
+            // 6. Verify the zipsign Ed25519 signature using the named path
             //    (context = archive filename, matching sign time).
             let vr = signature::verify_archive_signature(&archive_path, None)?;
             match vr {
@@ -378,7 +625,17 @@ impl TerraphimUpdater {
                 }
             }
 
-            // 6. Install (extract + chmod + atomic rename) to current_exe().parent().
+            // 7. Install (extract + chmod + atomic rename) to current_exe().parent().
+            if let policy::UpdatePolicy::PackageManaged {
+                manager,
+                update_command,
+            } = policy::detect_update_policy_default()
+            {
+                return Ok(UpdateStatus::PackageManaged {
+                    manager,
+                    update_command,
+                });
+            }
             if let Err(e) = Self::install_verified_archive(&archive_path, &bin_name) {
                 return Err(anyhow!("install failed: {e}"));
             }
@@ -395,72 +652,52 @@ impl TerraphimUpdater {
         }
     }
 
+    fn evaluate_version(latest_version: &str, current_version: &str) -> Result<UpdateStatus> {
+        match is_newer_version_static(latest_version, current_version) {
+            Ok(true) => Ok(UpdateStatus::Available {
+                current_version: current_version.to_string(),
+                latest_version: latest_version.to_string(),
+            }),
+            Ok(false) => Ok(UpdateStatus::UpToDate(current_version.to_string())),
+            Err(error) => Err(error),
+        }
+    }
+
     /// Check for an update via the GitHub Releases backend (fallback).
     async fn check_update_github(&self) -> Result<UpdateStatus> {
+        if let Some(status) = self.managed_status() {
+            return Ok(status);
+        }
         info!(
             "Checking for updates via GitHub: {}/{}",
             self.config.repo_owner, self.config.repo_name
         );
 
         // Clone data for the blocking task
-        let repo_owner = self.config.repo_owner.clone();
-        let repo_name = self.config.repo_name.clone();
+        let source = GitHubSource::from_config(&self.config);
         let bin_name = self.config.bin_name.clone();
         let current_version = self.config.current_version.clone();
         let show_progress = self.config.show_progress;
-        let auth_token = self.config.auth_token.clone();
 
         // Move self_update operations to a blocking task to avoid runtime conflicts
         let result = tokio::task::spawn_blocking(move || {
-            // Normalize binary name for asset lookup (underscores to hyphens)
-            let bin_name_for_asset = bin_name.replace('_', "-");
-
             // Check if update is available
-            let mut builder = self_update::backends::github::Update::configure();
-            builder.repo_owner(&repo_owner);
-            builder.repo_name(&repo_name);
-            builder.bin_name(&bin_name_for_asset); // Use hyphenated name for asset lookup
-            builder.current_version(&current_version);
+            let mut builder = source.builder(&bin_name, &current_version)?;
             builder.show_download_progress(show_progress);
-            if let Some(token) = &auth_token {
-                builder.auth_token(token);
-            }
-
-            // Set custom install path to preserve underscore naming
-            builder.bin_install_path(platform::get_binary_path(&bin_name)?);
 
             match builder.build() {
                 Ok(updater) => {
                     // This will check without updating
                     match updater.get_latest_release() {
-                        Ok(release) => {
-                            let latest_version = release.version.clone();
-
-                            // Compare versions using semver
-                            match is_newer_version_static(&latest_version, &current_version) {
-                                Ok(true) => {
-                                    Ok::<UpdateStatus, anyhow::Error>(UpdateStatus::Available {
-                                        current_version,
-                                        latest_version,
-                                    })
-                                }
-                                Ok(false) => Ok::<UpdateStatus, anyhow::Error>(
-                                    UpdateStatus::UpToDate(current_version),
-                                ),
-                                Err(e) => Err(e),
+                        Ok(release) => Self::evaluate_version(&release.version, &current_version),
+                        Err(e) => {
+                            let err_msg = e.to_string();
+                            if err_msg.contains("403") {
+                                Ok(UpdateStatus::Failed(source.describe_error(&err_msg)))
+                            } else {
+                                Ok(UpdateStatus::Failed(format!("Check failed: {}", err_msg)))
                             }
                         }
-                Err(e) => {
-                    let err_msg = e.to_string();
-                    if err_msg.contains("403") {
-                        Ok(UpdateStatus::Failed(format!(
-                            "GitHub API rate limit exceeded. Set GITHUB_TOKEN env var for authenticated access (higher rate limit). Error: {}",
-                            err_msg
-                        )))
-                    } else {
-                        Ok(UpdateStatus::Failed(format!("Check failed: {}", err_msg)))
-                    }
-                }
                     }
                 }
                 Err(e) => Ok(UpdateStatus::Failed(format!("Configuration error: {}", e))),
@@ -498,6 +735,11 @@ impl TerraphimUpdater {
                             UpdateStatus::Failed(error) => {
                                 error!("Update check failed: {}", error);
                             }
+                            // Unreachable here: this backend-dispatch path is
+                            // never entered when the policy is
+                            // PackageManaged (short-circuited in
+                            // `check_update`/`update`/`check_and_update`).
+                            UpdateStatus::PackageManaged { .. } => {}
                         }
                         Ok(status)
                     }
@@ -517,16 +759,23 @@ impl TerraphimUpdater {
     /// Update the binary to the latest version.
     ///
     /// Dispatches by backend. On the R2 backend, a transport/manifest failure
-    /// (`Err`) transparently falls back to the GitHub backend; a definitive
-    /// failure (`Ok(Failed)`, e.g. signature rejection) does **not** fall back.
+    /// (`Err`) falls back to GitHub when [`UpdaterConfig::github_fallback`] is
+    /// enabled; a definitive failure (`Ok(Failed)`, e.g. signature rejection)
+    /// does **not** fall back.
     pub async fn update(&self) -> Result<UpdateStatus> {
+        if let Some(status) = self.managed_status() {
+            return Ok(status);
+        }
         match self.config.backend {
             UpdateBackend::R2 => match self.update_r2().await {
                 Ok(status) => Ok(status),
-                Err(e) => {
+                Err(e) if self.config.github_fallback => {
                     warn!("R2 update failed ({e}); falling back to GitHub backend");
                     self.update_github().await
                 }
+                Err(error) => Ok(UpdateStatus::Failed(format!(
+                    "R2 update failed and GitHub fallback is disabled: {error}"
+                ))),
             },
             UpdateBackend::GitHub => self.update_github().await,
         }
@@ -534,18 +783,19 @@ impl TerraphimUpdater {
 
     /// Update the binary via the GitHub Releases backend.
     async fn update_github(&self) -> Result<UpdateStatus> {
+        if let Some(status) = self.managed_status() {
+            return Ok(status);
+        }
         info!(
             "Updating {} from version {} via GitHub",
             self.config.bin_name, self.config.current_version
         );
 
         // Clone data for the blocking task
-        let repo_owner = self.config.repo_owner.clone();
-        let repo_name = self.config.repo_name.clone();
+        let source = GitHubSource::from_config(&self.config);
         let bin_name = self.config.bin_name.clone();
         let current_version = self.config.current_version.clone();
         let show_progress = self.config.show_progress;
-        let auth_token = self.config.auth_token.clone();
 
         // Decode every trusted embedded public key for signature verification
         // (key-rotation aware: an archive signed with any trusted key passes).
@@ -572,23 +822,10 @@ impl TerraphimUpdater {
 
         // Move self_update operations to a blocking task to avoid runtime conflicts
         let result = tokio::task::spawn_blocking(move || {
-            // Normalize binary name for asset lookup (underscores to hyphens)
-            let bin_name_for_asset = bin_name.replace('_', "-");
-
             // Build the updater with signature verification enabled
-            let mut builder = self_update::backends::github::Update::configure();
-            builder.repo_owner(&repo_owner);
-            builder.repo_name(&repo_name);
-            builder.bin_name(&bin_name_for_asset); // Use hyphenated name for asset lookup
-            builder.current_version(&current_version);
+            let mut builder = source.builder(&bin_name, &current_version)?;
             builder.show_download_progress(show_progress);
             builder.verifying_keys(verifying_keys.clone()); // Enable signature verification
-            if let Some(token) = &auth_token {
-                builder.auth_token(token);
-            }
-
-            // Set custom install path to preserve underscore naming
-            builder.bin_install_path(platform::get_binary_path(&bin_name)?);
 
             match builder.build() {
                 Ok(updater) => match updater.update() {
@@ -640,6 +877,11 @@ impl TerraphimUpdater {
                             UpdateStatus::Failed(error) => {
                                 error!("Update failed: {}", error);
                             }
+                            // Unreachable here: this backend-dispatch path is
+                            // never entered when the policy is
+                            // PackageManaged (short-circuited in
+                            // `check_update`/`update`/`check_and_update`).
+                            UpdateStatus::PackageManaged { .. } => {}
                         }
                         Ok(status)
                     }
@@ -676,14 +918,16 @@ impl TerraphimUpdater {
     /// - Rejects updates with missing signatures
     /// - Only installs verified binaries
     pub async fn update_with_verification(&self) -> Result<UpdateStatus> {
+        if let Some(status) = self.managed_status() {
+            return Ok(status);
+        }
         info!(
             "Updating {} from version {} with signature verification",
             self.config.bin_name, self.config.current_version
         );
 
         // Clone data for the blocking task
-        let repo_owner = self.config.repo_owner.clone();
-        let repo_name = self.config.repo_name.clone();
+        let source = GitHubSource::from_config(&self.config);
         let bin_name = self.config.bin_name.clone();
         let current_version = self.config.current_version.clone();
         let show_progress = self.config.show_progress;
@@ -691,8 +935,7 @@ impl TerraphimUpdater {
         // Move self_update operations to a blocking task
         let result = tokio::task::spawn_blocking(move || {
             Self::update_with_verification_blocking(
-                &repo_owner,
-                &repo_name,
+                &source,
                 &bin_name,
                 &current_version,
                 show_progress,
@@ -735,8 +978,7 @@ impl TerraphimUpdater {
 
     /// Blocking version of update_with_verification for use in spawn_blocking
     fn update_with_verification_blocking(
-        repo_owner: &str,
-        repo_name: &str,
+        source: &GitHubSource,
         bin_name: &str,
         current_version: &str,
         show_progress: bool,
@@ -747,23 +989,22 @@ impl TerraphimUpdater {
         );
 
         // Step 1: Get latest release info from GitHub
-        let release =
-            match Self::get_latest_release_info(repo_owner, repo_name, bin_name, current_version) {
-                Ok(release) => release,
-                Err(e) => {
-                    return Ok(UpdateStatus::Failed(format!(
-                        "Failed to get release info: {}",
-                        e
-                    )));
-                }
-            };
+        let release = match Self::get_latest_release_info(source, bin_name, current_version) {
+            Ok(release) => release,
+            Err(e) => {
+                return Ok(UpdateStatus::Failed(format!(
+                    "Failed to get release info: {}",
+                    source.describe_error(&e.to_string())
+                )));
+            }
+        };
 
         let latest_version = &release.version;
 
         // Step 2: Download archive to temp location
         let (_temp_dir, archive_path) = match Self::download_release_archive(
-            repo_owner,
-            repo_name,
+            &source.repo_owner,
+            &source.repo_name,
             bin_name,
             latest_version,
             show_progress,
@@ -807,6 +1048,16 @@ impl TerraphimUpdater {
         }
 
         // Step 4: Install the verified archive
+        if let policy::UpdatePolicy::PackageManaged {
+            manager,
+            update_command,
+        } = policy::detect_update_policy_default()
+        {
+            return Ok(UpdateStatus::PackageManaged {
+                manager,
+                update_command,
+            });
+        }
         match Self::install_verified_archive(&archive_path, bin_name) {
             Ok(_) => {
                 info!("Successfully installed verified update");
@@ -821,29 +1072,16 @@ impl TerraphimUpdater {
 
     /// Get latest release info from GitHub
     fn get_latest_release_info(
-        repo_owner: &str,
-        repo_name: &str,
+        source: &GitHubSource,
         bin_name: &str,
         current_version: &str,
     ) -> Result<self_update::update::Release> {
         info!(
             "Fetching latest release info for {}/{}",
-            repo_owner, repo_name
+            source.repo_owner, source.repo_name
         );
 
-        // Normalize binary name for asset lookup (underscores to hyphens)
-        let bin_name_for_asset = bin_name.replace('_', "-");
-
-        let mut builder = self_update::backends::github::Update::configure();
-        builder.repo_owner(repo_owner);
-        builder.repo_name(repo_name);
-        builder.bin_name(&bin_name_for_asset); // Use hyphenated name for asset lookup
-        builder.current_version(current_version);
-
-        // Set custom install path to preserve underscore naming
-        builder.bin_install_path(platform::get_binary_path(bin_name)?);
-
-        let updater = builder.build()?;
+        let updater = source.builder(bin_name, current_version)?.build()?;
 
         let release = updater.get_latest_release()?;
 
@@ -1016,6 +1254,15 @@ impl TerraphimUpdater {
 
         // Get current executable path
         let current_exe = std::env::current_exe()?;
+        if matches!(
+            policy::detect_update_policy(&current_exe),
+            policy::UpdatePolicy::PackageManaged { .. }
+        ) {
+            return Err(anyhow!(
+                "{} is managed by a system package manager; refusing self-update install",
+                bin_name
+            ));
+        }
         let install_dir = current_exe
             .parent()
             .ok_or_else(|| anyhow!("Cannot determine install directory"))?;
@@ -1180,35 +1427,49 @@ impl TerraphimUpdater {
     /// Check for update and install if available with signature verification.
     ///
     /// Dispatches by backend. The R2 path checks the manifest, then installs
-    /// via `update_r2()` with automatic GitHub fallback on transport failure.
+    /// via `update_r2()`, with GitHub fallback controlled by
+    /// [`UpdaterConfig::github_fallback`].
     pub async fn check_and_update(&self) -> Result<UpdateStatus> {
+        if let Some(status) = self.managed_status() {
+            return Ok(status);
+        }
         match self.config.backend {
             UpdateBackend::R2 => self.check_and_update_r2().await,
             UpdateBackend::GitHub => self.check_and_update_github().await,
         }
     }
 
-    /// `check_and_update` for the R2 backend: manifest check then R2 install
-    /// with GitHub fallback on transport failure.
+    /// `check_and_update` for the R2 backend: manifest check then R2 install,
+    /// with optional GitHub fallback on transport failure.
     async fn check_and_update_r2(&self) -> Result<UpdateStatus> {
-        match self.check_update_r2().await? {
-            UpdateStatus::Available {
+        match self.check_update_r2().await {
+            Err(error) if self.config.github_fallback => {
+                warn!("R2 update check failed ({error}); falling back to GitHub backend");
+                self.check_and_update_github().await
+            }
+            Err(error) => Ok(UpdateStatus::Failed(format!(
+                "R2 update check failed and GitHub fallback is disabled: {error}"
+            ))),
+            Ok(UpdateStatus::Available {
                 current_version,
                 latest_version,
-            } => {
+            }) => {
                 info!(
                     "Update available: {} -> {}, installing...",
                     current_version, latest_version
                 );
                 match self.update_r2().await {
                     Ok(status) => Ok(status),
-                    Err(e) => {
+                    Err(e) if self.config.github_fallback => {
                         warn!("R2 install failed ({e}); falling back to GitHub backend");
                         self.update_github().await
                     }
+                    Err(error) => Ok(UpdateStatus::Failed(format!(
+                        "R2 update failed and GitHub fallback is disabled: {error}"
+                    ))),
                 }
             }
-            status => Ok(status),
+            Ok(status) => Ok(status),
         }
     }
 
@@ -1275,28 +1536,94 @@ pub async fn update_binary_silent(bin_name: impl Into<String>) -> Result<UpdateS
 /// };
 /// ```
 pub async fn check_for_updates_auto(bin_name: &str, current_version: &str) -> Result<UpdateStatus> {
+    check_for_updates_auto_with_policy(
+        bin_name,
+        current_version,
+        &policy::detect_update_policy_default(),
+    )
+    .await
+}
+
+/// Same as [`check_for_updates_auto`], but with an explicit, injected
+/// [`policy::UpdatePolicy`] (Gitea #247). `check_for_updates_auto` delegates
+/// here after resolving the real policy; this is the seam tests use to
+/// exercise the `PackageManaged` short-circuit -- before any
+/// `spawn_blocking`, `platform::get_binary_path` (which can create
+/// `~/.local/bin`), or self_update GitHub network call -- without touching
+/// real `/usr` state.
+///
+/// Every caller of `check_for_updates_auto` (REPL `/update check`,
+/// `terraphim-cli check-update`, [`check_for_updates_startup`], and the
+/// update scheduler's periodic check in [`start_update_scheduler`]) is
+/// covered transitively by this guard.
+pub async fn check_for_updates_auto_with_policy(
+    bin_name: &str,
+    current_version: &str,
+    policy: &policy::UpdatePolicy,
+) -> Result<UpdateStatus> {
+    check_for_updates_auto_with_detector(
+        bin_name,
+        current_version,
+        policy,
+        policy::detect_update_policy_default,
+        GitHubSource::from_env(),
+    )
+    .await
+}
+
+/// Internal detector seam used to re-check package-manager ownership directly
+/// before dispatching any network work.
+async fn check_for_updates_auto_with_detector<D>(
+    bin_name: &str,
+    current_version: &str,
+    policy: &policy::UpdatePolicy,
+    detect_policy: D,
+    source: GitHubSource,
+) -> Result<UpdateStatus>
+where
+    D: FnOnce() -> policy::UpdatePolicy,
+{
+    if let policy::UpdatePolicy::PackageManaged {
+        manager,
+        update_command,
+    } = policy
+    {
+        info!(
+            "Package-managed install ({}); skipping update check for {} v{}",
+            manager.name(),
+            bin_name,
+            current_version
+        );
+        return Ok(UpdateStatus::PackageManaged {
+            manager: *manager,
+            update_command: update_command.clone(),
+        });
+    }
+
+    if let policy::UpdatePolicy::PackageManaged {
+        manager,
+        update_command,
+    } = detect_policy()
+    {
+        info!(
+            "Package-managed install ({}); skipping update check for {} v{}",
+            manager.name(),
+            bin_name,
+            current_version
+        );
+        return Ok(UpdateStatus::PackageManaged {
+            manager,
+            update_command,
+        });
+    }
+
     info!("Checking for updates: {} v{}", bin_name, current_version);
 
     let bin_name = bin_name.to_string();
     let current_version = current_version.to_string();
 
     let result = tokio::task::spawn_blocking(move || {
-        // Normalize binary name for asset lookup (underscores to hyphens)
-        let bin_name_for_asset = bin_name.replace('_', "-");
-
-        let mut builder = self_update::backends::github::Update::configure();
-        builder.repo_owner("terraphim");
-        builder.repo_name("terraphim-ai");
-        builder.bin_name(&bin_name_for_asset);
-        builder.current_version(&current_version);
-
-        if let Ok(token) = std::env::var("GITHUB_TOKEN") {
-            builder.auth_token(&token);
-        }
-
-        builder.bin_install_path(platform::get_binary_path(&bin_name)?);
-
-        match builder.build() {
+        match source.builder(&bin_name, &current_version)?.build() {
             Ok(updater) => match updater.get_latest_release() {
                 Ok(release) => {
                     let latest_version = release.version.clone();
@@ -1312,7 +1639,10 @@ pub async fn check_for_updates_auto(bin_name: &str, current_version: &str) -> Re
                         Err(e) => Err(e),
                     }
                 }
-                Err(e) => Ok(UpdateStatus::Failed(format!("Check failed: {}", e))),
+                Err(e) => Ok(UpdateStatus::Failed(format!(
+                    "Check failed: {}",
+                    source.describe_error(&e.to_string())
+                ))),
             },
             Err(e) => Ok(UpdateStatus::Failed(format!("Configuration error: {}", e))),
         }
@@ -1578,8 +1908,9 @@ mod tests {
         // Regression guard: releases live on terraphim-clients, not terraphim-ai.
         assert_eq!(config.repo_name, "terraphim-clients");
         assert_eq!(config.backend, UpdateBackend::R2);
+        assert!(config.github_fallback);
         assert_eq!(config.manifest.base_url, "https://downloads.terraphim.ai");
-        assert!(config.auth_token.is_none(), "no GITHUB_TOKEN in test env");
+        assert_eq!(config.auth_token, github_token_from_env());
     }
 
     #[test]
@@ -1601,7 +1932,7 @@ mod tests {
         assert_eq!(config.manifest.base_url, "https://staging.example.com");
         assert_eq!(
             config.manifest.manifest_url(),
-            "https://staging.example.com/test-binary/stable.json"
+            "https://staging.example.com/test-binary/stable-v2.json"
         );
     }
 
@@ -1773,6 +2104,472 @@ mod tests {
 
         let failed = UpdateStatus::Failed("test error".to_string());
         assert!(failed.to_string().contains("test error"));
+
+        let package_managed = UpdateStatus::PackageManaged {
+            manager: crate::policy::PackageManager::Pacman,
+            update_command: "sudo pacman -Syu".to_string(),
+        };
+        assert!(package_managed.to_string().contains("sudo pacman -Syu"));
+    }
+
+    #[test]
+    fn test_updater_config_default_policy_is_self_managed_in_test_env() {
+        // The test binary does not have a matching per-binary receipt under
+        // its canonical prefix, so the default constructor must resolve to
+        // SelfManaged.
+        let config = UpdaterConfig::new("test-binary");
+        assert_eq!(config.policy, crate::policy::UpdatePolicy::SelfManaged);
+    }
+
+    #[test]
+    fn test_with_policy_builder_injects_package_managed() {
+        let policy = crate::policy::UpdatePolicy::PackageManaged {
+            manager: crate::policy::PackageManager::Pacman,
+            update_command: "sudo pacman -Syu".to_string(),
+        };
+        let config = UpdaterConfig::new("test-binary").with_policy(policy.clone());
+        assert_eq!(config.policy, policy);
+    }
+
+    #[tokio::test]
+    async fn update_r2_honors_configured_managed_policy_before_manifest_fetch() {
+        let config = UpdaterConfig::new("terraphim-agent")
+            .with_policy(crate::policy::UpdatePolicy::PackageManaged {
+                manager: crate::policy::PackageManager::Pacman,
+                update_command: "sudo pacman -Syu".to_string(),
+            })
+            .with_manifest_base_url("http://127.0.0.1:9");
+        let updater = TerraphimUpdater::new(config);
+
+        let status = updater.update_r2().await.expect("update_r2");
+
+        assert!(
+            matches!(status, UpdateStatus::PackageManaged { .. }),
+            "expected PackageManaged before manifest fetch, got {status:?}"
+        );
+    }
+
+    #[test]
+    fn evaluate_version_returns_available_or_up_to_date() {
+        let status = TerraphimUpdater::evaluate_version("1.1.0", "1.0.0").unwrap();
+        assert!(matches!(
+            status,
+            UpdateStatus::Available {
+                current_version,
+                latest_version,
+            } if current_version == "1.0.0" && latest_version == "1.1.0"
+        ));
+        let status = TerraphimUpdater::evaluate_version("v1.0.0", "1.0.0").unwrap();
+        assert!(matches!(status, UpdateStatus::UpToDate(version) if version == "1.0.0"));
+        assert!(TerraphimUpdater::evaluate_version("invalid", "1.0.0").is_err());
+    }
+
+    #[tokio::test]
+    async fn check_for_updates_auto_with_self_managed_hint_redetects_before_dispatch() {
+        let status = check_for_updates_auto_with_detector(
+            "terraphim-agent",
+            "0.0.1",
+            &crate::policy::UpdatePolicy::SelfManaged,
+            || crate::policy::UpdatePolicy::PackageManaged {
+                manager: crate::policy::PackageManager::Pacman,
+                update_command: "sudo pacman -Syu".to_string(),
+            },
+            GitHubSource::from_env(),
+        )
+        .await
+        .expect("check should short-circuit");
+
+        assert!(
+            matches!(status, UpdateStatus::PackageManaged { .. }),
+            "expected live PackageManaged detection before update dispatch, got {status:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn check_for_updates_auto_with_package_managed_hint_does_not_redetect() {
+        let status = check_for_updates_auto_with_detector(
+            "terraphim-agent",
+            "0.0.1",
+            &crate::policy::UpdatePolicy::PackageManaged {
+                manager: crate::policy::PackageManager::Pacman,
+                update_command: "sudo pacman -Syu".to_string(),
+            },
+            || panic!("detector must not run for an injected PackageManaged policy"),
+            GitHubSource::from_env(),
+        )
+        .await
+        .expect("check should short-circuit");
+
+        assert!(
+            matches!(status, UpdateStatus::PackageManaged { .. }),
+            "expected injected PackageManaged status, got {status:?}"
+        );
+    }
+
+    // --- GitHub source: token, repository and error wording (terraphim-ai#3428) ---
+
+    const TEST_TOKEN: &str = "test-token-3428";
+    const LATEST_RELEASE_PATH: &str = "/repos/terraphim/terraphim-clients/releases/latest";
+
+    /// A real local HTTP server that answers every request with one fixed
+    /// status and body, and records each request head (lowercased).
+    struct RecordingServer {
+        url: String,
+        requests: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    }
+
+    impl RecordingServer {
+        fn new(status: u16, body: &str) -> Self {
+            use std::io::{Read, Write};
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+            let url = format!("http://{}", listener.local_addr().expect("addr"));
+            let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+            let recorded = requests.clone();
+            let body = body.to_string();
+            std::thread::spawn(move || {
+                for stream in listener.incoming() {
+                    let Ok(mut stream) = stream else { break };
+                    let mut head = Vec::new();
+                    let mut buf = [0u8; 1024];
+                    while !head.windows(4).any(|w| w == b"\r\n\r\n") {
+                        match stream.read(&mut buf) {
+                            Ok(0) | Err(_) => break,
+                            Ok(n) => head.extend_from_slice(&buf[..n]),
+                        }
+                    }
+                    recorded
+                        .lock()
+                        .unwrap()
+                        .push(String::from_utf8_lossy(&head).to_lowercase());
+                    let response = format!(
+                        "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let _ = stream.write_all(response.as_bytes());
+                }
+            });
+            Self { url, requests }
+        }
+
+        fn requests(&self) -> Vec<String> {
+            self.requests.lock().unwrap().clone()
+        }
+    }
+
+    fn release_json(tag: &str) -> String {
+        format!(
+            r#"{{"tag_name":"{tag}","name":"{tag}","created_at":"2026-10-04T22:20:41Z","assets":[]}}"#
+        )
+    }
+
+    fn local_source(server: &RecordingServer, token: Option<&str>) -> GitHubSource {
+        GitHubSource {
+            repo_owner: DEFAULT_REPO_OWNER.to_string(),
+            repo_name: DEFAULT_REPO_NAME.to_string(),
+            auth_token: token.map(str::to_string),
+            api_url: Some(server.url.clone()),
+        }
+    }
+
+    fn assert_single_release_request(server: &RecordingServer, token: Option<&str>) {
+        assert_single_request(server, &format!("{LATEST_RELEASE_PATH} "), token);
+    }
+
+    /// Exactly one API request was made, its path starts with `path_prefix`,
+    /// and it carried `token` (or no auth header at all).
+    fn assert_single_request(server: &RecordingServer, path_prefix: &str, token: Option<&str>) {
+        let requests = server.requests();
+        assert_eq!(requests.len(), 1, "expected one API request: {requests:?}");
+        let request = &requests[0];
+        assert!(
+            request.starts_with(&format!("get {path_prefix}")),
+            "wrong endpoint: {request}"
+        );
+        match token {
+            Some(token) => assert!(
+                request.contains(&format!("authorization: token {token}")),
+                "token not sent: {request}"
+            ),
+            None => assert!(
+                !request.contains("authorization:"),
+                "unexpected auth header: {request}"
+            ),
+        }
+    }
+
+    #[test]
+    fn verified_update_release_lookup_sends_auth_token() {
+        let server = RecordingServer::new(200, &release_json("v9.9.9"));
+
+        let release = TerraphimUpdater::get_latest_release_info(
+            &local_source(&server, Some(TEST_TOKEN)),
+            "terraphim_agent",
+            "1.0.0",
+        )
+        .expect("release info");
+
+        assert_eq!(release.version, "9.9.9");
+        assert_single_release_request(&server, Some(TEST_TOKEN));
+    }
+
+    #[test]
+    fn release_lookup_without_token_sends_no_auth_header() {
+        let server = RecordingServer::new(200, &release_json("v9.9.9"));
+
+        TerraphimUpdater::get_latest_release_info(
+            &local_source(&server, None),
+            "terraphim-agent",
+            "1.0.0",
+        )
+        .expect("release info");
+
+        assert_single_release_request(&server, None);
+    }
+
+    #[test]
+    fn verified_update_403_with_token_does_not_suggest_setting_one() {
+        let server = RecordingServer::new(403, r#"{"message":"API rate limit exceeded"}"#);
+
+        let status = TerraphimUpdater::update_with_verification_blocking(
+            &local_source(&server, Some(TEST_TOKEN)),
+            "terraphim-agent",
+            "1.0.0",
+            false,
+        )
+        .expect("status");
+
+        let UpdateStatus::Failed(message) = status else {
+            panic!("expected Failed, got {status:?}");
+        };
+        assert!(
+            message.starts_with("Failed to get release info: "),
+            "{message}"
+        );
+        assert!(message.contains("auth token was sent"), "{message}");
+        assert!(!message.contains("Set GITHUB_TOKEN"), "{message}");
+        assert!(!message.contains(TEST_TOKEN), "token leaked: {message}");
+        assert_single_release_request(&server, Some(TEST_TOKEN));
+    }
+
+    #[tokio::test]
+    async fn auto_check_queries_release_repo_with_token() {
+        let server = RecordingServer::new(200, &release_json("v9.9.9"));
+
+        let status = check_for_updates_auto_with_detector(
+            "terraphim-agent",
+            "1.0.0",
+            &crate::policy::UpdatePolicy::SelfManaged,
+            || crate::policy::UpdatePolicy::SelfManaged,
+            local_source(&server, Some(TEST_TOKEN)),
+        )
+        .await
+        .expect("status");
+
+        assert!(
+            matches!(&status, UpdateStatus::Available { latest_version, .. } if latest_version == "9.9.9"),
+            "expected 9.9.9 available, got {status:?}"
+        );
+        assert_single_release_request(&server, Some(TEST_TOKEN));
+    }
+
+    /// GitHub-backend config pointing at `server`, with the token supplied via
+    /// config (as `UpdaterConfig::new` does from `GITHUB_TOKEN`).
+    fn github_config(server: &RecordingServer) -> UpdaterConfig {
+        UpdaterConfig::new("terraphim-agent")
+            .with_version("1.0.0")
+            .with_backend(UpdateBackend::GitHub)
+            .with_github_api_url(server.url.clone())
+            .with_auth_token(TEST_TOKEN)
+            .with_progress(false)
+            .with_policy(crate::policy::UpdatePolicy::SelfManaged)
+    }
+
+    #[tokio::test]
+    async fn check_update_sends_config_token() {
+        let server = RecordingServer::new(200, &release_json("v9.9.9"));
+
+        let status = TerraphimUpdater::new(github_config(&server))
+            .check_update()
+            .await
+            .expect("status");
+
+        assert!(
+            matches!(&status, UpdateStatus::Available { latest_version, .. } if latest_version == "9.9.9"),
+            "expected 9.9.9 available, got {status:?}"
+        );
+        assert_single_release_request(&server, Some(TEST_TOKEN));
+    }
+
+    #[tokio::test]
+    async fn check_update_403_with_token_reports_token_was_sent() {
+        let server = RecordingServer::new(403, r#"{"message":"Bad credentials"}"#);
+
+        let status = TerraphimUpdater::new(github_config(&server))
+            .check_update()
+            .await
+            .expect("status");
+
+        let UpdateStatus::Failed(message) = status else {
+            panic!("expected Failed, got {status:?}");
+        };
+        assert!(message.contains("auth token was sent"), "{message}");
+        assert_single_release_request(&server, Some(TEST_TOKEN));
+    }
+
+    /// The reported bug: `check-update` authenticated but the verified
+    /// `update` path dropped the token and failed with 403.
+    #[tokio::test]
+    async fn update_with_verification_sends_config_token() {
+        let server = RecordingServer::new(403, r#"{"message":"API rate limit exceeded"}"#);
+
+        let status = TerraphimUpdater::new(github_config(&server))
+            .update_with_verification()
+            .await
+            .expect("status");
+
+        let UpdateStatus::Failed(message) = status else {
+            panic!("expected Failed, got {status:?}");
+        };
+        assert!(message.contains("auth token was sent"), "{message}");
+        assert_single_release_request(&server, Some(TEST_TOKEN));
+    }
+
+    #[tokio::test]
+    async fn update_sends_config_token() {
+        let server = RecordingServer::new(403, r#"{"message":"API rate limit exceeded"}"#);
+
+        let status = TerraphimUpdater::new(github_config(&server))
+            .update()
+            .await
+            .expect("status");
+
+        assert!(
+            matches!(status, UpdateStatus::Failed(_)),
+            "expected Failed, got {status:?}"
+        );
+        // self_update's install path lists releases rather than asking for /latest
+        assert_single_request(
+            &server,
+            "/repos/terraphim/terraphim-clients/releases",
+            Some(TEST_TOKEN),
+        );
+    }
+
+    #[test]
+    fn github_source_from_config_carries_repo_and_token() {
+        let config = UpdaterConfig::new("terraphim-agent").with_auth_token(TEST_TOKEN);
+
+        let source = GitHubSource::from_config(&config);
+
+        assert_eq!(source.repo_owner, DEFAULT_REPO_OWNER);
+        assert_eq!(source.repo_name, DEFAULT_REPO_NAME);
+        assert_eq!(source.auth_token.as_deref(), Some(TEST_TOKEN));
+        assert!(source.api_url.is_none());
+    }
+
+    /// The auto-check path builds its source from the environment; it must
+    /// target the release repo, not the old `terraphim-ai` one.
+    #[test]
+    fn github_source_from_env_targets_release_repo() {
+        let source = GitHubSource::from_env();
+
+        assert_eq!(source.repo_owner, "terraphim");
+        assert_eq!(source.repo_name, "terraphim-clients");
+        assert_eq!(source.auth_token, github_token_from_env());
+        assert!(source.api_url.is_none());
+    }
+
+    #[test]
+    fn first_token_prefers_first_non_blank_and_trims() {
+        let s = |v: &str| Some(v.to_string());
+        assert_eq!(first_token([s(" a "), s("b")]), s("a"));
+        assert_eq!(first_token([None, s("gh")]), s("gh"));
+        assert_eq!(first_token([s("  "), s("gh")]), s("gh"));
+        assert_eq!(first_token::<2>([None, None]), None);
+    }
+
+    #[test]
+    fn describe_error_only_suggests_token_when_none_sent() {
+        let mut source = GitHubSource::from_env();
+        let forbidden = "api request failed with status: 403";
+
+        source.auth_token = None;
+        assert!(
+            source
+                .describe_error(forbidden)
+                .contains("Set GITHUB_TOKEN")
+        );
+
+        source.auth_token = Some(TEST_TOKEN.to_string());
+        let with_token = source.describe_error(forbidden);
+        assert!(with_token.contains("auth token was sent"));
+        assert!(!with_token.contains("Set GITHUB_TOKEN"));
+
+        assert_eq!(
+            source.describe_error("connection refused"),
+            "connection refused"
+        );
+    }
+
+    #[test]
+    fn managed_status_injects_detector_without_global_test_state() {
+        let status = TerraphimUpdater::managed_status_with_detector(
+            &crate::policy::UpdatePolicy::SelfManaged,
+            || crate::policy::UpdatePolicy::PackageManaged {
+                manager: crate::policy::PackageManager::Pacman,
+                update_command: "sudo pacman -Syu".to_string(),
+            },
+        );
+
+        assert!(
+            matches!(status, Some(UpdateStatus::PackageManaged { .. })),
+            "expected injected PackageManaged status, got {status:?}"
+        );
+    }
+
+    #[test]
+    fn managed_status_does_not_call_detector_for_configured_managed_policy() {
+        let status = TerraphimUpdater::managed_status_with_detector(
+            &crate::policy::UpdatePolicy::PackageManaged {
+                manager: crate::policy::PackageManager::Pacman,
+                update_command: "sudo pacman -Syu".to_string(),
+            },
+            || panic!("detector must not run for configured PackageManaged policy"),
+        );
+
+        assert!(
+            matches!(status, Some(UpdateStatus::PackageManaged { .. })),
+            "expected configured PackageManaged status, got {status:?}"
+        );
+    }
+
+    #[test]
+    fn managed_status_returns_none_when_detector_is_self_managed() {
+        let status = TerraphimUpdater::managed_status_with_detector(
+            &crate::policy::UpdatePolicy::SelfManaged,
+            || crate::policy::UpdatePolicy::SelfManaged,
+        );
+
+        assert!(
+            status.is_none(),
+            "expected no managed status for SelfManaged detector result, got {status:?}"
+        );
+    }
+
+    #[test]
+    fn managed_status_uses_detector_result_before_dispatch() {
+        let status = TerraphimUpdater::managed_status_with_detector(
+            &crate::policy::UpdatePolicy::SelfManaged,
+            || crate::policy::UpdatePolicy::PackageManaged {
+                manager: crate::policy::PackageManager::Pacman,
+                update_command: "sudo pacman -Syu".to_string(),
+            },
+        );
+
+        assert!(
+            matches!(status, Some(UpdateStatus::PackageManaged { .. })),
+            "expected PackageManaged, got {status:?}"
+        );
     }
 
     #[test]
