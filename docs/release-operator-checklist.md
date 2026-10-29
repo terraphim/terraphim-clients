@@ -19,7 +19,7 @@ The only producer output is
 `client-release-stage-<version>-<source-sha>`. Download it without merging it
 with artifacts from another run or SHA.
 
-The producer pins Rust `1.96.0`, zipsign `0.2.1`, cross commit
+The producer pins Rust `1.99.0`, zipsign `0.2.1`, cross commit
 `88f49ff79e777bef6d3564531636ee4d3cc2f8d2`, and every action in a
 secret-bearing job to a recorded 40-character commit. In particular,
 `1password/install-cli-action` v2 tag object

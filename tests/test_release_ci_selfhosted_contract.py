@@ -71,7 +71,7 @@ class SelfHostedCi(unittest.TestCase):
         block = job_block("build")
         self.assertIn("RUSTUP_TOOLCHAIN: 1.96.0", block)
         self.assertIn("rustup toolchain install 1.96.0", block)
-        self.assertIn("rustup toolchain install 1.96.0", RELEASE_BINARIES.read_text())
+        self.assertIn("rustup toolchain install 1.99.0", RELEASE_BINARIES.read_text())
 
     def test_checkout_is_asserted_clean_before_and_after(self) -> None:
         block = job_block("build")

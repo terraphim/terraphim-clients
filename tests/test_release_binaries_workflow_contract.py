@@ -799,7 +799,7 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
             "dtolnay/rust-toolchain@stable", "cargo install zipsign --locked",
         ):
             self.assertNotIn(mutable, text)
-        self.assertIn("rustup toolchain install 1.96.0", text)
+        self.assertIn("rustup toolchain install 1.99.0", text)
         self.assertIn("cargo install zipsign --version 0.2.1 --locked", text)
         self.assertIn("--rev 88f49ff79e777bef6d3564531636ee4d3cc2f8d2", text)
         self.assertIn(
