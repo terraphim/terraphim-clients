@@ -334,9 +334,8 @@ mod coverage_pin_parser_tests {
     }
 }
 
-/// The native-ci lanes whose cargo (transitively, via the nested
-/// `cargo package` inside `packaged_install_graph_regression`) resolves the
-/// private `terraphim` registry must conditionally alias
+/// The native-ci lanes whose cargo resolves the private `terraphim` registry
+/// must conditionally alias
 /// `CARGO_REGISTRIES_TERRAPHIM_TOKEN="Bearer $GITEA_TOKEN"`.
 ///
 /// Whether `$GITEA_TOKEN` reaches a step shell is runner-dependent (#335):
@@ -361,10 +360,9 @@ mod coverage_pin_parser_tests {
 /// The alias must reference the runner-inherited `$GITEA_TOKEN` shell
 /// variable: no literal token, no `${{ secrets.* }}` expression, and no
 /// credentials.toml writing may appear in the workflow shell text. The alias
-/// must stay scoped to exactly the lanes that need it (the broad
-/// `--workspace --all-targets` lane, the focused packaged-graph lane, and
-/// the coverage lane). The alias value must carry the HTTP authentication
-/// scheme: the Gitea sparse registry rejects a raw token with HTTP 401
+/// must stay scoped to exactly the lanes that need it: the broad
+/// `--workspace --all-targets` lane and the coverage lane. The alias value must
+/// carry the HTTP authentication scheme: the Gitea sparse registry rejects a
 /// (PR #332 CI run 33980 / web run 538, job 68643); the raw-token form
 /// `CARGO_REGISTRIES_TERRAPHIM_TOKEN="$GITEA_TOKEN"` is a regression, and
 /// so is the unconditional leading-assignment form
@@ -374,9 +372,8 @@ const NATIVE_CI_TOKEN_ALIAS: &str = "CARGO_REGISTRIES_TERRAPHIM_TOKEN=\"Bearer $
 const NATIVE_CI_TOKEN_RAW_ALIAS: &str = "CARGO_REGISTRIES_TERRAPHIM_TOKEN=\"$GITEA_TOKEN\"";
 const NATIVE_CI_TOKEN_CONDITIONAL: &str =
     "test -z \"$GITEA_TOKEN\" || export CARGO_REGISTRIES_TERRAPHIM_TOKEN=\"Bearer $GITEA_TOKEN\"";
-const NATIVE_CI_TOKEN_GUARDED_COMMANDS: [&str; 3] = [
+const NATIVE_CI_TOKEN_GUARDED_COMMANDS: [&str; 2] = [
     "cargo test --workspace --all-targets",
-    "cargo test -p terraphim_agent --test packaged_install_graph_regression",
     "cargo llvm-cov nextest --workspace --all-targets",
 ];
 

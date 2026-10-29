@@ -161,16 +161,11 @@ jobs:
       # connectors and the search-index score module are invisible to the
       # default-features and enrichment-only lanes above).
       - run: RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER="" cargo test -p terraphim_sessions --all-features --no-fail-fast
-      # #95: isolated packaged install-graph regression (covered by --all-targets
-      # above but kept as a focused gate for faster failure attribution). Its
-      # nested `cargo package` resolves the private terraphim registry, so it
-      # needs the same CONDITIONAL CARGO_REGISTRIES_TERRAPHIM_TOKEN alias as
-      # the broad lane above, with the Bearer authentication scheme (PR #332
-      # jobs 68638/68643; #335: conditional because VM runners apply no
-      # job/step env and must fall back to the baked CARGO_HOME credential).
-      - run: |
-          test -z "$GITEA_TOKEN" || export CARGO_REGISTRIES_TERRAPHIM_TOKEN="Bearer $GITEA_TOKEN"
-          RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER="" cargo test -p terraphim_agent --test packaged_install_graph_regression -- --nocapture
+      # #95/#431: isolated registry-free manifest regression (covered by
+      # --all-targets above but kept as a focused gate for faster failure
+      # attribution). The release-only package/install target is ignored by
+      # default and runs explicitly through scripts/release/verify-agent-package.sh.
+      - run: RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER="" cargo test -p terraphim_agent --test packaged_install_graph_regression -- --nocapture
       # #118: repo guards -- duplicate-crate detection and the publish gate's own
       # tests. Rust tests, not shell steps: the runner allowlist rejects any
       # program that is not cargo ("policy rejected command: ... not on the
