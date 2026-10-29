@@ -6247,7 +6247,7 @@ dependencies = [
 
 [[package]]
 name = "terraphim-cli"
-version = "1.21.16"
+version = "1.21.23"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -6322,7 +6322,7 @@ dependencies = [
 
 [[package]]
 name = "terraphim_agent"
-version = "1.21.16"
+version = "1.21.23"
 dependencies = [
  "ahash",
  "anyhow",
@@ -6508,7 +6508,7 @@ dependencies = [
 
 [[package]]
 name = "terraphim_grep"
-version = "1.21.16"
+version = "1.21.23"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6537,7 +6537,7 @@ dependencies = [
 
 [[package]]
 name = "terraphim_hooks"
-version = "1.21.16"
+version = "1.21.23"
 dependencies = [
  "dirs 5.0.1",
  "serde",
