@@ -10,7 +10,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
 
@@ -18,6 +18,9 @@ use anyhow::Result;
 use serial_test::serial;
 use terraphim_agent::client::ApiClient;
 use terraphim_types::{Layer, NormalizedTermValue, RoleName, SearchQuery};
+
+mod support;
+use support::server_process::ServerProcessGuard;
 
 /// Result structure normalized across all modes
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -178,7 +181,7 @@ table = "terraphim_kv"
 }
 
 /// Test helper to start a real terraphim server (instant with pre-compiled binary)
-async fn start_test_server() -> Result<(Child, String)> {
+async fn start_test_server() -> Result<(ServerProcessGuard, String)> {
     let port = portpicker::pick_unused_port().expect("Failed to find unused port");
     let server_url = format!("http://localhost:{}", port);
 
@@ -194,14 +197,15 @@ async fn start_test_server() -> Result<(Child, String)> {
     // SQLite database, preventing stale saved configs from overriding --config
     let settings_dir = generate_isolated_settings(port)?;
 
-    let mut server = Command::new(&binary_path)
+    let mut command = Command::new(&binary_path);
+    command
         .args(["--config", config_path.to_str().unwrap()])
         .env("TERRAPHIM_SERVER_HOSTNAME", format!("127.0.0.1:{}", port))
         .env("TERRAPHIM_SETTINGS_PATH", settings_dir.to_str().unwrap())
         .env("RUST_LOG", "warn")
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
+        .stderr(Stdio::piped());
+    let mut server = ServerProcessGuard::spawn(&mut command)?;
 
     // Wait for server to be ready
     let client = reqwest::Client::new();
@@ -224,7 +228,6 @@ async fn start_test_server() -> Result<(Child, String)> {
         }
     }
 
-    let _ = server.kill();
     Err(anyhow::anyhow!("Server failed to start within 15s"))
 }
 
@@ -358,8 +361,8 @@ fn search_via_repl(server_url: &str, query: &str, role: &str) -> Result<Vec<Norm
 }
 
 /// Clean up test resources
-fn cleanup_test_resources(mut server: Child) -> Result<()> {
-    let _ = server.kill();
+fn cleanup_test_resources(server: ServerProcessGuard) -> Result<()> {
+    drop(server);
 
     let test_kg_path = "docs/src/kg/test_ranking_kg.md";
     if Path::new(test_kg_path).exists() {

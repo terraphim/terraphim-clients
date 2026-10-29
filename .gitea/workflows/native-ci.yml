@@ -215,3 +215,9 @@ jobs:
       # (terraphim/gitea-infrastructure#2).
       - name: Coverage summary (lcov totals)
         run: bash ./scripts/ci/lcov_totals.sh lcov.info
+      # #410: belt-and-braces cleanup for a cancelled or panicking test runner.
+      # The script checks both /proc/<pid>/exe and /proc/<pid>/cwd before
+      # signalling exact PIDs, so it cannot stop another checkout's server.
+      - name: Stop checkout terraphim_server processes
+        if: always()
+        run: bash ./scripts/ci/cleanup_terraphim_servers.sh

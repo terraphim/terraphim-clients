@@ -14,7 +14,13 @@
 //! `cargo package` this way. Refs #118.
 
 use std::path::{Path, PathBuf};
+#[cfg(target_os = "linux")]
+use std::process::Child;
 use std::process::Command;
+#[cfg(target_os = "linux")]
+use std::thread;
+#[cfg(target_os = "linux")]
+use std::time::{Duration, Instant};
 
 fn workspace_root() -> PathBuf {
     // CARGO_MANIFEST_DIR is crates/terraphim_agent
@@ -843,5 +849,199 @@ fn native_ci_disables_shared_compiler_wrappers() {
     assert!(
         commands >= 15,
         "native workflow unexpectedly lost Cargo checks"
+    );
+}
+
+/// The native lane must run the scoped server cleanup even after a failed test.
+#[test]
+fn native_ci_cleanup_step_is_always_run() {
+    let root = workspace_root();
+    let workflow = std::fs::read_to_string(root.join(".gitea/workflows/native-ci.yml"))
+        .expect("read native workflow");
+    assert!(
+        workflow.contains(
+            "- name: Stop checkout terraphim_server processes\n        if: always()\n        run: bash ./scripts/ci/cleanup_terraphim_servers.sh"
+        ),
+        "native CI must always invoke the checkout-scoped server cleanup"
+    );
+}
+
+#[cfg(target_os = "linux")]
+struct TestProcess(Child);
+
+#[cfg(target_os = "linux")]
+impl TestProcess {
+    fn spawn(binary: &Path, cwd: &Path, script: &str) -> Self {
+        Self(
+            Command::new(binary)
+                .args(["-c", script])
+                .current_dir(cwd)
+                .spawn()
+                .expect("spawn controlled cleanup process"),
+        )
+    }
+
+    fn id(&self) -> u32 {
+        self.0.id()
+    }
+
+    fn is_running(&mut self) -> bool {
+        self.0
+            .try_wait()
+            .expect("inspect controlled process")
+            .is_none()
+    }
+
+    fn wait_for_exit(&mut self, context: &str) -> std::process::ExitStatus {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if let Some(status) = self.0.try_wait().expect("inspect controlled process") {
+                return status;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "{context} process {} did not exit within 5 seconds",
+                self.id()
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl Drop for TestProcess {
+    fn drop(&mut self) {
+        if self.is_running() {
+            let _ = self.0.kill();
+        }
+        let _ = self.0.wait();
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn copy_test_server(source: &Path, destination: &Path) {
+    // Copy in a separate process so the multithreaded test runner cannot
+    // inherit the destination's writable descriptor while forking another
+    // child. Waiting for cp and syncing the closed copy prevents ETXTBSY when
+    // the test starts the copied executable below.
+    let status = Command::new("cp")
+        .arg(source)
+        .arg(destination)
+        .status()
+        .expect("copy real executable for cleanup test");
+    assert!(status.success(), "copying test executable failed: {status}");
+    std::fs::File::open(destination)
+        .expect("open copied executable for sync")
+        .sync_all()
+        .expect("sync copied executable");
+}
+
+/// Linux regression coverage for checkout-scoped process identity checks.
+#[test]
+#[cfg(target_os = "linux")]
+fn cleanup_script_only_signals_verified_checkout_processes() {
+    let root = workspace_root();
+
+    let temp = tempfile::tempdir().expect("create cleanup test directory");
+    let checkout = temp.path().join("checkout");
+    let nested = checkout.join("nested");
+    let other = temp.path().join("other");
+    std::fs::create_dir_all(&nested).expect("create nested checkout directory");
+    std::fs::create_dir(&other).expect("create other checkout directory");
+
+    let server_binary = checkout.join("terraphim_server");
+    copy_test_server(Path::new("/usr/bin/dash"), &server_binary);
+    let mut matching = TestProcess::spawn(
+        &server_binary,
+        &nested,
+        "trap 'exit 0' TERM; while :; do sleep 1; done",
+    );
+    let mut other_checkout = TestProcess::spawn(
+        &server_binary,
+        &other,
+        "trap 'exit 0' TERM; while :; do sleep 1; done",
+    );
+    let mut replaced = TestProcess::spawn(
+        &server_binary,
+        &checkout,
+        "trap 'exec /bin/sleep 30' USR1; while :; do sleep 1; done",
+    );
+    let replaced_pid = replaced.id();
+
+    let barrier = temp.path().join("barrier");
+    let mut cleanup = TestProcess(
+        Command::new("bash")
+            .arg(root.join("scripts/ci/cleanup_terraphim_servers.sh"))
+            .current_dir(&checkout)
+            .env("TERRAPHIM_CLEANUP_TEST_BARRIER", &barrier)
+            .spawn()
+            .expect("run cleanup script"),
+    );
+
+    let scanned = barrier.with_extension("scanned");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !scanned.exists() && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(10));
+    }
+    assert!(scanned.exists(), "cleanup did not reach scan barrier");
+
+    // Keep the same PID while replacing its executable. The scan snapshot must
+    // therefore reject it before signalling, independently of PID allocation.
+    let signal_status = Command::new("kill")
+        .args(["-USR1", &replaced_pid.to_string()])
+        .status()
+        .expect("request in-place process replacement");
+    assert!(signal_status.success(), "failed to request replacement");
+    let replacement_deadline = Instant::now() + Duration::from_secs(5);
+    while std::fs::read_link(format!("/proc/{replaced_pid}/exe"))
+        .is_ok_and(|path| path == server_binary)
+        && Instant::now() < replacement_deadline
+    {
+        thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(
+        std::fs::read_link(format!("/proc/{replaced_pid}/exe"))
+            .expect("replacement process remains alive"),
+        Path::new("/usr/bin/sleep"),
+        "controlled process did not replace its executable"
+    );
+    std::fs::write(barrier.with_extension("continue"), b"").expect("release cleanup barrier");
+
+    let status = cleanup.wait_for_exit("cleanup script");
+    assert!(status.success(), "cleanup script failed with {status}");
+    matching.wait_for_exit("matching checkout");
+    assert!(
+        other_checkout.is_running(),
+        "process in another cwd was signalled"
+    );
+    assert!(
+        replaced.is_running(),
+        "in-place replacement process was signalled"
+    );
+}
+
+/// The test-only scan barrier must never leave a cleanup process waiting
+/// indefinitely when its controlling test fails before releasing it.
+#[test]
+#[cfg(target_os = "linux")]
+fn cleanup_script_test_barrier_has_a_deadline() {
+    let root = workspace_root();
+    let temp = tempfile::tempdir().expect("create cleanup deadline directory");
+    let barrier = temp.path().join("unreleased-barrier");
+    let mut cleanup = TestProcess(
+        Command::new("bash")
+            .arg(root.join("scripts/ci/cleanup_terraphim_servers.sh"))
+            .current_dir(temp.path())
+            .env("TERRAPHIM_CLEANUP_TEST_BARRIER", &barrier)
+            .env("TERRAPHIM_CLEANUP_TEST_BARRIER_TIMEOUT_SECONDS", "1")
+            .spawn()
+            .expect("run cleanup script with unreleased barrier"),
+    );
+
+    let status = cleanup.wait_for_exit("cleanup script barrier deadline");
+    assert_eq!(
+        status.code(),
+        Some(1),
+        "unreleased cleanup barrier must fail with a diagnostic"
     );
 }
