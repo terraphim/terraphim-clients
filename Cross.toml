@@ -1,0 +1,8 @@
+# cross containers do not inherit host env or ~/.cargo by default.
+# The terraphim private registries authenticate via cargo:token, which
+# reads CARGO_REGISTRIES_<NAME>_TOKEN. Pass both into the container.
+[build.env]
+passthrough = [
+  "CARGO_REGISTRIES_TERRAPHIM_TOKEN",
+  "CARGO_REGISTRIES_TERRAPHIM_MIRROR_TOKEN",
+]
