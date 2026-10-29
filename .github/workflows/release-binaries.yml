@@ -228,11 +228,11 @@ jobs:
           test -z "$(git status --porcelain)"
           git diff --exit-code -- Cargo.toml Cargo.lock
       - name: Install exact Rust toolchain
-        run: rustup toolchain install 1.96.0 --profile minimal --target "${{ matrix.target }}"
+        run: rustup toolchain install 1.99.0 --profile minimal --target "${{ matrix.target }}"
       - name: Install cross
         if: matrix.use_cross
         run: >-
-          rustup run 1.96.0 cargo install cross --locked
+          rustup run 1.99.0 cargo install cross --locked
           --git https://github.com/cross-rs/cross
           --rev 88f49ff79e777bef6d3564531636ee4d3cc2f8d2
       - name: Install QEMU for supported foreign execution
@@ -288,9 +288,9 @@ jobs:
             mkdir -p "$lane_cargo/registry" "$lane_cargo/git"
             export CARGO_HOME="$lane_cargo"
             unset RUSTC_WRAPPER
-            build=(rustup run 1.96.0 cross)
+            build=(rustup run 1.99.0 cross)
           else
-            build=(rustup run 1.96.0 cargo)
+            build=(rustup run 1.99.0 cargo)
           fi
           "${build[@]}" build --locked --release --target "${{ matrix.target }}" -p terraphim_agent --bin terraphim-agent
           "${build[@]}" build --locked --release --target "${{ matrix.target }}" -p terraphim-cli --bin terraphim-cli

@@ -110,7 +110,7 @@ class ReleaseMcpWorkflow(unittest.TestCase):
         self.assertEqual(actual, expected)
         reference = RELEASE_BINARIES.read_text()
         for pinned in (
-            "rustup toolchain install 1.96.0",
+            "rustup toolchain install 1.99.0",
             "--rev 88f49ff79e777bef6d3564531636ee4d3cc2f8d2",
         ):
             self.assertIn(pinned, build)
