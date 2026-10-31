@@ -88,6 +88,7 @@ jobs:
       - name: Fetch dependencies (the only step holding the registry token)
         env:
           CARGO_REGISTRIES_TERRAPHIM_TOKEN: ${{ secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN }}
+          CARGO_REGISTRIES_TERRAPHIM_MIRROR_TOKEN: ${{ secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN }}
         run: |
           set -euo pipefail
           cargo fetch --locked
