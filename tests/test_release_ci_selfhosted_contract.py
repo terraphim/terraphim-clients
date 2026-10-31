@@ -90,16 +90,18 @@ class SelfHostedCi(unittest.TestCase):
 
     def test_registry_token_is_confined_to_the_fetch_step_and_the_rest_is_offline(self) -> None:
         block = job_block("build")
-        # Exactly one use of the secret, inside the fetch step.
-        self.assertEqual(block.count("secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN"), 1)
+        # The secret backs both the `terraphim` and `terraphim-mirror`
+        # registries; both uses stay inside the fetch step.
+        self.assertEqual(block.count("secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN"), 2)
         fetch = block[block.index("- name: Fetch dependencies") :]
         fetch = fetch[: fetch.index("- name: Install pinned actionlint")]
-        self.assertIn("secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN", fetch)
+        self.assertEqual(fetch.count("secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN"), 2)
+        self.assertIn("CARGO_REGISTRIES_TERRAPHIM_MIRROR_TOKEN", fetch)
         self.assertIn("cargo fetch --locked", fetch)
         self.assertIn('echo "CARGO_NET_OFFLINE=true" >> "$GITHUB_ENV"', fetch)
-        # The only steps before it that run cargo must not need the registry
-        # (zipsign comes from crates.io), and nothing repository-controlled
-        # runs before the fetch.
+        # zipsign is installed inside the fetch step, so no cargo command runs
+        # before the token is available, and nothing repository-controlled runs
+        # before the fetch.
         for later in ("cargo clippy", "cargo build", "cargo test"):
             self.assertGreater(block.index(later), block.index("cargo fetch --locked"))
 
