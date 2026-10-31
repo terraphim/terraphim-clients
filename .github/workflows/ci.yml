@@ -82,16 +82,15 @@ jobs:
         run: rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
       # No rust-cache: its toolchain detection breaks on the host's rustup
       # wrapper output, and cargo state is deliberately per run (cold cache).
-      - name: Install release signature verifier
-        # Per-run root: never writes into the shared ~/.cargo/bin.
-        run: cargo install zipsign --version 0.2.1 --locked --root "$RUNNER_TEMP/tools"
-      - name: Fetch dependencies (the only step holding the registry token)
+      - name: Fetch dependencies and install the signature verifier (the only step holding the registry token)
         env:
           CARGO_REGISTRIES_TERRAPHIM_TOKEN: ${{ secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN }}
           CARGO_REGISTRIES_TERRAPHIM_MIRROR_TOKEN: ${{ secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN }}
         run: |
           set -euo pipefail
           cargo fetch --locked
+          # Per-run root: never writes into the shared ~/.cargo/bin.
+          cargo install zipsign --version 0.2.1 --locked --root "$RUNNER_TEMP/tools"
           # Everything after this point resolves from the per-run cache.
           echo "CARGO_NET_OFFLINE=true" >> "$GITHUB_ENV"
       - name: Install pinned actionlint

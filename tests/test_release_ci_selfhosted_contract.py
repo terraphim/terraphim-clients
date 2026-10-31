@@ -99,9 +99,9 @@ class SelfHostedCi(unittest.TestCase):
         self.assertIn("CARGO_REGISTRIES_TERRAPHIM_MIRROR_TOKEN", fetch)
         self.assertIn("cargo fetch --locked", fetch)
         self.assertIn('echo "CARGO_NET_OFFLINE=true" >> "$GITHUB_ENV"', fetch)
-        # The only steps before it that run cargo must not need the registry
-        # (zipsign comes from crates.io), and nothing repository-controlled
-        # runs before the fetch.
+        # zipsign is installed inside the fetch step, so no cargo command runs
+        # before the token is available, and nothing repository-controlled runs
+        # before the fetch.
         for later in ("cargo clippy", "cargo build", "cargo test"):
             self.assertGreater(block.index(later), block.index("cargo fetch --locked"))
 
