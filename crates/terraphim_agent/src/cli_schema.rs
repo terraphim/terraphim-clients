@@ -923,3 +923,62 @@ pub(crate) enum MemorySub {
         issue: u64,
     },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    #[test]
+    fn learn_install_hook_accepts_pi() {
+        let cli = Cli::try_parse_from(["terraphim-agent", "learn", "install-hook", "pi"])
+            .expect("`learn install-hook pi` must parse");
+
+        match cli.command {
+            Some(Command::Learn {
+                sub: LearnSub::InstallHook { agent },
+            }) => assert_eq!(agent, learnings::AgentType::Pi),
+            other => panic!("expected learn install-hook pi, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn learn_install_hook_still_accepts_existing_agents() {
+        for (arg, expected) in [
+            ("claude", learnings::AgentType::Claude),
+            ("codex", learnings::AgentType::Codex),
+            ("opencode", learnings::AgentType::Opencode),
+        ] {
+            let cli = Cli::try_parse_from(["terraphim-agent", "learn", "install-hook", arg])
+                .unwrap_or_else(|e| panic!("`learn install-hook {arg}` must parse: {e}"));
+            match cli.command {
+                Some(Command::Learn {
+                    sub: LearnSub::InstallHook { agent },
+                }) => assert_eq!(agent, expected),
+                other => panic!("expected learn install-hook {arg}, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn learn_install_hook_rejects_unknown_agent() {
+        assert!(Cli::try_parse_from(["terraphim-agent", "learn", "install-hook", "nope"]).is_err());
+    }
+
+    #[test]
+    fn learn_install_hook_help_lists_pi() {
+        let mut cmd = Cli::command();
+        let help = cmd
+            .find_subcommand_mut("learn")
+            .and_then(|learn| {
+                learn
+                    .find_subcommand_mut("install-hook")
+                    .map(|ih| ih.render_long_help().to_string())
+            })
+            .expect("learn install-hook subcommand must exist");
+        assert!(
+            help.contains("pi"),
+            "install-hook help must mention pi, got: {help}"
+        );
+    }
+}
