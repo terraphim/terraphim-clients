@@ -68,7 +68,7 @@ pub use redaction::redact_secrets;
 pub use hook::{AgentFormat, LearnHookType, process_hook_input_with_type};
 
 // Install types for AI agent hook installation
-pub use install::{AgentType, install_hook};
+pub use install::{AgentType, install_hook, pi_install_guidance};
 
 use std::path::PathBuf;
 
