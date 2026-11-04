@@ -12,7 +12,7 @@ Consumes upstream crates (core, config-persistence, service, agents, kg-agents) 
 
 ## Current downloads
 <!-- terraphim-downloads:start -->
-Verified release links as of 3 November 2026. Core services and CLI clients have
+Verified release links as of 4 November 2026. Core services and CLI clients have
 separate releases.
 
 | Component | Release | Use |
