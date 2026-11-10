@@ -29,6 +29,12 @@ jobs:
         # `||` chaining instead. Refs #106.
         run: |
           test -x /usr/local/bin/zipsign && /usr/local/bin/zipsign --version || { echo "::error::zipsign not found on PATH. Install on the runner host: sudo install -m 0755 ~/.cargo/bin/zipsign /usr/local/bin/zipsign (see gitea-infrastructure HANDOVER.md, 'Host Tooling'). Refs #106"; exit 1; }
+      # The runner aborts the job on the first failing step, so a trailing cleanup only
+      # runs after success. Clearing leftovers at the start covers the case that matters:
+      # a previous run that died holding a checkout-scoped server. The script resolves
+      # exact PIDs from /proc and no-ops when there is nothing to stop.
+      - name: Stop leftover terraphim_server processes
+        run: bash ./scripts/ci/cleanup_terraphim_servers.sh
       # #313: guard the CA bundle path used below. #328: the check uses
       # the literal path, not $SSL_CERT_FILE -- the runner does not apply
       # job-level `env:` (parser has no env: handling), so the variable
@@ -218,6 +224,14 @@ jobs:
       # #410: belt-and-braces cleanup for a cancelled or panicking test runner.
       # The script checks both /proc/<pid>/exe and /proc/<pid>/cwd before
       # signalling exact PIDs, so it cannot stop another checkout's server.
+      # The runner refuses step `if:` expressions outright ("unsupported step `if`
+      # expression `always()`; refusing to execute it unconditionally"), which fails
+      # workflow compilation for the whole job before any step runs. The cleanup is
+      # unconditional anyway - it resolves exact PIDs from /proc and no-ops when there
+      # is nothing to stop - so dropping the guard is both allowed and correct.
       - name: Stop checkout terraphim_server processes
-        if: always()
         run: bash ./scripts/ci/cleanup_terraphim_servers.sh
+      # Checklist-vs-concept contract, end-to-end journey and bench. Placed after the
+      # library tests so a broken build fails first. Skips its live assertions when no
+      # knowledge graph is present and says so in the report, rather than passing silently.
+      - run: bash ./scripts/checklist-journey.sh

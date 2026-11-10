@@ -852,17 +852,40 @@ fn native_ci_disables_shared_compiler_wrappers() {
     );
 }
 
-/// The native lane must run the scoped server cleanup even after a failed test.
+/// The native lane must run the scoped server cleanup, and must do so in a way the
+/// runner can actually execute.
+///
+/// This guard used to require `if: always()` verbatim. The runner does not implement
+/// step `if:` expressions and refuses to compile the whole workflow when it meets one
+/// ("unsupported step `if` expression `always()`; refusing to execute it
+/// unconditionally", run 45533), so the guard was asserting a configuration that could
+/// not build - and the lane was dead for every push, which is worse than the gap it
+/// was guarding. It also acquires a second job: the runner aborts on the first failing
+/// step, so `always()` could not have delivered cleanup after a failure anyway.
+///
+/// The achievable guarantee, encoded here: the cleanup runs both before the test lane
+/// (so a previous run that died holding a server cannot poison this one) and after it,
+/// and no step carries a conditional the runner would reject.
 #[test]
-fn native_ci_cleanup_step_is_always_run() {
+fn native_ci_cleanup_runs_without_unsupported_step_conditions() {
     let root = workspace_root();
     let workflow = std::fs::read_to_string(root.join(".gitea/workflows/native-ci.yml"))
         .expect("read native workflow");
+
     assert!(
-        workflow.contains(
-            "- name: Stop checkout terraphim_server processes\n        if: always()\n        run: bash ./scripts/ci/cleanup_terraphim_servers.sh"
-        ),
-        "native CI must always invoke the checkout-scoped server cleanup"
+        !workflow.contains("\n        if:"),
+        "step `if:` expressions are unsupported by the native runner and fail workflow \
+         compilation for the whole job; express the condition inside the script instead"
+    );
+
+    let invocations = workflow
+        .matches("bash ./scripts/ci/cleanup_terraphim_servers.sh")
+        .count();
+    assert!(
+        invocations >= 2,
+        "native CI must clear checkout-scoped servers both before and after the test \
+         lane (found {invocations} invocation(s)); the runner aborts on first failure, so \
+         a trailing cleanup alone never runs for the case that leaves a server behind"
     );
 }
 
