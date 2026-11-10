@@ -801,49 +801,7 @@ impl TuiService {
         checklist_name: &str,
         text: &str,
     ) -> Result<ChecklistResult> {
-        // Define checklists with their required terms
-        // These are the synonyms from the checklist markdown files
-        let checklists = std::collections::HashMap::from([
-            (
-                "code_review",
-                vec![
-                    "tests",
-                    "test",
-                    "testing",
-                    "unit test",
-                    "integration test",
-                    "documentation",
-                    "docs",
-                    "comments",
-                    "error handling",
-                    "exception handling",
-                    "security",
-                    "security check",
-                    "performance",
-                    "optimization",
-                ],
-            ),
-            (
-                "security",
-                vec![
-                    "authentication",
-                    "auth",
-                    "login",
-                    "authorization",
-                    "access control",
-                    "permissions",
-                    "input validation",
-                    "sanitization",
-                    "encryption",
-                    "encrypted",
-                    "ssl",
-                    "tls",
-                    "logging",
-                    "audit log",
-                ],
-            ),
-        ]);
-
+        let checklists = checklist_definitions();
         // Get checklist items or return error for unknown checklist
         let checklist_terms = checklists.get(checklist_name).ok_or_else(|| {
             anyhow::anyhow!(
@@ -963,6 +921,62 @@ pub struct ConnectivityResult {
 pub struct FuzzySuggestion {
     pub term: String,
     pub similarity: f64,
+}
+
+/// The checklists `validate_checklist` accepts, and the terms that define each one.
+/// These are the synonyms from the checklist markdown files.
+///
+/// Public so a caller can reject an unknown name before doing any work: the CLI's
+/// generic error path exits 0, which made a typo in a checklist name look like success
+/// to every shell gate.
+pub fn checklist_definitions() -> std::collections::HashMap<&'static str, Vec<&'static str>> {
+    std::collections::HashMap::from([
+        (
+            "code_review",
+            vec![
+                "tests",
+                "test",
+                "testing",
+                "unit test",
+                "integration test",
+                "documentation",
+                "docs",
+                "comments",
+                "error handling",
+                "exception handling",
+                "security",
+                "security check",
+                "performance",
+                "optimization",
+            ],
+        ),
+        (
+            "security",
+            vec![
+                "authentication",
+                "auth",
+                "login",
+                "authorization",
+                "access control",
+                "permissions",
+                "input validation",
+                "sanitization",
+                "encryption",
+                "encrypted",
+                "ssl",
+                "tls",
+                "logging",
+                "audit log",
+            ],
+        ),
+    ])
+}
+
+/// Names accepted by `validate_checklist`, sorted so error messages are stable.
+pub fn checklist_names() -> Vec<&'static str> {
+    let mut names: Vec<&'static str> = checklist_definitions().keys().copied().collect();
+    names.sort_unstable();
+    names
 }
 
 /// Checklist validation result
