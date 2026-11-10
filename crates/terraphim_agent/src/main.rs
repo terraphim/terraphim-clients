@@ -52,7 +52,7 @@ mod judge;
 
 #[cfg(feature = "server")]
 use terraphim_agent::client::ApiClient;
-use terraphim_agent::service::TuiService;
+use terraphim_agent::service::{TuiService, checklist_names};
 use terraphim_types::{Document, Layer, NormalizedTermValue, RoleName, SearchQuery};
 use terraphim_update::{TerraphimUpdater, UpdaterConfig};
 
@@ -2215,7 +2215,19 @@ async fn handle_validate_command(args: ValidateArgs, service: &TuiService) -> Re
             println!("  {}", result.message);
         }
     } else if let Some(checklist_name) = args.checklist {
-        // Checklist validation mode
+        // Reject an unknown name before doing any work. validate_checklist returns an
+        // error for it, but the generic error path exits 0, so a typo'd checklist name
+        // read as success to every shell gate. Exit 2 (usage error, as the other CLI
+        // usage failures do) so it is distinguishable from "the checklist ran and the
+        // text failed it", which is a successful run reporting passed: false.
+        let available = checklist_names();
+        if !available.contains(&checklist_name.as_str()) {
+            eprintln!(
+                "Error: Unknown checklist '{}'. Available: {:?}",
+                checklist_name, available
+            );
+            std::process::exit(2);
+        }
         let result = service
             .validate_checklist(&role_name, &checklist_name, &input_text)
             .await?;

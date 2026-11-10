@@ -98,7 +98,7 @@
     }
   },
   "expectations": {
-    "unknown_checklist_exit_code": 1
+    "unknown_checklist_exit_code": 2
   },
   "intent": {
     "contract": "every checklist term classified, every category term owned by a checklist, relevant-category sets pinned",
