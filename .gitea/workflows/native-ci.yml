@@ -221,3 +221,7 @@ jobs:
       - name: Stop checkout terraphim_server processes
         if: always()
         run: bash ./scripts/ci/cleanup_terraphim_servers.sh
+      # Checklist-vs-concept contract, end-to-end journey and bench. Placed after the
+      # library tests so a broken build fails first. Skips its live assertions when no
+      # knowledge graph is present and says so in the report, rather than passing silently.
+      - run: bash ./scripts/checklist-journey.sh

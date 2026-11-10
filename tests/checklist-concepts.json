@@ -1,0 +1,164 @@
+{
+  "concepts": {
+    "access control": {
+      "covered": false
+    },
+    "audit log": {
+      "covered": true
+    },
+    "auth": {
+      "covered": false
+    },
+    "authentication": {
+      "covered": false
+    },
+    "authorization": {
+      "covered": false
+    },
+    "comments": {
+      "covered": false
+    },
+    "docs": {
+      "covered": false
+    },
+    "documentation": {
+      "covered": true
+    },
+    "encrypted": {
+      "covered": false
+    },
+    "encryption": {
+      "covered": false
+    },
+    "error handling": {
+      "covered": true
+    },
+    "exception handling": {
+      "covered": false
+    },
+    "input validation": {
+      "covered": true
+    },
+    "integration test": {
+      "covered": true
+    },
+    "logging": {
+      "covered": true
+    },
+    "login": {
+      "covered": false
+    },
+    "optimization": {
+      "covered": false
+    },
+    "performance": {
+      "covered": false
+    },
+    "permissions": {
+      "covered": false
+    },
+    "sanitization": {
+      "covered": false
+    },
+    "security": {
+      "covered": false
+    },
+    "security check": {
+      "covered": true
+    },
+    "ssl": {
+      "covered": false
+    },
+    "test": {
+      "covered": true
+    },
+    "testing": {
+      "covered": false
+    },
+    "tests": {
+      "covered": false
+    },
+    "tls": {
+      "covered": false
+    },
+    "unit test": {
+      "covered": true
+    }
+  },
+  "defects": {
+    "unknown_checklist_exit_code": 0,
+    "unsatisfiable_by_concept": {
+      "code_review": [
+        "performance"
+      ],
+      "security": [
+        "authentication",
+        "authorization",
+        "encryption"
+      ]
+    }
+  },
+  "intent": {
+    "contract": "every checklist term classified, every category term owned by a checklist, relevant-category sets pinned",
+    "reachability": "measured by feeding each category's own terms to the CLI; a false entry means no text can ever satisfy that category",
+    "samples": "current truth, including known defects; a sample failing means behaviour changed and the contract needs re-measuring"
+  },
+  "reachable_categories": {
+    "code_review": {
+      "documentation": true,
+      "error_handling": true,
+      "performance": false,
+      "security": false,
+      "tests": true
+    },
+    "security": {
+      "authentication": false,
+      "authorization": false,
+      "encryption": false,
+      "input_validation": false,
+      "logging": true
+    }
+  },
+  "relevant_categories": {
+    "code_review": [
+      "tests",
+      "documentation",
+      "error_handling",
+      "security",
+      "performance"
+    ],
+    "security": [
+      "authentication",
+      "authorization",
+      "input_validation",
+      "encryption",
+      "logging"
+    ]
+  },
+  "samples": [
+    {
+      "checklist": "code_review",
+      "known_defect": "code_review needs security and performance; the shipped KG has no concept that credits either, so the checklist cannot pass",
+      "label": "code_review text covering the three reachable categories",
+      "missing": [
+        "performance",
+        "security"
+      ],
+      "passed": false,
+      "text": "Added a unit test, wrote documentation, and handled error handling paths."
+    },
+    {
+      "checklist": "security",
+      "known_defect": "only logging is reachable; input_validation's term 'input validation' matches a concept but the category is still not credited",
+      "label": "security checklist fed its own category terms",
+      "missing": [
+        "authentication",
+        "authorization",
+        "encryption",
+        "input_validation"
+      ],
+      "passed": false,
+      "text": "authentication authorization input validation encryption logging"
+    }
+  ]
+}
