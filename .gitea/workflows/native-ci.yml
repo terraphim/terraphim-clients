@@ -218,8 +218,12 @@ jobs:
       # #410: belt-and-braces cleanup for a cancelled or panicking test runner.
       # The script checks both /proc/<pid>/exe and /proc/<pid>/cwd before
       # signalling exact PIDs, so it cannot stop another checkout's server.
+      # The runner refuses step `if:` expressions outright ("unsupported step `if`
+      # expression `always()`; refusing to execute it unconditionally"), which fails
+      # workflow compilation for the whole job before any step runs. The cleanup is
+      # unconditional anyway - it resolves exact PIDs from /proc and no-ops when there
+      # is nothing to stop - so dropping the guard is both allowed and correct.
       - name: Stop checkout terraphim_server processes
-        if: always()
         run: bash ./scripts/ci/cleanup_terraphim_servers.sh
       # Checklist-vs-concept contract, end-to-end journey and bench. Placed after the
       # library tests so a broken build fails first. Skips its live assertions when no
