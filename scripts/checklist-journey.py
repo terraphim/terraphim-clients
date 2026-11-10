@@ -71,16 +71,46 @@ class Report:
         return [c for c in self.checks if c["skipped"]]
 
 
+def clean(out: str) -> str:
+    """Drop tracing noise so assertions read the command's own answer.
+
+    This used to be done by piping through `grep -v WARN`, which is how the harness
+    came to report the wrong exit code: with a pipeline, the status is grep's, not the
+    binary's. Filtering in process keeps the real `returncode` intact."""
+    kept = []
+    for line in out.splitlines():
+        s = line.strip()
+        if s.startswith("["):                      # [2026-11-10T10:21:18Z INFO ...]
+            continue
+        if " INFO " in line or " WARN " in line:
+            continue
+        if s.startswith("auto-route"):
+            continue
+        kept.append(line)
+    return "\n".join(kept)
+
+
 def run(cmd: str, timeout: int = 120) -> tuple[int, str]:
     p = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
-    return p.returncode, f"{p.stdout}\n{p.stderr}"
+    return p.returncode, clean(f"{p.stdout}\n{p.stderr}")
 
 
 def parse_checklists(source: str) -> tuple[dict, dict]:
     """The two literals in validate_checklist, parsed rather than duplicated."""
+    # The literal has lived in two places: inline in validate_checklist, and (after the
+    # exit-code fix in #476) in checklist_definitions(). Match either rather than pinning
+    # one shape - a refactor that moves it should not break the parser, only a refactor
+    # that changes the data should.
     ck = source.split("let checklists = std::collections::HashMap::from([", 1)
     if len(ck) != 2:
-        raise SystemExit("service.rs: cannot find the checklists HashMap literal")
+        fn_start = source.find("pub fn checklist_definitions()")
+        if fn_start != -1:
+            ck = source[fn_start:].split("HashMap::from([", 1)
+            if len(ck) == 2:
+                ck = ["", ck[1]]
+    if len(ck) != 2:
+        raise SystemExit("service.rs: cannot find the checklist HashMap entries "
+                         "(looked for an inline literal and for checklist_definitions())")
     block = ck[1].split("]);", 1)[0]
     checklists = {
         m.group(1): re.findall(r'"([^"]+)"', m.group(2))
@@ -105,14 +135,18 @@ def relevant_categories(checklist_terms: list[str], categories: dict[str, list[s
 
 def probe_kg(term: str) -> bool:
     """Does any KG concept match this term? `extract` reports the KG terms it finds in
-    the given text, so it doubles as a concept probe."""
-    rc, out = run(f'{AGENT} extract "{term}" 2>&1 | grep -v WARN')
-    return rc == 0 and "Found" in out
+    the given text, so it doubles as a concept probe.
+
+    Match the result line, not the substring "Found" anywhere in the output: the binary
+    logs messages such as "Found role_config in settings.toml", which made every term
+    look concept-backed (28/28) on the first run of this check."""
+    rc, out = run(f'{AGENT} extract "{term}"')
+    return rc == 0 and re.search(r"^\s*Found \d+ paragraph", out, re.M) is not None
 
 
 def validate(checklist: str, text: str, as_json: bool = False) -> tuple[int, str]:
     flag = " --json" if as_json else ""
-    return run(f'{AGENT} validate --checklist {checklist}{flag} "{text}" 2>&1 | grep -vE "WARN|auto-route"')
+    return run(f'{AGENT} validate --checklist {checklist}{flag} "{text}"')
 
 
 def parse_human(out: str) -> dict:
@@ -230,14 +264,11 @@ def journey_checks(report: Report, checklists: dict, categories: dict, contract:
         set(checklists).issubset(named),
         f"available checklists named: {sorted(named)}",
     )
-    expected_rc = contract.get("defects", {}).get("unknown_checklist_exit_code")
-    known_rc = ("an unknown checklist name reports an error but still exits 0, so a shell gate "
-                "cannot detect a typo in a checklist name") if expected_rc == 0 else ""
+    expected_rc = contract.get("expectations", {}).get("unknown_checklist_exit_code")
     report.check(
         "unknown checklist exit code matches the contract",
         expected_rc is not None and rc == expected_rc,
-        f"exit={rc}, contract says {expected_rc}",
-        known=known_rc,
+        f"exit={rc}, contract says {expected_rc} - re-measure deliberately if this changed",
     )
 
     rc, out = validate(list(checklists)[0], "unit tests and documentation", as_json=True)
@@ -332,7 +363,9 @@ def refresh_contract(checklists: dict, categories: dict, contract: dict) -> dict
         if dead:
             unreachable[name] = dead
     contract.setdefault("defects", {})["unsatisfiable_by_concept"] = unreachable
-    contract["defects"]["unknown_checklist_exit_code"] = validate("__nope__", "text")[0]
+    contract.setdefault("expectations", {})["unknown_checklist_exit_code"] = validate("__nope__", "text")[0]
+    # the exit code is an expectation, not a defect; drop the pre-rename key if present
+    contract.get("defects", {}).pop("unknown_checklist_exit_code", None)
     return contract
 
 

@@ -86,7 +86,6 @@
     }
   },
   "defects": {
-    "unknown_checklist_exit_code": 0,
     "unsatisfiable_by_concept": {
       "code_review": [
         "performance"
@@ -97,6 +96,9 @@
         "encryption"
       ]
     }
+  },
+  "expectations": {
+    "unknown_checklist_exit_code": 1
   },
   "intent": {
     "contract": "every checklist term classified, every category term owned by a checklist, relevant-category sets pinned",
