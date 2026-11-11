@@ -538,6 +538,7 @@ impl HybridSearcher {
                 &query_owned,
                 &aliases,
                 candidate_limit,
+                options.context_lines,
                 path.clone(),
                 options.haystack,
             )
@@ -604,6 +605,7 @@ impl HybridSearcher {
         query: &str,
         aliases: &[String],
         limit: usize,
+        context_lines: usize,
         search_path: PathBuf,
         haystack: Haystack,
     ) -> Result<Vec<RetrievedChunk>, String> {
@@ -650,8 +652,8 @@ impl HybridSearcher {
                 page_limit: limit,
                 mode: GrepMode::PlainText,
                 time_budget_ms: 0,
-                before_context: 0,
-                after_context: 0,
+                before_context: context_lines,
+                after_context: context_lines,
                 classify_definitions: false,
                 ..GrepSearchOptions::default()
             };
@@ -694,11 +696,12 @@ impl HybridSearcher {
                     if is_lockfile_path(&source) {
                         return None;
                     }
+                    let (content, line_start, line_end) = widen_with_context(m);
                     Some(RetrievedChunk {
-                        content: m.line_content.clone(),
+                        content,
                         source: source.clone(),
-                        line_start: Some(m.line_number as usize),
-                        line_end: Some(m.line_number as usize),
+                        line_start: Some(line_start),
+                        line_end: Some(line_end),
                         relevance_score: 1.0,
                         haystack: chunk_haystack(haystack, &source),
                     })
@@ -720,7 +723,7 @@ impl HybridSearcher {
 
         #[cfg(not(feature = "code-search"))]
         {
-            let _ = (query, aliases, limit, search_path, haystack);
+            let _ = (query, aliases, limit, context_lines, search_path, haystack);
             // `code-search` is a default feature, so reaching here means the binary was
             // built with `--no-default-features` (or a custom set omitting it). Returning
             // an empty Vec silently makes every query look like "0 results" with no
@@ -745,6 +748,26 @@ impl HybridSearcher {
         });
         results
     }
+}
+
+/// Build a chunk's text and 1-based inclusive line range from a match plus the
+/// context lines fff-search captured around it (ripgrep `-C` semantics).
+///
+/// The searcher clamps context at the file edges, so `before` never exceeds the
+/// match's own line and `line - before` cannot underflow.
+#[cfg(feature = "code-search")]
+fn widen_with_context(m: &fff_search::GrepMatch) -> (String, usize, usize) {
+    let line = m.line_number as usize;
+    let before = m.context_before.len();
+    let mut lines: Vec<&str> = Vec::with_capacity(before + 1 + m.context_after.len());
+    lines.extend(m.context_before.iter().map(String::as_str));
+    lines.push(m.line_content.as_str());
+    lines.extend(m.context_after.iter().map(String::as_str));
+    (
+        lines.join("\n"),
+        line.saturating_sub(before).max(1),
+        line + m.context_after.len(),
+    )
 }
 
 #[cfg(test)]
