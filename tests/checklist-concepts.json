@@ -37,7 +37,7 @@
       "covered": false
     },
     "input validation": {
-      "covered": true
+      "covered": false
     },
     "integration test": {
       "covered": true
@@ -64,7 +64,7 @@
       "covered": false
     },
     "security check": {
-      "covered": true
+      "covered": false
     },
     "ssl": {
       "covered": false
@@ -85,14 +85,43 @@
       "covered": true
     }
   },
+  "coverage": {
+    "kg_dir": "/home/alex/.config/terraphim/kg",
+    "patterns": 2438,
+    "unbacked": [
+      "access control",
+      "auth",
+      "authentication",
+      "authorization",
+      "comments",
+      "docs",
+      "encrypted",
+      "encryption",
+      "exception handling",
+      "input validation",
+      "login",
+      "optimization",
+      "performance",
+      "permissions",
+      "sanitization",
+      "security",
+      "security check",
+      "ssl",
+      "testing",
+      "tests",
+      "tls"
+    ]
+  },
   "defects": {
     "unsatisfiable_by_concept": {
       "code_review": [
+        "security",
         "performance"
       ],
       "security": [
         "authentication",
         "authorization",
+        "input_validation",
         "encryption"
       ]
     }
