@@ -1,4 +1,3 @@
-use std::env;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
 
@@ -11,13 +10,9 @@ fn test_mcp_autocomplete_via_stdio() {
         eprintln!("Skipping: set RUN_MCP_STDIO_TEST=1 to run");
         return;
     }
-    // Set the environment variable for local dev settings
-    unsafe {
-        env::set_var(
-            "TERRAPHIM_SETTINGS_PATH",
-            "../terraphim_settings/default/settings_local_dev.toml",
-        );
-    }
+    // The MCP server never reads TERRAPHIM_SETTINGS_PATH, and the spawned child
+    // inherits the parent environment anyway, so the old `unsafe` env write here
+    // only added an unsound block. Refs terraphim-clients#439.
 
     // Start the MCP server
     // NOTE: Don't pass --verbose here. It can enable non-JSON output on stdout,
