@@ -801,71 +801,32 @@ impl TuiService {
         checklist_name: &str,
         text: &str,
     ) -> Result<ChecklistResult> {
-        let checklists = checklist_definitions();
-        // Get checklist items or return error for unknown checklist
-        let checklist_terms = checklists.get(checklist_name).ok_or_else(|| {
+        let checklist = crate::checklists::get(checklist_name).ok_or_else(|| {
             anyhow::anyhow!(
                 "Unknown checklist '{}'. Available: {:?}",
                 checklist_name,
-                checklists.keys().collect::<Vec<_>>()
+                crate::checklists::names()
             )
         })?;
 
-        // Find matches in the text
         let matches = self.find_matches(role_name, text).await?;
         let matched_terms: std::collections::HashSet<String> =
             matches.iter().map(|m| m.term.to_lowercase()).collect();
 
-        // Group checklist items by category (first word is typically the category)
-        let categories = vec![
-            (
-                "tests",
-                vec!["tests", "test", "testing", "unit test", "integration test"],
-            ),
-            ("documentation", vec!["documentation", "docs", "comments"]),
-            (
-                "error_handling",
-                vec!["error handling", "exception handling"],
-            ),
-            ("security", vec!["security", "security check"]),
-            ("performance", vec!["performance", "optimization"]),
-            ("authentication", vec!["authentication", "auth", "login"]),
-            (
-                "authorization",
-                vec!["authorization", "access control", "permissions"],
-            ),
-            ("input_validation", vec!["input validation", "sanitization"]),
-            ("encryption", vec!["encryption", "encrypted", "ssl", "tls"]),
-            ("logging", vec!["logging", "audit log"]),
-        ];
-
-        // Filter categories relevant to this checklist
-        let relevant_categories: Vec<_> = categories
-            .iter()
-            .filter(|(_, terms)| terms.iter().any(|t| checklist_terms.contains(t)))
-            .collect();
-
         let mut satisfied = Vec::new();
         let mut missing = Vec::new();
-
-        for (category, terms) in &relevant_categories {
-            // Check if any term in the category is matched
-            let found = terms
-                .iter()
-                .any(|t| matched_terms.contains(&t.to_lowercase()));
-            if found {
-                satisfied.push(category.to_string());
+        for category in &checklist.categories {
+            if category.terms.iter().any(|t| matched_terms.contains(t)) {
+                satisfied.push(category.name.clone());
             } else {
-                missing.push(category.to_string());
+                missing.push(category.name.clone());
             }
         }
 
         let total_items = satisfied.len() + missing.len();
-        let passed = missing.is_empty();
-
         Ok(ChecklistResult {
-            checklist_name: checklist_name.to_string(),
-            passed,
+            checklist_name: checklist.name.clone(),
+            passed: missing.is_empty(),
             total_items,
             satisfied,
             missing,
@@ -923,60 +884,12 @@ pub struct FuzzySuggestion {
     pub similarity: f64,
 }
 
-/// The checklists `validate_checklist` accepts, and the terms that define each one.
-/// These are the synonyms from the checklist markdown files.
+/// Names accepted by `validate --checklist`, sorted for stable error messages.
 ///
-/// Public so a caller can reject an unknown name before doing any work: the CLI's
-/// generic error path exits 0, which made a typo in a checklist name look like success
-/// to every shell gate.
-pub fn checklist_definitions() -> std::collections::HashMap<&'static str, Vec<&'static str>> {
-    std::collections::HashMap::from([
-        (
-            "code_review",
-            vec![
-                "tests",
-                "test",
-                "testing",
-                "unit test",
-                "integration test",
-                "documentation",
-                "docs",
-                "comments",
-                "error handling",
-                "exception handling",
-                "security",
-                "security check",
-                "performance",
-                "optimization",
-            ],
-        ),
-        (
-            "security",
-            vec![
-                "authentication",
-                "auth",
-                "login",
-                "authorization",
-                "access control",
-                "permissions",
-                "input validation",
-                "sanitization",
-                "encryption",
-                "encrypted",
-                "ssl",
-                "tls",
-                "logging",
-                "audit log",
-            ],
-        ),
-    ])
-}
-
-/// Names accepted by `validate_checklist`, sorted so error messages are stable.
-pub fn checklist_names() -> Vec<&'static str> {
-    let mut names: Vec<&'static str> = checklist_definitions().keys().copied().collect();
-    names.sort_unstable();
-    names
+/// The definitions live in `data/checklists/*.toml`; this stays as a re-export so the
+/// CLI validates against exactly the data the service reads.
+pub fn checklist_names() -> Vec<String> {
+    crate::checklists::names()
 }
 
 /// Checklist validation result

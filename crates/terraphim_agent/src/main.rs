@@ -2221,7 +2221,7 @@ async fn handle_validate_command(args: ValidateArgs, service: &TuiService) -> Re
         // usage failures do) so it is distinguishable from "the checklist ran and the
         // text failed it", which is a successful run reporting passed: false.
         let available = checklist_names();
-        if !available.contains(&checklist_name.as_str()) {
+        if !available.iter().any(|n| n == &checklist_name) {
             eprintln!(
                 "Error: Unknown checklist '{}'. Available: {:?}",
                 checklist_name, available
