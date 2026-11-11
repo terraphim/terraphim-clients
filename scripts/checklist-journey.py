@@ -286,6 +286,31 @@ def contract_checks(report: Report, definitions, patterns: set[str], contract: d
                      f"drift (measured, contract): {reach_drift}" if reach_drift else "unchanged")
 
 
+def starter_concept_check(report: Report, contract: dict) -> None:
+    """The shipped starter concepts must cover every term the reference graph cannot express.
+
+    `docs/checklists/concepts/` is documentation, not a runtime dependency: copying those
+    articles into a knowledge graph is what makes the graph-side crediting work. Without this
+    check the files would rot the first time a term was added to a checklist."""
+    directory = ROOT / "docs" / "checklists" / "concepts"
+    unbacked = contract.get("coverage", {}).get("unbacked", [])
+    if not unbacked:
+        report.check("starter concepts cover unbacked terms", True, "nothing unbacked")
+        return
+    if not directory.is_dir():
+        report.check("starter concepts cover unbacked terms", False, f"{directory} is missing")
+        return
+    patterns = kg_patterns(directory)
+    missing = [t for t in unbacked if t not in patterns]
+    report.check(
+        "starter concepts cover unbacked terms",
+        not missing,
+        f"not covered by docs/checklists/concepts: {missing}" if missing else
+        f"{len(unbacked)} unbacked terms covered by "
+        f"{len(list(directory.glob('*.md')))} concept files",
+    )
+
+
 def journey_checks(report: Report, definitions, contract: dict, live: bool) -> None:
     for name, categories in definitions.items():
         rc, out = validate(name, "some text mentioning nothing in particular")
@@ -436,6 +461,7 @@ def main() -> int:
     live = not args.no_live and has_kg()
     report = Report()
     contract_checks(report, definitions, patterns, contract)
+    starter_concept_check(report, contract)
     journey_checks(report, definitions, contract, live)
     if not args.no_bench:
         bench_checks(report, definitions)
