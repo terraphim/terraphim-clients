@@ -380,6 +380,96 @@ fn chunk_haystack(haystack: Haystack, path: &str) -> &'static str {
     }
 }
 
+/// A file whose name matched a `--files` pattern. Paths are absolute so callers
+/// can open them without knowing which `--paths` root produced them.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct FileMatch {
+    pub path: String,
+    pub score: i32,
+}
+
+/// Search file *names* under `paths`, ranked by fff-search's fuzzy matcher (#472).
+///
+/// This is the filename half of a file lookup: no file content is read and no
+/// chunk machinery runs. Query filters parse the same way as the interactive
+/// picker, so `tgp` matches `terraphim-grep.js`. Results are absolute paths,
+/// sorted by descending score and truncated to `limit` overall.
+pub async fn search_file_names(
+    pattern: &str,
+    paths: &[PathBuf],
+    limit: usize,
+) -> Result<Vec<FileMatch>, String> {
+    #[cfg(feature = "code-search")]
+    {
+        use fff_search::{
+            FFFMode, FilePicker, FilePickerOptions, FuzzySearchOptions, PaginationArgs, QueryParser,
+        };
+
+        let mut matches: Vec<FileMatch> = Vec::new();
+
+        for root in paths {
+            // Absolute roots make the returned paths directly usable and keep
+            // `.` from leaking into every result.
+            let root = std::fs::canonicalize(root)
+                .map_err(|e| format!("Cannot resolve search path {}: {e}", root.display()))?;
+            crate::path_guard::reject_hostile_tree(&root)?;
+
+            let mut picker = FilePicker::new(FilePickerOptions {
+                base_path: root.to_string_lossy().to_string(),
+                mode: FFFMode::Ai,
+                watch: false,
+                cache_budget: Some(no_mmap_budget()),
+                follow_symlinks: false,
+                ..FilePickerOptions::default()
+            })
+            .map_err(|e| format!("FilePicker init failed: {e}"))?;
+
+            picker
+                .collect_files()
+                .map_err(|e| format!("File scan failed: {e}"))?;
+            if picker.get_files().is_empty() {
+                continue;
+            }
+
+            let query = QueryParser::default().parse(pattern);
+            let found = picker.fuzzy_search(
+                &query,
+                None,
+                FuzzySearchOptions {
+                    max_threads: 0,
+                    current_file: None,
+                    pagination: PaginationArgs { offset: 0, limit },
+                    ..FuzzySearchOptions::default()
+                },
+            );
+
+            for (item, score) in found.items.iter().zip(found.scores.iter()) {
+                matches.push(FileMatch {
+                    path: item
+                        .absolute_path(&picker, &root)
+                        .to_string_lossy()
+                        .to_string(),
+                    score: score.total,
+                });
+            }
+        }
+
+        matches.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| a.path.cmp(&b.path)));
+        matches.truncate(limit);
+        Ok(matches)
+    }
+
+    #[cfg(not(feature = "code-search"))]
+    {
+        let _ = (pattern, paths, limit);
+        Err(
+            "terraphim-grep was built without the `code-search` feature; filename search \
+             requires it. Rebuild with `--features code-search` (the default)."
+                .to_string(),
+        )
+    }
+}
+
 pub struct HybridSearcher {
     role_graph: Arc<tokio::sync::RwLock<terraphim_rolegraph::RoleGraph>>,
     /// Kept alongside the rolegraph so KG-style boosting still works when no documents
@@ -782,6 +872,45 @@ mod tests {
             dir_a,
             dir_b
         );
+    }
+
+    /// #472: filename search ranks fuzzy matches and never reads content.
+    #[cfg(feature = "code-search")]
+    #[tokio::test]
+    async fn file_name_search_ranks_fuzzy_matches() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        std::fs::create_dir_all(tmp.path().join("plugins")).unwrap();
+        std::fs::create_dir_all(tmp.path().join("docs")).unwrap();
+        std::fs::write(tmp.path().join("plugins/terraphim-grep.js"), "x\n").unwrap();
+        std::fs::write(tmp.path().join("plugins/other.js"), "y\n").unwrap();
+        std::fs::write(tmp.path().join("docs/readme.md"), "z\n").unwrap();
+
+        let matches = search_file_names("tgp", &[tmp.path().to_path_buf()], 10)
+            .await
+            .expect("filename search");
+
+        assert!(!matches.is_empty(), "tgp must match a file name");
+        assert!(
+            matches[0].path.ends_with("terraphim-grep.js"),
+            "fuzzy subsequence ranking should put the plugin first, got {:?}",
+            matches.iter().map(|m| &m.path).collect::<Vec<_>>()
+        );
+        assert!(
+            matches
+                .iter()
+                .all(|m| std::path::Path::new(&m.path).is_absolute()),
+            "returned paths must be absolute"
+        );
+
+        let limited = search_file_names("js", &[tmp.path().to_path_buf()], 1)
+            .await
+            .expect("filename search");
+        assert_eq!(limited.len(), 1, "limit must be honoured");
+
+        let none = search_file_names("zzzz-not-a-file", &[tmp.path().to_path_buf()], 10)
+            .await
+            .expect("filename search");
+        assert!(none.is_empty());
     }
 
     /// #404: `--haystack code` used to search every indexed file, so lockfiles and

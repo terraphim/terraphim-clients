@@ -34,8 +34,8 @@ use std::sync::Arc;
 
 pub use error::{Result, TerraphimGrepError};
 pub use hybrid_searcher::{
-    DEFAULT_KG_BOOST_WEIGHT, GrepOptions, Haystack, HybridResults, HybridSearcher, KgConcept,
-    RetrievedChunk, boost_chunks_with_kg, score_kg_boost,
+    DEFAULT_KG_BOOST_WEIGHT, FileMatch, GrepOptions, Haystack, HybridResults, HybridSearcher,
+    KgConcept, RetrievedChunk, boost_chunks_with_kg, score_kg_boost, search_file_names,
 };
 pub use kg_curation::KgCurationRlm;
 pub use path_guard::reject_hostile_tree;
