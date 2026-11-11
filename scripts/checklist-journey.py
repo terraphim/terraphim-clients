@@ -146,15 +146,35 @@ def kg_patterns(kg: Path) -> set[str]:
     text, which reports any pattern contained in the probe - so `security check` looked
     concept-backed because `check` matched inside it."""
     patterns: set[str] = set()
-    for f in kg.rglob("*.md"):
+    skipped: list[str] = []
+    try:
+        candidates = list(kg.rglob("*.md"))
+    except OSError:
+        return patterns
+    for f in candidates:
+        # A graph directory can exist and still hold nothing usable: dangling symlinks
+        # (a synced or partially-copied graph is the usual cause), permission-denied
+        # files, or a file removed mid-scan. Crashing here fails the whole gate for a
+        # reason that has nothing to do with checklists.
+        if not f.is_file():
+            skipped.append(str(f))
+            continue
+        try:
+            text = f.read_text(errors="replace")
+        except OSError:
+            skipped.append(str(f))
+            continue
         patterns.add(f.stem.strip().lower())
-        for line in f.read_text(errors="replace").splitlines():
+        for line in text.splitlines():
             m = SYNONYMS.match(line)
             if m:
                 for item in m.group(1).split(","):
                     item = item.strip().lower()
                     if item:
                         patterns.add(item)
+    if skipped:
+        print(f"warning: skipped {len(skipped)} unreadable concept file(s) under {kg} "
+              f"(first: {skipped[0]})", file=sys.stderr)
     return patterns
 
 
@@ -175,6 +195,25 @@ def unreachable_categories(definitions, patterns: set[str]) -> dict[str, list[st
 
 def has_kg() -> bool:
     return KG_DIR.is_dir() and bool(kg_patterns(KG_DIR))
+
+
+def is_reference_graph(patterns: set[str], contract: dict) -> bool:
+    """Is this host's graph the one the contract was measured against?
+
+    Coverage and reachability numbers are properties of a specific graph. A CI runner
+    with no graph, or with a different one, cannot verify them - and must not pretend
+    the numbers drifted. Only the contract's own digest may decide this."""
+    recorded = contract.get("coverage", {})
+    if not patterns or recorded.get("digest") is None:
+        return False
+    return pattern_digest(patterns) == recorded["digest"]
+
+
+def pattern_digest(patterns: set[str]) -> str:
+    import hashlib
+
+    joined = "\n".join(sorted(patterns))
+    return hashlib.sha256(joined.encode()).hexdigest()[:16]
 
 
 def validate(checklist: str, text: str, as_json: bool = False) -> tuple[int, str]:
@@ -214,7 +253,16 @@ def measure_reachability(definitions, patterns: set[str]) -> dict[str, dict[str,
 
 # ------------------------------------------------------------------------- checks
 
-def contract_checks(report: Report, definitions, patterns: set[str], contract: dict) -> None:
+def _recorded_reach_skip(report: Report, contract: dict, early_return: bool = True) -> None:
+    """Reachability is measured by running the CLI against a graph; without the reference
+    graph there is nothing to compare, so say so instead of reporting drift."""
+    if early_return:
+        report.check("reachability matches the contract", True,
+                     "not the reference graph on this host", skipped=True)
+
+
+def contract_checks(report: Report, definitions, patterns: set[str], contract: dict,
+                    reference: bool) -> None:
     terms = all_terms(definitions)
     declared = contract.get("concepts", {})
 
@@ -236,6 +284,16 @@ def contract_checks(report: Report, definitions, patterns: set[str], contract: d
                 if actual.get(k) != expected.get(k)}
     report.check("category set per checklist is unchanged", not mismatch,
                  f"drift: {mismatch}" if mismatch else str(actual))
+
+    if not reference:
+        for name in ("recorded concept coverage matches the graph",
+                     "unreachable categories unchanged since the contract was measured",
+                     "unbacked terms are recorded in the contract"):
+            report.check(name, True,
+                         "this host's graph is not the reference graph the contract was "
+                         "measured against", skipped=True)
+        _recorded_reach_skip(report, contract)
+        return
 
     covered = {t: (t in patterns) for t in sorted(terms)}
     drift = {t: (covered[t], declared.get(t, {}).get("covered")) for t in covered
@@ -268,6 +326,8 @@ def contract_checks(report: Report, definitions, patterns: set[str], contract: d
         f"{'none recorded' if recorded_unbacked is None else len(recorded_unbacked)} - "
         f"run --refresh and review the diff",
     )
+
+    _recorded_reach_skip(report, contract, early_return=False)
 
     recorded_reach = contract.get("reachable_categories")
     if recorded_reach is None:
@@ -386,6 +446,7 @@ def refresh_contract(definitions, patterns: set[str], contract: dict) -> dict:
     contract["coverage"] = {
         "unbacked": unbacked_terms(definitions, patterns),
         "patterns": len(patterns),
+        "digest": pattern_digest(patterns),
         "kg_dir": str(KG_DIR),
     }
     contract["reachable_categories"] = measure_reachability(definitions, patterns)
@@ -460,7 +521,8 @@ def main() -> int:
 
     live = not args.no_live and has_kg()
     report = Report()
-    contract_checks(report, definitions, patterns, contract)
+    reference = is_reference_graph(patterns, contract)
+    contract_checks(report, definitions, patterns, contract, reference)
     starter_concept_check(report, contract)
     journey_checks(report, definitions, contract, live)
     if not args.no_bench:

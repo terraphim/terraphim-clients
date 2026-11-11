@@ -86,6 +86,7 @@
     }
   },
   "coverage": {
+    "digest": "39df61cc9bbacf39",
     "kg_dir": "/home/alex/.config/terraphim/kg",
     "patterns": 2438,
     "unbacked": [
