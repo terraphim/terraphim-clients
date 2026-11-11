@@ -103,6 +103,16 @@ terraphim-grep "struct Config" --paths src/ crates/
 > (terraphim/terraphim-clients#81). Use `--search-only` (alias `--no-rlm`) to also skip
 > building the LLM client.
 
+#### Exit codes
+
+`terraphim-grep` follows ripgrep so shell gates can branch without parsing stdout:
+
+| Code | Meaning |
+|---|---|
+| `0` | At least one chunk matched, or `--answer` produced an answer |
+| `1` | The query matched nothing (including a `--haystack` that excluded every match) |
+| `2` | Usage or IO error |
+
 ### Use an editor-exported synonym graph
 
 In Terraphim Editor, add `Concern` as an alternative to `Risk`, then open

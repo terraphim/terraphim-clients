@@ -548,7 +548,19 @@ fn role_from_env(role_name: &str) -> Option<terraphim_config::Role> {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> std::process::ExitCode {
+    match run().await {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("Error: {error:#}");
+            // Usage errors exit 2 from clap; runtime/IO failures should not be
+            // indistinguishable from "no match" (1), so they take 2 as well.
+            std::process::ExitCode::from(2)
+        }
+    }
+}
+
+async fn run() -> Result<()> {
     init_tracing();
 
     let mut args = Args::parse();
@@ -655,6 +667,14 @@ async fn main() -> Result<()> {
         println!("{}", json);
     } else {
         print_results(&result, args.context);
+    }
+
+    // ripgrep exit semantics (#450, pending the stable taxonomy in #181):
+    // 0 = at least one chunk or a synthesised answer, 1 = no match. Usage and
+    // IO errors keep clap's/anyhow's exit 2, so callers can branch without
+    // parsing stdout.
+    if result.chunks.is_empty() && result.answer.is_none() {
+        std::process::exit(1);
     }
 
     Ok(())
