@@ -657,6 +657,14 @@ async fn main() -> Result<()> {
         print_results(&result, args.context);
     }
 
+    // ripgrep exit semantics (#450, pending the stable taxonomy in #181):
+    // 0 = at least one chunk or a synthesised answer, 1 = no match. Usage and
+    // IO errors keep clap's/anyhow's exit 2, so callers can branch without
+    // parsing stdout.
+    if result.chunks.is_empty() && result.answer.is_none() {
+        std::process::exit(1);
+    }
+
     Ok(())
 }
 
