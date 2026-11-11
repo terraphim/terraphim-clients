@@ -143,10 +143,20 @@ impl TerraphimGrep {
     ///
     /// Override via the `TERRAPHIM_GREP_MAX_TOKENS` environment variable.
     fn rlm_max_tokens() -> u32 {
-        std::env::var("TERRAPHIM_GREP_MAX_TOKENS")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .filter(|&n| n > 0)
+        let raw = std::env::var("TERRAPHIM_GREP_MAX_TOKENS").ok();
+        Self::rlm_max_tokens_from(raw.as_deref())
+    }
+
+    /// Parse the RLM token cap from an optional raw value.
+    ///
+    /// Pure, so the parsing rules can be tested without mutating the process
+    /// environment. Mutating it is `unsafe` and racy: this crate has no
+    /// serial_test, so a test that set `TERRAPHIM_GREP_MAX_TOKENS` raced with
+    /// the fff-search and libgit2 readers in the same binary
+    /// (terraphim-clients#373, #440).
+    fn rlm_max_tokens_from(raw: Option<&str>) -> u32 {
+        raw.and_then(|value| value.parse().ok())
+            .filter(|&tokens| tokens > 0)
             .unwrap_or(8000)
     }
 
@@ -920,53 +930,49 @@ mod tests {
     }
 
     /// `rlm_max_tokens` defaults to 8000 and honours the env override.
+    ///
+    /// The parse itself is tested through the pure helper: mutating the
+    /// process environment is `unsafe` and races with the other tests in this
+    /// binary (there is no serial_test in this crate). Refs #440, #373.
     #[test]
-    fn rlm_max_tokens_default_and_override() {
-        // SAFETY: test code, single-threaded, no concurrent env access.
-        let saved = std::env::var("TERRAPHIM_GREP_MAX_TOKENS").ok();
-
-        unsafe {
-            std::env::remove_var("TERRAPHIM_GREP_MAX_TOKENS");
-        }
+    fn rlm_max_tokens_parses_without_touching_the_environment() {
         assert_eq!(
-            TerraphimGrep::rlm_max_tokens(),
+            TerraphimGrep::rlm_max_tokens_from(None),
             8000,
-            "default should be 8000"
+            "an absent override falls back to the default"
         );
-
-        unsafe {
-            std::env::set_var("TERRAPHIM_GREP_MAX_TOKENS", "4000");
-        }
-        assert_eq!(TerraphimGrep::rlm_max_tokens(), 4000);
-
-        unsafe {
-            std::env::set_var("TERRAPHIM_GREP_MAX_TOKENS", "not-a-number");
-        }
         assert_eq!(
-            TerraphimGrep::rlm_max_tokens(),
-            8000,
-            "invalid value falls back to default"
+            TerraphimGrep::rlm_max_tokens_from(Some("4000")),
+            4000,
+            "a numeric override wins"
         );
-
-        unsafe {
-            std::env::set_var("TERRAPHIM_GREP_MAX_TOKENS", "0");
-        }
         assert_eq!(
-            TerraphimGrep::rlm_max_tokens(),
+            TerraphimGrep::rlm_max_tokens_from(Some("not-a-number")),
             8000,
-            "zero falls back to default"
+            "an unparsable override falls back to the default"
         );
+        assert_eq!(
+            TerraphimGrep::rlm_max_tokens_from(Some("0")),
+            8000,
+            "zero falls back to the default"
+        );
+        assert_eq!(
+            TerraphimGrep::rlm_max_tokens_from(Some("")),
+            8000,
+            "an empty override falls back to the default"
+        );
+        assert_eq!(
+            TerraphimGrep::rlm_max_tokens_from(Some("-1")),
+            8000,
+            "a negative override falls back to the default"
+        );
+    }
 
-        // Restore.
-        if let Some(v) = saved {
-            unsafe {
-                std::env::set_var("TERRAPHIM_GREP_MAX_TOKENS", v);
-            }
-        } else {
-            unsafe {
-                std::env::remove_var("TERRAPHIM_GREP_MAX_TOKENS");
-            }
-        }
+    /// The env-backed accessor still returns a usable cap, whatever the
+    /// environment happens to hold.
+    #[test]
+    fn rlm_max_tokens_is_positive() {
+        assert!(TerraphimGrep::rlm_max_tokens() > 0);
     }
 
     /// The opt-in predicate: only the two explicit flags enable synthesis.

@@ -30,8 +30,23 @@ pub struct OpenRouterClient {
 }
 
 impl OpenRouterClient {
+    /// Default OpenRouter API base URL.
+    const DEFAULT_BASE_URL: &'static str = "https://openrouter.ai/api/v1";
+
     /// Create a new client for the given OpenRouter API key and model id.
+    ///
+    /// The base URL comes from `OPENROUTER_BASE_URL` when it is set, and from
+    /// the OpenRouter default otherwise. Use [`Self::new_with_base_url`] to
+    /// pass one explicitly; that keeps the resolution rules testable without
+    /// mutating the process environment (terraphim-clients#441).
     pub fn new(api_key: &str, model: &str) -> anyhow::Result<Self> {
+        let base_url = std::env::var("OPENROUTER_BASE_URL")
+            .unwrap_or_else(|_| Self::DEFAULT_BASE_URL.to_string());
+        Self::new_with_base_url(api_key, model, &base_url)
+    }
+
+    /// Create a client for the given API key, model id, and API base URL.
+    pub fn new_with_base_url(api_key: &str, model: &str, base_url: &str) -> anyhow::Result<Self> {
         anyhow::ensure!(!api_key.is_empty(), "OpenRouter API key cannot be empty");
         anyhow::ensure!(!model.is_empty(), "OpenRouter model cannot be empty");
 
@@ -48,8 +63,7 @@ impl OpenRouterClient {
             client,
             api_key: api_key.to_string(),
             model: model.to_string(),
-            base_url: std::env::var("OPENROUTER_BASE_URL")
-                .unwrap_or_else(|_| "https://openrouter.ai/api/v1".to_string()),
+            base_url: base_url.to_string(),
         })
     }
 }
@@ -188,33 +202,27 @@ mod tests {
 
     #[test]
     fn test_openrouter_client_base_url_resolution() {
-        // SAFETY: test code, single-threaded, no concurrent env access.
-        let saved = std::env::var("OPENROUTER_BASE_URL").ok();
-
-        // Default when unset.
-        unsafe {
-            std::env::remove_var("OPENROUTER_BASE_URL");
-        }
-        let client = OpenRouterClient::new("key", "model").expect("build client");
-        assert_eq!(client.base_url, "https://openrouter.ai/api/v1");
-
-        // Custom when set.
-        unsafe {
-            std::env::set_var("OPENROUTER_BASE_URL", "https://example.com/v1");
-        }
-        let client = OpenRouterClient::new("key", "model").expect("build client");
+        // The base URL is an explicit constructor argument, so the resolution
+        // rules are testable without mutating the process environment, which
+        // is `unsafe` and races with the other tests in this binary
+        // (terraphim-clients#441).
+        let client = OpenRouterClient::new_with_base_url("key", "model", "https://example.com/v1")
+            .expect("build client");
         assert_eq!(client.base_url, "https://example.com/v1");
 
-        // Restore.
-        if let Some(v) = saved {
-            unsafe {
-                std::env::set_var("OPENROUTER_BASE_URL", v);
-            }
-        } else {
-            unsafe {
-                std::env::remove_var("OPENROUTER_BASE_URL");
-            }
-        }
+        let client =
+            OpenRouterClient::new_with_base_url("key", "model", OpenRouterClient::DEFAULT_BASE_URL)
+                .expect("build client");
+        assert_eq!(client.base_url, "https://openrouter.ai/api/v1");
+    }
+
+    #[test]
+    fn test_openrouter_client_new_uses_the_environment_base_url() {
+        // Reads the environment without writing to it.
+        let client = OpenRouterClient::new("key", "model").expect("build client");
+        let expected = std::env::var("OPENROUTER_BASE_URL")
+            .unwrap_or_else(|_| "https://openrouter.ai/api/v1".to_string());
+        assert_eq!(client.base_url, expected);
     }
 
     #[test]
