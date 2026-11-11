@@ -103,6 +103,21 @@ terraphim-grep "struct Config" --paths src/ crates/
 > (terraphim/terraphim-clients#81). Use `--search-only` (alias `--no-rlm`) to also skip
 > building the LLM client.
 
+#### Sharing a role's vocabulary with terraphim-agent
+
+`--role` resolves a role from `~/.config/terraphim/embedded_config.json` (or
+`$TERRAPHIM_CONFIG`) by name, display name, or shortname, and loads that role's
+compiled thesaurus or its local Markdown KG — so grep and the agent search with
+the same concepts even in a repository with no `.terraphim/` directory.
+
+```bash
+terraphim-grep "rollback plan" --role code-reviewer
+terraphim-grep "rollback plan" --role "Code Reviewer"   # same role
+```
+
+A project `.terraphim/thesaurus-<role>.json` still takes precedence over the
+user role configuration, and `--thesaurus <path>` takes precedence over both.
+
 ### Use an editor-exported synonym graph
 
 In Terraphim Editor, add `Concern` as an alternative to `Risk`, then open
