@@ -96,6 +96,66 @@
       "nterm": "git_clean_untracked",
       "url": "Blocked: 'git clean -dfx' permanently deletes untracked files, directories, and ignored files. Use 'git clean -ndx' for a dry run first."
     },
+    "git clean -df": {
+      "id": 6,
+      "nterm": "git_clean_untracked",
+      "url": "Blocked: 'git clean -df' permanently deletes untracked files and directories. Use 'git clean -nd' for a dry run first."
+    },
+    "git clean -dxf": {
+      "id": 6,
+      "nterm": "git_clean_untracked",
+      "url": "Blocked: 'git clean -dxf' permanently deletes untracked files, directories, and ignored files. Use 'git clean -ndx' for a dry run first."
+    },
+    "git clean -xdf": {
+      "id": 6,
+      "nterm": "git_clean_untracked",
+      "url": "Blocked: 'git clean -xdf' permanently deletes untracked files, directories, and ignored files. Use 'git clean -ndx' for a dry run first."
+    },
+    "git clean -d -f": {
+      "id": 6,
+      "nterm": "git_clean_untracked",
+      "url": "Blocked: 'git clean -d -f' permanently deletes untracked files and directories. Use 'git clean -n -d' for a dry run first."
+    },
+    "git clean -f -d": {
+      "id": 6,
+      "nterm": "git_clean_untracked",
+      "url": "Blocked: 'git clean -f -d' permanently deletes untracked files and directories. Use 'git clean -n -d' for a dry run first."
+    },
+    "git clean -d --force": {
+      "id": 6,
+      "nterm": "git_clean_untracked",
+      "url": "Blocked: 'git clean -d --force' permanently deletes untracked files and directories. Use 'git clean -n -d' for a dry run first."
+    },
+    "git clean --force -d": {
+      "id": 6,
+      "nterm": "git_clean_untracked",
+      "url": "Blocked: 'git clean --force -d' permanently deletes untracked files and directories. Use 'git clean -n -d' for a dry run first."
+    },
+    "git clean --force": {
+      "id": 6,
+      "nterm": "git_clean_untracked",
+      "url": "Blocked: 'git clean --force' permanently deletes untracked files and directories. Use 'git clean -n' for a dry run first."
+    },
+    "git clean --no-dry-run": {
+      "id": 6,
+      "nterm": "git_clean_untracked",
+      "url": "Blocked: 'git clean --no-dry-run' deletes for real. Use 'git clean -n' for a dry run first."
+    },
+    "git clean -d -x -f": {
+      "id": 6,
+      "nterm": "git_clean_untracked",
+      "url": "Blocked: 'git clean -d -x -f' permanently deletes untracked and ignored files and directories. Use 'git clean -ndx' for a dry run first."
+    },
+    "git clean -x -d -f": {
+      "id": 6,
+      "nterm": "git_clean_untracked",
+      "url": "Blocked: 'git clean -x -d -f' permanently deletes untracked and ignored files and directories. Use 'git clean -ndx' for a dry run first."
+    },
+    "git clean -f -d -x": {
+      "id": 6,
+      "nterm": "git_clean_untracked",
+      "url": "Blocked: 'git clean -f -d -x' permanently deletes untracked and ignored files and directories. Use 'git clean -ndx' for a dry run first."
+    },
     "git push --force": {
       "id": 7,
       "nterm": "git_force_push",
