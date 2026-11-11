@@ -2,32 +2,36 @@
 """Validate Terraphim checklists against knowledge-graph concepts, end to end.
 
 `terraphim-agent validate --checklist <name>` reports which categories of a checklist
-the text satisfies. Whether a category *can* be satisfied depends on concepts that
-exist in the knowledge graph, and nothing tested that link: the checklist term lists
-and the category maps live as two hardcoded literals in service.rs, and a term with
-no concept silently makes its category unsatisfiable no matter what the text says.
+a text satisfies. Three things can go wrong, and nothing used to notice any of them:
 
-This harness closes that gap in three layers:
+  * a checklist term with no thesaurus pattern behind it makes its category
+    unreachable for every text;
+  * the matcher is leftmost-longest over patterns, so a text can match a *fragment*
+    of a term (`check` instead of `security check`) that never credits the category;
+  * the definition itself can drift - a term added, a category moved - without anyone
+    measuring what it did to pass rates.
 
-  contract  - every checklist term is classified as concept-backed or a known gap
-              (tests/checklist-concepts.json), every category term belongs to a
-              checklist, and each checklist's relevant-category set is pinned. A new
-              term, category or checklist that nobody classified fails here.
+This harness closes all three, in three layers:
+
+  contract  - every term in `data/checklists/*.toml` is classified as backed by an
+              exact thesaurus pattern or not, every category is owned by exactly one
+              checklist, and the category set per checklist plus the measured
+              reachability matrix are pinned. An unrecorded change fails here.
 
   journey   - the CLI is driven the way a user drives it: validate for each checklist,
-              an unknown checklist name, and --json. Assertions are structural
-              (passed == no missing items, score adds up, error lists the available
-              checklists) plus, when a KG is present, the exact category outcome for
-              each sample text.
+              an unknown checklist name, and --json. Structural assertions always run;
+              assertions about specific texts run when a knowledge graph is present and
+              are reported as *skipped* (never passed) when it is not.
 
-  bench     - N validate invocations, p50/p95/max, compared against a budget so a
-              regression in the matcher shows up as a slow test rather than a surprise.
+  bench     - N validate invocations, p50/p95/max against a budget, so a regression in
+              the matcher shows up as a slow test rather than a surprise.
 
 Usage:
     python3 scripts/checklist-journey.py                 # contract + journey + bench
-    python3 scripts/checklist-journey.py --refresh       # re-probe the KG, rewrite the contract
+    python3 scripts/checklist-journey.py --refresh       # re-measure, rewrite the contract
+    python3 scripts/checklist-journey.py --inventory     # write the coverage document
     python3 scripts/checklist-journey.py --json          # machine-readable report
-    python3 scripts/checklist-journey.py --no-bench --no-live   # contract only (CI without a KG)
+    python3 scripts/checklist-journey.py --no-live --no-bench   # contract only (CI without a KG)
 
 Exit: 0 all executed checks passed, 1 any failed.
 """
@@ -46,11 +50,13 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SERVICE_RS = ROOT / "crates" / "terraphim_agent" / "src" / "service.rs"
+CHECKLIST_DIR = ROOT / "crates" / "terraphim_agent" / "data" / "checklists"
 CONTRACT = ROOT / "tests" / "checklist-concepts.json"
 AGENT = os.environ.get("TERRAPHIM_AGENT_BIN", "terraphim-agent")
 GREP = os.environ.get("TERRAPHIM_GREP_BIN", "terraphim-grep")
+KG_DIR = Path(os.environ.get("TERRAPHIM_KG_DIR", str(Path.home() / ".config" / "terraphim" / "kg")))
 BENCH_BUDGET_MS = float(os.environ.get("CHECKLIST_BENCH_P95_MS", "2500"))
+SYNONYMS = re.compile(r"^\s*synonyms\s*::?\s*(.+)$", re.I)
 
 
 class Report:
@@ -75,12 +81,12 @@ def clean(out: str) -> str:
     """Drop tracing noise so assertions read the command's own answer.
 
     This used to be done by piping through `grep -v WARN`, which is how the harness
-    came to report the wrong exit code: with a pipeline, the status is grep's, not the
+    came to report the wrong exit code: with a pipeline the status is grep's, not the
     binary's. Filtering in process keeps the real `returncode` intact."""
     kept = []
     for line in out.splitlines():
         s = line.strip()
-        if s.startswith("["):                      # [2026-11-10T10:21:18Z INFO ...]
+        if s.startswith("["):
             continue
         if " INFO " in line or " WARN " in line:
             continue
@@ -95,53 +101,119 @@ def run(cmd: str, timeout: int = 120) -> tuple[int, str]:
     return p.returncode, clean(f"{p.stdout}\n{p.stderr}")
 
 
-def parse_checklists(source: str) -> tuple[dict, dict]:
-    """The two literals in validate_checklist, parsed rather than duplicated."""
-    # The literal has lived in two places: inline in validate_checklist, and (after the
-    # exit-code fix in #476) in checklist_definitions(). Match either rather than pinning
-    # one shape - a refactor that moves it should not break the parser, only a refactor
-    # that changes the data should.
-    ck = source.split("let checklists = std::collections::HashMap::from([", 1)
-    if len(ck) != 2:
-        fn_start = source.find("pub fn checklist_definitions()")
-        if fn_start != -1:
-            ck = source[fn_start:].split("HashMap::from([", 1)
-            if len(ck) == 2:
-                ck = ["", ck[1]]
-    if len(ck) != 2:
-        raise SystemExit("service.rs: cannot find the checklist HashMap entries "
-                         "(looked for an inline literal and for checklist_definitions())")
-    block = ck[1].split("]);", 1)[0]
-    checklists = {
-        m.group(1): re.findall(r'"([^"]+)"', m.group(2))
-        for m in re.finditer(r'\(\s*"([a-z_]+)",\s*vec!\[(.*?)\]\s*,?\s*\)', block, re.S)
-    }
-    cat = source.split("let categories = vec![", 1)
-    if len(cat) != 2:
-        raise SystemExit("service.rs: cannot find the categories vec literal")
-    block = cat[1].split("];", 1)[0]
-    categories = {
-        m.group(1): re.findall(r'"([^"]+)"', m.group(2))
-        for m in re.finditer(r'\(\s*"([a-z_]+)",\s*vec!\[(.*?)\]\s*,?\s*\)', block, re.S)
-    }
-    return checklists, categories
+# --------------------------------------------------------------------------- data
+
+def parse_checklists(directory: Path = CHECKLIST_DIR) -> dict[str, dict[str, list[str]]]:
+    """Read `data/checklists/*.toml`: checklist -> category -> terms.
+
+    Parsed from the shipped data rather than by regex over service.rs. The old approach
+    broke the moment the Rust literal moved (#477) and could not tell a data change from
+    a refactor."""
+    try:
+        import tomllib
+    except ModuleNotFoundError:
+        raise SystemExit("python 3.11+ required (tomllib)")
+
+    if not directory.is_dir():
+        raise SystemExit(f"checklist directory not found: {directory}")
+
+    definitions: dict[str, dict[str, list[str]]] = {}
+    for path in sorted(directory.glob("*.toml")):
+        data = tomllib.loads(path.read_text())
+        name = data["name"].lower()
+        categories: dict[str, list[str]] = {}
+        for raw in data.get("categories", []):
+            cat = raw["name"].lower()
+            if cat in categories:
+                raise SystemExit(f"{path.name}: category '{cat}' declared twice")
+            categories[cat] = [t.lower() for t in raw.get("terms", [])]
+        if not categories:
+            raise SystemExit(f"{path.name}: checklist '{name}' has no categories")
+        definitions[name] = categories
+    if not definitions:
+        raise SystemExit(f"no checklist definitions in {directory}")
+    return definitions
 
 
-def relevant_categories(checklist_terms: list[str], categories: dict[str, list[str]]) -> list[str]:
-    """Mirror of the filter in validate_checklist: a category is relevant when any of
-    its terms is listed in the checklist."""
-    return [c for c, terms in categories.items() if any(t in checklist_terms for t in terms)]
+def all_terms(definitions: dict[str, dict[str, list[str]]]) -> set[str]:
+    return {t for cats in definitions.values() for terms in cats.values() for t in terms}
 
 
-def probe_kg(term: str) -> bool:
-    """Does any KG concept match this term? `extract` reports the KG terms it finds in
-    the given text, so it doubles as a concept probe.
+def kg_patterns(kg: Path) -> set[str]:
+    """Every thesaurus pattern the graph can produce: file stems plus `synonyms::` entries.
 
-    Match the result line, not the substring "Found" anywhere in the output: the binary
-    logs messages such as "Found role_config in settings.toml", which made every term
-    look concept-backed (28/28) on the first run of this check."""
-    rc, out = run(f'{AGENT} extract "{term}"')
-    return rc == 0 and re.search(r"^\s*Found \d+ paragraph", out, re.M) is not None
+    This is the sound coverage measure. The previous probe fed a term to `extract` as
+    text, which reports any pattern contained in the probe - so `security check` looked
+    concept-backed because `check` matched inside it."""
+    patterns: set[str] = set()
+    skipped: list[str] = []
+    try:
+        candidates = list(kg.rglob("*.md"))
+    except OSError:
+        return patterns
+    for f in candidates:
+        # A graph directory can exist and still hold nothing usable: dangling symlinks
+        # (a synced or partially-copied graph is the usual cause), permission-denied
+        # files, or a file removed mid-scan. Crashing here fails the whole gate for a
+        # reason that has nothing to do with checklists.
+        if not f.is_file():
+            skipped.append(str(f))
+            continue
+        try:
+            text = f.read_text(errors="replace")
+        except OSError:
+            skipped.append(str(f))
+            continue
+        patterns.add(f.stem.strip().lower())
+        for line in text.splitlines():
+            m = SYNONYMS.match(line)
+            if m:
+                for item in m.group(1).split(","):
+                    item = item.strip().lower()
+                    if item:
+                        patterns.add(item)
+    if skipped:
+        print(f"warning: skipped {len(skipped)} unreadable concept file(s) under {kg} "
+              f"(first: {skipped[0]})", file=sys.stderr)
+    return patterns
+
+
+def unbacked_terms(definitions, patterns: set[str]) -> list[str]:
+    return sorted(t for t in all_terms(definitions) if t not in patterns)
+
+
+def unreachable_categories(definitions, patterns: set[str]) -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {}
+    for name, categories in definitions.items():
+        dead = [c for c, terms in categories.items() if not any(t in patterns for t in terms)]
+        if dead:
+            out[name] = dead
+    return out
+
+
+# ----------------------------------------------------------------------- commands
+
+def has_kg() -> bool:
+    return KG_DIR.is_dir() and bool(kg_patterns(KG_DIR))
+
+
+def is_reference_graph(patterns: set[str], contract: dict) -> bool:
+    """Is this host's graph the one the contract was measured against?
+
+    Coverage and reachability numbers are properties of a specific graph. A CI runner
+    with no graph, or with a different one, cannot verify them - and must not pretend
+    the numbers drifted. Only the contract's own digest may decide this."""
+    recorded = contract.get("coverage", {})
+    if not patterns or recorded.get("digest") is None:
+        return False
+    return pattern_digest(patterns) == recorded["digest"]
+
+
+def pattern_digest(patterns: set[str]) -> str:
+    import hashlib
+
+    joined = "\n".join(sorted(patterns))
+    return hashlib.sha256(joined.encode()).hexdigest()[:16]
 
 
 def validate(checklist: str, text: str, as_json: bool = False) -> tuple[int, str]:
@@ -150,175 +222,209 @@ def validate(checklist: str, text: str, as_json: bool = False) -> tuple[int, str
 
 
 def parse_human(out: str) -> dict:
-    """Read the human report: passed, score, and the satisfied/missing category names."""
     m = re.search(r"Passed:\s*(true|false)", out)
     score = re.search(r"Score:\s*(\d+)/(\d+)", out)
-    satisfied = re.findall(r"✓\s*([a-z_]+)", out)
-    missing = re.findall(r"✗\s*([a-z_]+)", out)
     return {
         "passed": (m.group(1) == "true") if m else None,
         "score": (int(score.group(1)), int(score.group(2))) if score else None,
-        "satisfied": satisfied,
-        "missing": missing,
+        "satisfied": re.findall(r"✓\s*([a-z_]+)", out),
+        "missing": re.findall(r"✗\s*([a-z_]+)", out),
     }
 
 
-def contract_checks(report: Report, checklists: dict, categories: dict, contract: dict) -> None:
-    terms = {t for ts in checklists.values() for t in ts}
+def measure_reachability(definitions, patterns: set[str]) -> dict[str, dict[str, bool]]:
+    """Can each category be credited at all when it is the only thing addressed?
+
+    Measured by feeding the category's own terms to the CLI: a category that cannot be
+    credited for its own words cannot be credited for anything. Term coverage is not
+    evidence - matching is leftmost-longest, so a category can have a pattern and still
+    lose to a longer one."""
+    out: dict[str, dict[str, bool]] = {}
+    for name, categories in definitions.items():
+        out[name] = {}
+        for cat, terms in categories.items():
+            # Always ask the CLI, even when no pattern exists for any term: since the
+            # phrase fallback landed, a category with no graph pattern can still be
+            # credited by its own words. Skipping the call hid exactly that.
+            _, text = validate(name, " ".join(terms))
+            out[name][cat] = cat in parse_human(text)["satisfied"]
+    return out
+
+
+# ------------------------------------------------------------------------- checks
+
+def _recorded_reach_skip(report: Report, contract: dict, early_return: bool = True) -> None:
+    """Reachability is measured by running the CLI against a graph; without the reference
+    graph there is nothing to compare, so say so instead of reporting drift."""
+    if early_return:
+        report.check("reachability matches the contract", True,
+                     "not the reference graph on this host", skipped=True)
+
+
+def contract_checks(report: Report, definitions, patterns: set[str], contract: dict,
+                    reference: bool) -> None:
+    terms = all_terms(definitions)
     declared = contract.get("concepts", {})
 
     unclassified = sorted(terms - set(declared))
-    report.check(
-        "every checklist term is classified in the contract",
-        not unclassified,
-        f"unclassified: {unclassified}" if unclassified else f"{len(terms)} terms classified",
-    )
+    report.check("every checklist term is classified in the contract", not unclassified,
+                 f"unclassified: {unclassified}" if unclassified else f"{len(terms)} terms classified")
 
     stale = sorted(set(declared) - terms)
-    report.check(
-        "contract has no terms the code dropped",
-        not stale,
-        f"stale contract entries: {stale}" if stale else "no stale entries",
-    )
+    report.check("contract has no terms the definitions dropped", not stale,
+                 f"stale: {stale}" if stale else "no stale entries")
 
-    orphans = {c: [t for t in ts if t not in terms] for c, ts in categories.items()}
-    orphans = {c: v for c, v in orphans.items() if v}
-    report.check(
-        "every category term belongs to a checklist",
-        not orphans,
-        f"orphan category terms: {orphans}" if orphans else f"{len(categories)} categories consistent",
-    )
+    empty = {n: [c for c, ts in cats.items() if not ts] for n, cats in definitions.items()}
+    empty = {n: v for n, v in empty.items() if v}
+    report.check("every category has at least one term", not empty, str(empty) if empty else "ok")
 
     expected = contract.get("relevant_categories", {})
-    actual = {name: relevant_categories(ts, categories) for name, ts in checklists.items()}
-    mismatch = {k: (actual.get(k), expected.get(k)) for k in set(actual) | set(expected) if actual.get(k) != expected.get(k)}
+    actual = {name: list(cats) for name, cats in definitions.items()}
+    mismatch = {k: (actual.get(k), expected.get(k)) for k in set(actual) | set(expected)
+                if actual.get(k) != expected.get(k)}
+    report.check("category set per checklist is unchanged", not mismatch,
+                 f"drift: {mismatch}" if mismatch else str(actual))
+
+    if not reference:
+        for name in ("recorded concept coverage matches the graph",
+                     "unreachable categories unchanged since the contract was measured",
+                     "unbacked terms are recorded in the contract"):
+            report.check(name, True,
+                         "this host's graph is not the reference graph the contract was "
+                         "measured against", skipped=True)
+        _recorded_reach_skip(report, contract)
+        return
+
+    covered = {t: (t in patterns) for t in sorted(terms)}
+    drift = {t: (covered[t], declared.get(t, {}).get("covered")) for t in covered
+             if covered[t] != declared.get(t, {}).get("covered")}
+    report.check("recorded concept coverage matches the graph", not drift,
+                 f"drift (measured, contract): {drift}" if drift else
+                 f"{sum(covered.values())}/{len(covered)} terms have an exact pattern")
+
+    dead = unreachable_categories(definitions, patterns)
+    recorded_dead = contract.get("defects", {}).get("unsatisfiable_by_concept")
+    if recorded_dead is None:
+        report.check("unreachable categories are recorded", False,
+                     "add defects.unsatisfiable_by_concept (run --refresh)")
+    else:
+        report.check(
+            "unreachable categories unchanged since the contract was measured",
+            recorded_dead == dead,
+            f"now {dead}, contract says {recorded_dead} - re-measure deliberately"
+            if recorded_dead != dead else f"{dead or 'none'}",
+            known=("no thesaurus pattern expresses these categories, so only the phrase fallback can credit them: "
+                   + ", ".join(f"{k}:{'/'.join(v)}" for k, v in dead.items())) if dead else "",
+        )
+
+    recorded_unbacked = contract.get("coverage", {}).get("unbacked")
+    measured_unbacked = unbacked_terms(definitions, patterns)
     report.check(
-        "relevant-category set per checklist is unchanged",
-        not mismatch,
-        f"drift: {mismatch}" if mismatch else str(actual),
+        "unbacked terms are recorded in the contract",
+        recorded_unbacked is not None and sorted(recorded_unbacked) == measured_unbacked,
+        f"measured {len(measured_unbacked)} unbacked, contract says "
+        f"{'none recorded' if recorded_unbacked is None else len(recorded_unbacked)} - "
+        f"run --refresh and review the diff",
     )
 
-    # a category with no concept behind any of its terms can never be satisfied
-    unreachable = {
-        name: [c for c in cats if not any(declared.get(t, {}).get("covered") for t in categories[c])]
-        for name, cats in actual.items()
-    }
-    unreachable = {k: v for k, v in unreachable.items() if v}
-    recorded_unreachable = contract.get("defects", {}).get("unsatisfiable_by_concept")
-    if recorded_unreachable is None:
-        report.check("unsatisfiable categories are recorded", False,
-                     "add defects.unsatisfiable_by_concept to the contract (run --refresh)")
+    _recorded_reach_skip(report, contract, early_return=False)
+
+    recorded_reach = contract.get("reachable_categories")
+    if recorded_reach is None:
+        report.check("reachability is recorded", False, "run --refresh")
+    elif not has_kg():
+        report.check("reachability matches the contract", True, "no knowledge graph on this host",
+                     skipped=True)
     else:
-        same = recorded_unreachable == unreachable
-        report.check(
-            "unsatisfiable categories unchanged since the contract was measured",
-            same,
-            f"now {unreachable}, contract says {recorded_unreachable} - re-measure deliberately"
-            if not same else f"{unreachable or 'none'}",
-            known=("no concept credits these categories, so a text-only pass is impossible: "
-                   + ", ".join(f"{k}:{'/'.join(v)}" for k, v in unreachable.items())) if unreachable else "",
-        )
-
-    recorded = contract.get("reachable_categories")
-    if recorded is None:
-        report.check("per-category reachability is recorded", False, "run --refresh to measure it")
-    elif not probe_kg("unit test"):
-        report.check("per-category reachability (measured live)", True,
-                     "no knowledge graph on this host", skipped=True)
-    else:
-        measured = measure_reachability(checklists, categories)
-        drift = {n: {c: (measured.get(n, {}).get(c), recorded.get(n, {}).get(c))
-                     for c in set(measured.get(n, {})) | set(recorded.get(n, {}))}
-                 for n in set(measured) | set(recorded)}
-        drift = {n: {c: v for c, v in d.items() if v[0] != v[1]} for n, d in drift.items()}
-        drift = {n: d for n, d in drift.items() if d}
-        dead = {n: sorted(c for c, ok in cats.items() if not ok) for n, cats in measured.items()}
-        dead = {n: v for n, v in dead.items() if v}
-        report.check(
-            "reachable categories match the contract",
-            not drift,
-            f"drift (measured, contract): {drift}; categories no text can satisfy: {dead}"
-            if drift else f"unchanged; still unsatisfiable: {dead or 'none'}",
-        )
+        measured = measure_reachability(definitions, patterns)
+        reach_drift = {n: {c: (measured.get(n, {}).get(c), recorded_reach.get(n, {}).get(c))
+                           for c in set(measured.get(n, {})) | set(recorded_reach.get(n, {}))}
+                       for n in set(measured) | set(recorded_reach)}
+        reach_drift = {n: {c: v for c, v in d.items() if v[0] != v[1]} for n, d in reach_drift.items()}
+        reach_drift = {n: d for n, d in reach_drift.items() if d}
+        report.check("reachability matches the contract", not reach_drift,
+                     f"drift (measured, contract): {reach_drift}" if reach_drift else "unchanged")
 
 
-def journey_checks(report: Report, checklists: dict, categories: dict, contract: dict, live: bool) -> None:
-    for name in checklists:
-        # structural invariants hold whatever the graph contains
+def starter_concept_check(report: Report, contract: dict) -> None:
+    """The shipped starter concepts must cover every term the reference graph cannot express.
+
+    `docs/checklists/concepts/` is documentation, not a runtime dependency: copying those
+    articles into a knowledge graph is what makes the graph-side crediting work. Without this
+    check the files would rot the first time a term was added to a checklist."""
+    directory = ROOT / "docs" / "checklists" / "concepts"
+    unbacked = contract.get("coverage", {}).get("unbacked", [])
+    if not unbacked:
+        report.check("starter concepts cover unbacked terms", True, "nothing unbacked")
+        return
+    if not directory.is_dir():
+        report.check("starter concepts cover unbacked terms", False, f"{directory} is missing")
+        return
+    patterns = kg_patterns(directory)
+    missing = [t for t in unbacked if t not in patterns]
+    report.check(
+        "starter concepts cover unbacked terms",
+        not missing,
+        f"not covered by docs/checklists/concepts: {missing}" if missing else
+        f"{len(unbacked)} unbacked terms covered by "
+        f"{len(list(directory.glob('*.md')))} concept files",
+    )
+
+
+def journey_checks(report: Report, definitions, contract: dict, live: bool) -> None:
+    for name, categories in definitions.items():
         rc, out = validate(name, "some text mentioning nothing in particular")
         parsed = parse_human(out)
-        ok = (
-            rc == 0
-            and parsed["passed"] is False
-            and parsed["score"] is not None
-            and parsed["score"][0] == len(parsed["satisfied"])
-            and parsed["score"][1] == len(parsed["satisfied"]) + len(parsed["missing"])
-            and parsed["passed"] == (not parsed["missing"])
-        )
-        report.check(f"validate --checklist {name}: report adds up", ok, out.strip()[-300:] or "no output")
+        ok = (rc == 0 and parsed["passed"] is False and parsed["score"] is not None
+              and parsed["score"][0] == len(parsed["satisfied"])
+              and parsed["score"][1] == len(parsed["satisfied"]) + len(parsed["missing"])
+              and parsed["passed"] == (not parsed["missing"])
+              and parsed["score"][1] == len(categories))
+        report.check(f"validate --checklist {name}: report adds up", ok,
+                     out.strip()[-300:] or "no output")
 
     rc, out = validate("no_such_checklist", "text")
     named = {n for n in re.findall(r"[\"']([a-z_]+)[\"']", out) if n != "no_such_checklist"}
-    report.check(
-        "unknown checklist names the available ones",
-        set(checklists).issubset(named),
-        f"available checklists named: {sorted(named)}",
-    )
-    expected_rc = contract.get("expectations", {}).get("unknown_checklist_exit_code")
-    report.check(
-        "unknown checklist exit code matches the contract",
-        expected_rc is not None and rc == expected_rc,
-        f"exit={rc}, contract says {expected_rc} - re-measure deliberately if this changed",
-    )
+    report.check("unknown checklist names the available ones", set(definitions).issubset(named),
+                 f"available checklists named: {sorted(named)}")
 
-    rc, out = validate(list(checklists)[0], "unit tests and documentation", as_json=True)
+    expected_rc = contract.get("expectations", {}).get("unknown_checklist_exit_code")
+    report.check("unknown checklist exit code matches the contract",
+                 expected_rc is not None and rc == expected_rc,
+                 f"exit={rc}, contract says {expected_rc} - re-measure deliberately if this changed")
+
+    rc, out = validate(list(definitions)[0], "unit tests and documentation", as_json=True)
     payload = None
     for line in out.splitlines():
-        line = line.strip()
-        if line.startswith("{"):
+        if line.strip().startswith("{"):
             try:
-                payload = json.loads(line)
+                payload = json.loads(line.strip())
                 break
             except json.JSONDecodeError:
                 continue
-    report.check(
-        "--json emits parseable JSON",
-        payload is not None,
-        "parsed" if payload else out.strip()[-200:] or "no JSON in output",
-    )
+    report.check("--json emits parseable JSON", payload is not None,
+                 "parsed" if payload else out.strip()[-200:] or "no JSON in output")
 
     if not live:
-        report.check("live KG assertions", True, "no knowledge graph on this host", skipped=True)
+        report.check("live assertions", True, "no knowledge graph on this host", skipped=True)
         return
 
     for sample in contract.get("samples", []):
         rc, out = validate(sample["checklist"], sample["text"])
         parsed = parse_human(out)
-        ok = (
-            rc == 0
-            and parsed["passed"] == sample["passed"]
-            and sorted(parsed["missing"]) == sorted(sample["missing"])
-        )
-        report.check(
-            f"live KG: {sample['label']}",
-            ok,
-            f"expected passed={sample['passed']} missing={sample['missing']}, got "
-            f"passed={parsed['passed']} missing={parsed['missing']}",
-        )
+        ok = (rc == 0 and parsed["passed"] == sample["passed"]
+              and sorted(parsed["missing"]) == sorted(sample["missing"]))
+        report.check(f"live: {sample['label']}", ok,
+                     f"expected passed={sample['passed']} missing={sample['missing']}, got "
+                     f"passed={parsed['passed']} missing={parsed['missing']}")
 
-    # the second half of the journey: same concepts, searched rather than validated.
-    # Live-only: without a knowledge graph there are no haystacks to search.
-    rc, out = run(f'{GREP} checklist -n 5 2>&1 | tail -20', timeout=180)
-    hits = len([l for l in out.splitlines() if l.strip()])
-    report.check(
-        "terraphim-grep returns hits for a concept the KG knows",
-        rc == 0 and hits > 0,
-        f"exit={rc} lines={hits}",
-    )
+    rc, out = run(f"{GREP} checklist -n 5", timeout=180)
+    report.check("terraphim-grep returns hits for a concept the KG knows",
+                 rc == 0 and bool(out.strip()), f"exit={rc} lines={len(out.splitlines())}")
 
 
-def bench_checks(report: Report, checklists: dict) -> None:
-    name = list(checklists)[0]
+def bench_checks(report: Report, definitions) -> None:
+    name = list(definitions)[0]
     text = "unit tests documentation error handling security check performance optimization"
     samples: list[float] = []
     for _ in range(int(os.environ.get("CHECKLIST_BENCH_RUNS", "15"))):
@@ -328,192 +434,99 @@ def bench_checks(report: Report, checklists: dict) -> None:
     samples.sort()
     p50 = statistics.median(samples)
     p95 = samples[max(0, int(len(samples) * 0.95) - 1)]
-    report.check(
-        f"bench: validate p95 within {BENCH_BUDGET_MS:.0f} ms",
-        p95 <= BENCH_BUDGET_MS,
-        f"p50={p50:.0f} ms p95={p95:.0f} ms max={samples[-1]:.0f} ms over {len(samples)} runs",
-    )
+    report.check(f"bench: validate p95 within {BENCH_BUDGET_MS:.0f} ms", p95 <= BENCH_BUDGET_MS,
+                 f"p50={p50:.0f} ms p95={p95:.0f} ms max={samples[-1]:.0f} ms over {len(samples)} runs")
 
 
-def measure_reachability(checklists: dict, categories: dict) -> dict:
-    """Can a category actually be satisfied? Probe it the only way that cannot lie: feed
-    the category's own terms to the CLI and see whether it credits the category. Term
-    coverage is not evidence - a concept can match a term and still fail to credit the
-    category (observed: 'security check')."""
-    out = {}
-    for name, terms in checklists.items():
-        out[name] = {}
-        for cat in relevant_categories(terms, categories):
-            _, text = validate(name, " ".join(categories[cat]))
-            out[name][cat] = cat in parse_human(text)["satisfied"]
-    return out
+# ------------------------------------------------------------------------ contract
 
-
-def refresh_contract(checklists: dict, categories: dict, contract: dict) -> dict:
-    concepts = {}
-    for term in sorted({t for ts in checklists.values() for t in ts}):
-        concepts[term] = {"covered": probe_kg(term)}
-    contract["concepts"] = concepts
-    contract["relevant_categories"] = {n: relevant_categories(ts, categories) for n, ts in checklists.items()}
-    contract["reachable_categories"] = measure_reachability(checklists, categories)
-    unreachable = {}
-    for name, terms in checklists.items():
-        dead = [c for c in relevant_categories(terms, categories)
-                if not any(concepts[t]["covered"] for t in categories[c] if t in concepts)]
-        if dead:
-            unreachable[name] = dead
-    contract.setdefault("defects", {})["unsatisfiable_by_concept"] = unreachable
+def refresh_contract(definitions, patterns: set[str], contract: dict) -> dict:
+    contract["concepts"] = {t: {"covered": t in patterns} for t in sorted(all_terms(definitions))}
+    contract["relevant_categories"] = {n: list(c) for n, c in definitions.items()}
+    contract["coverage"] = {
+        "unbacked": unbacked_terms(definitions, patterns),
+        "patterns": len(patterns),
+        "digest": pattern_digest(patterns),
+        "kg_dir": str(KG_DIR),
+    }
+    contract["reachable_categories"] = measure_reachability(definitions, patterns)
+    contract.setdefault("defects", {})["unsatisfiable_by_concept"] = unreachable_categories(definitions, patterns)
     contract.setdefault("expectations", {})["unknown_checklist_exit_code"] = validate("__nope__", "text")[0]
-    # the exit code is an expectation, not a defect; drop the pre-rename key if present
     contract.get("defects", {}).pop("unknown_checklist_exit_code", None)
     return contract
 
 
-
-def load_concepts(kg: Path) -> dict[str, list[str]]:
-    """Every concept article in the graph: file stem plus its `synonyms::` list."""
-    concepts = {}
-    for f in sorted(kg.glob("*.md")):
-        syn: list[str] = []
-        for line in f.read_text(errors="replace").splitlines():
-            if line.lower().startswith("synonyms::"):
-                syn = [s.strip() for s in line.split("::", 1)[1].split(",") if s.strip()]
-        concepts[f.stem] = syn
-    return concepts
-
-
-def write_inventory(kg: Path, checklists: dict, categories: dict, contract: dict) -> str:
-    """Which concept backs each checklist term, and which terms have none.
-
-    This is the actionable half: a term with no concept cannot credit its category,
-    so the list of unbacked terms is the list of articles someone has to write."""
-    concepts = load_concepts(kg)
-    reachable = contract.get("reachable_categories", {})
+def write_inventory(definitions, patterns: set[str], contract: dict) -> str:
+    reach = contract.get("reachable_categories", {})
     lines = [
         "# Checklist terms against knowledge-graph concepts",
         "",
-        f"Generated by `scripts/checklist-journey.py --inventory` from `{kg}` "
-        f"({len(concepts)} concept articles). Do not edit by hand.",
+        f"Generated by `scripts/checklist-journey.py --inventory` from `{KG_DIR}` "
+        f"({len(patterns)} patterns). Do not edit by hand.",
         "",
-        "A category is satisfied only when a *concept* credits one of its terms. A term "
-        "with no backing concept makes its category unsatisfiable, whoever writes the text.",
-        "",
-        "Two different columns, deliberately: **literal match** is a static search of concept "
-        "names and `synonyms::` lines, while **category reachable** is measured by the CLI "
-        "itself. Where they disagree the measurement is authoritative - the matcher resolves "
-        "more than literal substrings, and guessing at that would be worse than saying so.",
+        "**Exact pattern** means the graph can produce this term as a thesaurus pattern "
+        "(a concept file name or a `synonyms::` entry). **Reachable** is measured by the "
+        "CLI: can this category be credited when a text addresses only it?",
         "",
     ]
-    gaps: list[tuple[str, str, str]] = []
-    for name, terms in checklists.items():
-        lines += [f"## `{name}`", "", "| category | term | literal match in KB | category reachable (measured) |", "|---|---|---|---|"]
-        for cat in relevant_categories(terms, categories):
-            for term in categories[cat]:
-                if term not in terms:
-                    continue
-                backing = sorted(
-                    c for c, syn in concepts.items()
-                    if term in c.lower() or any(term in s.lower() for s in syn)
-                )
-                if not backing:
-                    gaps.append((name, cat, term))
-                lines.append(
-                    f"| {cat} | `{term}` | {', '.join(f'`{b}`' for b in backing) or '_none_'} | "
-                    f"{'yes' if reachable.get(name, {}).get(cat) else '**no**'} |")
+    for name, categories in definitions.items():
+        lines += [f"## `{name}`", "", "| category | term | exact pattern | category reachable |",
+                  "|---|---|---|---|"]
+        for cat, terms in categories.items():
+            for term in terms:
+                lines.append(f"| {cat} | `{term}` | {'yes' if term in patterns else '_no_'} | "
+                             f"{'yes' if reach.get(name, {}).get(cat) else '**no**'} |")
         lines.append("")
-
-    disagreements = []
-    for name, terms in checklists.items():
-        for cat in relevant_categories(terms, categories):
-            backed = any(
-                term in c.lower() or any(term in s.lower() for s in syn)
-                for term in categories[cat] if term in terms
-                for c, syn in concepts.items()
-            )
-            if not backed and reachable.get(name, {}).get(cat):
-                disagreements.append((name, cat))
-
-    if disagreements:
-        lines += ["## Measured reachable but no literal match", "",
-                  "The CLI credits these categories although no concept name or synonym "
-                  "contains the checklist term literally. Whoever fixes the gap in #474 needs "
-                  "to know the matcher is not doing plain substring matching:", ""]
-        lines += [f"- `{n}` / `{c}`" for n, c in disagreements]
+    unbacked = unbacked_terms(definitions, patterns)
+    if unbacked:
+        lines += ["## Terms with no exact pattern", "",
+                  "Add a concept article whose `synonyms::` line carries the term (see "
+                  "`docs/checklists.md`), or drop the term from the checklist. Until then the "
+                  "term is recognised only by the phrase fallback, not by the graph.", ""]
+        lines += [f"- `{t}`" for t in unbacked]
         lines.append("")
-
-    # terms the CLI matches even though nothing names them literally: the asymmetry
-    # behind #475 - a match that never reaches the category check
-    invisible = []
-    for term in sorted({t for ts in checklists.values() for t in ts}):
-        literal = any(term in c.lower() or any(term in s.lower() for s in syn)
-                      for c, syn in concepts.items())
-        if not literal and probe_kg(term):
-            invisible.append(term)
-    if invisible:
-        lines += ["## Matched by the CLI but named by no concept", "",
-                  "`extract` reports a hit for these terms while no concept name or synonym "
-                  "contains them. That is the mechanism behind unmatched-but-present concepts: "
-                  "the matcher resolves more than literal text, and the category check then "
-                  "looks up the canonical term and finds nothing (#475).", ""]
-        lines += [f"- `{term}`" for term in invisible]
-        lines.append("")
-
-    if gaps:
-        lines += ["## Terms with no backing concept", "",
-                  "Write a concept article whose `synonyms::` line carries the term, or drop the "
-                  "term from the checklist. Until one of those happens the category cannot be "
-                  "credited.", "", "| checklist | category | term |", "|---|---|---|"]
-        lines += [f"| {n} | {c} | `{t}` |" for n, c, t in gaps]
-        lines.append("")
-
-    md = "\n".join(lines) + "\n"
     out = ROOT / "docs" / "checklist-concept-coverage.md"
     out.parent.mkdir(exist_ok=True)
-    out.write_text(md)
+    out.write_text("\n".join(lines) + "\n")
     return str(out)
+
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Validate Terraphim checklists against KG concepts")
-    ap.add_argument("--refresh", action="store_true", help="re-probe the knowledge graph and rewrite the contract")
+    ap.add_argument("--refresh", action="store_true", help="re-measure and rewrite the contract")
+    ap.add_argument("--inventory", action="store_true", help="write docs/checklist-concept-coverage.md")
     ap.add_argument("--json", action="store_true", help="emit a JSON report")
     ap.add_argument("--no-bench", action="store_true", help="skip the latency bench")
     ap.add_argument("--no-live", action="store_true", help="skip assertions that need a knowledge graph")
-    ap.add_argument("--inventory", action="store_true",
-                    help="write docs/checklist-concept-coverage.md: every checklist term and the concept behind it")
-    ap.add_argument("--kg", default=str(Path.home() / ".config" / "terraphim" / "kg"),
-                    help="knowledge-graph directory to read concepts from")
     args = ap.parse_args()
 
-    for tool in (AGENT,):
-        if shutil.which(tool) is None:
-            raise SystemExit(f"{tool} not found on PATH")
-    if not SERVICE_RS.is_file():
-        raise SystemExit(f"cannot read {SERVICE_RS}")
+    if shutil.which(AGENT) is None:
+        raise SystemExit(f"{AGENT} not found on PATH")
 
-    checklists, categories = parse_checklists(SERVICE_RS.read_text())
-    if not checklists:
-        raise SystemExit("parsed no checklists from service.rs")
-
+    definitions = parse_checklists()
+    patterns = kg_patterns(KG_DIR) if KG_DIR.is_dir() else set()
     contract = json.loads(CONTRACT.read_text()) if CONTRACT.is_file() else {}
 
     if args.refresh:
-        contract = refresh_contract(checklists, categories, contract)
+        contract = refresh_contract(definitions, patterns, contract)
         CONTRACT.write_text(json.dumps(contract, indent=2, sort_keys=True) + "\n")
-        print(f"contract refreshed: {CONTRACT} ({sum(1 for v in contract['concepts'].values() if v['covered'])}"
-              f"/{len(contract['concepts'])} terms concept-backed)")
+        covered = sum(1 for v in contract["concepts"].values() if v["covered"])
+        print(f"contract refreshed: {CONTRACT} ({covered}/{len(contract['concepts'])} terms "
+              f"have an exact pattern, {len(patterns)} patterns in {KG_DIR})")
         return 0
 
     if args.inventory:
-        print(f"inventory written: {write_inventory(Path(args.kg), checklists, categories, contract)}")
+        print(f"inventory written: {write_inventory(definitions, patterns, contract)}")
         return 0
 
-    live = not args.no_live and probe_kg("unit test")
-
+    live = not args.no_live and has_kg()
     report = Report()
-    contract_checks(report, checklists, categories, contract)
-    journey_checks(report, checklists, categories, contract, live)
+    reference = is_reference_graph(patterns, contract)
+    contract_checks(report, definitions, patterns, contract, reference)
+    starter_concept_check(report, contract)
+    journey_checks(report, definitions, contract, live)
     if not args.no_bench:
-        bench_checks(report, checklists)
+        bench_checks(report, definitions)
 
     if args.json:
         print(json.dumps({"checks": report.checks, "failures": len(report.failures),
@@ -521,7 +534,7 @@ def main() -> int:
     else:
         for c in report.checks:
             mark = "SKIP" if c["skipped"] else ("KNOWN" if c["passed"] and c.get("known") else
-                ("ok  " if c["passed"] else "FAIL"))
+                                               ("ok  " if c["passed"] else "FAIL"))
             print(f"[{mark}] {c['name']}")
             if not c["passed"] and not c["skipped"]:
                 print(f"       {c['detail']}")
@@ -529,9 +542,9 @@ def main() -> int:
                 print(f"       known defect: {c['known']}")
         print(f"\n{len(report.checks) - len(report.failures) - len(report.skips)} passed, "
               f"{len(report.failures)} failed, {len(report.skips)} skipped"
-              f"{' (no KG on this host: live assertions skipped)' if not live else ''}")
+              f"{'' if live else ' (no KG on this host: live assertions skipped)'}")
         if report.failures:
-            print("\nchecklist validation is not trustworthy until these fail:", file=sys.stderr)
+            print("\nchecklist validation is not trustworthy until these pass:", file=sys.stderr)
             for c in report.failures:
                 print(f"  {c['name']}: {c['detail']}", file=sys.stderr)
 
