@@ -548,7 +548,19 @@ fn role_from_env(role_name: &str) -> Option<terraphim_config::Role> {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> std::process::ExitCode {
+    match run().await {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("Error: {error:#}");
+            // Usage errors exit 2 from clap; runtime/IO failures should not be
+            // indistinguishable from "no match" (1), so they take 2 as well.
+            std::process::ExitCode::from(2)
+        }
+    }
+}
+
+async fn run() -> Result<()> {
     init_tracing();
 
     let mut args = Args::parse();

@@ -80,6 +80,32 @@ fn exits_one_when_a_query_matches_nothing() {
 }
 
 #[test]
+fn exits_two_on_a_runtime_error() {
+    let tmp = tempfile::TempDir::new().expect("tempdir");
+    std::fs::write(tmp.path().join("sample.rs"), "fn anything() {}\n").unwrap();
+
+    // An unreadable explicit thesaurus is a runtime/IO failure, not a
+    // no-match: 1 must stay reserved for "the query matched nothing".
+    let output = run(&[
+        "anything",
+        "--search-only",
+        "--json",
+        "--thesaurus",
+        "/nonexistent/definitely-not-a-thesaurus.json",
+        "--paths",
+        tmp.path().to_str().unwrap(),
+    ]);
+
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "a runtime error must exit 2, not 1\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+}
+
+#[test]
 fn exits_one_when_the_haystack_excludes_every_match() {
     let tmp = tempfile::TempDir::new().expect("tempdir");
     std::fs::write(
