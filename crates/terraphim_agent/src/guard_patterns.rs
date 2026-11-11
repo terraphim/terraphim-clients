@@ -842,4 +842,44 @@ mod tests {
         assert_eq!(result.reason, Some("test reason".to_string()));
         assert_eq!(result.pattern, Some("test pattern".to_string()));
     }
+
+    // === #464: forced, non-dry-run git clean spellings ===
+
+    #[test]
+    fn test_git_clean_forced_forms_blocked() {
+        let guard = CommandGuard::new();
+        for command in [
+            "git clean -f",
+            "git clean -fd",
+            "git clean -df",
+            "git clean -d -f",
+            "git clean -f -d",
+            "git clean -d --force",
+            "git clean --force -d",
+            "git clean --no-dry-run -fdx",
+        ] {
+            assert_eq!(
+                guard.check(command).decision,
+                GuardDecision::Block,
+                "{command:?} deletes untracked data and must be blocked"
+            );
+        }
+    }
+
+    #[test]
+    fn test_git_clean_dry_run_forms_allowed() {
+        let guard = CommandGuard::new();
+        for command in [
+            "git clean -n",
+            "git clean --dry-run",
+            "git clean -nd",
+            "git clean -ndx",
+        ] {
+            assert_eq!(
+                guard.check(command).decision,
+                GuardDecision::Allow,
+                "{command:?} is a dry run and must stay allowed"
+            );
+        }
+    }
 }
