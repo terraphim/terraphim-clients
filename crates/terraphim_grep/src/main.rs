@@ -654,13 +654,13 @@ async fn main() -> Result<()> {
             serde_json::to_string_pretty(&result).context("Failed to serialize result to JSON")?;
         println!("{}", json);
     } else {
-        print_results(&result, args.context);
+        print_results(&result);
     }
 
     Ok(())
 }
 
-fn print_results(result: &GrepResult, context_lines: usize) {
+fn print_results(result: &GrepResult) {
     println!("=== Terraphim Grep Results ===");
     println!();
 
@@ -696,20 +696,11 @@ fn print_results(result: &GrepResult, context_lines: usize) {
                     .line_start
                     .map_or_else(|| "?".to_string(), |l| l.to_string())
             );
-            if context_lines > 0 {
-                // Simple context display - just show content
-                println!(
-                    "   {}",
-                    chunk
-                        .content
-                        .lines()
-                        .take(context_lines)
-                        .collect::<Vec<_>>()
-                        .join("\n   ")
-                );
-            } else {
-                println!("   {}", chunk.content);
-            }
+            // The chunk already spans the requested context (see `-C`).
+            println!(
+                "   {}",
+                chunk.content.lines().collect::<Vec<_>>().join("\n   ")
+            );
             println!();
         }
     }
