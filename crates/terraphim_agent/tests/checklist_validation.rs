@@ -1,28 +1,43 @@
 //! End-to-end tests for `terraphim-agent validate --checklist`.
 //!
 //! Structural contract (exit codes, report shape, JSON fields) always runs. Assertions
-//! about *which* categories a text credits need a knowledge graph and are skipped when
-//! the host has none - CI runners have none, and a test that silently passes because the
-//! graph is missing would be worse than no test.
+//! about *which* categories a text credits need a knowledge graph: the agent resolves
+//! the role from the hermetic fixture role config, so the graph is the in-repo
+//! `tests/test_kg` and the outcome does not depend on whatever the host (or a
+//! concurrent test) left in the shared persistence layer. Refs #494.
 
 use std::path::PathBuf;
 
 use assert_cmd::Command;
 
+mod support;
+use support::cli_test_env::apply_hermetic_env;
+
+/// The agent binary, launched with the hermetic test environment: a temporary
+/// HOME, a temporary settings file whose persistence profiles point at that
+/// temporary root, and the fixture role config (`tests/fixtures/
+/// terraphim_engineer_config.json`). Without it the agent resolved the role
+/// from the shared `/tmp/terraphim_sqlite` profile, which other suites write
+/// to -- that is how this test once failed with `concept:security check`
+/// instead of `phrase:security` (#494).
 fn agent() -> Command {
-    Command::cargo_bin("terraphim-agent").expect("built binary")
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_terraphim-agent"));
+    apply_hermetic_env(&mut cmd).expect("apply hermetic env");
+    Command::from_std(cmd)
 }
 
-/// The knowledge graph this role resolves to, if the host has one.
+/// The knowledge graph the hermetic role config points at.
+///
+/// The agent runs with the fixture role config
+/// (`tests/fixtures/terraphim_engineer_config.json`), whose KG is
+/// `crates/terraphim_agent/tests/test_kg` relative to the workspace root, and
+/// the hermetic environment sets that root as the working directory. Checking
+/// the *host* graph instead would let these assertions skip silently while
+/// the agent used a different graph.
 fn kg_dir() -> Option<PathBuf> {
-    let dir = std::env::var("TERRAPHIM_KG_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            PathBuf::from(std::env::var("HOME").expect("HOME")).join(".config/terraphim/kg")
-        });
-    // Readable, not merely present: a graph directory can hold nothing but dangling
-    // symlinks (that is exactly what the CI runner has), and treating that as a graph
-    // would run assertions that cannot pass and blame the code for it.
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("test_kg");
     let usable = std::fs::read_dir(&dir).ok()?.flatten().any(|e| {
         let path = e.path();
         path.extension().is_some_and(|x| x == "md") && std::fs::read_to_string(&path).is_ok()
