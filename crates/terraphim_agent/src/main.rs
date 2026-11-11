@@ -2244,13 +2244,23 @@ async fn handle_validate_command(args: ValidateArgs, service: &TuiService) -> Re
             if !result.satisfied.is_empty() {
                 println!("  Satisfied items:");
                 for item in &result.satisfied {
-                    println!("    ✓ {}", item);
+                    match result.evidence.get(item) {
+                        Some(why) => println!("    ✓ {} ({})", item, why),
+                        None => println!("    ✓ {}", item),
+                    }
                 }
             }
             if !result.missing.is_empty() {
                 println!("  Missing items:");
                 for item in &result.missing {
-                    println!("    ✗ {}", item);
+                    if result.unreachable.contains(item) {
+                        println!(
+                            "    ✗ {} (no knowledge-graph concept can credit this)",
+                            item
+                        );
+                    } else {
+                        println!("    ✗ {}", item);
+                    }
                 }
             }
         }

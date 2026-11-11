@@ -204,9 +204,9 @@ def measure_reachability(definitions, patterns: set[str]) -> dict[str, dict[str,
     for name, categories in definitions.items():
         out[name] = {}
         for cat, terms in categories.items():
-            if not any(t in patterns for t in terms):
-                out[name][cat] = False
-                continue
+            # Always ask the CLI, even when no pattern exists for any term: since the
+            # phrase fallback landed, a category with no graph pattern can still be
+            # credited by its own words. Skipping the call hid exactly that.
             _, text = validate(name, " ".join(terms))
             out[name][cat] = cat in parse_human(text)["satisfied"]
     return out
@@ -255,7 +255,7 @@ def contract_checks(report: Report, definitions, patterns: set[str], contract: d
             recorded_dead == dead,
             f"now {dead}, contract says {recorded_dead} - re-measure deliberately"
             if recorded_dead != dead else f"{dead or 'none'}",
-            known=("no thesaurus pattern can credit these categories, so no text can satisfy them: "
+            known=("no thesaurus pattern expresses these categories, so only the phrase fallback can credit them: "
                    + ", ".join(f"{k}:{'/'.join(v)}" for k, v in dead.items())) if dead else "",
         )
 

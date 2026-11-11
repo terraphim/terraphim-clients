@@ -813,10 +813,40 @@ impl TuiService {
         let matched_terms: std::collections::HashSet<String> =
             matches.iter().map(|m| m.term.to_lowercase()).collect();
 
+        // Two admissible proofs that a category is addressed, because one is not enough:
+        // the graph only carries a pattern for 7 of the 28 shipped terms, and matching is
+        // leftmost-longest, so a text can match a *fragment* of a term ("check" inside
+        // "security check") that never equals the term itself.
+        //   1. a thesaurus pattern equal to one of the category's terms matched, or
+        //   2. one of the category's terms appears in the text as a whole-word phrase.
+        // Without (2) "Ran a security check on the endpoint." scores 0/5 for a checklist
+        // that lists `security check`, which is what issue #475 reported.
+        let thesaurus = self.get_thesaurus(role_name).await?;
+        let patterns: std::collections::HashSet<String> = thesaurus
+            .keys()
+            .map(|k| k.as_str().to_lowercase())
+            .collect();
+
         let mut satisfied = Vec::new();
         let mut missing = Vec::new();
+        let mut evidence = std::collections::BTreeMap::new();
+        let mut unreachable = Vec::new();
+
         for category in &checklist.categories {
-            if category.terms.iter().any(|t| matched_terms.contains(t)) {
+            let reachable = category.terms.iter().any(|t| patterns.contains(t));
+            if !reachable {
+                unreachable.push(category.name.clone());
+            }
+
+            if let Some(term) = category.terms.iter().find(|t| matched_terms.contains(*t)) {
+                evidence.insert(category.name.clone(), format!("concept:{term}"));
+                satisfied.push(category.name.clone());
+            } else if let Some(term) = category
+                .terms
+                .iter()
+                .find(|t| crate::checklists::contains_phrase(text, t))
+            {
+                evidence.insert(category.name.clone(), format!("phrase:{term}"));
                 satisfied.push(category.name.clone());
             } else {
                 missing.push(category.name.clone());
@@ -830,6 +860,8 @@ impl TuiService {
             total_items,
             satisfied,
             missing,
+            evidence,
+            unreachable,
         })
     }
 
@@ -900,6 +932,13 @@ pub struct ChecklistResult {
     pub total_items: usize,
     pub satisfied: Vec<String>,
     pub missing: Vec<String>,
+    /// Why each satisfied category was credited: `concept:<pattern>` when the knowledge
+    /// graph matched a term, `phrase:<term>` when the text contained it literally.
+    pub evidence: std::collections::BTreeMap<String, String>,
+    /// Categories no thesaurus pattern can express. Their absence from `satisfied` is a
+    /// property of the graph, not of the text - reporting them as merely "missing" tells
+    /// the reader to edit prose that cannot ever satisfy the check.
+    pub unreachable: Vec<String>,
 }
 
 /// Returns `true` when a thesaurus term occupying the byte span
