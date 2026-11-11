@@ -37,7 +37,7 @@
       "covered": false
     },
     "input validation": {
-      "covered": true
+      "covered": false
     },
     "integration test": {
       "covered": true
@@ -64,7 +64,7 @@
       "covered": false
     },
     "security check": {
-      "covered": true
+      "covered": false
     },
     "ssl": {
       "covered": false
@@ -85,14 +85,44 @@
       "covered": true
     }
   },
+  "coverage": {
+    "digest": "39df61cc9bbacf39",
+    "kg_dir": "/home/alex/.config/terraphim/kg",
+    "patterns": 2438,
+    "unbacked": [
+      "access control",
+      "auth",
+      "authentication",
+      "authorization",
+      "comments",
+      "docs",
+      "encrypted",
+      "encryption",
+      "exception handling",
+      "input validation",
+      "login",
+      "optimization",
+      "performance",
+      "permissions",
+      "sanitization",
+      "security",
+      "security check",
+      "ssl",
+      "testing",
+      "tests",
+      "tls"
+    ]
+  },
   "defects": {
     "unsatisfiable_by_concept": {
       "code_review": [
+        "security",
         "performance"
       ],
       "security": [
         "authentication",
         "authorization",
+        "input_validation",
         "encryption"
       ]
     }
@@ -109,15 +139,15 @@
     "code_review": {
       "documentation": true,
       "error_handling": true,
-      "performance": false,
-      "security": false,
+      "performance": true,
+      "security": true,
       "tests": true
     },
     "security": {
-      "authentication": false,
-      "authorization": false,
-      "encryption": false,
-      "input_validation": false,
+      "authentication": true,
+      "authorization": true,
+      "encryption": true,
+      "input_validation": true,
       "logging": true
     }
   },
@@ -140,8 +170,8 @@
   "samples": [
     {
       "checklist": "code_review",
-      "known_defect": "code_review needs security and performance; the shipped KG has no concept that credits either, so the checklist cannot pass",
-      "label": "code_review text covering the three reachable categories",
+      "known_defect": "security and performance can now be credited by phrase, but this text does not mention them",
+      "label": "code_review text covering the three concept-backed categories",
       "missing": [
         "performance",
         "security"
@@ -151,16 +181,22 @@
     },
     {
       "checklist": "security",
-      "known_defect": "only logging is reachable; input_validation's term 'input validation' matches a concept but the category is still not credited",
-      "label": "security checklist fed its own category terms",
+      "label": "security checklist fed its own category terms (phrase fallback credits all)",
+      "missing": [],
+      "passed": true,
+      "text": "authentication authorization input validation encryption logging"
+    },
+    {
+      "checklist": "code_review",
+      "label": "security sentence credits the category via a phrase (#475 repro)",
       "missing": [
-        "authentication",
-        "authorization",
-        "encryption",
-        "input_validation"
+        "documentation",
+        "error_handling",
+        "performance",
+        "tests"
       ],
       "passed": false,
-      "text": "authentication authorization input validation encryption logging"
+      "text": "Ran a security check on the endpoint."
     }
   ]
 }
