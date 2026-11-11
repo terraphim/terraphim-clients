@@ -106,10 +106,20 @@ impl ReplacementService {
         let result_bytes =
             terraphim_automata::replace_matches(text, &self.thesaurus, self.link_type)?;
         let result = String::from_utf8(result_bytes)?;
+
+        // `replace_matches` substitutes a match with the concept's display
+        // value. A thesaurus that maps a term to itself (for example a KG whose
+        // concept is named after the term and lists it as its own synonym)
+        // matches but leaves the text unchanged. Report that honestly: callers
+        // gate on `changed`, and claiming `true` for a no-op is the silent
+        // failure described in #401.
+        let changed = result != text;
+        let replacements = if changed { matches.len() } else { 0 };
+
         Ok(HookResult::with_count(
             text.to_string(),
             result,
-            matches.len(),
+            replacements,
         ))
     }
 
@@ -167,7 +177,43 @@ mod tests {
 
         let result = service.replace("npm install").unwrap();
         assert!(result.changed);
+        assert_eq!(result.replacements, 1);
         assert_eq!(result.result, "bun install");
+    }
+
+    /// #401: a thesaurus entry whose replacement text equals the matched term
+    /// changes nothing. The scan still finds a match, but `changed` must stay
+    /// false so a caller does not treat a no-op as a successful rewrite.
+    #[test]
+    fn test_replace_reports_unchanged_when_mapping_is_identity() {
+        let mut thesaurus = Thesaurus::new("identity".to_string());
+        let concept = NormalizedTerm::new(1u64, NormalizedTermValue::from("claude code"))
+            .with_display_value("Claude Code".to_string());
+        thesaurus.insert(NormalizedTermValue::from("claude code"), concept);
+
+        let service = ReplacementService::new(thesaurus);
+        let result = service.replace("Claude Code fix").unwrap();
+
+        assert_eq!(result.result, "Claude Code fix");
+        assert!(
+            !result.changed,
+            "an identity mapping must not claim a change: {result:?}"
+        );
+        assert_eq!(result.replacements, 0);
+    }
+
+    #[test]
+    fn test_replace_counts_real_substitutions_only() {
+        let thesaurus = create_test_thesaurus();
+        let service = ReplacementService::new(thesaurus);
+
+        let changed = service.replace("npm install").unwrap();
+        assert!(changed.changed);
+        assert_eq!(changed.replacements, 1);
+
+        let unchanged = service.replace("cargo build").unwrap();
+        assert!(!unchanged.changed);
+        assert_eq!(unchanged.replacements, 0);
     }
 
     #[test]
