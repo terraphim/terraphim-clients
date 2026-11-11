@@ -118,6 +118,16 @@ terraphim-grep "rollback plan" --role "Code Reviewer"   # same role
 A project `.terraphim/thesaurus-<role>.json` still takes precedence over the
 user role configuration, and `--thesaurus <path>` takes precedence over both.
 
+#### Exit codes
+
+`terraphim-grep` follows ripgrep so shell gates can branch without parsing stdout:
+
+| Code | Meaning |
+|---|---|
+| `0` | At least one chunk matched, or `--answer` produced an answer |
+| `1` | The query matched nothing (including a `--haystack` that excluded every match) |
+| `2` | Usage or IO error |
+
 ### Use an editor-exported synonym graph
 
 In Terraphim Editor, add `Concern` as an alternative to `Risk`, then open

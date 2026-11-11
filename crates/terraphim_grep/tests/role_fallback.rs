@@ -201,7 +201,9 @@ fn project_thesaurus_still_takes_precedence_over_the_user_role() {
     fixture.write_user_role(&kg);
     fixture.write_repo_file();
 
-    // A project thesaurus for the same role, with its own vocabulary.
+    // A project thesaurus for the same role, with its own vocabulary. The
+    // repository text uses the phrase so the query returns a chunk; exit 0 is
+    // reserved for a chunk (or an answer), not a KG-only concept hit (#450).
     let project = fixture.repo.join(".terraphim");
     std::fs::create_dir_all(&project).expect("project dir");
     std::fs::write(
@@ -214,6 +216,11 @@ fn project_thesaurus_still_takes_precedence_over_the_user_role() {
 }"#,
     )
     .expect("write project thesaurus");
+    std::fs::write(
+        fixture.repo.join("sentinel.txt"),
+        "project sentinel is the documented marker\n",
+    )
+    .expect("write sentinel text");
 
     let (output, json) = fixture.run_json("code-reviewer", "project-sentinel");
 
