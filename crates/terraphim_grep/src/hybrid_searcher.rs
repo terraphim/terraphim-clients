@@ -284,6 +284,192 @@ fn no_mmap_budget() -> fff_search::ContentCacheBudget {
     }
 }
 
+/// Extensions that belong to the `code` haystack. Deliberately an allowlist:
+/// `--haystack code` must not degrade into "every file fff-search indexed",
+/// which is what returned `Cargo.lock` and Markdown above Rust source (#404).
+const CODE_EXTENSIONS: &[&str] = &[
+    "rs", "py", "pyi", "js", "jsx", "mjs", "cjs", "ts", "tsx", "go", "java", "kt", "kts", "c", "h",
+    "cc", "cpp", "cxx", "hpp", "hh", "cs", "rb", "php", "swift", "m", "mm", "scala", "sh", "bash",
+    "zsh", "fish", "ps1", "sql", "lua", "pl", "pm", "r", "ex", "exs", "erl", "hrl", "hs", "ml",
+    "mli", "clj", "cljs", "vue", "svelte", "zig", "nim", "dart", "groovy", "tf",
+];
+
+/// Extensions that belong to the `docs` haystack.
+const DOC_EXTENSIONS: &[&str] = &[
+    "md", "markdown", "mdx", "rst", "adoc", "asciidoc", "txt", "org",
+];
+
+/// Dependency lockfiles are never evidence: exclude them from every haystack
+/// unless a future flag asks for them explicitly (#404).
+const LOCKFILE_GLOBS: &[&str] = &[
+    "**/Cargo.lock",
+    "**/package-lock.json",
+    "**/npm-shrinkwrap.json",
+    "**/yarn.lock",
+    "**/pnpm-lock.yaml",
+    "**/bun.lockb",
+    "**/poetry.lock",
+    "**/Pipfile.lock",
+    "**/Gemfile.lock",
+    "**/composer.lock",
+    "**/flake.lock",
+    "**/go.sum",
+];
+
+/// File-name extension, lowercased. `None` for dotfiles and extensionless names.
+fn extension_lowercase(path: &str) -> Option<String> {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    let (stem, ext) = name.rsplit_once('.')?;
+    if stem.is_empty() {
+        return None;
+    }
+    Some(ext.to_ascii_lowercase())
+}
+
+/// True when a path is documentation rather than source, for the `all` haystack.
+fn is_doc_path(path: &str) -> bool {
+    extension_lowercase(path).is_some_and(|ext| DOC_EXTENSIONS.contains(&ext.as_str()))
+}
+
+fn is_lockfile_path(path: &str) -> bool {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    if name.to_ascii_lowercase().ends_with(".lock") {
+        return true;
+    }
+    LOCKFILE_GLOBS
+        .iter()
+        .filter_map(|glob| glob.strip_prefix("**/"))
+        .any(|lock| lock.eq_ignore_ascii_case(name))
+}
+
+/// fff-search constraints for a haystack. Positive `Extension` constraints are
+/// ORed by fff-search; everything else is ANDed, which is exactly the shape of
+/// "source extensions, minus lockfiles".
+#[cfg(feature = "code-search")]
+fn haystack_constraints(haystack: Haystack) -> Vec<fff_search::Constraint<'static>> {
+    use fff_search::Constraint;
+
+    let mut constraints: Vec<Constraint<'static>> = Vec::new();
+    match haystack {
+        Haystack::Code => {
+            constraints.extend(CODE_EXTENSIONS.iter().map(|ext| Constraint::Extension(ext)))
+        }
+        Haystack::Docs => {
+            constraints.extend(DOC_EXTENSIONS.iter().map(|ext| Constraint::Extension(ext)))
+        }
+        Haystack::All => {}
+    }
+
+    constraints.push(Constraint::Not(Box::new(Constraint::Extension("lock"))));
+    constraints.extend(
+        LOCKFILE_GLOBS
+            .iter()
+            .map(|glob| Constraint::Not(Box::new(Constraint::Glob(glob)))),
+    );
+    constraints
+}
+
+/// The `haystack` label a result carries in JSON output and in the sufficiency
+/// judge's diversity count.
+fn chunk_haystack(haystack: Haystack, path: &str) -> &'static str {
+    match haystack {
+        Haystack::Code => "code",
+        Haystack::Docs => "docs",
+        Haystack::All if is_doc_path(path) => "docs",
+        Haystack::All => "code",
+    }
+}
+
+/// A file whose name matched a `--files` pattern. Paths are absolute so callers
+/// can open them without knowing which `--paths` root produced them.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct FileMatch {
+    pub path: String,
+    pub score: i32,
+}
+
+/// Search file *names* under `paths`, ranked by fff-search's fuzzy matcher (#472).
+///
+/// This is the filename half of a file lookup: no file content is read and no
+/// chunk machinery runs. Query filters parse the same way as the interactive
+/// picker, so `tgp` matches `terraphim-grep.js`. Results are absolute paths,
+/// sorted by descending score and truncated to `limit` overall.
+pub async fn search_file_names(
+    pattern: &str,
+    paths: &[PathBuf],
+    limit: usize,
+) -> Result<Vec<FileMatch>, String> {
+    #[cfg(feature = "code-search")]
+    {
+        use fff_search::{
+            FFFMode, FilePicker, FilePickerOptions, FuzzySearchOptions, PaginationArgs, QueryParser,
+        };
+
+        let mut matches: Vec<FileMatch> = Vec::new();
+
+        for root in paths {
+            // Absolute roots make the returned paths directly usable and keep
+            // `.` from leaking into every result.
+            let root = std::fs::canonicalize(root)
+                .map_err(|e| format!("Cannot resolve search path {}: {e}", root.display()))?;
+            crate::path_guard::reject_hostile_tree(&root)?;
+
+            let mut picker = FilePicker::new(FilePickerOptions {
+                base_path: root.to_string_lossy().to_string(),
+                mode: FFFMode::Ai,
+                watch: false,
+                cache_budget: Some(no_mmap_budget()),
+                follow_symlinks: false,
+                ..FilePickerOptions::default()
+            })
+            .map_err(|e| format!("FilePicker init failed: {e}"))?;
+
+            picker
+                .collect_files()
+                .map_err(|e| format!("File scan failed: {e}"))?;
+            if picker.get_files().is_empty() {
+                continue;
+            }
+
+            let query = QueryParser::default().parse(pattern);
+            let found = picker.fuzzy_search(
+                &query,
+                None,
+                FuzzySearchOptions {
+                    max_threads: 0,
+                    current_file: None,
+                    pagination: PaginationArgs { offset: 0, limit },
+                    ..FuzzySearchOptions::default()
+                },
+            );
+
+            for (item, score) in found.items.iter().zip(found.scores.iter()) {
+                matches.push(FileMatch {
+                    path: item
+                        .absolute_path(&picker, &root)
+                        .to_string_lossy()
+                        .to_string(),
+                    score: score.total,
+                });
+            }
+        }
+
+        matches.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| a.path.cmp(&b.path)));
+        matches.truncate(limit);
+        Ok(matches)
+    }
+
+    #[cfg(not(feature = "code-search"))]
+    {
+        let _ = (pattern, paths, limit);
+        Err(
+            "terraphim-grep was built without the `code-search` feature; filename search \
+             requires it. Rebuild with `--features code-search` (the default)."
+                .to_string(),
+        )
+    }
+}
+
 pub struct HybridSearcher {
     role_graph: Arc<tokio::sync::RwLock<terraphim_rolegraph::RoleGraph>>,
     /// Kept alongside the rolegraph so KG-style boosting still works when no documents
@@ -338,52 +524,47 @@ impl HybridSearcher {
 
         let thesaurus = self.thesaurus.clone();
 
-        let (kg_concepts, code_results) = match options.haystack {
-            Haystack::All | Haystack::Code => {
-                let kg_concepts =
-                    Self::search_kg(&query_owned, max_results, role_graph.clone(), &thesaurus)
-                        .await?;
-                let candidate_limit = if kg_concepts.is_empty() {
-                    max_results
-                } else {
-                    max_results.saturating_mul(5).max(max_results).min(1000)
-                };
-                let aliases = exact_query_aliases(&query_owned, &thesaurus);
-                let mut all_results = Vec::new();
-                for path in search_paths.iter() {
-                    let results = Self::search_code(
-                        &query_owned,
-                        &aliases,
-                        candidate_limit,
-                        options.context_lines,
-                        path.clone(),
-                    )
-                    .await?;
-                    all_results.extend(results);
-                }
-                // Boost KG matches above generic matches; the boosted score is what the
-                // JSON output reports so downstream tools see why a chunk ranked where
-                // it did. Truncate to max_results AFTER boosting so the KG-ranked tail
-                // survives the candidate cut.
-                let boosted = boost_chunks_with_kg(all_results, &kg_concepts);
-                let code_results: Vec<RetrievedChunk> =
-                    boosted.into_iter().take(max_results).collect();
-                (kg_concepts, code_results)
-            }
-            Haystack::Docs => {
-                let kg_concepts =
-                    Self::search_kg(&query_owned, max_results, role_graph.clone(), &thesaurus)
-                        .await?;
-                (kg_concepts, vec![])
-            }
+        let kg_concepts =
+            Self::search_kg(&query_owned, max_results, role_graph.clone(), &thesaurus).await?;
+        let candidate_limit = if kg_concepts.is_empty() {
+            max_results
+        } else {
+            max_results.saturating_mul(5).max(max_results).min(1000)
         };
+        let aliases = exact_query_aliases(&query_owned, &thesaurus);
+        let mut all_results = Vec::new();
+        for path in search_paths.iter() {
+            let results = Self::search_code(
+                &query_owned,
+                &aliases,
+                candidate_limit,
+                options.context_lines,
+                path.clone(),
+                options.haystack,
+            )
+            .await?;
+            all_results.extend(results);
+        }
 
-        // (KG boost and truncation are done inside the match arm above so the
-        // multi-path search loop shares one ordering pass.)
+        // Boost KG matches above generic matches; the boosted score is what the
+        // JSON output reports so downstream tools see why a chunk ranked where
+        // it did. Truncate to max_results AFTER boosting so the KG-ranked tail
+        // survives the candidate cut. The limit is shared across haystacks so
+        // `all` cannot return twice the caller asked for.
+        let boosted = boost_chunks_with_kg(all_results, &kg_concepts);
+        let selected: Vec<RetrievedChunk> = boosted.into_iter().take(max_results).collect();
+
+        let (code_results, doc_results) = match options.haystack {
+            Haystack::Code => (selected, vec![]),
+            Haystack::Docs => (vec![], selected),
+            Haystack::All => selected
+                .into_iter()
+                .partition(|chunk| chunk.haystack == "code"),
+        };
 
         Ok(HybridResults {
             code_results,
-            doc_results: vec![],
+            doc_results,
             kg_concepts,
         })
     }
@@ -426,6 +607,7 @@ impl HybridSearcher {
         limit: usize,
         context_lines: usize,
         search_path: PathBuf,
+        haystack: Haystack,
     ) -> Result<Vec<RetrievedChunk>, String> {
         #[cfg(feature = "code-search")]
         {
@@ -478,15 +660,28 @@ impl HybridSearcher {
 
             // Exact KG aliases are data, so bypass the query parser entirely.
             // One Aho-Corasick batch scans each file once, including aliases that
-            // sort after the displayed concepts. Free-text queries retain filters.
-            let fff_query;
-            let result = if aliases.is_empty() {
-                fff_query = parse_grep_query(query);
-                picker.grep(&fff_query, &options)
+            // sort after the displayed concepts. Free-text queries retain filters
+            // by parsing the query and passing its constraints through.
+            //
+            // Haystack constraints are applied by fff-search BEFORE grepping, so
+            // a `code` search cannot be starved of source hits by a lockfile or
+            // Markdown match further up the file list (#404).
+            let parsed = parse_grep_query(query);
+            let mut constraints: Vec<fff_search::Constraint<'_>> = haystack_constraints(haystack);
+            constraints.extend(parsed.constraints.iter().cloned());
+
+            let grep_text = parsed.grep_text();
+            let pattern_owned: Vec<String> = if aliases.is_empty() {
+                vec![grep_text]
             } else {
-                let patterns: Vec<&str> = aliases.iter().map(String::as_str).collect();
-                picker.multi_grep(&patterns, &[], &options)
+                aliases.to_vec()
             };
+            if pattern_owned.iter().all(|p| p.is_empty()) {
+                return Ok(vec![]);
+            }
+            let patterns: Vec<&str> = pattern_owned.iter().map(String::as_str).collect();
+
+            let result = picker.multi_grep(&patterns, &constraints, &options);
 
             let mut seen = std::collections::HashSet::new();
             let chunks = result
@@ -495,14 +690,20 @@ impl HybridSearcher {
                 .take(limit)
                 .filter_map(|m| {
                     let file = result.files.get(m.file_index)?;
+                    let source = file.relative_path(&picker);
+                    // Belt and braces: constraints already excluded these, but a
+                    // future fff-search change must not silently re-admit them.
+                    if is_lockfile_path(&source) {
+                        return None;
+                    }
                     let (content, line_start, line_end) = widen_with_context(m);
                     Some(RetrievedChunk {
                         content,
-                        source: file.relative_path(&picker),
+                        source: source.clone(),
                         line_start: Some(line_start),
                         line_end: Some(line_end),
                         relevance_score: 1.0,
-                        haystack: "code",
+                        haystack: chunk_haystack(haystack, &source),
                     })
                 })
                 // Keep one actual line even if several aliases match it. This
@@ -522,7 +723,7 @@ impl HybridSearcher {
 
         #[cfg(not(feature = "code-search"))]
         {
-            let _ = (query, aliases, limit, context_lines, search_path);
+            let _ = (query, aliases, limit, context_lines, search_path, haystack);
             // `code-search` is a default feature, so reaching here means the binary was
             // built with `--no-default-features` (or a custom set omitting it). Returning
             // an empty Vec silently makes every query look like "0 results" with no
@@ -551,7 +752,9 @@ impl HybridSearcher {
 
 /// Build a chunk's text and 1-based inclusive line range from a match plus the
 /// context lines fff-search captured around it (ripgrep `-C` semantics).
-/// Files are clamped by the searcher, so the range never leaves the file.
+///
+/// The searcher clamps context at the file edges, so `before` never exceeds the
+/// match's own line and `line - before` cannot underflow.
 #[cfg(feature = "code-search")]
 fn widen_with_context(m: &fff_search::GrepMatch) -> (String, usize, usize) {
     let line = m.line_number as usize;
@@ -562,7 +765,7 @@ fn widen_with_context(m: &fff_search::GrepMatch) -> (String, usize, usize) {
     lines.extend(m.context_after.iter().map(String::as_str));
     (
         lines.join("\n"),
-        line - before,
+        line.saturating_sub(before).max(1),
         line + m.context_after.len(),
     )
 }
@@ -691,6 +894,136 @@ mod tests {
             "expected one match from each of {:?} and {:?}",
             dir_a,
             dir_b
+        );
+    }
+
+    /// #472: filename search ranks fuzzy matches and never reads content.
+    #[cfg(feature = "code-search")]
+    #[tokio::test]
+    async fn file_name_search_ranks_fuzzy_matches() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        std::fs::create_dir_all(tmp.path().join("plugins")).unwrap();
+        std::fs::create_dir_all(tmp.path().join("docs")).unwrap();
+        std::fs::write(tmp.path().join("plugins/terraphim-grep.js"), "x\n").unwrap();
+        std::fs::write(tmp.path().join("plugins/other.js"), "y\n").unwrap();
+        std::fs::write(tmp.path().join("docs/readme.md"), "z\n").unwrap();
+
+        let matches = search_file_names("tgp", &[tmp.path().to_path_buf()], 10)
+            .await
+            .expect("filename search");
+
+        assert!(!matches.is_empty(), "tgp must match a file name");
+        assert!(
+            matches[0].path.ends_with("terraphim-grep.js"),
+            "fuzzy subsequence ranking should put the plugin first, got {:?}",
+            matches.iter().map(|m| &m.path).collect::<Vec<_>>()
+        );
+        assert!(
+            matches
+                .iter()
+                .all(|m| std::path::Path::new(&m.path).is_absolute()),
+            "returned paths must be absolute"
+        );
+
+        let limited = search_file_names("js", &[tmp.path().to_path_buf()], 1)
+            .await
+            .expect("filename search");
+        assert_eq!(limited.len(), 1, "limit must be honoured");
+
+        let none = search_file_names("zzzz-not-a-file", &[tmp.path().to_path_buf()], 10)
+            .await
+            .expect("filename search");
+        assert!(none.is_empty());
+    }
+
+    /// #404: `--haystack code` used to search every indexed file, so lockfiles and
+    /// Markdown outranked Rust source; `--haystack docs` returned nothing at all.
+    /// Fixture matches the issue's acceptance: `.rs`, `.md`, `Cargo.lock`, `.toml`.
+    #[cfg(feature = "code-search")]
+    #[tokio::test]
+    async fn haystack_classifies_source_docs_and_lockfiles() {
+        async fn run(searcher: &HybridSearcher, haystack: Haystack) -> HybridResults {
+            searcher
+                .search(
+                    "haystack_marker",
+                    &GrepOptions {
+                        haystack,
+                        max_results: 20,
+                        ..GrepOptions::default()
+                    },
+                )
+                .await
+                .expect("search should succeed")
+        }
+
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("alpha.rs"),
+            "fn haystack_marker() { /* source */ }\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.path().join("notes.md"), "haystack_marker in prose\n").unwrap();
+        std::fs::write(tmp.path().join("Cargo.lock"), "# haystack_marker\n").unwrap();
+        std::fs::write(tmp.path().join("Cargo.toml"), "haystack_marker = \"1\"\n").unwrap();
+
+        let searcher = HybridSearcher::new(
+            "test-role".to_string(),
+            terraphim_types::Thesaurus::new("t".to_string()),
+        )
+        .expect("build hybrid searcher")
+        .with_search_path(tmp.path().to_path_buf());
+
+        let code = run(&searcher, Haystack::Code).await;
+        let code_sources: Vec<&str> = code
+            .code_results
+            .iter()
+            .map(|chunk| chunk.source.as_str())
+            .collect();
+        assert_eq!(
+            code_sources,
+            vec!["alpha.rs"],
+            "--haystack code must return source files only, got {code_sources:?}"
+        );
+        assert!(code.doc_results.is_empty());
+        assert!(code.code_results.iter().all(|c| c.haystack == "code"));
+
+        let docs = run(&searcher, Haystack::Docs).await;
+        let doc_sources: Vec<&str> = docs
+            .doc_results
+            .iter()
+            .map(|chunk| chunk.source.as_str())
+            .collect();
+        assert_eq!(
+            doc_sources,
+            vec!["notes.md"],
+            "--haystack docs must return the Markdown, got {doc_sources:?}"
+        );
+        assert!(docs.code_results.is_empty());
+        assert!(docs.doc_results.iter().all(|c| c.haystack == "docs"));
+
+        let all = run(&searcher, Haystack::All).await;
+        let mut all_sources: Vec<&str> = all
+            .code_results
+            .iter()
+            .chain(all.doc_results.iter())
+            .map(|chunk| chunk.source.as_str())
+            .collect();
+        all_sources.sort_unstable();
+        assert!(
+            all_sources.contains(&"alpha.rs") && all_sources.contains(&"notes.md"),
+            "--haystack all must return both source and docs, got {all_sources:?}"
+        );
+        assert!(
+            !all_sources.contains(&"Cargo.lock"),
+            "lockfiles must be excluded from every haystack, got {all_sources:?}"
+        );
+        assert!(
+            all.code_results.iter().all(|c| c.haystack == "code"),
+            "source chunks must be labelled code in the all haystack"
+        );
+        assert!(
+            all.doc_results.iter().all(|c| c.haystack == "docs"),
+            "Markdown chunks must be labelled docs in the all haystack"
         );
     }
 

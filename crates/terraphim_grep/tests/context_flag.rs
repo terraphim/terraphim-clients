@@ -5,9 +5,11 @@ use std::process::Command;
 
 fn run(context: Option<&str>) -> serde_json::Value {
     let tmp = tempfile::tempdir().expect("tempdir");
+    // `.rs`, not `.txt`: since #404 the `code` haystack is a source-extension
+    // allowlist, so a text file would be excluded from the search entirely.
     std::fs::write(
-        tmp.path().join("sample.txt"),
-        "alpha one\nbravo two\ncharlie needle delta\necho four\nfoxtrot five\n",
+        tmp.path().join("sample.rs"),
+        "// alpha one\n// bravo two\n// charlie needle delta\n// echo four\n// foxtrot five\n",
     )
     .unwrap();
     let mut args = vec![
@@ -44,7 +46,7 @@ fn context_two_widens_chunk_to_whole_file() {
     assert_eq!(c["line_end"], 5);
     assert_eq!(
         c["content"],
-        "alpha one\nbravo two\ncharlie needle delta\necho four\nfoxtrot five"
+        "// alpha one\n// bravo two\n// charlie needle delta\n// echo four\n// foxtrot five"
     );
 }
 
@@ -61,6 +63,6 @@ fn context_zero_and_default_return_single_line() {
         let c = &v["chunks"][0];
         assert_eq!(c["line_start"], 3);
         assert_eq!(c["line_end"], 3);
-        assert_eq!(c["content"], "charlie needle delta");
+        assert_eq!(c["content"], "// charlie needle delta");
     }
 }
