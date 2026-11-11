@@ -80,6 +80,12 @@ struct Args {
     )]
     paths: Vec<PathBuf>,
 
+    #[arg(
+        long,
+        help = "Search file names instead of file contents (fuzzy filename mode)"
+    )]
+    files: bool,
+
     #[arg(long, help = "Role to use for search")]
     role: Option<String>,
 
@@ -562,6 +568,30 @@ async fn main() -> Result<()> {
         .query
         .as_deref()
         .context("missing search query; run `terraphim-grep --help` for usage")?;
+
+    // Filename mode needs no thesaurus, role, or LLM: answer from the file
+    // enumeration alone and return (#472).
+    if args.files {
+        let search_paths: Vec<PathBuf> = if args.paths.is_empty() {
+            vec![PathBuf::from(".")]
+        } else {
+            args.paths.clone()
+        };
+        let matches = terraphim_grep::search_file_names(query, &search_paths, args.max_results)
+            .await
+            .map_err(anyhow::Error::msg)?;
+        if args.json {
+            println!("{}", serde_json::to_string_pretty(&matches)?);
+        } else {
+            for entry in &matches {
+                println!("{}", entry.path);
+            }
+        }
+        if matches.is_empty() {
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
 
     let options = GrepOptions {
         haystack: args.haystack.into(),

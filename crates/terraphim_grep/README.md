@@ -95,7 +95,15 @@ terraphim-grep "async fn spawn" --search-only
 
 # Search specific paths
 terraphim-grep "struct Config" --paths src/ crates/
+
+# Find files by name (fuzzy, ranked, no content read)
+terraphim-grep "tgp" --files --paths ~/.config/opencode
 ```
+
+`--files` answers "where is the file called ...": it ranks file names with the
+same fuzzy matcher and walker as content search, prints one absolute path per
+line (or `--json` objects with `path` and `score`), respects `--paths`, and
+exits 1 when nothing matches. It needs no thesaurus, role, or LLM.
 
 > **LLM synthesis is opt-in.** A plain query always returns retrieved chunks at grep
 > speed; the LLM is only called when you pass `--answer` or `--force-rlm`. Having
