@@ -9,7 +9,7 @@ use terraphim_grep::openrouter_client;
 use terraphim_grep::{
     GrepOptions, GrepResult, Haystack, HybridSearcher, SufficiencyJudge, TerraphimGrep,
 };
-use terraphim_types::Thesaurus;
+use terraphim_types::{NormalizedTerm, NormalizedTermValue, Thesaurus};
 use terraphim_update::{TerraphimUpdater, UpdaterConfig};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
@@ -80,7 +80,10 @@ struct Args {
     )]
     paths: Vec<PathBuf>,
 
-    #[arg(long, help = "Role to use for search")]
+    #[arg(
+        long,
+        help = "Role to use for search (name, display name, or shortname from ~/.config/terraphim/embedded_config.json)"
+    )]
     role: Option<String>,
 
     #[arg(long, help = "Thesaurus path")]
@@ -389,7 +392,10 @@ where
 /// Resolution order:
 ///   1. If `--thesaurus <path>` is provided, load it.
 ///   2. Otherwise try `find_default_thesaurus` (project config or filesystem heuristic).
-///   3. If none of the above succeeds, return an empty thesaurus so the CLI can fall back to
+///   3. Otherwise fall back to the user role configuration, resolving `--role` by
+///      name or shortname and loading that role's compiled thesaurus or local
+///      Markdown KG (Refs #405).
+///   4. If none of the above succeeds, return an empty thesaurus so the CLI can fall back to
 ///      `fff-search` enhanced grep without a knowledge graph.
 async fn resolve_thesaurus(role_name: &str, explicit: Option<&Path>) -> Result<Thesaurus> {
     if let Some(path) = explicit {
@@ -399,12 +405,202 @@ async fn resolve_thesaurus(role_name: &str, explicit: Option<&Path>) -> Result<T
             .with_context(|| format!("Failed to load thesaurus from {:?}", path));
     }
     if let Some(path) = find_default_thesaurus(role_name) {
+        tracing::debug!("Loaded thesaurus from project file {:?}", path);
         let automata_path = AutomataPath::from_local(&path);
         return terraphim_automata::load_thesaurus(&automata_path)
             .await
             .with_context(|| format!("Failed to load thesaurus from {:?}", path));
     }
+    if let Some((thesaurus, source)) = thesaurus_from_user_role(role_name).await {
+        tracing::info!(
+            "Loaded {} thesaurus entries for role '{}' from {}",
+            thesaurus.len(),
+            role_name,
+            source
+        );
+        return Ok(thesaurus);
+    }
     Ok(Thesaurus::new(role_name.to_string()))
+}
+
+/// Path of the user role configuration, when one exists.
+///
+/// `TERRAPHIM_CONFIG` wins (same precedence as `terraphim_config`); otherwise
+/// `${XDG_CONFIG_HOME:-$HOME/.config}/terraphim/embedded_config.json`.
+fn user_config_path() -> Option<PathBuf> {
+    if let Ok(path) = std::env::var("TERRAPHIM_CONFIG") {
+        let path = PathBuf::from(path);
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+
+    let config_home = std::env::var("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|_| std::env::var("HOME").map(|home| PathBuf::from(home).join(".config")))
+        .ok()?;
+    let candidate = config_home.join("terraphim").join("embedded_config.json");
+    candidate.is_file().then_some(candidate)
+}
+
+/// Resolve `--role` against the user configuration.
+///
+/// Exact role name first, then case-insensitive shortname (the display name the
+/// rest of Terraphim uses, e.g. "code-reviewer"), then case-insensitive name
+/// ("Code Reviewer"). This is the same order `terraphim-agent` uses.
+fn resolve_user_role<'a>(
+    config: &'a terraphim_config::Config,
+    query: &str,
+) -> Option<&'a terraphim_config::Role> {
+    if let Some(role) = config
+        .roles
+        .values()
+        .find(|role| role.name.as_str() == query)
+    {
+        return Some(role);
+    }
+    config.roles.values().find(|role| {
+        role.shortname
+            .as_deref()
+            .is_some_and(|shortname| shortname.eq_ignore_ascii_case(query))
+            || role.name.as_str().eq_ignore_ascii_case(query)
+    })
+}
+
+/// Load the thesaurus a user-configured role points at (Refs #405).
+///
+/// Prefers a local compiled automata file when the role names one, then
+/// compiles the role's local Markdown KG in-process. Returns the source
+/// description so the caller can log which path was used.
+async fn thesaurus_from_user_role(role_name: &str) -> Option<(Thesaurus, String)> {
+    let config_path = user_config_path()?;
+    let config = match terraphim_config::Config::load_from_json_file(&config_path.to_string_lossy())
+    {
+        Ok(config) => config,
+        Err(error) => {
+            tracing::debug!("Could not load user role config {:?}: {error}", config_path);
+            return None;
+        }
+    };
+
+    let role = resolve_user_role(&config, role_name)?;
+    let kg = role.kg.as_ref()?;
+
+    if let Some(AutomataPath::Local(path)) = kg.automata_path.as_ref()
+        && path.is_file()
+        && let Ok(thesaurus) =
+            terraphim_automata::load_thesaurus(&AutomataPath::from_local(path)).await
+        && !thesaurus.is_empty()
+    {
+        return Some((
+            thesaurus,
+            format!(
+                "role '{}' compiled automata at {}",
+                role.name,
+                path.display()
+            ),
+        ));
+    }
+
+    if let Some(local) = kg.knowledge_graph_local.as_ref()
+        && let Some(thesaurus) = build_kg_thesaurus(role.name.as_str(), &local.path)
+    {
+        return Some((
+            thesaurus,
+            format!(
+                "role '{}' local Markdown KG at {}",
+                role.name,
+                local.path.display()
+            ),
+        ));
+    }
+
+    None
+}
+
+const KG_SYNONYMS_DELIMITER: &str = "::";
+const KG_SYNONYMS_KEYWORD: &str = "synonyms";
+
+/// Every `.md` file under `dir`, recursively, sorted for deterministic concept
+/// ids. Symlinks are skipped so a link cycle cannot hang the walk.
+///
+/// A user KG is often organized in subdirectories (`projects/<name>/`,
+/// `publishing/<name>/`); a flat `read_dir` would silently drop most of the
+/// vocabulary.
+fn markdown_files(dir: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    let mut pending = vec![dir.to_path_buf()];
+
+    while let Some(current) = pending.pop() {
+        let Ok(entries) = std::fs::read_dir(&current) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if file_type.is_symlink() {
+                continue;
+            }
+            let path = entry.path();
+            if file_type.is_dir() {
+                pending.push(path);
+            } else if path.extension().map(|ext| ext == "md").unwrap_or(false) {
+                files.push(path);
+            }
+        }
+    }
+
+    files.sort();
+    files
+}
+
+/// Compile a Markdown knowledge graph directory into a thesaurus.
+///
+/// Same shape as `terraphim_agent`'s KG builder: each `.md` file is a concept
+/// named by its stem (its heading is the display value) and `synonyms:: a, b`
+/// lines add aliases. Pure Rust, so grep does not depend on `rg` or on the
+/// persistence layer to share a role's vocabulary.
+fn build_kg_thesaurus(role_name: &str, kg_dir: &Path) -> Option<Thesaurus> {
+    if !kg_dir.is_dir() {
+        return None;
+    }
+
+    let mut thesaurus = Thesaurus::new(role_name.to_string());
+    let mut concept_id: u64 = 1;
+
+    for path in markdown_files(kg_dir) {
+        let Some(stem) = path.file_stem().map(|s| s.to_string_lossy().to_string()) else {
+            continue;
+        };
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+
+        let normalized = NormalizedTermValue::from(stem.to_lowercase());
+        let concept =
+            NormalizedTerm::new(concept_id, normalized.clone()).with_display_value(stem.clone());
+        thesaurus.insert(normalized.clone(), concept);
+
+        for line in content.lines() {
+            let Some((keyword, synonyms)) = line.split_once(KG_SYNONYMS_DELIMITER) else {
+                continue;
+            };
+            if keyword.trim().to_lowercase() != KG_SYNONYMS_KEYWORD {
+                continue;
+            }
+            for synonym in synonyms.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+                let alias = NormalizedTermValue::new(synonym.to_string());
+                let alias_term = NormalizedTerm::new(concept_id, normalized.clone())
+                    .with_display_value(stem.clone());
+                thesaurus.insert(alias, alias_term);
+            }
+        }
+
+        concept_id += 1;
+    }
+
+    (!thesaurus.is_empty()).then_some(thesaurus)
 }
 
 /// Build an `LlmClient` for the requested role.
@@ -548,7 +744,19 @@ fn role_from_env(role_name: &str) -> Option<terraphim_config::Role> {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> std::process::ExitCode {
+    match run().await {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("Error: {error:#}");
+            // Usage errors exit 2 from clap; runtime/IO failures should not be
+            // indistinguishable from "no match" (1), so they take 2 as well.
+            std::process::ExitCode::from(2)
+        }
+    }
+}
+
+async fn run() -> Result<()> {
     init_tracing();
 
     let mut args = Args::parse();
@@ -655,6 +863,14 @@ async fn main() -> Result<()> {
         println!("{}", json);
     } else {
         print_results(&result, args.context);
+    }
+
+    // ripgrep exit semantics (#450, pending the stable taxonomy in #181):
+    // 0 = at least one chunk or a synthesised answer, 1 = no match. Usage and
+    // IO errors keep clap's/anyhow's exit 2, so callers can branch without
+    // parsing stdout.
+    if result.chunks.is_empty() && result.answer.is_none() {
+        std::process::exit(1);
     }
 
     Ok(())
@@ -926,5 +1142,93 @@ mod tests {
         let actual = discover_project_thesaurus(&terraphim_dir, "Project Developer");
 
         assert_eq!(actual, Some(expected));
+    }
+
+    #[test]
+    fn build_kg_thesaurus_reads_concepts_and_synonyms() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("code review.md"),
+            "# Code review\n\nsynonyms:: rollback plan, regression risk\n",
+        )
+        .unwrap();
+        // Non-Markdown files are ignored.
+        fs::write(tmp.path().join("notes.txt"), "synonyms:: not a concept\n").unwrap();
+
+        let thesaurus = build_kg_thesaurus("Code Reviewer", tmp.path()).expect("thesaurus");
+
+        let concept = NormalizedTermValue::from("code review");
+        assert!(
+            thesaurus.get(&concept).is_some(),
+            "the file stem must become a concept"
+        );
+        for alias in ["rollback plan", "regression risk"] {
+            let alias = NormalizedTermValue::from(alias);
+            let term = thesaurus.get(&alias).expect("synonym must be indexed");
+            assert_eq!(
+                term.value, concept,
+                "a synonym must resolve to its concept's normalized term"
+            );
+        }
+        assert!(thesaurus.get(&NormalizedTermValue::from("notes")).is_none());
+    }
+
+    #[test]
+    fn build_kg_thesaurus_returns_none_for_missing_directory() {
+        assert!(build_kg_thesaurus("role", Path::new("/nonexistent/kg")).is_none());
+    }
+
+    #[test]
+    fn build_kg_thesaurus_reads_nested_directories() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let nested = tmp.path().join("projects/odilo");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(
+            nested.join("deployment pipeline.md"),
+            "# Deployment pipeline\n\nsynonyms:: release train\n",
+        )
+        .unwrap();
+
+        let thesaurus = build_kg_thesaurus("role", tmp.path()).expect("thesaurus");
+
+        assert!(
+            thesaurus
+                .get(&NormalizedTermValue::from("deployment pipeline"))
+                .is_some(),
+            "a concept below a subdirectory must be indexed"
+        );
+        assert!(
+            thesaurus
+                .get(&NormalizedTermValue::from("release train"))
+                .is_some(),
+            "its synonyms must be indexed too"
+        );
+    }
+
+    #[test]
+    fn resolve_user_role_prefers_name_then_shortname() {
+        let config_json = r#"{
+          "id": "Desktop",
+          "global_shortcut": null,
+          "roles": {
+            "Code Reviewer": {
+              "name": "Code Reviewer",
+              "shortname": "code-reviewer",
+              "relevance_function": "title-scorer",
+              "terraphim_it": false,
+              "theme": "default",
+              "haystacks": []
+            }
+          },
+          "default_role": "Code Reviewer",
+          "selected_role": "Code Reviewer"
+        }"#;
+        let config: terraphim_config::Config = serde_json::from_str(config_json).unwrap();
+
+        for query in ["Code Reviewer", "code-reviewer", "CODE REVIEWER"] {
+            let role = resolve_user_role(&config, query).expect("role resolves");
+            assert_eq!(role.name.as_str(), "Code Reviewer", "query {query:?}");
+        }
+        assert!(resolve_user_role(&config, "unknown").is_none());
     }
 }
