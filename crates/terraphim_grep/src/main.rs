@@ -521,6 +521,40 @@ async fn thesaurus_from_user_role(role_name: &str) -> Option<(Thesaurus, String)
 const KG_SYNONYMS_DELIMITER: &str = "::";
 const KG_SYNONYMS_KEYWORD: &str = "synonyms";
 
+/// Every `.md` file under `dir`, recursively, sorted for deterministic concept
+/// ids. Symlinks are skipped so a link cycle cannot hang the walk.
+///
+/// A user KG is often organized in subdirectories (`projects/<name>/`,
+/// `publishing/<name>/`); a flat `read_dir` would silently drop most of the
+/// vocabulary.
+fn markdown_files(dir: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    let mut pending = vec![dir.to_path_buf()];
+
+    while let Some(current) = pending.pop() {
+        let Ok(entries) = std::fs::read_dir(&current) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if file_type.is_symlink() {
+                continue;
+            }
+            let path = entry.path();
+            if file_type.is_dir() {
+                pending.push(path);
+            } else if path.extension().map(|ext| ext == "md").unwrap_or(false) {
+                files.push(path);
+            }
+        }
+    }
+
+    files.sort();
+    files
+}
+
 /// Compile a Markdown knowledge graph directory into a thesaurus.
 ///
 /// Same shape as `terraphim_agent`'s KG builder: each `.md` file is a concept
@@ -535,11 +569,7 @@ fn build_kg_thesaurus(role_name: &str, kg_dir: &Path) -> Option<Thesaurus> {
     let mut thesaurus = Thesaurus::new(role_name.to_string());
     let mut concept_id: u64 = 1;
 
-    for entry in std::fs::read_dir(kg_dir).ok()?.flatten() {
-        let path = entry.path();
-        if path.extension().map(|ext| ext != "md").unwrap_or(true) {
-            continue;
-        }
+    for path in markdown_files(kg_dir) {
         let Some(stem) = path.file_stem().map(|s| s.to_string_lossy().to_string()) else {
             continue;
         };
@@ -1126,6 +1156,33 @@ mod tests {
     #[test]
     fn build_kg_thesaurus_returns_none_for_missing_directory() {
         assert!(build_kg_thesaurus("role", Path::new("/nonexistent/kg")).is_none());
+    }
+
+    #[test]
+    fn build_kg_thesaurus_reads_nested_directories() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let nested = tmp.path().join("projects/odilo");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(
+            nested.join("deployment pipeline.md"),
+            "# Deployment pipeline\n\nsynonyms:: release train\n",
+        )
+        .unwrap();
+
+        let thesaurus = build_kg_thesaurus("role", tmp.path()).expect("thesaurus");
+
+        assert!(
+            thesaurus
+                .get(&NormalizedTermValue::from("deployment pipeline"))
+                .is_some(),
+            "a concept below a subdirectory must be indexed"
+        );
+        assert!(
+            thesaurus
+                .get(&NormalizedTermValue::from("release train"))
+                .is_some(),
+            "its synonyms must be indexed too"
+        );
     }
 
     #[test]
