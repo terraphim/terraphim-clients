@@ -8,6 +8,7 @@ use std::process::{Command, Output};
 use std::time::Duration;
 
 mod support;
+use support::binary::{agent_binary, server_binary, skip_without_server};
 use support::cli_test_env::apply_hermetic_env;
 use support::server_process::ServerProcessGuard;
 
@@ -39,10 +40,6 @@ fn run_command_with_timeout(cmd: &mut Command, timeout: Duration) -> Result<Outp
         }
     }
 }
-
-#[path = "support/binary.rs"]
-mod binary;
-use binary::{agent_binary, server_binary};
 
 /// Start the terraphim server for tests on a random available port
 fn start_test_server() -> Result<(ServerProcessGuard, u16)> {
@@ -120,13 +117,10 @@ fn find_available_port() -> Result<u16> {
 /// is not a member crate (refs #113), so the binary exists only if someone put it in
 /// `target/debug` (or set `TERRAPHIM_SERVER_BIN`). Whether it was there depended on the
 /// restored build cache, which made these tests pass or fail by cache state rather than
-/// by code - see terraphim-clients#486.
+/// by code - see terraphim-clients#486. The skip notice is the shared one, so every
+/// server-dependent suite reports absence the same way (refs #466).
 fn ensure_server_running() -> Result<Option<(ServerProcessGuard, u16)>> {
-    let binary = server_binary();
-    if !std::path::Path::new(&binary).exists() {
-        println!(
-            "skipping: no terraphim_server binary at {binary} (set TERRAPHIM_SERVER_BIN, refs #113)"
-        );
+    if skip_without_server("extract_functionality_validation") {
         return Ok(None);
     }
     start_test_server().map(Some)

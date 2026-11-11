@@ -20,6 +20,7 @@ use terraphim_agent::client::ApiClient;
 use terraphim_types::{Layer, NormalizedTermValue, RoleName, SearchQuery};
 
 mod support;
+use support::binary::{server_binary_path, skip_without_server};
 use support::server_process::ServerProcessGuard;
 
 /// Result structure normalized across all modes
@@ -49,30 +50,6 @@ fn get_workspace_root() -> Result<PathBuf> {
     }
 
     Ok(PathBuf::from("."))
-}
-
-/// Pre-compile server binary for fast startup
-fn ensure_server_binary() -> Result<PathBuf> {
-    if let Ok(bin) = std::env::var("TERRAPHIM_SERVER_BIN") {
-        let path = PathBuf::from(bin);
-        if path.exists() {
-            return Ok(path);
-        }
-    }
-
-    let workspace_root = get_workspace_root()?;
-    let binary_path = workspace_root.join("target/debug/terraphim_server");
-
-    // terraphim_server is not a workspace member here, so there is nothing to
-    // build -- and a nested `cargo build` under `cargo test` would deadlock on
-    // the outer build lock regardless. Refs #113.
-    if !binary_path.exists() {
-        return Err(anyhow::anyhow!(
-            "terraphim_server is not a member of this workspace, so it cannot be built here. Set TERRAPHIM_SERVER_BIN to a prebuilt binary to run this test. Refs #113"
-        ));
-    }
-
-    Ok(binary_path)
 }
 
 /// Generate a test config with absolute paths so the server works regardless of CWD
@@ -180,15 +157,22 @@ table = "terraphim_kv"
     Ok(settings_dir)
 }
 
-/// Test helper to start a real terraphim server (instant with pre-compiled binary)
-async fn start_test_server() -> Result<(ServerProcessGuard, String)> {
+/// Test helper to start a real terraphim server (instant with pre-compiled binary).
+///
+/// Returns `Ok(None)` when this machine has no server binary; the caller then
+/// skips the test with the shared notice instead of failing (Refs #466).
+async fn start_test_server() -> Result<Option<(ServerProcessGuard, String)>> {
+    if skip_without_server("cross_mode_consistency_test") {
+        return Ok(None);
+    }
     let port = portpicker::pick_unused_port().expect("Failed to find unused port");
     let server_url = format!("http://localhost:{}", port);
 
     println!("Starting test server on {}", server_url);
 
     // Use pre-compiled binary for instant startup
-    let binary_path = ensure_server_binary()?;
+    let binary_path = server_binary_path()
+        .expect("server_binary_path must resolve when skip_without_server returned false");
 
     let workspace_root = get_workspace_root()?;
     let config_path = generate_absolute_config(&workspace_root, port)?;
@@ -218,7 +202,7 @@ async fn start_test_server() -> Result<(ServerProcessGuard, String)> {
         match client.get(&health_url).send().await {
             Ok(response) if response.status().is_success() => {
                 println!("✓ Server ready after {} seconds", attempt);
-                return Ok((server, server_url));
+                return Ok(Some((server, server_url)));
             }
             _ => {}
         }
@@ -421,7 +405,9 @@ async fn test_cross_mode_consistency() -> Result<()> {
 
     // Setup
     create_test_knowledge_graph()?;
-    let (server, server_url) = start_test_server().await?;
+    let Some((server, server_url)) = start_test_server().await? else {
+        return Ok(());
+    };
     let client = ApiClient::new(&server_url);
 
     // Wait for server to fully initialize (rolegraph building, document indexing)
@@ -536,7 +522,9 @@ async fn test_mode_specific_verification() -> Result<()> {
     println!();
 
     create_test_knowledge_graph()?;
-    let (server, server_url) = start_test_server().await?;
+    let Some((server, server_url)) = start_test_server().await? else {
+        return Ok(());
+    };
     let client = ApiClient::new(&server_url);
 
     // Wait for server to fully initialize (rolegraph building, document indexing)
@@ -608,7 +596,9 @@ async fn test_role_consistency_across_modes() -> Result<()> {
     println!();
 
     create_test_knowledge_graph()?;
-    let (server, server_url) = start_test_server().await?;
+    let Some((server, server_url)) = start_test_server().await? else {
+        return Ok(());
+    };
     let client = ApiClient::new(&server_url);
 
     // Wait for server's HTTP listener to be ready

@@ -10,6 +10,7 @@ use std::thread;
 use std::time::Duration;
 
 mod support;
+use support::binary::{server_binary_path, skip_without_server};
 use support::cli_test_env::apply_hermetic_env;
 use support::server_process::ServerProcessGuard;
 
@@ -21,7 +22,6 @@ use support::server_process::ServerProcessGuard;
 /// runtime cost. Building once and exec'ing brings each call from seconds
 /// down to milliseconds + actual work.
 static AGENT_BINARY: OnceLock<Result<PathBuf, String>> = OnceLock::new();
-static SERVER_BINARY: OnceLock<Result<PathBuf, String>> = OnceLock::new();
 
 fn agent_binary_path() -> Result<PathBuf> {
     AGENT_BINARY
@@ -37,21 +37,6 @@ fn agent_binary_path() -> Result<PathBuf> {
             // for this test target, so the `server` feature is present only if the
             // test target was built with it. Refs #113.
             Ok(PathBuf::from(env!("CARGO_BIN_EXE_terraphim-agent")))
-        })
-        .clone()
-        .map_err(anyhow::Error::msg)
-}
-
-fn server_binary_path() -> Result<PathBuf> {
-    SERVER_BINARY
-        .get_or_init(|| {
-            if let Ok(bin) = std::env::var("TERRAPHIM_SERVER_BIN") {
-                let path = PathBuf::from(bin);
-                if path.exists() {
-                    return Ok(path);
-                }
-            }
-            Err("terraphim_server is not a member of this workspace, so it cannot be built here. Set TERRAPHIM_SERVER_BIN to a prebuilt binary to run this test. Refs #113".to_string())
         })
         .clone()
         .map_err(anyhow::Error::msg)
@@ -78,8 +63,14 @@ fn get_workspace_root() -> Result<PathBuf> {
     Ok(PathBuf::from("."))
 }
 
-/// Test helper to start a real terraphim server
-async fn start_test_server() -> Result<(ServerProcessGuard, String)> {
+/// Test helper to start a real terraphim server.
+///
+/// Returns `Ok(None)` when this machine has no server binary; the caller then
+/// skips the test with the shared notice instead of failing (Refs #466).
+async fn start_test_server() -> Result<Option<(ServerProcessGuard, String)>> {
+    if skip_without_server("integration_tests") {
+        return Ok(None);
+    }
     let port = portpicker::pick_unused_port().expect("Failed to find unused port");
     let server_url = format!("http://localhost:{}", port);
 
@@ -94,7 +85,8 @@ async fn start_test_server() -> Result<(ServerProcessGuard, String)> {
 
     // Build once (cached), then exec the binary directly so server start
     // doesn't pay cargo overhead.
-    let server_bin = server_binary_path()?;
+    let server_bin = server_binary_path()
+        .expect("server_binary_path must resolve when skip_without_server returned false");
     let mut server_cmd = Command::new(&server_bin);
     // Inherit stdout/stderr from the test process so server logs show up
     // in --nocapture output. Helpful for diagnosing where the server is
@@ -121,7 +113,7 @@ async fn start_test_server() -> Result<(ServerProcessGuard, String)> {
         match client.get(&health_url).send().await {
             Ok(response) if response.status().is_success() => {
                 println!("Server ready after {} seconds", attempt);
-                return Ok((server, server_url));
+                return Ok(Some((server, server_url)));
             }
             Ok(_) => {}
             Err(_) => {}
@@ -342,7 +334,9 @@ async fn test_end_to_end_offline_workflow() -> Result<()> {
 async fn test_end_to_end_server_workflow() -> Result<()> {
     println!("=== Testing Complete Server Workflow ===");
 
-    let (server, server_url) = start_test_server().await?;
+    let Some((server, server_url)) = start_test_server().await? else {
+        return Ok(());
+    };
 
     // Give server time to initialize
     thread::sleep(Duration::from_secs(3));
@@ -562,7 +556,9 @@ async fn test_offline_vs_server_mode_comparison() -> Result<()> {
     cleanup_test_files()?;
     println!("=== Comparing Offline vs Server Modes ===");
 
-    let (server, server_url) = start_test_server().await?;
+    let Some((server, server_url)) = start_test_server().await? else {
+        return Ok(());
+    };
     thread::sleep(Duration::from_secs(2));
 
     // Test the same commands in both modes and compare behavior
@@ -741,7 +737,7 @@ async fn test_full_feature_matrix() -> Result<()> {
     let modes = vec![("offline", None::<String>)];
 
     // Add server mode if we can start a server
-    let server_info = if let Ok((server, url)) = start_test_server().await {
+    let server_info = if let Ok(Some((server, url))) = start_test_server().await {
         Some((server, url))
     } else {
         println!("⚠ Skipping server mode tests - could not start server");

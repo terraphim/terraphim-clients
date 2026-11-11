@@ -25,6 +25,7 @@ use terraphim_agent::client::ApiClient;
 use terraphim_types::{Document, Layer, NormalizedTermValue, RoleName, SearchQuery};
 
 mod support;
+use support::binary::{server_binary_path, skip_without_server};
 use support::server_process::ServerProcessGuard;
 
 /// BM25 baseline role in `tests/test_config.json`.
@@ -92,46 +93,22 @@ fn get_workspace_root() -> Result<PathBuf> {
     Ok(PathBuf::from("."))
 }
 
-/// Pre-compile server binary for fast startup
-fn ensure_server_binary() -> Result<PathBuf> {
-    // CI installs terraphim_server from terraphim-ai into a temp root and
-    // points TERRAPHIM_SERVER_BIN at it (see native-ci.yml, Refs #113).
-    // Local dev runs can also export the same var to point at a prebuilt
-    // binary instead of relying on target/debug/terraphim_server.
-    if let Ok(bin) = std::env::var("TERRAPHIM_SERVER_BIN") {
-        let path = PathBuf::from(bin);
-        if path.exists() {
-            return Ok(path);
-        }
-    }
-
-    let workspace_root = get_workspace_root()?;
-    let binary_path = workspace_root.join("target/debug/terraphim_server");
-
-    // terraphim_server is not a workspace member here, so there is nothing to
-    // build -- and a nested `cargo build` under `cargo test` would deadlock on
-    // the outer build lock regardless. Refs #113.
-    if !binary_path.exists() {
-        return Err(anyhow::anyhow!(
-            "terraphim_server is not a member of this workspace, so it cannot be built here. Set TERRAPHIM_SERVER_BIN to a prebuilt binary to run this test. Refs #113"
-        ));
-    }
-
-    Ok(binary_path)
-}
-
 /// Test helper to start a real terraphim server with minimal test config
-async fn start_test_server() -> Result<(ServerProcessGuard, String)> {
+async fn start_test_server() -> Result<Option<(ServerProcessGuard, String)>> {
+    if skip_without_server("kg_ranking_integration_test") {
+        return Ok(None);
+    }
     let port = portpicker::pick_unused_port().expect("Failed to find unused port");
     let server_url = format!("http://localhost:{}", port);
     let server_hostname = format!("127.0.0.1:{}", port);
 
     println!("[TEST] Starting test server on {}", server_url);
     println!("[TEST] Server hostname: {}", server_hostname);
-    println!("[TEST] Binary path: {:?}", ensure_server_binary()?);
+    let binary_path = server_binary_path()
+        .expect("server_binary_path must resolve when skip_without_server returned false");
+    println!("[TEST] Binary path: {:?}", binary_path);
 
     // Use pre-compiled binary for instant startup
-    let binary_path = ensure_server_binary()?;
     let workspace_root = get_workspace_root()?;
 
     // Use minimal test config for faster KG initialization
@@ -197,7 +174,7 @@ async fn start_test_server() -> Result<(ServerProcessGuard, String)> {
         match client.get(&health_url).send().await {
             Ok(response) if response.status().is_success() => {
                 println!("✓ Server ready after {} seconds", attempt / 2);
-                return Ok((server, server_url));
+                return Ok(Some((server, server_url)));
             }
             Ok(response) => {
                 println!("[TEST] Health check returned status: {}", response.status());
@@ -509,7 +486,9 @@ async fn test_knowledge_graph_ranking_impact() -> Result<()> {
     create_test_knowledge_graph()?;
 
     println!("Step 1: Starting test server...");
-    let (_server, server_url) = start_test_server().await?;
+    let Some((_server, server_url)) = start_test_server().await? else {
+        return Ok(());
+    };
     let api_client = ApiClient::new(&server_url);
 
     thread::sleep(Duration::from_secs(3));
@@ -669,7 +648,9 @@ async fn test_term_specific_boosting() -> Result<()> {
     println!("╚════════════════════════════════════════════════════════════════════════╝\n");
 
     create_test_knowledge_graph()?;
-    let (_server, server_url) = start_test_server().await?;
+    let Some((_server, server_url)) = start_test_server().await? else {
+        return Ok(());
+    };
     let client = ApiClient::new(&server_url);
 
     // Wait longer for KG initialization (lightweight test KG initializes faster)
@@ -717,7 +698,9 @@ async fn test_role_switching() -> Result<()> {
     println!("╚════════════════════════════════════════════════════════════════════════╝\n");
 
     create_test_knowledge_graph()?;
-    let (_server, server_url) = start_test_server().await?;
+    let Some((_server, server_url)) = start_test_server().await? else {
+        return Ok(());
+    };
     let client = ApiClient::new(&server_url);
 
     // Wait longer for KG initialization
