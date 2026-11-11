@@ -20,11 +20,14 @@ fn kg_dir() -> Option<PathBuf> {
         .unwrap_or_else(|_| {
             PathBuf::from(std::env::var("HOME").expect("HOME")).join(".config/terraphim/kg")
         });
-    let has_markdown = std::fs::read_dir(&dir)
-        .ok()?
-        .flatten()
-        .any(|e| e.path().extension().is_some_and(|x| x == "md"));
-    has_markdown.then_some(dir)
+    // Readable, not merely present: a graph directory can hold nothing but dangling
+    // symlinks (that is exactly what the CI runner has), and treating that as a graph
+    // would run assertions that cannot pass and blame the code for it.
+    let usable = std::fs::read_dir(&dir).ok()?.flatten().any(|e| {
+        let path = e.path();
+        path.extension().is_some_and(|x| x == "md") && std::fs::read_to_string(&path).is_ok()
+    });
+    usable.then_some(dir)
 }
 
 #[test]
