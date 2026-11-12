@@ -110,3 +110,73 @@ fn explain_text_output_is_human_readable() {
     assert!(stderr.contains("# stage=default"));
     assert!(stderr.contains("# decision=Allow"));
 }
+
+/// The temporary root is the temporary root, with or without a trailing
+/// slash (terraphim-clients#510).
+///
+/// The shipped allowlist carries the literal entry `rm -rf /tmp/`, so the
+/// whole-command comparison used to exempt it before the safety evaluation
+/// ran: `rm -rf /tmp/` was allowed while `rm -rf /tmp` was blocked, although
+/// the two delete the same thing.
+#[test]
+fn the_temporary_root_is_blocked_with_or_without_a_trailing_slash() {
+    for command in [
+        "rm -rf /tmp/",
+        "rm -fr /tmp/",
+        "rm -rf /var/tmp/",
+        "rm -fr /var/tmp/",
+        "rm -rf /tmp",
+    ] {
+        let (code, stdout, stderr) = run_guard(&["--json"], Some(command));
+        assert_eq!(code, 0, "the JSON output mode always exits 0");
+        let result: serde_json::Value =
+            serde_json::from_str(stdout.trim()).expect("expected JSON decision");
+        assert_eq!(
+            result["decision"], "block",
+            "{command:?} deletes the temporary root itself and must be blocked: {stdout} {stderr}"
+        );
+    }
+}
+
+/// The trace shows that the allowlist no longer short-circuits a destructive
+/// command (terraphim-clients#510).
+#[test]
+fn the_allowlist_does_not_short_circuit_the_temporary_root() {
+    let (code, stdout, _stderr) = run_guard(&["--explain", "--json"], Some("rm -rf /tmp/"));
+    assert_eq!(
+        code, 1,
+        "a blocked command exits 1 even with --explain, so the trace can gate a pipeline"
+    );
+    let trace: serde_json::Value =
+        serde_json::from_str(stdout.trim()).expect("expected JSON trace");
+    assert_eq!(trace["decision"], "block");
+
+    let stages = trace["stages"].as_array().expect("stages must be array");
+    let allowlist = stages
+        .iter()
+        .find(|stage| stage["stage"] == "allowlist")
+        .expect("the allowlist stage must be reported");
+    assert_eq!(
+        allowlist["outcome"], "continue",
+        "the allowlist must not short-circuit a destructive command: {stages:?}"
+    );
+
+    let destructive = stages
+        .iter()
+        .find(|stage| stage["stage"] == "destructive")
+        .expect("the destructive stage must be reported");
+    assert_eq!(destructive["outcome"], "block");
+}
+
+/// A cleanup inside the temporary root stays allowed (terraphim-clients#510).
+#[test]
+fn a_cleanup_inside_the_temporary_root_stays_allowed() {
+    let (code, stdout, _stderr) = run_guard(&["--json"], Some("rm -rf /tmp/build-cache"));
+    assert_eq!(code, 0);
+    let result: serde_json::Value =
+        serde_json::from_str(stdout.trim()).expect("expected JSON decision");
+    assert_eq!(
+        result["decision"], "allow",
+        "a cleanup inside the temporary root must stay allowed: {stdout}"
+    );
+}
