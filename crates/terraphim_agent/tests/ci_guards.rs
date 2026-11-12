@@ -1068,3 +1068,261 @@ fn cleanup_script_test_barrier_has_a_deadline() {
         "unreleased cleanup barrier must fail with a diagnostic"
     );
 }
+
+/// A known environment-mutation site: the workspace-relative file, the
+/// call-shaped needle, and how many times it appears there.
+struct EnvMutationSite {
+    file: &'static str,
+    needle: &'static str,
+    count: usize,
+}
+
+/// Call-shaped needles that indicate an environment mutation.
+///
+/// The shapes are call-shaped rather than word-shaped so a prose mention in a
+/// comment does not match. `set_env_var(` also covers the qualified
+/// `terraphim_test_utils::set_env_var(` spelling.
+const ENV_MUTATION_NEEDLES: &[&str] = &[
+    "env::set_var(",
+    "env::remove_var(",
+    "set_env_var(",
+    "remove_env_var(",
+    "EnvVarGuard",
+];
+
+/// Every environment-mutation site that is still allowed to exist.
+///
+/// Seeded with the inventory measured on `main` (see
+/// `docs/plans/research-env-mutation-guard-2026-11-12.md`). The list shrinks
+/// as the remediation lands: a commit that removes a site must decrement the
+/// count in the same change, and delete the entry when it reaches zero. A
+/// stale entry fails this guard, so the list cannot rot.
+const KNOWN_ENV_MUTATION_SITES: &[EnvMutationSite] = &[
+    EnvMutationSite {
+        file: "crates/terraphim_update/src/state.rs",
+        needle: "env::set_var(",
+        count: 5,
+    },
+    EnvMutationSite {
+        file: "crates/terraphim_update/tests/managed_mode.rs",
+        needle: "env::set_var(",
+        count: 2,
+    },
+    EnvMutationSite {
+        file: "crates/terraphim_update/tests/managed_mode.rs",
+        needle: "env::remove_var(",
+        count: 1,
+    },
+    EnvMutationSite {
+        file: "crates/terraphim_mcp_server/tests/mcp_rolegraph_validation_test.rs",
+        needle: "set_env_var(",
+        count: 6,
+    },
+    EnvMutationSite {
+        file: "crates/terraphim_mcp_server/tests/mcp_autocomplete_e2e_test.rs",
+        needle: "set_env_var(",
+        count: 5,
+    },
+    EnvMutationSite {
+        file: "crates/terraphim_agent/tests/tui_service_tests.rs",
+        needle: "EnvVarGuard",
+        count: 4,
+    },
+];
+
+/// Count the environment-mutation sites in `file`, one entry per needle that
+/// occurs in it.
+fn collect_env_mutation_sites(file: &Path, root: &Path) -> Vec<(String, &'static str, usize)> {
+    let Ok(text) = std::fs::read_to_string(file) else {
+        return Vec::new();
+    };
+    let relative = file
+        .strip_prefix(root)
+        .unwrap_or(file)
+        .to_string_lossy()
+        .replace('\\', "/");
+
+    ENV_MUTATION_NEEDLES
+        .iter()
+        .filter_map(|needle| {
+            let count = text.matches(needle).count();
+            (count > 0).then(|| (relative.clone(), *needle, count))
+        })
+        .collect()
+}
+
+/// No new environment mutation may be introduced under `crates/`.
+///
+/// Two shapes are guarded, because only one of them is visible to
+/// `forbid(unsafe_code)` (#310):
+///
+/// 1. the direct `std::env::set_var` / `std::env::remove_var` calls, each of
+///    which needs an `unsafe` block today, and
+/// 2. the *safe* wrapper `terraphim_test_utils::set_env_var` /
+///    `remove_env_var` / `EnvVarGuard`, which is safe API over `unsafe
+///    set_var` and therefore invisible to a `forbid(unsafe_code)` gate.
+///
+/// The shape spread twice in four weeks (6 -> 14 unsafe blocks under
+/// `crates/`) because both landings carried a plausible SAFETY comment, so
+/// human review demonstrably does not catch it. This arm is the interim stop
+/// while the remediation train runs; the allow-list shrinks with it.
+///
+/// Refs #375, #310, #373, #374.
+#[test]
+fn no_new_environment_mutation_sites() {
+    let root = workspace_root();
+    let files = workspace_rust_sources();
+
+    let mut found: Vec<(String, &'static str, usize)> = Vec::new();
+    for file in &files {
+        found.extend(collect_env_mutation_sites(file, &root));
+    }
+
+    let mut new_sites: Vec<String> = Vec::new();
+    for (file, needle, count) in &found {
+        let allowed = KNOWN_ENV_MUTATION_SITES
+            .iter()
+            .find(|site| site.file == file.as_str() && site.needle == *needle)
+            .map(|site| site.count)
+            .unwrap_or(0);
+        if *count > allowed {
+            new_sites.push(format!(
+                "  {file}: {count} x '{needle}' (allow-list says {allowed})"
+            ));
+        }
+    }
+
+    let mut stale_entries: Vec<String> = Vec::new();
+    for site in KNOWN_ENV_MUTATION_SITES {
+        let actual = found
+            .iter()
+            .find(|(file, needle, _)| file == site.file && *needle == site.needle)
+            .map(|(_, _, count)| *count)
+            .unwrap_or(0);
+        if actual != site.count {
+            stale_entries.push(format!(
+                "  {}: allow-list says {} x '{}', the tree has {actual}",
+                site.file, site.count, site.needle
+            ));
+        }
+    }
+
+    assert!(
+        new_sites.is_empty(),
+        "new environment-mutation sites under crates/:\n{}\n\n\
+         Mutating the process environment is `unsafe` (it is not thread safe) and \
+         the tests that do it raced with readers in the same binary -- see \
+         terraphim-clients#373 and #374. Inject the value instead: pass the home \
+         root or the setting as a parameter (see #374 for the `check_for_updates_\
+         auto_with_policy_in` seam), or scope the change to the spawned child \
+         with `Command::env`. `forbid(unsafe_code)` (#310) is the permanent \
+         gate; this arm is the interim stop.",
+        new_sites.join("\n")
+    );
+
+    assert!(
+        stale_entries.is_empty(),
+        "the allow-list no longer matches the tree:\n{}\n\n\
+         Each remediation commit must remove its own entry in the same change \
+         (decrement the count, delete the entry when it reaches zero). A stale \
+         entry means the list is decaying into a rubber stamp.",
+        stale_entries.join("\n")
+    );
+
+    // Re-entry path: the wrapper lives in another crate, so this repository
+    // can only guard its call sites. Once they are gone, no member may depend
+    // on `terraphim_test_utils` any more -- otherwise one dev-dependency line
+    // re-opens the whole pattern. Until then the arm reports the state
+    // instead of failing, so the remediation train is not blocked.
+    let wrapper_sites_remaining = KNOWN_ENV_MUTATION_SITES
+        .iter()
+        .any(|site| site.needle == "set_env_var(" || site.needle == "remove_env_var(");
+    let members_using_test_utils = member_manifests_depending_on("terraphim_test_utils");
+
+    if wrapper_sites_remaining {
+        assert!(
+            !members_using_test_utils.is_empty(),
+            "the allow-list still has wrapper sites but no member depends on \
+             terraphim_test_utils any more; the manifest rule is now active, \
+             so this state is inconsistent"
+        );
+        return;
+    }
+
+    assert!(
+        members_using_test_utils.is_empty(),
+        "no member may depend on terraphim_test_utils now that the last \
+         wrapper site is gone (it re-opens the unsafe env-mutation pattern):\n{}",
+        members_using_test_utils.join("\n")
+    );
+}
+
+/// Member manifests that list `dependency` (dev-dependencies included).
+fn member_manifests_depending_on(dependency: &str) -> Vec<String> {
+    let root = workspace_root();
+    let mut out = Vec::new();
+    let Ok(members) = std::fs::read_dir(root.join("crates")) else {
+        return out;
+    };
+    for member in members.flatten() {
+        let manifest = member.path().join("Cargo.toml");
+        if !manifest.is_file() {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&manifest) else {
+            continue;
+        };
+        let Ok(parsed) = text.parse::<toml::Table>() else {
+            continue;
+        };
+        let mentions = ["dependencies", "dev-dependencies", "build-dependencies"]
+            .iter()
+            .any(|section| {
+                parsed
+                    .get(*section)
+                    .and_then(|value| value.as_table())
+                    .is_some_and(|table| table.contains_key(dependency))
+            });
+        if mentions {
+            out.push(manifest.to_string_lossy().replace('\\', "/"));
+        }
+    }
+    out.sort();
+    out
+}
+
+/// The scanner must find a site that is not on the allow-list.
+///
+/// Without this, the guard could pass by finding nothing at all.
+#[test]
+fn env_mutation_scanner_reports_an_unlisted_site() {
+    // The guard file quotes the forbidden literals, so the *walker* must leave
+    // it out of the scan.
+    let scanned = workspace_rust_sources();
+    let own_name = Path::new(file!())
+        .file_name()
+        .expect("guard file name")
+        .to_owned();
+    assert!(
+        !scanned
+            .iter()
+            .any(|path| path.file_name() == Some(own_name.as_os_str())),
+        "the guard file must be excluded from its own scan"
+    );
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let synthetic = temp.path().join("synthetic.rs");
+    std::fs::write(
+        &synthetic,
+        "fn demo() {\n    unsafe {\n        std::env::set_var(\"HOME\", \"/tmp\");\n    }\n}\n",
+    )
+    .expect("write synthetic file");
+
+    let found = collect_env_mutation_sites(&synthetic, temp.path());
+
+    assert_eq!(
+        found,
+        vec![("synthetic.rs".to_string(), "env::set_var(", 1usize)],
+        "the scanner must report an unlisted direct site"
+    );
+}
