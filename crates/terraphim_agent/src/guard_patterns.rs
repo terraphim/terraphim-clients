@@ -272,34 +272,314 @@ fn temp_target_check(target: &str) -> Option<bool> {
     }
 }
 
-/// `rm -r[ecursive] -f[orce] <temp paths...>`, every target inside a temporary root.
-fn is_tmp_cleanup(words: &[String]) -> bool {
+/// The parsed shape of an `rm` invocation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RmShape {
+    /// The delete is recursive (`-r`, `-R`, `--recursive`).
+    recursive: bool,
+    /// The delete is forced (`-f`, `--force`).
+    force: bool,
+    /// The paths the delete applies to.
+    targets: Vec<String>,
+    /// An unrecognised long flag, which makes the operation unpredictable.
+    unknown_long_flag: bool,
+}
+
+/// Parse an `rm` invocation into its shape.
+///
+/// The flags are read the way `rm` reads them, so the long spellings
+/// (`--recursive`, `--force`) and the combined short ones (`-rf`, `-fr`) are
+/// recognised, and an unrecognised long flag is reported rather than ignored.
+fn rm_shape(words: &[String]) -> Option<RmShape> {
     if words.len() < 3 || words[0] != "rm" {
-        return false;
+        return None;
     }
 
     let mut recursive = false;
     let mut force = false;
-    let mut targets: Vec<&str> = Vec::new();
+    let mut targets: Vec<String> = Vec::new();
+    let mut unknown_long_flag = false;
     for arg in &words[1..] {
         let arg = arg.as_str();
         match arg {
             "--" => {}
             "--recursive" => recursive = true,
             "--force" => force = true,
-            _ if arg.starts_with("--") => return false,
+            _ if arg.starts_with("--") => unknown_long_flag = true,
             _ if arg.starts_with('-') && arg.len() > 1 => {
                 recursive |= has_flag(arg, 'r') || has_flag(arg, 'R');
                 force |= has_flag(arg, 'f');
             }
-            _ => targets.push(arg),
+            _ => targets.push(arg.to_string()),
         }
     }
 
-    recursive
-        && force
-        && !targets.is_empty()
-        && targets.iter().all(|target| safe_temp_target(target))
+    Some(RmShape {
+        recursive,
+        force,
+        targets,
+        unknown_long_flag,
+    })
+}
+
+/// `rm -r[ecursive] -f[orce] <temp paths...>`, every target inside a temporary root.
+fn is_tmp_cleanup(words: &[String]) -> bool {
+    let Some(shape) = rm_shape(words) else {
+        return false;
+    };
+
+    shape.recursive
+        && shape.force
+        && !shape.unknown_long_flag
+        && !shape.targets.is_empty()
+        && shape.targets.iter().all(|target| safe_temp_target(target))
+}
+
+/// A recursive, forced delete - the operation the `rm -rf` entries describe.
+///
+/// The destructive dictionary holds literal spellings, so the long and
+/// reordered spellings (`rm --recursive --force /`, `rm -r --force /`,
+/// `rm -R -f /`) shared no substring with any entry and were allowed
+/// (terraphim-clients#511).
+fn is_recursive_force_delete(words: &[String]) -> bool {
+    let Some(shape) = rm_shape(words) else {
+        return false;
+    };
+    shape.recursive && shape.force && !shape.targets.is_empty()
+}
+
+/// `git push` with an unconditional force: `--force`, `-f`, or a `+` refspec.
+///
+/// The dictionary holds `git push --force` and `git push -f` as literal
+/// strings, so `git push origin +main` - an equally unconditional force - and
+/// `git push origin main:main --force` - where the flag is present but not
+/// preceded by `git push` - were allowed (terraphim-clients#511).
+fn is_unconditional_force_push(words: &[String]) -> bool {
+    if words.len() < 3 || words[0] != "git" || words[1] != "push" {
+        return false;
+    }
+
+    for arg in &words[2..] {
+        // `--force-with-lease` is conditional, not unconditional.
+        if arg == "--force-with-lease" || arg.starts_with("--force-with-lease=") {
+            continue;
+        }
+        if arg == "--force" || arg == "-f" {
+            return true;
+        }
+        // A `+` on the refspec is the other spelling of an unconditional force.
+        if let Some(refspec) = arg.strip_prefix('+')
+            && !refspec.is_empty()
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// `find` that deletes what it matches: `-delete`, or `-exec rm`.
+///
+/// The dictionary has no entry for find's own deletion flags, so
+/// `find . -delete` and `find . -type f -exec rm {} ;` were allowed
+/// (terraphim-clients#511).
+fn find_deletes(files: &[String]) -> bool {
+    if files.first().map(String::as_str) != Some("find") {
+        return false;
+    }
+
+    let mut index = 1;
+    while index < files.len() {
+        match files[index].as_str() {
+            "-delete" => return true,
+            "-exec" | "-ok" if is_rm_command(files.get(index + 1)) => return true,
+            // `-execdir <dir> <command>`: the command follows the directory.
+            "-execdir" if is_rm_command(files.get(index + 2)) => return true,
+            _ => {}
+        }
+        index += 1;
+    }
+    false
+}
+
+/// Whether the word names the `rm` command (with or without a path).
+fn is_rm_command(word: Option<&String>) -> bool {
+    word.map(|word| {
+        word.rsplit('/')
+            .next()
+            .map(|name| name == "rm")
+            .unwrap_or(false)
+    })
+    .unwrap_or(false)
+}
+
+/// Split a command into the commands it runs.
+///
+/// The split happens at the control operators that separate commands (`;`,
+/// `&&`, `||`, `|`, a newline), outside quotes, so a `;` inside a quoted
+/// argument does not split anything.
+fn split_command_segments(command: &str) -> Vec<String> {
+    let mut segments: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut escaped = false;
+    let mut chars = command.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if escaped {
+            current.push(c);
+            escaped = false;
+            continue;
+        }
+        match c {
+            '\\' if !in_single => {
+                current.push(c);
+                escaped = true;
+            }
+            '\'' if !in_double => {
+                in_single = !in_single;
+                current.push(c);
+            }
+            '"' if !in_single => {
+                in_double = !in_double;
+                current.push(c);
+            }
+            ';' | '\n' | '\r' if !in_single && !in_double => {
+                segments.push(std::mem::take(&mut current));
+            }
+            '|' | '&' if !in_single && !in_double => {
+                segments.push(std::mem::take(&mut current));
+                // `||` and `&&` are one operator, not two.
+                if matches!(chars.peek(), Some('|') | Some('&')) {
+                    chars.next();
+                }
+            }
+            _ => current.push(c),
+        }
+    }
+    segments.push(current);
+    segments
+        .into_iter()
+        .filter(|segment| !segment.trim().is_empty())
+        .collect()
+}
+
+/// Tokenise one command into shell words.
+///
+/// Quotes and backslash escapes are resolved. Expansions (`$`, backticks) are
+/// kept as ordinary characters: the destructive checks look at the *shape* of
+/// a command, and the shape does not depend on what a target expands to.
+/// `None` means the segment cannot be tokenised (unbalanced quotes).
+fn tokenise_segment(segment: &str) -> Option<Vec<String>> {
+    let mut words: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let mut started = false;
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut chars = segment.chars();
+
+    while let Some(c) = chars.next() {
+        if in_single {
+            if c == '\'' {
+                in_single = false;
+            } else {
+                current.push(c);
+            }
+            continue;
+        }
+        if in_double {
+            match c {
+                '"' => in_double = false,
+                '\\' => match chars.next() {
+                    Some(next @ ('"' | '\\' | '$' | '`')) => current.push(next),
+                    Some(other) => {
+                        current.push('\\');
+                        current.push(other);
+                    }
+                    None => current.push('\\'),
+                },
+                _ => current.push(c),
+            }
+            continue;
+        }
+        match c {
+            '\'' => {
+                in_single = true;
+                started = true;
+            }
+            '"' => {
+                in_double = true;
+                started = true;
+            }
+            '\\' => match chars.next() {
+                Some('\n') => {}
+                Some(other) => {
+                    current.push(other);
+                    started = true;
+                }
+                None => {}
+            },
+            ' ' | '\t' => {
+                if started {
+                    words.push(std::mem::take(&mut current));
+                    started = false;
+                }
+            }
+            '#' if !started => break,
+            _ => {
+                current.push(c);
+                started = true;
+            }
+        }
+    }
+
+    if in_single || in_double {
+        return None;
+    }
+    if started {
+        words.push(current);
+    }
+    Some(words)
+}
+
+/// A destructive operation recognised by the parsed shape of the command.
+///
+/// The destructive dictionary matches literal strings, so the equivalent
+/// long-form or reordered spellings were allowed (terraphim-clients#511).
+/// These checks parse the command instead, and return the pattern that
+/// matched together with the reason to report.
+fn destructive_by_shape(command: &str) -> Option<(String, String)> {
+    for segment in split_command_segments(command) {
+        let Some(words) = tokenise_segment(&segment) else {
+            // The segment cannot be tokenised; the literal dictionary still
+            // applies to the raw text.
+            continue;
+        };
+
+        if is_recursive_force_delete(&words) && !is_tmp_cleanup(&words) {
+            // A cleanup inside a temporary root is exempt (the allowlist's
+            // `safe_tmp_cleanup` concept), in its long spellings too: the
+            // allowlist entries only match the `rm -rf` spelling, so the
+            // concept is consulted here for the others.
+            return Some((
+                "rm --recursive --force".to_string(),
+                "Blocked: a recursive forced delete removes files without asking".to_string(),
+            ));
+        }
+        if is_unconditional_force_push(&words) {
+            return Some((
+                "git push --force".to_string(),
+                "Blocked: an unconditional force push overwrites the remote history".to_string(),
+            ));
+        }
+        if find_deletes(&words) {
+            return Some((
+                "find -delete".to_string(),
+                "Blocked: find deletes every file that matches its predicate".to_string(),
+            ));
+        }
+    }
+    None
 }
 
 /// Whether an allowlist concept authorises this exact command.
@@ -617,40 +897,61 @@ impl CommandGuard {
         // The matches were computed before the allowlist stage, so the
         // allowlist and the destructive stage always agree on what the
         // destructive dictionary says about the command.
-        match destructive_matches {
-            Ok(matches) if !matches.is_empty() => {
-                let first_match = &matches[0];
-                let reason = first_match.normalized_term.url.clone().unwrap_or_else(|| {
-                    format!(
-                        "Blocked: matched destructive pattern '{}'",
-                        first_match.term
-                    )
-                });
-                let pattern = first_match.term.clone();
-                stages.push(GuardStageTrace {
-                    stage: "destructive".into(),
-                    matched: true,
-                    matched_term: Some(pattern.clone()),
-                    outcome: "block".into(),
-                });
-                return GuardTrace {
-                    result: GuardResult::block(command.to_string(), reason, pattern),
-                    stages,
-                };
-            }
-            Ok(_) => stages.push(GuardStageTrace {
+        //
+        // A command can also be destructive by its *shape*: the dictionary
+        // matches literal strings, so `rm --recursive --force /` and
+        // `git push origin +main` share no substring with any entry
+        // (terraphim-clients#511). Those are recognised by parsing the
+        // command.
+        let shape = destructive_by_shape(command);
+        let dictionary_hit = match &destructive_matches {
+            Ok(matches) if !matches.is_empty() => Some(matches[0].clone()),
+            Ok(_) => None,
+            Err(_) => None,
+        };
+
+        if let Some(first_match) = dictionary_hit {
+            let reason = first_match.normalized_term.url.clone().unwrap_or_else(|| {
+                format!(
+                    "Blocked: matched destructive pattern '{}'",
+                    first_match.term
+                )
+            });
+            let pattern = first_match.term.clone();
+            stages.push(GuardStageTrace {
                 stage: "destructive".into(),
-                matched: false,
-                matched_term: None,
-                outcome: "no_match".into(),
-            }),
-            Err(_) => stages.push(GuardStageTrace {
-                stage: "destructive".into(),
-                matched: false,
-                matched_term: None,
-                outcome: "continue".into(),
-            }),
+                matched: true,
+                matched_term: Some(pattern.clone()),
+                outcome: "block".into(),
+            });
+            return GuardTrace {
+                result: GuardResult::block(command.to_string(), reason, pattern),
+                stages,
+            };
         }
+
+        if let Some((pattern, reason)) = shape {
+            stages.push(GuardStageTrace {
+                stage: "destructive".into(),
+                matched: true,
+                matched_term: Some(pattern.clone()),
+                outcome: "block".into(),
+            });
+            return GuardTrace {
+                result: GuardResult::block(command.to_string(), reason, pattern),
+                stages,
+            };
+        }
+
+        stages.push(GuardStageTrace {
+            stage: "destructive".into(),
+            matched: false,
+            matched_term: None,
+            outcome: match destructive_matches {
+                Err(_) => "continue".into(),
+                _ => "no_match".into(),
+            },
+        });
 
         // Stage 3: suspicious (short-circuits to Sandbox).
         match find_matches(command, &self.suspicious_thesaurus, false) {
@@ -1290,6 +1591,123 @@ mod tests {
     /// friends, so the whole-command comparison used to exempt them before the
     /// safety evaluation ran: `rm -rf /tmp/` was allowed while `rm -rf /tmp`
     /// was blocked, although the two delete the same thing.
+    /// The destructive dictionary matches literal strings, so the equivalent
+    /// long-form and reordered spellings were allowed
+    /// (terraphim-clients#511).
+    #[test]
+    fn test_recursive_force_deletes_are_recognised_by_their_shape() {
+        let guard = CommandGuard::new();
+        for command in [
+            "rm --recursive --force /",
+            "rm -r --force /",
+            "rm -R -f /",
+            "rm --force --recursive /",
+            "rm --recursive --force $HOME",
+            "rm --recursive --force /home/user/data",
+        ] {
+            assert_eq!(
+                guard.check(command).decision,
+                GuardDecision::Block,
+                "{command:?} is a recursive forced delete and must be blocked"
+            );
+        }
+    }
+
+    /// The safe cleanup inside a temporary root stays allowed, in its long
+    /// spellings too (terraphim-clients#511).
+    #[test]
+    fn test_a_temporary_cleanup_stays_allowed_in_every_spelling() {
+        let guard = CommandGuard::new();
+        for command in [
+            "rm -rf /tmp/foo",
+            "rm --recursive --force /tmp/foo",
+            "rm -r --force /tmp/foo",
+            "rm -R -f /tmp/foo",
+            "rm --recursive --force /var/tmp/build-cache",
+        ] {
+            assert_eq!(
+                guard.check(command).decision,
+                GuardDecision::Allow,
+                "{command:?} stays inside the temporary root and must stay allowed"
+            );
+        }
+    }
+
+    /// An unconditional force push is a force push, whatever it is spelled
+    /// (terraphim-clients#511).
+    #[test]
+    fn test_unconditional_force_pushes_are_recognised_by_their_shape() {
+        let guard = CommandGuard::new();
+        for command in [
+            "git push origin +main",
+            "git push origin +refs/heads/main",
+            "git push origin main:main --force",
+            "git push --force origin main",
+            "git push -f origin main",
+        ] {
+            assert_eq!(
+                guard.check(command).decision,
+                GuardDecision::Block,
+                "{command:?} overwrites the remote history and must be blocked"
+            );
+        }
+    }
+
+    /// A conditional force push is not an unconditional one
+    /// (terraphim-clients#511).
+    #[test]
+    fn test_a_conditional_force_push_stays_allowed() {
+        let guard = CommandGuard::new();
+        for command in [
+            "git push --force-with-lease origin main",
+            "git push origin feature",
+            "git push origin main",
+        ] {
+            assert_eq!(
+                guard.check(command).decision,
+                GuardDecision::Allow,
+                "{command:?} does not overwrite the remote history and must stay allowed"
+            );
+        }
+    }
+
+    /// `find` that deletes what it matches is a destructive operation
+    /// (terraphim-clients#511).
+    #[test]
+    fn test_find_that_deletes_is_blocked() {
+        let guard = CommandGuard::new();
+        for command in [
+            "find . -delete",
+            "find . -name '*.rs' -delete",
+            "find . -type f -exec rm {} ;",
+            "find . -exec /bin/rm {} +",
+            "find /var/log -name '*.gz' -delete",
+        ] {
+            assert_eq!(
+                guard.check(command).decision,
+                GuardDecision::Block,
+                "{command:?} deletes every file that matches and must be blocked"
+            );
+        }
+    }
+
+    /// `find` that only reads is not destructive (terraphim-clients#511).
+    #[test]
+    fn test_find_that_only_reads_stays_allowed() {
+        let guard = CommandGuard::new();
+        for command in [
+            "find . -name '*.rs' -print",
+            "find . -type f -exec echo {} ;",
+            "find . -maxdepth 2 -type d",
+        ] {
+            assert_eq!(
+                guard.check(command).decision,
+                GuardDecision::Allow,
+                "{command:?} only reads and must stay allowed"
+            );
+        }
+    }
+
     #[test]
     fn test_tmp_cleanup_rejects_the_root_with_a_trailing_slash() {
         let guard = CommandGuard::new();
