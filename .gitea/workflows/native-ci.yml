@@ -180,7 +180,12 @@ jobs:
       # The host runner PATH omits the default Cargo install bin directory.
       # Cargo finds llvm-cov there itself, but the guard also executes
       # cargo-nextest directly. Scope the same install path to this lane.
-      - run: RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER="" PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH" cargo test -p terraphim_agent --test ci_guards -- --nocapture
+      # TERRAPHIM_STRICT_TOOLCHAIN=1: this lane has the pinned toolchain first
+      # on PATH, so the local-vs-pin drift check must be fatal here. Elsewhere
+      # (developer machines, and the workspace lane whose PATH does not carry
+      # the pinned installs) the same drift is reported, not fatal -- it is a
+      # property of the machine, not of the repository. Refs #497.
+      - run: RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER="" TERRAPHIM_STRICT_TOOLCHAIN=1 PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH" cargo test -p terraphim_agent --test ci_guards -- --nocapture
       # #313: first coverage lane in the monorepo. nextest runs each test
       # binary in its own process so llvm-cov can attribute per-test
       # coverage. --workspace --all-targets mirrors the existing cargo

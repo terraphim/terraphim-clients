@@ -156,21 +156,52 @@ fn coverage_tool_pinning_matches_local_toolchain() {
             .to_string()
     };
 
-    assert_eq!(
-        local_cov, pinned_cov,
-        "cargo-llvm-cov version drift: local toolchain has {local_cov}, but \
-         .gitea/workflows/native-ci.yml pins {pinned_cov}. Bump the \
-         native-ci.yml `--version` pin (or align the local install) so the \
-         coverage lane and local runs use the same rustc-instrumentation \
-         ABI. Refs #313, #342."
+    assert_toolchain_matches(
+        "cargo-llvm-cov",
+        &local_cov,
+        pinned_cov,
+        strict_toolchain_required(),
     );
-    assert_eq!(
-        local_nextest, pinned_nextest,
-        "cargo-nextest version drift: local toolchain has {local_nextest}, \
-         but .gitea/workflows/native-ci.yml pins {pinned_nextest}. Bump the \
-         native-ci.yml `--version` pin (or align the local install) so the \
-         coverage lane and local runs agree. Refs #313, #342."
+    assert_toolchain_matches(
+        "cargo-nextest",
+        &local_nextest,
+        pinned_nextest,
+        strict_toolchain_required(),
     );
+}
+
+/// Whether a local-toolchain drift must fail the guard.
+///
+/// The drift matters for the coverage lane's rustc-instrumentation ABI, but a
+/// developer whose machine carries a different patch release of the tool is not
+/// a repository defect: failing there made `cargo test` red for reasons the
+/// diff cannot cause. CI keeps the strict check by exporting
+/// `TERRAPHIM_STRICT_TOOLCHAIN=1` in the lane that runs this guard with the
+/// pinned tools first on `PATH`; elsewhere the drift is reported, not fatal.
+/// Refs #497, #313, #342.
+fn strict_toolchain_required() -> bool {
+    std::env::var("TERRAPHIM_STRICT_TOOLCHAIN").as_deref() == Ok("1")
+}
+
+/// Compare the installed tool version with the workflow pin.
+///
+/// In strict mode a mismatch fails the guard. Otherwise the mismatch is
+/// reported, so the developer sees the drift and the reason without the whole
+/// suite going red.
+fn assert_toolchain_matches(tool: &str, local: &str, pinned: &str, strict: bool) {
+    if local == pinned {
+        return;
+    }
+    let message = format!(
+        "{tool} version drift: local toolchain has {local}, but \
+         .gitea/workflows/native-ci.yml pins {pinned}. Bump the native-ci.yml \
+         `--version` pin (or align the local install) so the coverage lane and \
+         local runs use the same rustc-instrumentation ABI. Refs #313, #342, #497."
+    );
+    if strict {
+        panic!("{message}");
+    }
+    println!("warning: {message}");
 }
 
 /// Extract the pinned `--version` of `tool` from its `cargo install` line in
@@ -1325,4 +1356,19 @@ fn env_mutation_scanner_reports_an_unlisted_site() {
         vec![("synthetic.rs".to_string(), "env::set_var(", 1usize)],
         "the scanner must report an unlisted direct site"
     );
+}
+
+/// A toolchain drift must fail the guard in strict mode.
+#[test]
+#[should_panic(expected = "cargo-llvm-cov version drift")]
+fn toolchain_drift_is_fatal_in_strict_mode() {
+    assert_toolchain_matches("cargo-llvm-cov", "0.8.7", "0.8.5", true);
+}
+
+/// Outside strict mode the same drift is reported, not fatal, so a developer
+/// machine with a different patch release keeps a green suite.
+#[test]
+fn toolchain_drift_is_only_reported_outside_strict_mode() {
+    assert_toolchain_matches("cargo-llvm-cov", "0.8.7", "0.8.5", false);
+    assert_toolchain_matches("cargo-nextest", "0.9.144", "0.9.144", false);
 }
