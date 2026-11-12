@@ -7,10 +7,11 @@ use std::time::Duration;
 use tokio::time::timeout;
 
 mod support;
+use support::binary::{server_binary_path, skip_without_server};
 use support::server_process::ServerProcessGuard;
 
 /// Test helper to start a real terraphim server for testing
-async fn start_test_server() -> Result<(ServerProcessGuard, String)> {
+async fn start_test_server() -> Result<Option<(ServerProcessGuard, String)>> {
     // Find an available port
     let port = portpicker::pick_unused_port().expect("Failed to find unused port");
     let server_url = format!("http://localhost:{}", port);
@@ -21,12 +22,15 @@ async fn start_test_server() -> Result<(ServerProcessGuard, String)> {
     // terraphim_server is not a workspace member, so it cannot be run from
     // here; a nested cargo would also deadlock under `cargo test`. Point
     // TERRAPHIM_SERVER_BIN at a prebuilt binary to exercise this. Refs #113.
-    let server_bin = std::env::var("TERRAPHIM_SERVER_BIN").map_err(|_| {
-        anyhow::anyhow!(
-            "TERRAPHIM_SERVER_BIN is not set and terraphim_server is not a \
-             member of this workspace; cannot start a server. Refs #113"
-        )
-    })?;
+    if skip_without_server("server_mode_tests") {
+        // No server binary on this machine: skip with the shared notice
+        // instead of failing (Refs #466).
+        return Ok(None);
+    }
+    let server_bin = server_binary_path()
+        .expect("server_binary_path must resolve when skip_without_server returned false")
+        .to_string_lossy()
+        .to_string();
     let mut command = Command::new(server_bin);
     command
         .args([
@@ -52,7 +56,7 @@ async fn start_test_server() -> Result<(ServerProcessGuard, String)> {
         match client.get(&health_url).send().await {
             Ok(response) if response.status().is_success() => {
                 println!("Server ready after {} seconds", attempt);
-                return Ok((server, server_url));
+                return Ok(Some((server, server_url)));
             }
             Ok(_) => println!("Server responding but not healthy (attempt {})", attempt),
             Err(_) => println!("Server not responding yet (attempt {})", attempt),
@@ -96,7 +100,9 @@ fn run_server_command(server_url: &str, args: &[&str]) -> Result<(String, String
 #[tokio::test]
 #[serial]
 async fn test_server_mode_config_show() -> Result<()> {
-    let (server, server_url) = start_test_server().await?;
+    let Some((server, server_url)) = start_test_server().await? else {
+        return Ok(());
+    };
 
     // Test config show with real server
     let (stdout, stderr, code) = run_server_command(&server_url, &["config", "show"])?;
@@ -136,7 +142,9 @@ async fn test_server_mode_config_show() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_server_mode_roles_list() -> Result<()> {
-    let (server, server_url) = start_test_server().await?;
+    let Some((server, server_url)) = start_test_server().await? else {
+        return Ok(());
+    };
 
     // Test roles list with real server
     let (stdout, stderr, code) = run_server_command(&server_url, &["roles", "list"])?;
@@ -168,7 +176,9 @@ async fn test_server_mode_roles_list() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_server_mode_search_with_selected_role() -> Result<()> {
-    let (server, server_url) = start_test_server().await?;
+    let Some((server, server_url)) = start_test_server().await? else {
+        return Ok(());
+    };
 
     // Give server time to index documents
     thread::sleep(Duration::from_secs(3));
@@ -209,7 +219,9 @@ async fn test_server_mode_search_with_selected_role() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_server_mode_search_with_role_override() -> Result<()> {
-    let (server, server_url) = start_test_server().await?;
+    let Some((server, server_url)) = start_test_server().await? else {
+        return Ok(());
+    };
 
     // Give server time to index documents
     thread::sleep(Duration::from_secs(2));
@@ -245,7 +257,9 @@ async fn test_server_mode_search_with_role_override() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_server_mode_roles_select() -> Result<()> {
-    let (server, server_url) = start_test_server().await?;
+    let Some((server, server_url)) = start_test_server().await? else {
+        return Ok(());
+    };
 
     // First check what roles are available
     let (roles_stdout, _, _) = run_server_command(&server_url, &["roles", "list"])?;
@@ -300,7 +314,9 @@ async fn test_server_mode_roles_select() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_server_mode_graph_command() -> Result<()> {
-    let (server, server_url) = start_test_server().await?;
+    let Some((server, server_url)) = start_test_server().await? else {
+        return Ok(());
+    };
 
     // Give server time to build knowledge graph
     thread::sleep(Duration::from_secs(5));
@@ -330,7 +346,9 @@ async fn test_server_mode_graph_command() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_server_mode_chat_command() -> Result<()> {
-    let (server, server_url) = start_test_server().await?;
+    let Some((server, server_url)) = start_test_server().await? else {
+        return Ok(());
+    };
 
     // Test chat command with real server
     let (stdout, stderr, code) = run_server_command(&server_url, &["chat", "Hello, how are you?"])?;
@@ -355,7 +373,9 @@ async fn test_server_mode_chat_command() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_server_mode_extract_command() -> Result<()> {
-    let (server, server_url) = start_test_server().await?;
+    let Some((server, server_url)) = start_test_server().await? else {
+        return Ok(());
+    };
 
     // Give server time to load thesaurus
     thread::sleep(Duration::from_secs(3));
@@ -382,7 +402,9 @@ async fn test_server_mode_extract_command() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_server_mode_config_set() -> Result<()> {
-    let (server, server_url) = start_test_server().await?;
+    let Some((server, server_url)) = start_test_server().await? else {
+        return Ok(());
+    };
 
     // Test config set with real server
     let (stdout, stderr, code) = run_server_command(
@@ -411,7 +433,9 @@ async fn test_server_mode_config_set() -> Result<()> {
 #[serial]
 async fn test_server_vs_offline_mode_comparison() -> Result<()> {
     // Start server for comparison
-    let (server, server_url) = start_test_server().await?;
+    let Some((server, server_url)) = start_test_server().await? else {
+        return Ok(());
+    };
 
     // Test the same command in both modes
     let (server_stdout, _server_stderr, server_code) =
@@ -465,7 +489,9 @@ async fn test_server_vs_offline_mode_comparison() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_server_startup_and_health() -> Result<()> {
-    let (server, server_url) = start_test_server().await?;
+    let Some((server, server_url)) = start_test_server().await? else {
+        return Ok(());
+    };
 
     // Test that server is actually healthy
     let client = reqwest::Client::new();
