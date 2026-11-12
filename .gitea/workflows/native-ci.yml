@@ -186,6 +186,11 @@ jobs:
       # the pinned installs) the same drift is reported, not fatal -- it is a
       # property of the machine, not of the repository. Refs #497.
       - run: RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER="" TERRAPHIM_STRICT_TOOLCHAIN=1 PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH" cargo test -p terraphim_agent --test ci_guards -- --nocapture
+      # #467: the pi-terraphim-learn plugin package is JavaScript, so the
+      # workspace cargo tests never exercised it. The wrapper skips with a
+      # notice when the runner has no node; the GitHub lane runs it.
+      - name: pi-terraphim-learn functional test
+        run: bash ./scripts/ci/pi-terraphim-learn-tests.sh
       # #313: first coverage lane in the monorepo. nextest runs each test
       # binary in its own process so llvm-cov can attribute per-test
       # coverage. --workspace --all-targets mirrors the existing cargo

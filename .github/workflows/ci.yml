@@ -48,6 +48,11 @@ jobs:
       # On Gitea these lanes live in .gitea/workflows/native-ci.yml, which is
       # intentionally not part of the GitHub port.
       - run: cargo test -p terraphim_update --test manifest --test r2_update --test managed_mode --test policy --no-fail-fast
+      # The pi-terraphim-learn plugin package is JavaScript, so the workspace
+      # cargo tests never exercised it (#467). The wrapper is a repo script
+      # because the native runner's command policy allows only cargo and scripts.
+      - name: pi-terraphim-learn functional test
+        run: bash ./scripts/ci/pi-terraphim-learn-tests.sh
 
   client-packaging-contracts:
     name: Client DEB/RPM packaging producer contracts
