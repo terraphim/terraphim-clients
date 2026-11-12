@@ -1157,11 +1157,6 @@ const ENV_MUTATION_NEEDLES: &[&str] = &[
 /// stale entry fails this guard, so the list cannot rot.
 const KNOWN_ENV_MUTATION_SITES: &[EnvMutationSite] = &[
     EnvMutationSite {
-        file: "crates/terraphim_update/src/state.rs",
-        needle: "env::set_var(",
-        count: 5,
-    },
-    EnvMutationSite {
         file: "crates/terraphim_update/tests/managed_mode_home_env.rs",
         needle: "env::set_var(",
         count: 2,
