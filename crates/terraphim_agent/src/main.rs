@@ -3068,8 +3068,9 @@ async fn run_shared_learning_command(
                 }
             } else {
                 println!(
-                    "Injection complete: {} injected, {} skipped (trust), {} skipped (context), {} skipped (exists)",
+                    "Injection complete: {} injected, {} skipped (rejected), {} skipped (trust), {} skipped (context), {} skipped (exists)",
                     result.injected,
+                    result.skipped_rejected,
                     result.skipped_trust,
                     result.skipped_context,
                     result.skipped_exists

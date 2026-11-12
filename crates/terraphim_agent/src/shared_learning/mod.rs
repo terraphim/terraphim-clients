@@ -21,7 +21,7 @@
 mod markdown_store;
 mod redaction;
 mod store;
-mod types;
+pub mod types;
 pub mod validation;
 mod wiki_sync;
 
@@ -29,7 +29,10 @@ pub use markdown_store::{MarkdownLearningStore, MarkdownStoreConfig, MarkdownSto
 pub use redaction::redact_secrets;
 pub use store::{SharedLearningStore, StoreConfig};
 pub use terraphim_types::shared_learning::SuggestionStatus;
-pub use types::{LearningSource as SharedLearningSource, SharedLearning, TrustLevel};
+pub use types::{
+    LearningSource as SharedLearningSource, SharedLearning, TrustLevel, effective_trust,
+    meets_l2_criteria, status_is_usable,
+};
 pub use wiki_sync::{
     GiteaWikiClient, GiteaWikiConfig, WikiSyncError, WikiSyncReport, WikiSyncService,
 };

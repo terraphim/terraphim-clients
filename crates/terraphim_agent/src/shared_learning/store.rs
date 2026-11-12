@@ -364,6 +364,14 @@ impl SharedLearningStore {
         let learning = index
             .get_mut(id)
             .ok_or_else(|| StoreError::NotFound(id.to_string()))?;
+        // A rejected learning stays rejected: promotion is not a way to route
+        // around the rejection (terraphim-clients#388).
+        if learning.suggestion_status == SuggestionStatus::Rejected {
+            return Err(StoreError::InvalidInput(format!(
+                "learning {id} was rejected; lift the rejection explicitly with \
+                 approve_after_rejection"
+            )));
+        }
         learning.promote_to_l3();
         let updated = learning.clone();
         drop(index);
@@ -389,11 +397,24 @@ impl SharedLearningStore {
             .collect())
     }
 
+    /// Approve a suggestion and promote it to L3.
+    ///
+    /// A learning that was **rejected** is not approved by accident: the
+    /// rejection has to be lifted explicitly, with a reason, through
+    /// [`Self::approve_after_rejection`]. Without that, a rejected L2 learning
+    /// could be promoted straight back to L3 by any approve call
+    /// (terraphim-clients#388).
     pub async fn approve(&self, id: &str) -> Result<(), StoreError> {
         let mut index = self.index.write().await;
         let learning = index
             .get_mut(id)
             .ok_or_else(|| StoreError::NotFound(id.to_string()))?;
+        if learning.suggestion_status == SuggestionStatus::Rejected {
+            return Err(StoreError::InvalidInput(format!(
+                "learning {id} was rejected; lift the rejection explicitly with \
+                 approve_after_rejection"
+            )));
+        }
         learning.suggestion_status = SuggestionStatus::Approved;
         learning.promote_to_l3();
         let updated = learning.clone();
@@ -401,6 +422,30 @@ impl SharedLearningStore {
 
         self.persist(&updated).await?;
         info!("Approved suggestion {}", id);
+        Ok(())
+    }
+
+    /// Lift a rejection and approve the learning anyway.
+    ///
+    /// The explicit override is the point: a rejection is a decision, and
+    /// reversing it has to be a decision too. The reason is recorded.
+    pub async fn approve_after_rejection(&self, id: &str, reason: &str) -> Result<(), StoreError> {
+        let mut index = self.index.write().await;
+        let learning = index
+            .get_mut(id)
+            .ok_or_else(|| StoreError::NotFound(id.to_string()))?;
+        learning.suggestion_status = SuggestionStatus::Approved;
+        learning.rejection_reason = None;
+        learning.promote_to_l3();
+        learning.updated_at = Utc::now();
+        let updated = learning.clone();
+        drop(index);
+
+        self.persist(&updated).await?;
+        info!(
+            "Approved previously rejected suggestion {} with override reason: {}",
+            id, reason
+        );
         Ok(())
     }
 
@@ -436,7 +481,8 @@ impl SharedLearningStore {
 
         let should_auto_promote = self.config.auto_promote_l2
             && learning.trust_level == TrustLevel::L1
-            && learning.quality.meets_l2_criteria();
+            && crate::shared_learning::types::status_is_usable(learning.suggestion_status)
+            && crate::shared_learning::types::meets_l2_criteria(&learning.quality);
 
         if should_auto_promote {
             learning.promote_to_l2();
@@ -516,8 +562,10 @@ impl SharedLearningStore {
         let applicable: Vec<SharedLearning> = index
             .values()
             .filter(|doc| {
-                doc.applicable_agents.is_empty()
-                    || doc.applicable_agents.contains(&agent_name.to_string())
+                // A rejected learning is never suggested (terraphim-clients#388).
+                crate::shared_learning::types::status_is_usable(doc.suggestion_status)
+                    && (doc.applicable_agents.is_empty()
+                        || doc.applicable_agents.contains(&agent_name.to_string()))
             })
             .cloned()
             .collect();
@@ -776,6 +824,61 @@ mod tests {
             .with_similarity_threshold(0.3)
             .with_markdown_config(markdown_config);
         SharedLearningStore::open(config).await.unwrap()
+    }
+
+    /// A rejected learning is never suggested, and approving it needs the
+    /// explicit override (terraphim-clients#388).
+    #[tokio::test]
+    async fn rejected_learnings_are_not_suggested_and_need_an_override() {
+        let store = create_test_store().await;
+        let learning = SharedLearning::new(
+            "Rejected suggestion".to_string(),
+            "body".to_string(),
+            LearningSource::BashHook,
+            "agent-a".to_string(),
+        );
+        let id = learning.id.clone();
+        store.insert(learning).await.unwrap();
+        store.promote_to_l2(&id).await.unwrap();
+
+        store.reject(&id, Some("not applicable")).await.unwrap();
+        let suggestions = store
+            .suggest("Rejected suggestion", "agent-b", 10)
+            .await
+            .unwrap();
+        assert!(
+            suggestions.iter().all(|s| s.id != id),
+            "a rejected learning must not be suggested, got {suggestions:?}"
+        );
+
+        let error = store
+            .approve(&id)
+            .await
+            .expect_err("approving a rejected learning must fail");
+        assert!(
+            error.to_string().contains("rejected"),
+            "the error must say the learning was rejected, got: {error}"
+        );
+
+        let error = store
+            .promote_to_l3(&id)
+            .await
+            .expect_err("promoting a rejected learning must fail");
+        assert!(
+            error.to_string().contains("rejected"),
+            "the error must say the learning was rejected, got: {error}"
+        );
+
+        store
+            .approve_after_rejection(&id, "re-checked, it is fine")
+            .await
+            .unwrap();
+        let learning = store.get(&id).await.unwrap();
+        assert_eq!(
+            learning.suggestion_status,
+            SuggestionStatus::Approved,
+            "the explicit override must approve the learning"
+        );
     }
 
     #[tokio::test]

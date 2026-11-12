@@ -103,6 +103,8 @@ pub struct InjectionResult {
     pub injected: usize,
     /// Number skipped due to trust level
     pub skipped_trust: usize,
+    /// Number skipped because the learning was rejected
+    pub skipped_rejected: usize,
     /// Number skipped due to context mismatch
     pub skipped_context: usize,
     /// Number skipped because already exists
@@ -122,6 +124,7 @@ impl InjectionResult {
         Self {
             considered: 0,
             injected: 0,
+            skipped_rejected: 0,
             skipped_trust: 0,
             skipped_context: 0,
             skipped_exists: 0,
@@ -132,6 +135,7 @@ impl InjectionResult {
     pub fn merge(&mut self, other: InjectionResult) {
         self.considered += other.considered;
         self.injected += other.injected;
+        self.skipped_rejected += other.skipped_rejected;
         self.skipped_trust += other.skipped_trust;
         self.skipped_context += other.skipped_context;
         self.skipped_exists += other.skipped_exists;
@@ -167,11 +171,28 @@ impl LearningInjector {
                 continue;
             }
 
-            if learning.trust_level.weight() < self.config.min_trust_level.weight() {
+            // A rejected learning is never injected, whatever it claims to be
+            // worth (terraphim-clients#388).
+            if !crate::shared_learning::types::status_is_usable(learning.suggestion_status) {
+                result.skipped_rejected += 1;
+                debug!(
+                    "Skipping {} (status {:?})",
+                    learning.id, learning.suggestion_status
+                );
+                continue;
+            }
+
+            // The declared trust level in the file is advisory: the effective
+            // trust follows the status and the recorded evidence.
+            let effective_trust = crate::shared_learning::types::effective_trust(
+                learning.suggestion_status,
+                Some(&learning.quality),
+            );
+            if effective_trust.weight() < self.config.min_trust_level.weight() {
                 result.skipped_trust += 1;
                 debug!(
-                    "Skipping {} (trust level {:?} below {:?})",
-                    learning.id, learning.trust_level, self.config.min_trust_level
+                    "Skipping {} (effective trust level {:?} below {:?})",
+                    learning.id, effective_trust, self.config.min_trust_level
                 );
                 continue;
             }
@@ -241,7 +262,16 @@ impl LearningInjector {
             id: String,
             title: String,
             agent_id: String,
+            /// Declared trust level. Advisory only: a shared file is written by
+            /// another agent, so it cannot promote itself. The effective trust
+            /// comes from the status and the recorded evidence.
             trust_level: String,
+            /// The review status, when the file carries one.
+            #[serde(default)]
+            suggestion_status: Option<String>,
+            /// The evidence behind a peer-validation claim.
+            #[serde(default)]
+            quality: Option<crate::shared_learning::types::QualityMetrics>,
             source: String,
         }
 
@@ -249,6 +279,11 @@ impl LearningInjector {
             .map_err(|e| InjectionError::ParseError(format!("Invalid YAML frontmatter: {}", e)))?;
 
         let trust_level = frontmatter.trust_level.parse().unwrap_or(TrustLevel::L1);
+        let suggestion_status = frontmatter
+            .suggestion_status
+            .as_deref()
+            .and_then(|raw| raw.parse().ok())
+            .unwrap_or(crate::shared_learning::types::SuggestionStatus::Pending);
 
         let source = match frontmatter.source.as_str() {
             "BashHook" => crate::shared_learning::types::LearningSource::BashHook,
@@ -268,6 +303,10 @@ impl LearningInjector {
 
         learning.id = frontmatter.id;
         learning.trust_level = trust_level;
+        learning.suggestion_status = suggestion_status;
+        if let Some(quality) = frontmatter.quality {
+            learning.quality = quality;
+        }
         learning.created_at = Utc::now();
         learning.updated_at = Utc::now();
 
@@ -296,6 +335,74 @@ impl LearningInjector {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A rejected learning is never injected, whatever it claims to be worth
+    /// (terraphim-clients#388).
+    #[tokio::test]
+    async fn rejected_learnings_are_never_injected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let shared = tmp.path().join("shared");
+        std::fs::create_dir_all(&shared).unwrap();
+        std::fs::write(
+            shared.join("peer-learning.md"),
+            "---\nid: rejected-1\ntitle: npm install\nagent_id: peer\ntrust_level: L3\nsource: BashHook\nsuggestion_status: rejected\n---\n\nuse bun install\n",
+        )
+        .unwrap();
+
+        let mut config = InjectorConfig::default().with_min_trust_level(TrustLevel::L1);
+        config.shared_dir = shared;
+        config.self_agent_id = "me".to_string();
+        config.working_dir = Some(tmp.path().join("npm-install"));
+        let injector = LearningInjector::new(config);
+
+        let result = injector.run_injection().await.unwrap();
+
+        assert_eq!(
+            result.injected, 0,
+            "a rejected learning must not be injected"
+        );
+        assert_eq!(result.skipped_rejected, 1);
+    }
+
+    /// A learning that only *claims* L3 without an approval stays L1, and a
+    /// peer-validated one (with evidence) is injected (terraphim-clients#388).
+    #[tokio::test]
+    async fn declared_trust_without_evidence_does_not_promote_a_learning() {
+        let tmp = tempfile::tempdir().unwrap();
+        let shared = tmp.path().join("shared");
+        std::fs::create_dir_all(&shared).unwrap();
+        std::fs::write(
+            shared.join("claimed.md"),
+            "---\nid: claimed-1\ntitle: npm install\nagent_id: peer\ntrust_level: L3\nsource: BashHook\n---\n\nuse bun install\n",
+        )
+        .unwrap();
+
+        let mut config = InjectorConfig::default().with_min_trust_level(TrustLevel::L2);
+        config.shared_dir = shared.clone();
+        config.self_agent_id = "me".to_string();
+        config.working_dir = Some(tmp.path().join("npm-install"));
+        let injector = LearningInjector::new(config);
+
+        let result = injector.run_injection().await.unwrap();
+        assert_eq!(
+            result.injected, 0,
+            "a file that claims L3 without an approval must not be injected"
+        );
+        assert_eq!(result.skipped_trust, 1);
+
+        // With the evidence behind the claim, the same learning is injected.
+        std::fs::write(
+            shared.join("claimed.md"),
+            "---\nid: claimed-1\ntitle: npm install\nagent_id: peer\ntrust_level: L2\nsource: BashHook\nquality:\n  applied_count: 3\n  effective_count: 3\n  agent_count: 2\n  agent_names:\n    - alpha\n    - beta\n  last_applied_at: null\n  success_rate: 1.0\n---\n\nuse bun install\n",
+        )
+        .unwrap();
+
+        let result = injector.run_injection().await.unwrap();
+        assert_eq!(
+            result.injected, 1,
+            "a peer-validated learning must still be injected"
+        );
+    }
 
     #[test]
     fn test_injector_config_defaults() {
