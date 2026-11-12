@@ -394,6 +394,23 @@ pub(crate) enum CacheSub {
         #[arg(long)]
         role: Option<String>,
     },
+    /// List the compiled thesaurus cache entries
+    List,
+    /// Export a role's compiled thesaurus (recompiled if its source changed)
+    Export {
+        /// Role to export (name or shortname)
+        #[arg(long, conflicts_with = "all")]
+        role: Option<String>,
+        /// Export every configured role (one file per role, needs --dir)
+        #[arg(long, requires = "dir")]
+        all: bool,
+        /// Write the export to this file ("-" means stdout)
+        #[arg(long, conflicts_with = "dir", requires = "role")]
+        out: Option<String>,
+        /// Write one file per role into this directory (needs --all)
+        #[arg(long, requires = "all")]
+        dir: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]

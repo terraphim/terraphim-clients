@@ -1,6 +1,6 @@
 use std::io;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 use crossterm::{
     event::{
@@ -20,7 +20,9 @@ use ratatui::{
 use serde::Serialize;
 #[cfg(feature = "repl")]
 use terraphim_agent::repl;
-use terraphim_agent::{cache_flush, guard_patterns, learnings, onboarding, robot, tui_backend};
+use terraphim_agent::{
+    cache_export, cache_flush, guard_patterns, learnings, onboarding, robot, tui_backend,
+};
 use terraphim_persistence::Persistable;
 use tokio::runtime::Runtime;
 
@@ -2544,7 +2546,120 @@ async fn run_cache_command(sub: &CacheSub, config_path: Option<String>) -> Resul
             }
             Ok(())
         }
+        CacheSub::List => {
+            let storage = DeviceStorage::instance().await?;
+            let cached = cache_export::list_cached_thesauri(storage).await?;
+
+            // Map the persisted keys back to the roles that own them, so the
+            // listing shows which role a cached vocabulary belongs to.
+            let config = TuiService::load_config(config_path, false).await?;
+            let mut role_for_key: std::collections::HashMap<String, String> =
+                std::collections::HashMap::new();
+            for (name, _) in TuiService::roles_with_info_of(&config) {
+                if let Ok(keys) = cache_flush::role_thesaurus_keys(&config, &name) {
+                    for key in keys {
+                        role_for_key.insert(key, name.clone());
+                    }
+                }
+            }
+
+            println!("{:<28} {:<44} {:>8}  SOURCE HASH", "ROLE", "KEY", "ENTRIES");
+            for entry in &cached {
+                let role = role_for_key
+                    .get(&entry.key)
+                    .cloned()
+                    .unwrap_or_else(|| "-".to_string());
+                let hash = entry.source_hash.as_deref().unwrap_or("-");
+                println!(
+                    "{:<28} {:<44} {:>8}  {}",
+                    role, entry.key, entry.entries, hash
+                );
+            }
+            println!("{} cached thesaurus entries", cached.len());
+            Ok(())
+        }
+        CacheSub::Export {
+            role,
+            all,
+            out,
+            dir,
+        } => {
+            if role.is_none() && !all {
+                return Err(anyhow::anyhow!(
+                    "Nothing to export: pass --role <name|shortname>, or --all --dir <dir>"
+                ));
+            }
+
+            let config = TuiService::load_config(config_path.clone(), false).await?;
+            let service = TuiService::new(config_path, false).await?;
+
+            // Resolve the requested role by name or shortname; with --all, the
+            // export covers every configured role.
+            let targets: Vec<(String, String)> = match role.as_deref() {
+                Some(query) => {
+                    let resolved = service.resolve_role(Some(query)).await?;
+                    let name = resolved.to_string();
+                    let stem = role_file_stem(&config, &name);
+                    vec![(name, stem)]
+                }
+                None => TuiService::roles_with_info_of(&config)
+                    .into_iter()
+                    .map(|(name, shortname)| {
+                        let stem = shortname.unwrap_or_else(|| name.clone());
+                        (name, stem)
+                    })
+                    .collect(),
+            };
+
+            if targets.is_empty() {
+                eprintln!("No roles are configured, so there is nothing to export.");
+                return Ok(());
+            }
+
+            for (name, stem) in &targets {
+                let role_name = terraphim_types::RoleName::new(name);
+                // `get_thesaurus` rebuilds the role's vocabulary from its
+                // knowledge graph, so an export reflects an edited graph
+                // without a prior search.
+                let thesaurus = service.get_thesaurus(&role_name).await?;
+                let json = cache_export::thesaurus_json(&thesaurus)?;
+
+                let destination = match (out.as_deref(), dir.as_deref()) {
+                    (Some("-"), _) | (None, None) => {
+                        println!("{json}");
+                        continue;
+                    }
+                    (Some(path), _) => std::path::PathBuf::from(path),
+                    (None, Some(directory)) => {
+                        std::path::PathBuf::from(directory).join(format!("{stem}.json"))
+                    }
+                };
+
+                if let Some(parent) = destination.parent()
+                    && !parent.as_os_str().is_empty()
+                {
+                    std::fs::create_dir_all(parent)
+                        .with_context(|| format!("Failed to create {}", parent.display()))?;
+                }
+                std::fs::write(&destination, json)
+                    .with_context(|| format!("Failed to write {}", destination.display()))?;
+                println!("Exported role '{name}' to {}", destination.display());
+            }
+            Ok(())
+        }
     }
+}
+
+/// The file name stem used for a role's export.
+///
+/// The shortname is the stable, machine-friendly identifier; the role name is
+/// the fallback.
+fn role_file_stem(config: &terraphim_config::Config, role_name: &str) -> String {
+    TuiService::roles_with_info_of(config)
+        .into_iter()
+        .find(|(name, _)| name == role_name)
+        .and_then(|(_, shortname)| shortname)
+        .unwrap_or_else(|| role_name.to_string())
 }
 
 fn evolution_path() -> std::path::PathBuf {
