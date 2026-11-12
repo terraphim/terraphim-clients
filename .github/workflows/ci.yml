@@ -43,6 +43,10 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo build --workspace
       - run: cargo test --workspace --lib --no-fail-fast
+      # #459: the server-mode client (the `--server` mode) lives behind the
+      # `server` feature; the test build enables it through the `repl-full`
+      # dev-dependency, but a plain build does not.
+      - run: cargo check -p terraphim_agent --features server --all-targets
       # GitHub-side home for the updater integration contracts (managed-mode
       # receipt/refusal, strict v2 manifest readers, R2 checksum fail-closed).
       # On Gitea these lanes live in .gitea/workflows/native-ci.yml, which is
