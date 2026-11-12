@@ -159,6 +159,12 @@ jobs:
       - run: RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER="" TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo test -p terraphim_agent --test cross_mode_consistency_test -- --nocapture
       - run: RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER="" TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo test -p terraphim_agent --test integration_tests -- --nocapture
       - run: RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER="" TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo test -p terraphim_agent --test kg_ranking_integration_test -- --nocapture
+      # #459: the server-mode client (the `--server` mode) lives behind the
+      # `server` feature. The test build enables it through the `repl-full`
+      # dev-dependency, but a plain build does not - so the feature is
+      # compiled explicitly here, otherwise a break in the client would only
+      # be found by whoever builds with the feature on.
+      - run: RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER="" cargo check -p terraphim_agent --features server --all-targets
       # #2171: enrichment feature clippy + test invocations (feature-gated,
       # not covered by --all-targets with default features).
       - run: RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER="" cargo clippy -p terraphim_sessions --features enrichment -- -D warnings

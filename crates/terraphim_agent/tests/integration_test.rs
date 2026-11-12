@@ -108,8 +108,9 @@ async fn test_api_client_update_selected_role() {
 
     let client = ApiClient::new(TEST_SERVER_URL);
 
-    // Get current config to find available roles
-    let config_result = client.get_config().await;
+    // Get current config to find available roles. The snapshot also carries
+    // the ETag the write has to send as `If-Match` (#459).
+    let config_result = client.get_config_snapshot().await;
     assert!(config_result.is_ok());
     let config = config_result.unwrap();
 
@@ -122,7 +123,9 @@ async fn test_api_client_update_selected_role() {
     }
 
     let test_role = &role_names[0];
-    let result = client.update_selected_role(test_role).await;
+    let result = client
+        .update_selected_role(test_role, config.etag.as_deref())
+        .await;
     assert!(result.is_ok(), "Update selected role should succeed");
 
     let response: ConfigResponse = result.unwrap();
