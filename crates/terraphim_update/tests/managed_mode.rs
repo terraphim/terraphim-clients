@@ -12,6 +12,10 @@
 //! - A zero-write assertion against the real install destination
 //!   (`current_exe().parent()/<bin_name>`, the same path
 //!   `install_verified_archive` would write to) proves no install occurs.
+//!
+//! The one test that has to fake `HOME` lives in its own binary
+//! (`managed_mode_home_env.rs`): mutating the environment is `unsafe`, and a
+//! sibling test in this binary would read it concurrently. Refs #374.
 
 use std::io::Read;
 use std::net::TcpListener;
@@ -20,11 +24,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::Duration;
 
-use serial_test::serial;
 use terraphim_update::policy::{PackageManager, UpdatePolicy};
-use terraphim_update::{
-    TerraphimUpdater, UpdateStatus, UpdaterConfig, check_for_updates_auto_with_policy,
-};
+use terraphim_update::{TerraphimUpdater, UpdateStatus, UpdaterConfig};
 
 /// A real local HTTP server that counts every accepted connection and
 /// replies 404 to everything (the content doesn't matter -- what matters is
@@ -305,62 +306,4 @@ async fn package_managed_update_with_verification_makes_zero_writes() {
             "update_with_verification must not write {dest:?} when package-managed"
         );
     }
-}
-
-/// P1 regression: `check_for_updates_auto` (and therefore every caller that
-/// invokes it -- REPL `/update check`, `terraphim-cli check-update`,
-/// `check_for_updates_startup`, the update scheduler's periodic check) must
-/// short-circuit on a package-managed policy before ever touching
-/// `platform::get_binary_path` (which can create `~/.local/bin`) or the
-/// self_update GitHub backend. `check_for_updates_auto_with_policy` is the
-/// injectable seam this test exercises directly with a fake, temp-dir-rooted
-/// `HOME` so the zero-write assertion is real and doesn't depend on the
-/// sandbox's actual home directory already lacking `.local/bin`.
-#[tokio::test]
-#[serial(update_home_env)]
-async fn package_managed_check_for_updates_auto_with_policy_makes_no_home_writes() {
-    let temp_home = tempfile::tempdir().expect("tempdir");
-    let original_home = std::env::var("HOME").ok();
-    // SAFETY: serialized via #[serial] within this test binary; no other
-    // thread in this process mutates HOME concurrently.
-    unsafe {
-        std::env::set_var("HOME", temp_home.path());
-    }
-    let local_bin = temp_home.path().join(".local/bin");
-    assert!(
-        !local_bin.exists(),
-        "precondition: fake HOME must start without .local/bin"
-    );
-
-    let policy = package_managed_policy();
-    let result = tokio::time::timeout(
-        Duration::from_secs(5),
-        check_for_updates_auto_with_policy("terraphim-managed-mode-fake-bin", "0.0.1", &policy),
-    )
-    .await;
-
-    // SAFETY: restore before any assertion can panic and unwind past this.
-    unsafe {
-        match &original_home {
-            Some(home) => std::env::set_var("HOME", home),
-            None => std::env::remove_var("HOME"),
-        }
-    }
-
-    let status = result
-        .expect("check_for_updates_auto_with_policy must short-circuit instantly, not reach the network")
-        .expect("check_for_updates_auto_with_policy");
-    match status {
-        UpdateStatus::PackageManaged { update_command, .. } => {
-            assert!(
-                update_command.contains("sudo pacman -Syu"),
-                "unexpected update command: {update_command}"
-            );
-        }
-        other => panic!("expected PackageManaged, got {other:?}"),
-    }
-    assert!(
-        !local_bin.exists(),
-        "check_for_updates_auto_with_policy must not create ~/.local/bin when package-managed"
-    );
 }
