@@ -982,12 +982,29 @@ fn copy_test_server(source: &Path, destination: &Path) {
         .arg(source)
         .arg(destination)
         .status()
-        .expect("copy real executable for cleanup test");
-    assert!(status.success(), "copying test executable failed: {status}");
+        .expect("copy stand-in executable for cleanup test");
+    assert!(
+        status.success(),
+        "copying stand-in executable failed: {status}"
+    );
     std::fs::File::open(destination)
         .expect("open copied executable for sync")
         .sync_all()
         .expect("sync copied executable");
+}
+
+/// A POSIX shell to use as the stand-in `terraphim_server` binary.
+///
+/// The cleanup test needs an executable that accepts `-c <script>`, stays
+/// alive and handles TERM. `dash` is not installed everywhere (on Arch
+/// `/bin/sh` is bash), so the candidates are tried in order and the test
+/// skips when none of them exists. Refs #498.
+#[cfg(target_os = "linux")]
+fn stand_in_shell() -> Option<&'static Path> {
+    ["/usr/bin/dash", "/bin/dash", "/usr/bin/sh", "/bin/sh"]
+        .into_iter()
+        .map(Path::new)
+        .find(|path| path.is_file())
 }
 
 /// Linux regression coverage for checkout-scoped process identity checks.
@@ -1003,8 +1020,13 @@ fn cleanup_script_only_signals_verified_checkout_processes() {
     std::fs::create_dir_all(&nested).expect("create nested checkout directory");
     std::fs::create_dir(&other).expect("create other checkout directory");
 
+    let Some(shell) = stand_in_shell() else {
+        eprintln!("skipping: no POSIX shell available to stand in for terraphim_server");
+        return;
+    };
+
     let server_binary = checkout.join("terraphim_server");
-    copy_test_server(Path::new("/usr/bin/dash"), &server_binary);
+    copy_test_server(shell, &server_binary);
     let mut matching = TestProcess::spawn(
         &server_binary,
         &nested,
@@ -1053,10 +1075,15 @@ fn cleanup_script_only_signals_verified_checkout_processes() {
     {
         thread::sleep(Duration::from_millis(10));
     }
+    let replacement_exe = std::fs::read_link(format!("/proc/{replaced_pid}/exe"))
+        .expect("replacement process remains alive");
+    // Compare the resolved targets: `/bin/sleep` is a symlink to
+    // `/usr/bin/sleep` on some distributions and a real file on others, and
+    // `/proc/<pid>/exe` always names the resolved file. Refs #498.
     assert_eq!(
-        std::fs::read_link(format!("/proc/{replaced_pid}/exe"))
-            .expect("replacement process remains alive"),
-        Path::new("/usr/bin/sleep"),
+        std::fs::canonicalize(&replacement_exe).unwrap_or(replacement_exe.clone()),
+        std::fs::canonicalize("/bin/sleep")
+            .unwrap_or_else(|_| Path::new("/bin/sleep").to_path_buf()),
         "controlled process did not replace its executable"
     );
     std::fs::write(barrier.with_extension("continue"), b"").expect("release cleanup barrier");
