@@ -281,6 +281,14 @@ pub(crate) enum Command {
         /// to enable KG-driven rewriting.
         #[arg(long, default_value_t = false)]
         rewrite: bool,
+        /// The program the pre-tool-use hook asks for a guard decision.
+        ///
+        /// The guard runs out of process so that a crash inside it cannot turn
+        /// into an allow, and so the hook can block the call when the guard
+        /// produced no decision. The default is this binary. This option exists
+        /// for tests and for wrappers; the installed hook does not pass it.
+        #[arg(long, value_name = "PATH", hide = true)]
+        guard_program: Option<std::path::PathBuf>,
     },
     /// Check command against safety guard patterns (blocks destructive git/fs commands)
     Guard {

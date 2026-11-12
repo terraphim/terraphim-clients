@@ -1666,6 +1666,7 @@ async fn run_offline_command(
             with_guard,
             no_with_guard,
             rewrite,
+            guard_program,
         } => {
             return handle_hook_command(
                 HookArgs {
@@ -1675,6 +1676,7 @@ async fn run_offline_command(
                     with_guard,
                     no_with_guard,
                     rewrite,
+                    guard_program,
                 },
                 &service,
             )
@@ -2296,6 +2298,7 @@ struct HookArgs {
     with_guard: bool,
     no_with_guard: bool,
     rewrite: bool,
+    guard_program: Option<std::path::PathBuf>,
 }
 
 // Third post-TuiService match arm extracted. Hook follows the same
@@ -2344,24 +2347,62 @@ async fn handle_hook_command(args: HookArgs, service: &TuiService) -> Result<()>
                 {
                     // Guard check if --with-guard flag is set (default ON
                     // for pre-tool-use; see the Hook args doc comment).
+                    //
+                    // The guard runs out of process: a crash, an abort or an
+                    // OOM kill inside it must not turn into an allow, and the
+                    // hook has to be able to say "the guard did not decide"
+                    // instead of dying with it. When the guard produces no
+                    // decision, the call is blocked. Refs #465.
                     if with_guard {
-                        let guard = guard_patterns::CommandGuard::new();
-                        let guard_result = guard.check(command);
+                        let guard_program = match args.guard_program.as_ref() {
+                            Some(program) => program.clone(),
+                            None => std::env::current_exe().map_err(|error| {
+                                anyhow::anyhow!(
+                                    "The guard could not be located, so the command cannot be \
+                                     checked; blocking by default: {error}"
+                                )
+                            })?,
+                        };
 
-                        if guard_result.decision == guard_patterns::GuardDecision::Block {
-                            // Output deny response for Claude Code
-                            let output = serde_json::json!({
-                                "hookSpecificOutput": {
-                                    "hookEventName": "PreToolUse",
-                                    "permissionDecision": "deny",
-                                    "permissionDecisionReason": format!(
-                                        "BLOCKED: {}",
-                                        guard_result.reason.unwrap_or_default()
-                                    )
-                                }
-                            });
-                            println!("{}", serde_json::to_string(&output)?);
-                            return Ok(());
+                        let outcome =
+                            terraphim_agent::hook_guard::run_guard(&guard_program, command).await;
+
+                        match outcome {
+                            terraphim_agent::hook_guard::GuardOutcome::Block { reason } => {
+                                // Output deny response for Claude Code
+                                let output = serde_json::json!({
+                                    "hookSpecificOutput": {
+                                        "hookEventName": "PreToolUse",
+                                        "permissionDecision": "deny",
+                                        "permissionDecisionReason": format!(
+                                            "BLOCKED: {}",
+                                            reason
+                                        )
+                                    }
+                                });
+                                println!("{}", serde_json::to_string(&output)?);
+                                return Ok(());
+                            }
+                            terraphim_agent::hook_guard::GuardOutcome::Failed { message } => {
+                                // The guard did not decide, so the call is
+                                // blocked: failing open would turn every
+                                // internal failure of the guard into a bypass
+                                // of the guard itself.
+                                let output = serde_json::json!({
+                                    "hookSpecificOutput": {
+                                        "hookEventName": "PreToolUse",
+                                        "permissionDecision": "deny",
+                                        "permissionDecisionReason": format!(
+                                            "BLOCKED: guard failed to produce a decision \
+                                             ({message}); blocking by default"
+                                        )
+                                    }
+                                });
+                                println!("{}", serde_json::to_string(&output)?);
+                                return Ok(());
+                            }
+                            terraphim_agent::hook_guard::GuardOutcome::Allow
+                            | terraphim_agent::hook_guard::GuardOutcome::Sandbox { .. } => {}
                         }
                     }
 
