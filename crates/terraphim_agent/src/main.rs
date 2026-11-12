@@ -1666,6 +1666,7 @@ async fn run_offline_command(
             with_guard,
             no_with_guard,
             rewrite,
+            guard_program,
         } => {
             return handle_hook_command(
                 HookArgs {
@@ -1675,6 +1676,7 @@ async fn run_offline_command(
                     with_guard,
                     no_with_guard,
                     rewrite,
+                    guard_program,
                 },
                 &service,
             )
@@ -2296,6 +2298,7 @@ struct HookArgs {
     with_guard: bool,
     no_with_guard: bool,
     rewrite: bool,
+    guard_program: Option<std::path::PathBuf>,
 }
 
 // Third post-TuiService match arm extracted. Hook follows the same
@@ -2344,24 +2347,62 @@ async fn handle_hook_command(args: HookArgs, service: &TuiService) -> Result<()>
                 {
                     // Guard check if --with-guard flag is set (default ON
                     // for pre-tool-use; see the Hook args doc comment).
+                    //
+                    // The guard runs out of process: a crash, an abort or an
+                    // OOM kill inside it must not turn into an allow, and the
+                    // hook has to be able to say "the guard did not decide"
+                    // instead of dying with it. When the guard produces no
+                    // decision, the call is blocked. Refs #465.
                     if with_guard {
-                        let guard = guard_patterns::CommandGuard::new();
-                        let guard_result = guard.check(command);
+                        let guard_program = match args.guard_program.as_ref() {
+                            Some(program) => program.clone(),
+                            None => std::env::current_exe().map_err(|error| {
+                                anyhow::anyhow!(
+                                    "The guard could not be located, so the command cannot be \
+                                     checked; blocking by default: {error}"
+                                )
+                            })?,
+                        };
 
-                        if guard_result.decision == guard_patterns::GuardDecision::Block {
-                            // Output deny response for Claude Code
-                            let output = serde_json::json!({
-                                "hookSpecificOutput": {
-                                    "hookEventName": "PreToolUse",
-                                    "permissionDecision": "deny",
-                                    "permissionDecisionReason": format!(
-                                        "BLOCKED: {}",
-                                        guard_result.reason.unwrap_or_default()
-                                    )
-                                }
-                            });
-                            println!("{}", serde_json::to_string(&output)?);
-                            return Ok(());
+                        let outcome =
+                            terraphim_agent::hook_guard::run_guard(&guard_program, command).await;
+
+                        match outcome {
+                            terraphim_agent::hook_guard::GuardOutcome::Block { reason } => {
+                                // Output deny response for Claude Code
+                                let output = serde_json::json!({
+                                    "hookSpecificOutput": {
+                                        "hookEventName": "PreToolUse",
+                                        "permissionDecision": "deny",
+                                        "permissionDecisionReason": format!(
+                                            "BLOCKED: {}",
+                                            reason
+                                        )
+                                    }
+                                });
+                                println!("{}", serde_json::to_string(&output)?);
+                                return Ok(());
+                            }
+                            terraphim_agent::hook_guard::GuardOutcome::Failed { message } => {
+                                // The guard did not decide, so the call is
+                                // blocked: failing open would turn every
+                                // internal failure of the guard into a bypass
+                                // of the guard itself.
+                                let output = serde_json::json!({
+                                    "hookSpecificOutput": {
+                                        "hookEventName": "PreToolUse",
+                                        "permissionDecision": "deny",
+                                        "permissionDecisionReason": format!(
+                                            "BLOCKED: guard failed to produce a decision \
+                                             ({message}); blocking by default"
+                                        )
+                                    }
+                                });
+                                println!("{}", serde_json::to_string(&output)?);
+                                return Ok(());
+                            }
+                            terraphim_agent::hook_guard::GuardOutcome::Allow
+                            | terraphim_agent::hook_guard::GuardOutcome::Sandbox { .. } => {}
                         }
                     }
 
@@ -2495,8 +2536,11 @@ async fn run_cache_command(sub: &CacheSub, config_path: Option<String>) -> Resul
                 let keys = cache_flush::role_thesaurus_keys(&config, role_name)?;
 
                 let mut removed = 0usize;
-                for key in &keys {
-                    removed += cache_flush::delete_key_everywhere(storage, key).await?;
+                let mut unreachable: Vec<(String, String)> = Vec::new();
+                for key in &keys.keys {
+                    let outcome = cache_flush::delete_key_everywhere(storage, key).await?;
+                    removed += outcome.removed;
+                    unreachable.extend(outcome.unreachable_profiles);
                 }
 
                 if removed == 0 {
@@ -2506,7 +2550,7 @@ async fn run_cache_command(sub: &CacheSub, config_path: Option<String>) -> Resul
                     println!(
                         "No cached thesaurus matched role '{}' (looked for {})",
                         role_name,
-                        keys.join(", ")
+                        keys.keys.join(", ")
                     );
                 } else {
                     println!(
@@ -2516,12 +2560,35 @@ async fn run_cache_command(sub: &CacheSub, config_path: Option<String>) -> Resul
                         role_name
                     );
                 }
+
+                // Truthful reporting: a profile that could not be reached may
+                // still hold a copy, and a thesaurus name that could not be
+                // determined may hide one (terraphim-clients#514).
+                for (profile, reason) in &unreachable {
+                    eprintln!("Profile '{profile}' could not be reached: {reason}");
+                }
+                if let Some(reason) = &keys.undetermined {
+                    eprintln!("{reason}");
+                }
+                if !unreachable.is_empty() || keys.undetermined.is_some() {
+                    return Err(anyhow::anyhow!(
+                        "The flush may be incomplete: {} profile(s) could not be reached{}. \
+                         Re-run it once the profiles are reachable.",
+                        unreachable.len(),
+                        if keys.undetermined.is_some() {
+                            ", and the thesaurus name of a remote automata file is not known"
+                        } else {
+                            ""
+                        }
+                    ));
+                }
             } else {
                 // Flush all thesaurus entries, from every profile: a thesaurus
                 // is saved to all of them, so the fastest one is not the only
                 // place a stale copy can live.
                 let prefix = "thesaurus_";
                 let mut count = 0usize;
+                let mut failures: Vec<(String, String, String)> = Vec::new();
                 for (profile, (operator, _latency)) in &storage.ops {
                     let entries = match operator.list(prefix).await {
                         Ok(entries) => entries,
@@ -2537,12 +2604,27 @@ async fn run_cache_command(sub: &CacheSub, config_path: Option<String>) -> Resul
                                 Ok(_) => count += 1,
                                 Err(e) => {
                                     log::warn!("Failed to delete '{}': {}", path, e);
+                                    failures.push((
+                                        profile.clone(),
+                                        path.to_string(),
+                                        e.to_string(),
+                                    ));
                                 }
                             }
                         }
                     }
                 }
                 println!("Flushed {} cached thesaurus entries", count);
+                if !failures.is_empty() {
+                    for (profile, path, reason) in &failures {
+                        eprintln!("Failed to delete '{path}' from profile '{profile}': {reason}");
+                    }
+                    return Err(anyhow::anyhow!(
+                        "{} cached thesaurus entr{} could not be deleted; the flush is incomplete",
+                        failures.len(),
+                        if failures.len() == 1 { "y" } else { "ies" }
+                    ));
+                }
             }
             Ok(())
         }
@@ -2557,7 +2639,7 @@ async fn run_cache_command(sub: &CacheSub, config_path: Option<String>) -> Resul
                 std::collections::HashMap::new();
             for (name, _) in TuiService::roles_with_info_of(&config) {
                 if let Ok(keys) = cache_flush::role_thesaurus_keys(&config, &name) {
-                    for key in keys {
+                    for key in keys.keys {
                         role_for_key.insert(key, name.clone());
                     }
                 }
