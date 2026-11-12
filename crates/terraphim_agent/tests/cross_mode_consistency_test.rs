@@ -222,7 +222,7 @@ async fn search_via_server(
     role: &str,
 ) -> Result<Vec<NormalizedResult>> {
     // Switch role
-    client.update_selected_role(role).await?;
+    client.switch_role(role).await?;
     thread::sleep(Duration::from_millis(300));
 
     // Search via API
@@ -614,7 +614,7 @@ async fn test_role_consistency_across_modes() -> Result<()> {
     // can exceed the 30s default ApiClient timeout (Refs #113b). The
     // warm-up pays that one-time cost; its results are discarded.
     for warm_role in &roles {
-        client.update_selected_role(warm_role).await?;
+        client.switch_role(warm_role).await?;
         thread::sleep(Duration::from_millis(300));
         let warmup = SearchQuery {
             search_term: NormalizedTermValue::new(query.to_string()),
@@ -637,7 +637,7 @@ async fn test_role_consistency_across_modes() -> Result<()> {
         println!("\nTesting role: '{}'", role);
 
         // Set role via server
-        client.update_selected_role(role).await?;
+        client.switch_role(role).await?;
         thread::sleep(Duration::from_millis(300));
 
         // Search via server

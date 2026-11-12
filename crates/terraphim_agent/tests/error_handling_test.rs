@@ -330,8 +330,16 @@ async fn test_config_error_scenarios() {
 
     let client = ApiClient::new(TEST_SERVER_URL);
 
-    // Test invalid role update
-    let result = client.update_selected_role("InvalidRoleName12345").await;
+    // Test invalid role update. The write carries the ETag of the current
+    // configuration, the way every write path does (#459).
+    let etag = client
+        .get_config_snapshot()
+        .await
+        .ok()
+        .and_then(|snapshot| snapshot.etag);
+    let result = client
+        .update_selected_role("InvalidRoleName12345", etag.as_deref())
+        .await;
 
     match result {
         Ok(response) => {

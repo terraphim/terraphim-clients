@@ -298,7 +298,7 @@ async fn search_via_server(
     // Retry role switch with backoff - server may need time to initialise
     let mut retries = 0;
     loop {
-        match client.update_selected_role(role).await {
+        match client.switch_role(role).await {
             Ok(_) => break,
             Err(e) => {
                 retries += 1;
@@ -717,7 +717,7 @@ async fn test_role_switching() -> Result<()> {
             // Role switch with retry logic - allow time for KG loading
             let mut switch_retry = 0;
             let switch_result = loop {
-                match client.update_selected_role(role).await {
+                match client.switch_role(role).await {
                     Ok(_config) => break Ok(()),
                     Err(e) => {
                         switch_retry += 1;

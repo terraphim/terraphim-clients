@@ -138,7 +138,9 @@ impl TuiBackend {
             }
             #[cfg(feature = "server")]
             Self::Remote(api) => {
-                let resp = api.update_selected_role(role).await?;
+                // The config plane protects writes with `If-Match`, so the
+                // write carries the ETag of the configuration it is based on.
+                let resp = api.switch_role(role).await?;
                 Ok(resp.config)
             }
         }
