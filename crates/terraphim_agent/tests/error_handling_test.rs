@@ -37,7 +37,11 @@ async fn test_network_timeout_handling() {
                 error_str.contains("timeout")
                     || error_str.contains("connect")
                     || error_str.contains("network")
-                    || error_str.contains("unreachable"),
+                    || error_str.contains("unreachable")
+                    // reqwest reports every request failure as "error sending
+                    // request for url (...)"; the cause carries the detail. The
+                    // test must not depend on how quickly the network gave up.
+                    || error_str.contains("sending request"),
                 "Error should indicate network issue: {}",
                 e
             );
