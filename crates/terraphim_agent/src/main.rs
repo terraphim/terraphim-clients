@@ -20,7 +20,7 @@ use ratatui::{
 use serde::Serialize;
 #[cfg(feature = "repl")]
 use terraphim_agent::repl;
-use terraphim_agent::{guard_patterns, learnings, onboarding, robot, tui_backend};
+use terraphim_agent::{cache_flush, guard_patterns, learnings, onboarding, robot, tui_backend};
 use terraphim_persistence::Persistable;
 use tokio::runtime::Runtime;
 
@@ -1525,7 +1525,7 @@ async fn run_offline_command(
 
     // Cache is stateless - handle before TuiService initialization
     if let Command::Cache { sub } = &command {
-        return run_cache_command(sub).await;
+        return run_cache_command(sub, config_path).await;
     }
 
     // Learn is stateless - handle before TuiService initialization.
@@ -2477,49 +2477,70 @@ async fn handle_hook_command(args: HookArgs, service: &TuiService) -> Result<()>
     Ok(())
 }
 
-async fn run_cache_command(sub: &CacheSub) -> Result<()> {
+async fn run_cache_command(sub: &CacheSub, config_path: Option<String>) -> Result<()> {
     use terraphim_persistence::DeviceStorage;
 
     match sub {
         CacheSub::Flush { role } => {
             let storage = DeviceStorage::instance().await?;
-            let fastest_op = &storage.fastest_op;
 
             if let Some(role_name) = role {
-                let key = format!("thesaurus_{}.json", role_name.to_lowercase());
-                match fastest_op.delete(&key).await {
-                    Ok(_) => {
-                        println!("Flushed cache for role: {}", role_name);
-                    }
-                    Err(e) => {
-                        eprintln!("Failed to flush cache for role '{}': {}", role_name, e);
-                        std::process::exit(1);
-                    }
+                // The persisted key follows the *thesaurus* name, which for a
+                // role with a compiled automata path is not the role name
+                // (terraphim-clients#460). Resolve both candidates and delete
+                // them from every profile the thesaurus was written to.
+                let config = TuiService::load_config(config_path, false).await?;
+                let keys = cache_flush::role_thesaurus_keys(&config, role_name)?;
+
+                let mut removed = 0usize;
+                for key in &keys {
+                    removed += cache_flush::delete_key_everywhere(storage, key).await?;
+                }
+
+                if removed == 0 {
+                    // A no-op must not claim success: the old code printed
+                    // "Flushed cache for role" whether or not anything was
+                    // removed.
+                    println!(
+                        "No cached thesaurus matched role '{}' (looked for {})",
+                        role_name,
+                        keys.join(", ")
+                    );
+                } else {
+                    println!(
+                        "Flushed {} cache entr{} for role '{}'",
+                        removed,
+                        if removed == 1 { "y" } else { "ies" },
+                        role_name
+                    );
                 }
             } else {
-                // Flush all thesaurus entries
+                // Flush all thesaurus entries, from every profile: a thesaurus
+                // is saved to all of them, so the fastest one is not the only
+                // place a stale copy can live.
                 let prefix = "thesaurus_";
-                match fastest_op.list(prefix).await {
-                    Ok(entries) => {
-                        let mut count = 0;
-                        for entry in entries {
-                            let path = entry.path();
-                            if path.ends_with(".json") {
-                                match fastest_op.delete(path).await {
-                                    Ok(_) => count += 1,
-                                    Err(e) => {
-                                        log::warn!("Failed to delete '{}': {}", path, e);
-                                    }
+                let mut count = 0usize;
+                for (profile, (operator, _latency)) in &storage.ops {
+                    let entries = match operator.list(prefix).await {
+                        Ok(entries) => entries,
+                        Err(error) => {
+                            eprintln!("Failed to list cache entries in '{profile}': {error}");
+                            std::process::exit(1);
+                        }
+                    };
+                    for entry in entries {
+                        let path = entry.path();
+                        if path.ends_with(".json") {
+                            match operator.delete(path).await {
+                                Ok(_) => count += 1,
+                                Err(e) => {
+                                    log::warn!("Failed to delete '{}': {}", path, e);
                                 }
                             }
                         }
-                        println!("Flushed {} cached thesaurus entries", count);
-                    }
-                    Err(e) => {
-                        eprintln!("Failed to list cache entries: {}", e);
-                        std::process::exit(1);
                     }
                 }
+                println!("Flushed {} cached thesaurus entries", count);
             }
             Ok(())
         }
