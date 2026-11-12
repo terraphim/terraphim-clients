@@ -1162,12 +1162,12 @@ const KNOWN_ENV_MUTATION_SITES: &[EnvMutationSite] = &[
         count: 5,
     },
     EnvMutationSite {
-        file: "crates/terraphim_update/tests/managed_mode.rs",
+        file: "crates/terraphim_update/tests/managed_mode_home_env.rs",
         needle: "env::set_var(",
         count: 2,
     },
     EnvMutationSite {
-        file: "crates/terraphim_update/tests/managed_mode.rs",
+        file: "crates/terraphim_update/tests/managed_mode_home_env.rs",
         needle: "env::remove_var(",
         count: 1,
     },
@@ -1398,4 +1398,63 @@ fn toolchain_drift_is_fatal_in_strict_mode() {
 fn toolchain_drift_is_only_reported_outside_strict_mode() {
     assert_toolchain_matches("cargo-llvm-cov", "0.8.7", "0.8.5", false);
     assert_toolchain_matches("cargo-nextest", "0.9.144", "0.9.144", false);
+}
+
+/// A test file that mutates `HOME` must hold exactly one test, or every test in
+/// it must be `#[serial]`.
+///
+/// `std::env::set_var` is `unsafe` and not thread safe: a sibling test in the
+/// same binary may read `HOME` while it is being replaced. `#[serial]` does
+/// not close that hole - it excludes only other `#[serial]` tests that share
+/// a key, not the unannotated siblings - so such a test lives in a one-test
+/// binary instead (terraphim-clients#374). This arm keeps that property from
+/// decaying when a second test is added to the file.
+///
+/// Only integration-test binaries are checked: a library's in-crate test
+/// module cannot be moved into its own binary and is tracked separately.
+#[test]
+fn home_mutating_test_file_holds_a_single_test() {
+    let root = workspace_root();
+    let mut offenders: Vec<String> = Vec::new();
+
+    for file in workspace_rust_sources() {
+        let relative = file.strip_prefix(&root).unwrap_or(&file).to_string_lossy();
+        if !relative.contains("/tests/") && !relative.starts_with("crates/terraphim_update/tests/")
+        {
+            continue;
+        }
+        if !relative.contains("tests/") {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&file) else {
+            continue;
+        };
+        let mutates_home = text.contains("env::set_var(\"HOME\"")
+            || text.contains("env::remove_var(\"HOME\"")
+            || text.contains("set_env_var(\"HOME\"");
+        if !mutates_home {
+            continue;
+        }
+        let tests = text.matches("#[test]").count() + text.matches("#[tokio::test]").count();
+        let serialized = text.matches("#[serial").count();
+        // Every test in the file must be serialized, or the file must hold a
+        // single test: `#[serial]` excludes the other serialized tests, and a
+        // one-test binary has no siblings at all.
+        if serialized < tests && tests > 1 {
+            offenders.push(format!(
+                "  {relative}: {tests} test(s), {serialized} of them `#[serial]`"
+            ));
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "a test file that mutates HOME must contain exactly one test:\n{}\n\n\
+         Mutating HOME is `unsafe` and not thread safe, and a sibling test in \
+         the same binary reads it concurrently (terraphim-clients#374). Put \
+         such a test in its own one-test binary, mark every test in the file \
+         `#[serial]`, or inject the home root as a parameter instead of \
+         setting the variable.",
+        offenders.join("\n")
+    );
 }
