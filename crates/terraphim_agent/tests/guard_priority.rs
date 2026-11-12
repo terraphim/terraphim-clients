@@ -180,3 +180,53 @@ fn a_cleanup_inside_the_temporary_root_stays_allowed() {
         "a cleanup inside the temporary root must stay allowed: {stdout}"
     );
 }
+
+/// The destructive spellings that share no substring with a dictionary entry
+/// are recognised by their parsed shape (terraphim-clients#511).
+#[test]
+fn destructive_spellings_are_recognised_by_their_shape() {
+    for command in [
+        // the long and reordered recursive deletes
+        "rm --recursive --force /",
+        "rm -r --force /",
+        "rm -R -f /",
+        "rm --force --recursive /",
+        // the unconditional force push
+        "git push origin +main",
+        "git push origin main:main --force",
+        // find that deletes
+        "find . -delete",
+        "find . -name '*.rs' -delete",
+        "find . -type f -exec rm {} ;",
+    ] {
+        let (code, stdout, _stderr) = run_guard(&["--json"], Some(command));
+        assert_eq!(code, 0, "the JSON output mode always exits 0");
+        let result: serde_json::Value =
+            serde_json::from_str(stdout.trim()).expect("expected JSON decision");
+        assert_eq!(
+            result["decision"], "block",
+            "{command:?} is destructive and must be blocked: {stdout}"
+        );
+    }
+}
+
+/// The spellings that are safe stay allowed (terraphim-clients#511).
+#[test]
+fn safe_spellings_stay_allowed() {
+    for command in [
+        "git push --force-with-lease origin main",
+        "git push origin feature",
+        "find . -name '*.rs' -print",
+        "rm -rf /tmp/build-cache",
+        "rm --recursive --force /tmp/build-cache",
+    ] {
+        let (code, stdout, _stderr) = run_guard(&["--json"], Some(command));
+        assert_eq!(code, 0, "the JSON output mode always exits 0");
+        let result: serde_json::Value =
+            serde_json::from_str(stdout.trim()).expect("expected JSON decision");
+        assert_eq!(
+            result["decision"], "allow",
+            "{command:?} is not destructive and must stay allowed: {stdout}"
+        );
+    }
+}
