@@ -88,12 +88,18 @@ fn role_with_compiled_automata_resolves_the_thesaurus_key() {
     let keys = role_thesaurus_keys(&config, "Stale Cache Probe").expect("keys");
 
     assert!(
-        keys.contains(&"thesaurus_compiled_corrections.json".to_string()),
+        keys.keys
+            .contains(&"thesaurus_compiled_corrections.json".to_string()),
         "the compiled thesaurus key must be resolved, got {keys:?}"
     );
     assert!(
-        keys.contains(&"thesaurus_stale_cache_probe.json".to_string()),
+        keys.keys
+            .contains(&"thesaurus_stale_cache_probe.json".to_string()),
         "the role-derived key must be included as well, got {keys:?}"
+    );
+    assert!(
+        keys.undetermined.is_none(),
+        "a local automata file is readable, so nothing is undetermined: {keys:?}"
     );
 }
 
@@ -103,7 +109,8 @@ fn role_without_automata_resolves_the_role_derived_key() {
 
     let keys = role_thesaurus_keys(&config, "AI Engineer").expect("keys");
 
-    assert_eq!(keys, vec!["thesaurus_ai_engineer.json".to_string()]);
+    assert_eq!(keys.keys, vec!["thesaurus_ai_engineer.json".to_string()]);
+    assert!(keys.undetermined.is_none(), "got {keys:?}");
 }
 
 #[test]
@@ -119,7 +126,8 @@ fn role_lookup_accepts_case_and_shortname() {
         let keys = role_thesaurus_keys(&config, query)
             .unwrap_or_else(|error| panic!("query {query:?} should resolve: {error}"));
         assert!(
-            keys.contains(&"thesaurus_compiled_corrections.json".to_string()),
+            keys.keys
+                .contains(&"thesaurus_compiled_corrections.json".to_string()),
             "query {query:?} resolved to {keys:?}"
         );
     }
@@ -143,11 +151,18 @@ async fn deleting_an_absent_key_removes_nothing() {
         .await
         .expect("memory storage");
 
-    let removed = delete_key_everywhere(storage, "thesaurus_does_not_exist.json")
+    let outcome = delete_key_everywhere(storage, "thesaurus_does_not_exist.json")
         .await
         .expect("delete");
 
-    assert_eq!(removed, 0, "an absent key must not be counted as removed");
+    assert_eq!(
+        outcome.removed, 0,
+        "an absent key must not be counted as removed"
+    );
+    assert!(
+        outcome.unreachable_profiles.is_empty(),
+        "a reachable profile is not an unreachable one: {outcome:?}"
+    );
 }
 
 /// A flush that removes nothing must not claim success.
@@ -213,4 +228,103 @@ fn cli_flush_rejects_an_unknown_role() {
         stderr.contains("No Such Role"),
         "the error must name the role, got: {stderr}"
     );
+}
+
+/// A role whose automata path is a **remote** file is flushed under the name
+/// inside that file, not under the role name (terraphim-clients#514).
+///
+/// The default `Terraphim Engineer` role points at the canonical remote
+/// compiled-corrections file, whose `name` is `Engineering`, so the persisted
+/// key is `thesaurus_engineering.json`.
+#[test]
+fn role_with_a_remote_automata_path_resolves_the_known_thesaurus_key() {
+    let mut config = config_with_role("Terraphim Engineer", Some("terra"), None);
+    let role = config
+        .roles
+        .get_mut(&terraphim_types::RoleName::new("Terraphim Engineer"))
+        .expect("role");
+    role.kg = Some(terraphim_config::KnowledgeGraph {
+        automata_path: Some(terraphim_automata::AutomataPath::Remote(
+            "https://system-operator.s3.eu-west-2.amazonaws.com/term_to_id.json".to_string(),
+        )),
+        knowledge_graph_local: None,
+        public: false,
+        publish: false,
+    });
+
+    let keys = role_thesaurus_keys(&config, "Terraphim Engineer").expect("keys");
+
+    assert!(
+        keys.keys
+            .contains(&"thesaurus_engineering.json".to_string()),
+        "the remote thesaurus key must be resolved, got {keys:?}"
+    );
+    assert!(
+        keys.undetermined.is_none(),
+        "the canonical remote file is known, so nothing is undetermined: {keys:?}"
+    );
+}
+
+/// A remote file whose name is not known must not be reported as a complete
+/// flush (terraphim-clients#514).
+#[test]
+fn role_with_an_unknown_remote_automata_path_is_reported_as_undetermined() {
+    let mut config = config_with_role("Terraphim Engineer", Some("terra"), None);
+    let role = config
+        .roles
+        .get_mut(&terraphim_types::RoleName::new("Terraphim Engineer"))
+        .expect("role");
+    role.kg = Some(terraphim_config::KnowledgeGraph {
+        automata_path: Some(terraphim_automata::AutomataPath::Remote(
+            "https://example.invalid/other_corrections.json".to_string(),
+        )),
+        knowledge_graph_local: None,
+        public: false,
+        publish: false,
+    });
+
+    let keys = role_thesaurus_keys(&config, "Terraphim Engineer").expect("keys");
+
+    assert!(
+        keys.undetermined.is_some(),
+        "an unknown remote file must be reported as undetermined: {keys:?}"
+    );
+    let reason = keys.undetermined.expect("reason");
+    assert!(
+        reason.contains("example.invalid"),
+        "the reason must name the file, got: {reason}"
+    );
+}
+
+/// The known-name table must describe the file the repository carries.
+///
+/// The table is what lets the flush find a remote thesaurus without a network
+/// call, so it has to agree with the repository's copy of that file
+/// (terraphim-clients#514).
+#[test]
+fn the_known_remote_names_match_the_repositorys_copy_of_the_file() {
+    let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|path| path.parent())
+        .expect("workspace root");
+    let fixture = workspace.join("test-fixtures/term_to_id.json");
+
+    let contents = std::fs::read_to_string(&fixture)
+        .unwrap_or_else(|error| panic!("read {}: {error}", fixture.display()));
+    let value: serde_json::Value = serde_json::from_str(&contents).expect("fixture json");
+    let name = value
+        .get("name")
+        .and_then(|name| name.as_str())
+        .expect("the fixture carries a name");
+
+    for (url, expected) in terraphim_agent::cache_flush::KNOWN_REMOTE_THESAURUS_NAMES {
+        if url.ends_with("term_to_id.json") {
+            assert_eq!(
+                *expected,
+                name,
+                "the table must agree with {} ({url})",
+                fixture.display()
+            );
+        }
+    }
 }
