@@ -163,8 +163,11 @@ fn is_git_branch_create(words: &[String]) -> bool {
 }
 
 /// `git restore --staged <paths...>` without touching the worktree.
+///
+/// The paths are optional: `git restore --staged` on its own unstages
+/// nothing, and the shipped allowlist entry is exactly that spelling.
 fn is_git_unstage(words: &[String]) -> bool {
-    words.len() >= 4
+    words.len() >= 3
         && words[0] == "git"
         && words[1] == "restore"
         && words[2] == "--staged"
@@ -528,6 +531,15 @@ impl CommandGuard {
     pub fn check_with_trace(&self, command: &str) -> GuardTrace {
         let mut stages = Vec::with_capacity(4);
 
+        // The destructive matches are computed once, before the allowlist
+        // stage: the allowlist has to know whether the destructive stage would
+        // block the command before it may exempt it (terraphim-clients#510).
+        let destructive_matches = find_matches(command, &self.destructive_thesaurus, false);
+        let destructive_blocks = matches!(
+            destructive_matches,
+            Ok(ref matches) if !matches.is_empty()
+        );
+
         // Stage 1: allowlist (short-circuits to Allow).
         //
         // A thesaurus hit alone is not an exemption (terraphim-clients#462):
@@ -539,6 +551,13 @@ impl CommandGuard {
         //     which keeps full-command custom entries working), or
         //   - the command parses as that entry's safe operation and nothing
         //     else (see `allowlist_concept_permits`).
+        //
+        // The literal comparison may not exempt a command the destructive
+        // stage blocks (terraphim-clients#510): the allowlist names safe
+        // operation families, and an entry that merely *spells* a destructive
+        // command - the shipped `rm -rf /tmp/` entries - must not skip the
+        // safety evaluation. Without that, `rm -rf /tmp/` was allowed while
+        // `rm -rf /tmp` was blocked, although the two delete the same thing.
         match find_matches(
             &allowlist_match_text(command),
             &self.allowlist_thesaurus,
@@ -549,11 +568,12 @@ impl CommandGuard {
                 let permitted = matches
                     .iter()
                     .find(|found| {
-                        normalize_whitespace(&found.term) == normalized_command
-                            || allowlist_concept_permits(
-                                &found.normalized_term.value.to_string(),
-                                command,
-                            )
+                        let literal = normalize_whitespace(&found.term) == normalized_command;
+                        let concept = allowlist_concept_permits(
+                            &found.normalized_term.value.to_string(),
+                            command,
+                        );
+                        (literal && !destructive_blocks) || concept
                     })
                     .map(|found| found.term.clone());
 
@@ -593,7 +613,11 @@ impl CommandGuard {
         }
 
         // Stage 2: destructive (short-circuits to Block).
-        match find_matches(command, &self.destructive_thesaurus, false) {
+        //
+        // The matches were computed before the allowlist stage, so the
+        // allowlist and the destructive stage always agree on what the
+        // destructive dictionary says about the command.
+        match destructive_matches {
             Ok(matches) if !matches.is_empty() => {
                 let first_match = &matches[0];
                 let reason = first_match.normalized_term.url.clone().unwrap_or_else(|| {
@@ -1258,6 +1282,53 @@ mod tests {
                 "{command:?} deletes the temporary root itself and must be blocked"
             );
         }
+    }
+
+    /// The trailing slash is the same path as the root (terraphim-clients#510).
+    ///
+    /// The shipped allowlist carries the literal entries `rm -rf /tmp/` and
+    /// friends, so the whole-command comparison used to exempt them before the
+    /// safety evaluation ran: `rm -rf /tmp/` was allowed while `rm -rf /tmp`
+    /// was blocked, although the two delete the same thing.
+    #[test]
+    fn test_tmp_cleanup_rejects_the_root_with_a_trailing_slash() {
+        let guard = CommandGuard::new();
+        for command in [
+            "rm -rf /tmp/",
+            "rm -fr /tmp/",
+            "rm -rf /var/tmp/",
+            "rm -fr /var/tmp/",
+            "rm -rf /tmp//",
+        ] {
+            assert_eq!(
+                guard.check(command).decision,
+                GuardDecision::Block,
+                "{command:?} deletes the temporary root itself and must be blocked"
+            );
+        }
+    }
+
+    /// The literal comparison still exempts a whole-command entry - but only
+    /// when the destructive stage does not block the command
+    /// (terraphim-clients#510).
+    #[test]
+    fn test_a_literal_allowlist_entry_cannot_exempt_a_destructive_command() {
+        let guard = CommandGuard::new();
+        // `git push --force-with-lease` contains the destructive spelling
+        // `git push --force`, but the safe-operation concept permits it.
+        assert_eq!(
+            guard
+                .check("git push --force-with-lease origin main")
+                .decision,
+            GuardDecision::Allow,
+            "the force-with-lease concept must keep working"
+        );
+        // A whole-command entry that is destructive is not an exemption.
+        assert_eq!(
+            guard.check("git push --force origin main").decision,
+            GuardDecision::Block,
+            "a destructive command must not be exempted by the literal comparison"
+        );
     }
 
     #[test]
