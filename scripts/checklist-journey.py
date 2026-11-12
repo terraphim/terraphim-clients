@@ -43,6 +43,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import statistics
 import subprocess
 import sys
@@ -52,8 +53,55 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CHECKLIST_DIR = ROOT / "crates" / "terraphim_agent" / "data" / "checklists"
 CONTRACT = ROOT / "tests" / "checklist-concepts.json"
-AGENT = os.environ.get("TERRAPHIM_AGENT_BIN", "terraphim-agent")
-GREP = os.environ.get("TERRAPHIM_GREP_BIN", "terraphim-grep")
+
+def resolve_binary(env_var: str, name: str) -> tuple[str, str]:
+    """Pick the binary under test, and say where it came from.
+
+    `TERRAPHIM_AGENT_BIN` wins when set. Otherwise the workspace build at
+    `target/debug/` wins over PATH, because a source tree can hold a mutation that the
+    installed binary never saw - and a gate that tests an installed binary reports green
+    for code it did not run. Falling back to PATH keeps dev boxes without a build working.
+    """
+    explicit = os.environ.get(env_var)
+    if explicit:
+        return explicit, "explicit"
+    local = ROOT / "target" / "debug" / name
+    if local.is_file():
+        return str(local), "workspace build"
+    return name, "PATH"
+
+
+AGENT, AGENT_ORIGIN = resolve_binary("TERRAPHIM_AGENT_BIN", "terraphim-agent")
+GREP, GREP_ORIGIN = resolve_binary("TERRAPHIM_GREP_BIN", "terraphim-grep")
+
+
+def assert_binary_is_fresh(binary: str) -> None:
+    """Refuse to test a binary older than the sources it is meant to exercise.
+
+    The failure this prevents is specific: mutate `crates/terraphim_agent/src/`, run the
+    gate, and read a green result that describes the previously built code. Comparing
+    mtimes is crude but it catches that case, which is the one that happens.
+    """
+    resolved = Path(binary) if os.path.isabs(binary) else shutil.which(binary)
+    if resolved is None:
+        raise SystemExit(f"{binary} not found")
+    resolved = Path(resolved)
+
+    sources = [
+        p
+        for p in (ROOT / "crates" / "terraphim_agent").rglob("*")
+        if p.is_file() and (p.suffix == ".rs" or p.name == "Cargo.toml")
+    ]
+    if not sources:
+        return
+    newest = max(sources, key=lambda p: p.stat().st_mtime)
+    if resolved.stat().st_mtime < newest.stat().st_mtime:
+        raise SystemExit(
+            f"refusing to test a stale binary: {resolved} is older than "
+            f"{newest.relative_to(ROOT)} - run `cargo build -p terraphim_agent "
+            f"--bin terraphim-agent` (the gate will not report on code it did not run)"
+        )
+
 KG_DIR = Path(os.environ.get("TERRAPHIM_KG_DIR", str(Path.home() / ".config" / "terraphim" / "kg")))
 BENCH_BUDGET_MS = float(os.environ.get("CHECKLIST_BENCH_P95_MS", "2500"))
 SYNONYMS = re.compile(r"^\s*synonyms\s*::?\s*(.+)$", re.I)
@@ -500,8 +548,12 @@ def main() -> int:
     ap.add_argument("--no-live", action="store_true", help="skip assertions that need a knowledge graph")
     args = ap.parse_args()
 
-    if shutil.which(AGENT) is None:
+    if shutil.which(AGENT) is None and not Path(AGENT).is_file():
         raise SystemExit(f"{AGENT} not found on PATH")
+    assert_binary_is_fresh(AGENT)
+    # stderr: `--json` writes the machine report to stdout, and `checklist-journey.sh`
+    # redirects both streams into the report file.
+    print(f"[info] agent binary: {AGENT} ({AGENT_ORIGIN})", file=sys.stderr)
 
     definitions = parse_checklists()
     patterns = kg_patterns(KG_DIR) if KG_DIR.is_dir() else set()

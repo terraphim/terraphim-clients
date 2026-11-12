@@ -19,7 +19,14 @@ fi
 
 report="${CHECKLIST_REPORT:-target/checklist-journey.json}"
 mkdir -p "$(dirname "$report")"
-python3 scripts/checklist-journey.py --json > "$report" 2>&1
+# stderr stays out of the report: merging it in made the JSON unparseable the moment the
+# harness had anything to say (provenance, warnings), and a corrupt report reads as a
+# crash rather than as the run it was.
+python3 scripts/checklist-journey.py --json > "$report" 2> "${report%.json}.stderr.log"
 rc=$?
 cat "$report"
+if [ -s "${report%.json}.stderr.log" ]; then
+  echo "--- stderr ---" >&2
+  cat "${report%.json}.stderr.log" >&2
+fi
 exit "$rc"
