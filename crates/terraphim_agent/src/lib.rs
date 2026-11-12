@@ -4,6 +4,7 @@
 //! MCP tool index, onboarding workflows, and optional shared-learning store.
 //! Feature flags gate heavier subsystems: `server`, `repl`, `shared-learning`.
 /// Checklist definitions (embedded TOML) and phrase matching.
+pub mod cache_flush;
 pub mod checklists;
 #[cfg(feature = "server")]
 pub mod client;
