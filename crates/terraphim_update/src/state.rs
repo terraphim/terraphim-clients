@@ -6,15 +6,26 @@
 use anyhow::{Context, Result};
 use serde_json;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Get the default path for update history storage
 ///
 /// Returns `~/.config/terraphim/update_history.json` on Unix systems
 /// and appropriate location on other platforms.
 pub fn get_history_path() -> Result<PathBuf> {
-    let mut config_dir = dirs::config_dir().context("Could not determine config directory")?;
+    let config_dir = dirs::config_dir().context("Could not determine config directory")?;
+    get_history_path_in(&config_dir)
+}
 
+/// The update-history path under an explicit configuration root.
+///
+/// The root is a parameter so a caller (a test, or a tool that wants the
+/// history somewhere else) does not have to redirect the process environment:
+/// `std::env::set_var` is `unsafe` and not thread safe, and this crate's tests
+/// ran in the same binary as every other test in the crate
+/// (terraphim-clients#438).
+pub fn get_history_path_in(config_root: &Path) -> Result<PathBuf> {
+    let mut config_dir = config_root.to_path_buf();
     config_dir.push("terraphim");
     fs::create_dir_all(&config_dir).context("Could not create terraphim config directory")?;
 
@@ -41,12 +52,15 @@ pub fn get_history_path() -> Result<PathBuf> {
 /// ```
 pub fn save_update_history(history: &crate::config::UpdateHistory) -> Result<()> {
     let path = get_history_path()?;
+    save_update_history_in(history, &path)
+}
 
+/// Save the update history to an explicit path.
+pub fn save_update_history_in(history: &crate::config::UpdateHistory, path: &Path) -> Result<()> {
     let serialized =
         serde_json::to_string_pretty(history).context("Failed to serialize update history")?;
 
-    fs::write(&path, serialized)
-        .context(format!("Failed to write update history to {:?}", path))?;
+    fs::write(path, serialized).context(format!("Failed to write update history to {:?}", path))?;
 
     tracing::debug!("Update history saved to {:?}", path);
     Ok(())
@@ -70,13 +84,17 @@ pub fn save_update_history(history: &crate::config::UpdateHistory) -> Result<()>
 /// ```
 pub fn load_update_history() -> Result<crate::config::UpdateHistory> {
     let path = get_history_path()?;
+    load_update_history_in(&path)
+}
 
+/// Load the update history from an explicit path.
+pub fn load_update_history_in(path: &Path) -> Result<crate::config::UpdateHistory> {
     if !path.exists() {
         tracing::debug!("Update history file not found, using defaults");
         return Ok(crate::config::UpdateHistory::default());
     }
 
-    let content = fs::read_to_string(&path)
+    let content = fs::read_to_string(path)
         .context(format!("Failed to read update history from {:?}", path))?;
 
     let history: crate::config::UpdateHistory =
@@ -93,9 +111,13 @@ pub fn load_update_history() -> Result<crate::config::UpdateHistory> {
 /// * `Err(anyhow::Error)` - Error during deletion
 pub fn delete_update_history() -> Result<()> {
     let path = get_history_path()?;
+    delete_update_history_in(&path)
+}
 
+/// Delete the update history at an explicit path.
+pub fn delete_update_history_in(path: &Path) -> Result<()> {
     if path.exists() {
-        fs::remove_file(&path).context(format!("Failed to delete update history at {:?}", path))?;
+        fs::remove_file(path).context(format!("Failed to delete update history at {:?}", path))?;
         tracing::debug!("Update history deleted from {:?}", path);
     } else {
         tracing::debug!("Update history file not found, nothing to delete");
@@ -116,6 +138,11 @@ pub fn history_exists() -> bool {
     }
 }
 
+/// Whether the update history exists at an explicit path.
+pub fn history_exists_in(path: &Path) -> bool {
+    path.exists()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -123,21 +150,23 @@ mod tests {
     use serial_test::serial;
     use tempfile::TempDir;
 
-    /// Helper to create a temporary config directory for testing
+    /// Helper to create a temporary config directory for testing.
+    ///
+    /// The tests point the history functions at this directory with the
+    /// `_in` variants instead of redirecting `HOME` and friends: mutating the
+    /// process environment is `unsafe` and not thread safe, and this crate's
+    /// tests share a binary with every other test in the crate
+    /// (terraphim-clients#438).
     fn setup_temp_config_dir() -> TempDir {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
-        let xdg_config_home = temp_dir.path().join(".config");
-        // SAFETY: This test runs in isolation before spawning other threads
-        unsafe {
-            std::env::set_var("HOME", temp_dir.path());
-            std::env::set_var("USERPROFILE", temp_dir.path());
-            std::env::set_var("XDG_CONFIG_HOME", &xdg_config_home);
-            std::env::set_var("APPDATA", temp_dir.path());
-            std::env::set_var("LOCALAPPDATA", temp_dir.path());
-        }
         let config_path = temp_dir.path().join("terraphim");
         fs::create_dir_all(&config_path).expect("Failed to create config dir");
         temp_dir
+    }
+
+    /// The update-history path inside a test's temporary config directory.
+    fn history_path_in(temp_dir: &TempDir) -> PathBuf {
+        get_history_path_in(temp_dir.path()).expect("Failed to resolve history path")
     }
 
     #[test]
@@ -145,17 +174,22 @@ mod tests {
     fn test_save_and_load_history() {
         let _temp_dir = setup_temp_config_dir();
         // Clean up first
-        let _ = delete_update_history();
+        let _ = delete_update_history_in(&history_path_in(&_temp_dir));
 
         let original = UpdateHistory {
             current_version: "1.0.0".to_string(),
             ..Default::default()
         };
 
-        save_update_history(&original).expect("Failed to save history");
-        assert!(history_exists(), "History file should exist after save");
+        save_update_history_in(&original, &history_path_in(&_temp_dir))
+            .expect("Failed to save history");
+        assert!(
+            history_exists_in(&history_path_in(&_temp_dir)),
+            "History file should exist after save"
+        );
 
-        let loaded = load_update_history().expect("Failed to load history");
+        let loaded =
+            load_update_history_in(&history_path_in(&_temp_dir)).expect("Failed to load history");
         assert_eq!(loaded.current_version, "1.0.0");
     }
 
@@ -164,10 +198,11 @@ mod tests {
     fn test_load_default_when_missing() {
         let _temp_dir = setup_temp_config_dir();
         // Clean up any existing history file first
-        let _ = delete_update_history();
+        let _ = delete_update_history_in(&history_path_in(&_temp_dir));
 
         // Now test loading when file doesn't exist
-        let history = load_update_history().expect("Should load default");
+        let history =
+            load_update_history_in(&history_path_in(&_temp_dir)).expect("Should load default");
         assert_eq!(history.current_version, String::new());
         assert!(history.backup_versions.is_empty());
     }
@@ -176,7 +211,7 @@ mod tests {
     #[serial]
     fn test_history_with_check_entries() {
         let _temp_dir = setup_temp_config_dir();
-        let _ = delete_update_history();
+        let _ = delete_update_history_in(&history_path_in(&_temp_dir));
 
         let mut history = UpdateHistory {
             current_version: "1.0.0".to_string(),
@@ -189,9 +224,11 @@ mod tests {
         };
         history.add_check_entry(entry);
 
-        save_update_history(&history).expect("Failed to save history");
+        save_update_history_in(&history, &history_path_in(&_temp_dir))
+            .expect("Failed to save history");
 
-        let loaded = load_update_history().expect("Failed to load history");
+        let loaded =
+            load_update_history_in(&history_path_in(&_temp_dir)).expect("Failed to load history");
         assert_eq!(loaded.check_history.len(), 1);
     }
 
@@ -199,7 +236,7 @@ mod tests {
     #[serial]
     fn test_history_with_pending_update() {
         let _temp_dir = setup_temp_config_dir();
-        let _ = delete_update_history();
+        let _ = delete_update_history_in(&history_path_in(&_temp_dir));
 
         let info = crate::config::UpdateInfo {
             version: "1.1.0".to_string(),
@@ -216,9 +253,11 @@ mod tests {
             ..Default::default()
         };
 
-        save_update_history(&history).expect("Failed to save history");
+        save_update_history_in(&history, &history_path_in(&_temp_dir))
+            .expect("Failed to save history");
 
-        let loaded = load_update_history().expect("Failed to load history");
+        let loaded =
+            load_update_history_in(&history_path_in(&_temp_dir)).expect("Failed to load history");
         assert!(loaded.pending_update.is_some());
         assert_eq!(loaded.pending_update.unwrap().version, "1.1.0");
     }
@@ -227,7 +266,7 @@ mod tests {
     #[serial]
     fn test_history_with_backups() {
         let _temp_dir = setup_temp_config_dir();
-        let _ = delete_update_history();
+        let _ = delete_update_history_in(&history_path_in(&_temp_dir));
 
         let mut history = UpdateHistory {
             current_version: "1.0.0".to_string(),
@@ -236,9 +275,11 @@ mod tests {
         history.add_backup_version("0.9.0".to_string(), 3);
         history.add_backup_version("0.8.0".to_string(), 3);
 
-        save_update_history(&history).expect("Failed to save history");
+        save_update_history_in(&history, &history_path_in(&_temp_dir))
+            .expect("Failed to save history");
 
-        let loaded = load_update_history().expect("Failed to load history");
+        let loaded =
+            load_update_history_in(&history_path_in(&_temp_dir)).expect("Failed to load history");
         assert_eq!(loaded.backup_versions.len(), 2);
         assert_eq!(loaded.backup_versions[0], "0.9.0");
         assert_eq!(loaded.backup_versions[1], "0.8.0");
@@ -248,18 +289,25 @@ mod tests {
     #[serial]
     fn test_delete_history() {
         let _temp_dir = setup_temp_config_dir();
-        let _ = delete_update_history();
+        let _ = delete_update_history_in(&history_path_in(&_temp_dir));
 
         let history = UpdateHistory {
             current_version: "1.0.0".to_string(),
             ..Default::default()
         };
 
-        save_update_history(&history).expect("Failed to save history");
-        assert!(history_exists(), "History should exist");
+        save_update_history_in(&history, &history_path_in(&_temp_dir))
+            .expect("Failed to save history");
+        assert!(
+            history_exists_in(&history_path_in(&_temp_dir)),
+            "History should exist"
+        );
 
-        delete_update_history().expect("Failed to delete history");
-        assert!(!history_exists(), "History should not exist after delete");
+        delete_update_history_in(&history_path_in(&_temp_dir)).expect("Failed to delete history");
+        assert!(
+            !history_exists_in(&history_path_in(&_temp_dir)),
+            "History should not exist after delete"
+        );
     }
 
     #[test]
