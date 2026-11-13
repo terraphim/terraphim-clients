@@ -17,47 +17,23 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Configure terraphim registry token
+      # #400: the runner's command policy inspects the literal first token of
+      # every `run:` line and rejects anything that is not on its allowlist. A
+      # multi-line block - with comments, shell conditionals or heredocs - is
+      # rejected before the first step runs, which is why this workflow could
+      # never publish anything. The publish path now lives in a checked-in
+      # script (the shape the native-ci lanes use) and the step is one line.
+      #
+      # The crate name and the registry token arrive through the step's `env:`,
+      # never through shell text: the policy strips leading assignments
+      # token-wise, and an expression in a `run:` line would be classified as a
+      # program.
+      #
+      # The script writes the registry credentials, refuses the crates
+      # terraphim-ai owns, runs the pre-publish gate for terraphim_agent
+      # (#516) and then publishes.
+      - name: Publish to the terraphim registry
         env:
+          CRATE: ${{ github.event.inputs.crate }}
           CARGO_REGISTRIES_TERRAPHIM_TOKEN: ${{ secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN }}
-        run: |
-          mkdir -p ~/.cargo
-          cat >> ~/.cargo/credentials.toml <<EOF
-          [registries.terraphim]
-          token = "${CARGO_REGISTRIES_TERRAPHIM_TOKEN}"
-          EOF
-
-      - name: Add terraphim registry index to cargo config
-        run: |
-          cat >> ~/.cargo/config.toml <<EOF
-
-          [registries.terraphim]
-          index = "sparse+https://git.terraphim.cloud/api/packages/terraphim/cargo/"
-          EOF
-
-      # #516: the pre-publish gate was the only thing standing between a broken
-      # package and the registry, and nothing invoked it: the release notes
-      # told the operator to run it by hand. It needs the registry credentials,
-      # which this workflow already has, so it runs here and refuses to
-      # publish when it fails.
-      - name: Verify the terraphim_agent package against the canonical registry
-        if: github.event.inputs.crate == 'terraphim_agent'
-        env:
-          CARGO_REGISTRIES_TERRAPHIM_TOKEN: ${{ secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN }}
-        run: bash ./scripts/release/verify-agent-package.sh
-
-      - name: Publish ${{ github.event.inputs.crate }}
-        run: |
-          CRATE="${{ github.event.inputs.crate }}"
-          if [ "${CRATE}" = "terraphim_lsp" ] || [ "${CRATE}" = "terraphim-lsp" ]; then
-            echo "ERROR: terraphim-ai owns terraphim_lsp and the terraphim-lsp binary"
-            exit 1
-          fi
-          # Find the crate directory without allowing arbitrary paths.
-          CRATE_DIR="crates/${CRATE}"
-          if [ ! -d "${CRATE_DIR}" ]; then
-            echo "ERROR: crate directory crates/${CRATE} not found"
-            exit 1
-          fi
-          echo "Publishing ${CRATE} from ${CRATE_DIR}"
-          cargo publish -p "${CRATE}" --registry terraphim
+        run: bash ./scripts/release/publish-registry.sh
