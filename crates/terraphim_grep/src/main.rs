@@ -233,8 +233,23 @@ async fn handle_update_command(command: Command) -> Result<()> {
         Command::CheckUpdate => {
             println!("Checking for terraphim-grep updates...");
             let status = updater.check_update().await?;
-            println!("{status}");
-            Ok(())
+            // The exit-code contract says a failed check is a failure: a
+            // caller that only looks at the exit code must not read "the
+            // check failed" as "there is no update" (terraphim-clients#515).
+            match classify_update_status(status) {
+                UpdateCommandOutcome::Applied(status) => {
+                    println!("{status}");
+                    Ok(())
+                }
+                UpdateCommandOutcome::PackageManagedRefusal { message } => {
+                    eprintln!("{message}");
+                    std::process::exit(1);
+                }
+                UpdateCommandOutcome::Failed { message } => {
+                    eprintln!("Update failed: {message}");
+                    std::process::exit(1);
+                }
+            }
         }
         Command::Update => {
             println!("Updating terraphim-grep...");
@@ -329,18 +344,64 @@ fn discover_project_thesaurus(dir: &Path, role_name: &str) -> Option<PathBuf> {
     None
 }
 
+/// The tokens of a role or file name, lowercased and split on separators.
+///
+/// `AI Engineer`, `ai-engineer` and `ai_engineer` all become
+/// `["ai", "engineer"]`.
+fn name_tokens(text: &str) -> Vec<String> {
+    text.split(|c: char| !c.is_alphanumeric())
+        .filter(|token| !token.is_empty())
+        .map(str::to_lowercase)
+        .collect()
+}
+
+/// Whether a thesaurus file belongs to the requested role.
+///
+/// The project convention is `thesaurus-<role>.json`; the filesystem
+/// heuristic looks for `*_thesaurus.json`. A file is only accepted when the
+/// role's tokens appear in it as a contiguous run, so a thesaurus for another
+/// role cannot silently replace the requested role's vocabulary
+/// (terraphim-clients#515).
+fn thesaurus_file_matches_role(file_name: &str, role_name: &str) -> bool {
+    let stem = file_name.strip_suffix(".json").unwrap_or(file_name);
+    let role_tokens = name_tokens(role_name);
+    if role_tokens.is_empty() {
+        return false;
+    }
+    let file_tokens = name_tokens(stem);
+    file_tokens
+        .windows(role_tokens.len())
+        .any(|window| window == role_tokens.as_slice())
+}
+
+/// Whether the resolved role is a real role or the fallback.
+///
+/// `determine_role_name` returns "default" when neither `--role` nor the
+/// project configuration names a role. In that case no file can be
+/// role-scoped, and the filesystem heuristic may take any `*_thesaurus.json` -
+/// the guess it has always made - but says so in the log.
+fn role_is_unknown(role_name: &str, role_requested: bool) -> bool {
+    !role_requested && role_name.eq_ignore_ascii_case("default")
+}
+
 /// Find thesaurus path with project config priority.
 ///
 /// Resolution order:
 ///   1. `.terraphim/thesaurus-<role>.json` or the matching role shortname (project config)
 ///   2. `*_thesaurus.json` in CWD or nearby directories (filesystem heuristic)
-fn find_default_thesaurus(role_name: &str) -> Option<PathBuf> {
+///
+/// The filesystem heuristic is **role-aware**: when the role is known, only a
+/// file whose name mentions that role is accepted, because a thesaurus for
+/// another role silently replaces the requested role's vocabulary
+/// (terraphim-clients#515).
+fn find_default_thesaurus(role_name: &str, role_requested: bool) -> Option<PathBuf> {
     if let Some(dir) = discover_project_dir()
         && let Some(path) = discover_project_thesaurus(&dir, role_name)
     {
         return Some(path);
     }
 
+    let role_unknown = role_is_unknown(role_name, role_requested);
     let possible_paths = vec![
         PathBuf::from("."),
         PathBuf::from("../docs/src"),
@@ -356,9 +417,13 @@ fn find_default_thesaurus(role_name: &str) -> Option<PathBuf> {
                 for entry in entries.flatten() {
                     let name = entry.file_name();
                     let name_str = name.to_string_lossy();
-                    if name_str.ends_with("_thesaurus.json") {
-                        return Some(candidate.join(&name));
+                    if !name_str.ends_with("_thesaurus.json") {
+                        continue;
                     }
+                    if !role_unknown && !thesaurus_file_matches_role(&name_str, role_name) {
+                        continue;
+                    }
+                    return Some(candidate.join(&name));
                 }
             }
         }
@@ -403,15 +468,33 @@ where
 ///      Markdown KG (Refs #405).
 ///   4. If none of the above succeeds, return an empty thesaurus so the CLI can fall back to
 ///      `fff-search` enhanced grep without a knowledge graph.
-async fn resolve_thesaurus(role_name: &str, explicit: Option<&Path>) -> Result<Thesaurus> {
+async fn resolve_thesaurus(
+    role_name: &str,
+    explicit: Option<&Path>,
+    role_requested: bool,
+) -> Result<Thesaurus> {
     if let Some(path) = explicit {
         let automata_path = AutomataPath::from_local(path);
         return terraphim_automata::load_thesaurus(&automata_path)
             .await
             .with_context(|| format!("Failed to load thesaurus from {:?}", path));
     }
-    if let Some(path) = find_default_thesaurus(role_name) {
-        tracing::debug!("Loaded thesaurus from project file {:?}", path);
+    if let Some(path) = find_default_thesaurus(role_name, role_requested) {
+        // A file that is not scoped to the requested role is a guess, and a
+        // guess must never be silent (terraphim-clients#515).
+        let scoped = thesaurus_file_matches_role(
+            &path.file_name().unwrap_or_default().to_string_lossy(),
+            role_name,
+        );
+        if scoped {
+            tracing::debug!("Loaded thesaurus from project file {:?}", path);
+        } else {
+            tracing::info!(
+                "Loaded thesaurus from project file {:?}, which is not scoped to role '{}'",
+                path,
+                role_name
+            );
+        }
         let automata_path = AutomataPath::from_local(&path);
         return terraphim_automata::load_thesaurus(&automata_path)
             .await
@@ -814,6 +897,7 @@ async fn run() -> Result<()> {
     // Without this short-circuit, a multi-role project directory causes
     // "multiple project roles found" even though the thesaurus is already known.
     // See terraphim/terraphim-ai#2722.
+    let role_requested = args.role.is_some();
     let role_name = determine_role_name(
         args.thesaurus.is_some(),
         args.role.as_deref(),
@@ -822,7 +906,8 @@ async fn run() -> Result<()> {
 
     // Load thesaurus, falling back to an empty one when no project thesaurus exists.
     // This lets terraphim-grep behave like an enhanced fff-search grep without a KG.
-    let thesaurus = resolve_thesaurus(&role_name, args.thesaurus.as_deref()).await?;
+    let thesaurus =
+        resolve_thesaurus(&role_name, args.thesaurus.as_deref(), role_requested).await?;
     if thesaurus.is_empty() {
         tracing::info!(
             "No thesaurus found for role '{}'; running in fff-search enhanced grep mode",
@@ -1007,6 +1092,23 @@ mod managed_mode_tests {
     /// Control: the fail-closed fallback in `classify_update_status` must
     /// not swallow the legacy, semver-stable variants -- only the unnamed
     /// ("new-to-this-crate") ones route through the refusal arm.
+    /// A failed update check is a failure, not "no update available"
+    /// (terraphim-clients#515).
+    #[test]
+    fn classify_update_status_reports_a_failed_check_as_a_failure() {
+        let status =
+            terraphim_update::UpdateStatus::Failed("GitHub API rate limit exceeded".to_string());
+        match classify_update_status(status) {
+            UpdateCommandOutcome::Failed { message } => {
+                assert!(
+                    message.contains("rate limit"),
+                    "the failure message must be reported, got: {message}"
+                );
+            }
+            other => panic!("expected Failed, got {other:?}"),
+        }
+    }
+
     #[test]
     fn classify_update_status_reports_up_to_date_as_applied() {
         let status = terraphim_update::UpdateStatus::UpToDate("1.2.3".to_string());
