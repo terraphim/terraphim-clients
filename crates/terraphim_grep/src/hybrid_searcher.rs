@@ -438,7 +438,16 @@ pub async fn search_file_names(
                 FuzzySearchOptions {
                     max_threads: 0,
                     current_file: None,
-                    pagination: PaginationArgs { offset: 0, limit },
+                    // The limit is applied once, over the pooled results of all
+                    // roots. A per-root cap would make the result set the
+                    // per-root top-N rather than the global top-N, so a root
+                    // that sorts lower would be missing from the results
+                    // entirely (terraphim-clients#515). `limit: 0` means "no
+                    // pagination" to fff-search.
+                    pagination: PaginationArgs {
+                        offset: 0,
+                        limit: 0,
+                    },
                     ..FuzzySearchOptions::default()
                 },
             );
@@ -455,6 +464,11 @@ pub async fn search_file_names(
         }
 
         matches.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| a.path.cmp(&b.path)));
+        // Overlapping roots can yield the same file twice, and the contract is
+        // one path per line (terraphim-clients#515). The first occurrence is
+        // kept, and the sort puts the highest-scoring copy first.
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        matches.retain(|entry| seen.insert(entry.path.clone()));
         matches.truncate(limit);
         Ok(matches)
     }

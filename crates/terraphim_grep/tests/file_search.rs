@@ -151,3 +151,107 @@ fn files_mode_exits_one_when_nothing_matches() {
         "no-match output must be empty"
     );
 }
+
+/// Overlapping `--paths` roots must not produce the same file twice.
+///
+/// The contract is one path per line, and the limit is a limit on *distinct*
+/// files: with overlapping roots the same file is found under each of them,
+/// and the duplicates used to eat the limit slots
+/// (terraphim-clients#515).
+#[test]
+fn files_mode_deduplicates_overlapping_roots() {
+    let fixture = Fixture::new();
+    let output = run(&[
+        "js",
+        "--files",
+        "--paths",
+        fixture.plugins.to_str().unwrap(),
+        "--paths",
+        fixture.plugins.to_str().unwrap(),
+    ]);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let lines: Vec<&str> = stdout.lines().filter(|line| !line.is_empty()).collect();
+
+    let mut unique = lines.to_vec();
+    unique.sort_unstable();
+    unique.dedup();
+    assert_eq!(
+        lines.len(),
+        unique.len(),
+        "a path must be listed once, got {lines:?}"
+    );
+    assert!(
+        !unique.is_empty(),
+        "the overlapping roots should still find the files\nstdout: {stdout}"
+    );
+}
+
+/// The limit is applied once, over the pooled results of all roots.
+///
+/// With overlapping roots the same file is found under each of them; before
+/// the fix the duplicates filled the limit, so `-n 2` returned one distinct
+/// file instead of two (terraphim-clients#515).
+#[test]
+fn files_mode_limit_counts_distinct_files_across_roots() {
+    let fixture = Fixture::new();
+    let output = run(&[
+        "js",
+        "--files",
+        "--paths",
+        fixture.plugins.to_str().unwrap(),
+        "--paths",
+        fixture.plugins.to_str().unwrap(),
+        "-n",
+        "2",
+    ]);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let lines: Vec<&str> = stdout.lines().filter(|line| !line.is_empty()).collect();
+
+    let mut unique = lines.to_vec();
+    unique.sort_unstable();
+    unique.dedup();
+    assert_eq!(
+        unique.len(),
+        2,
+        "the limit must count distinct files, got {lines:?}"
+    );
+}
+
+/// A root that sorts lower must still appear when the limit allows it.
+///
+/// The limit is the global top-N over the pooled results, not the top-N of the
+/// first root (terraphim-clients#515).
+#[test]
+fn files_mode_limit_is_global_across_roots() {
+    let fixture = Fixture::new();
+    // A file in the second root, so both roots have a match for the pattern.
+    std::fs::write(fixture.docs.join("helper.js"), "// helper\n").unwrap();
+    let output = run(&[
+        "js",
+        "--files",
+        "--paths",
+        fixture.plugins.to_str().unwrap(),
+        "--paths",
+        fixture.docs.to_str().unwrap(),
+        "-n",
+        "50",
+    ]);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let lines: Vec<&str> = stdout.lines().filter(|line| !line.is_empty()).collect();
+
+    assert!(
+        lines
+            .iter()
+            .any(|path| path.starts_with(fixture.plugins.to_str().unwrap())),
+        "the plugins root must be represented, got {lines:?}"
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|path| path.starts_with(fixture.docs.to_str().unwrap())),
+        "the docs root must be represented too, got {lines:?}"
+    );
+}
