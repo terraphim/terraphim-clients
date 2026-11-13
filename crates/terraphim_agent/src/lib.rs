@@ -9,6 +9,7 @@
 // exceptions - see the `no_new_unsafe_sites` guard.
 #![forbid(unsafe_code)]
 
+pub mod agent_store;
 /// Checklist definitions (embedded TOML) and phrase matching.
 pub mod cache_export;
 pub mod cache_flush;

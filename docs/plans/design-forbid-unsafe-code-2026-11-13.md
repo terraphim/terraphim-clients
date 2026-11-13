@@ -4,6 +4,11 @@
 **Author**: opencode-cli (agent session)
 **Date**: 2026-11-13
 
+> **Reconciliation pointer (2026-11-13, candidate HEAD `05b7530`).** The
+> allow-list and the counts below are the **original dated Gitea #447 record**
+> and are historical. The **current** inventory is in the baseline's
+> reconciliation addendum: `docs/plans/dependency-unsafe-baseline-2026-11-13.md`.
+
 ## The decision
 
 **Turn the permanent gate on.**
@@ -58,7 +63,8 @@ is the compiler attribute ✓.
 
 ## The gate for the test crates
 
-The allow-list has two entries ✓:
+The allow-list has two entries ✓ (the #447 list ✓; the current list is in the
+baseline addendum ✓):
 
 | File | Items | Why |
 |------|-------|-----|

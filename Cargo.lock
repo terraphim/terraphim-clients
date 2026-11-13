@@ -6299,7 +6299,7 @@ dependencies = [
 
 [[package]]
 name = "terraphim-cli"
-version = "1.21.16"
+version = "1.21.24"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -6374,7 +6374,7 @@ dependencies = [
 
 [[package]]
 name = "terraphim_agent"
-version = "1.21.16"
+version = "1.21.24"
 dependencies = [
  "ahash",
  "anyhow",
@@ -6560,7 +6560,7 @@ dependencies = [
 
 [[package]]
 name = "terraphim_grep"
-version = "1.21.16"
+version = "1.21.24"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6589,7 +6589,7 @@ dependencies = [
 
 [[package]]
 name = "terraphim_hooks"
-version = "1.21.16"
+version = "1.21.24"
 dependencies = [
  "dirs 5.0.1",
  "serde",
@@ -6615,7 +6615,7 @@ dependencies = [
 
 [[package]]
 name = "terraphim_mcp_server"
-version = "1.0.0"
+version = "1.21.24"
 dependencies = [
  "ahash",
  "anyhow",
@@ -6626,10 +6626,12 @@ dependencies = [
  "fff-search",
  "regex",
  "rmcp",
+ "schemars 1.2.1",
  "serde",
  "serde_json",
  "serial_test",
  "tempfile",
+ "terraphim_agent",
  "terraphim_automata",
  "terraphim_config",
  "terraphim_file_search",

@@ -1758,6 +1758,12 @@ const KNOWN_UNSAFE_SITES: &[UnsafeSite] = &[
         count: 7,
     },
     UnsafeSite {
+        // The fork regression needs POSIX FFI in its separate integration-test
+        // crate: one `unsafe extern` block and three `unsafe` expressions.
+        file: "crates/terraphim_agent/tests/transaction_lock.rs",
+        count: 4,
+    },
+    UnsafeSite {
         file: "crates/terraphim_update/tests/managed_mode_home_env.rs",
         count: 2,
     },
