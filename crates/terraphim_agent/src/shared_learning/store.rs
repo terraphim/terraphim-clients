@@ -333,6 +333,7 @@ impl SharedLearningStore {
         let learning = index
             .get_mut(id)
             .ok_or_else(|| StoreError::NotFound(id.to_string()))?;
+        Self::ensure_not_rejected(id, learning)?;
         learning.promote_to_l1();
         let updated = learning.clone();
         drop(index);
@@ -347,6 +348,7 @@ impl SharedLearningStore {
         let learning = index
             .get_mut(id)
             .ok_or_else(|| StoreError::NotFound(id.to_string()))?;
+        Self::ensure_not_rejected(id, learning)?;
         if learning.trust_level == TrustLevel::L0 {
             learning.promote_to_l1();
         }
@@ -364,20 +366,32 @@ impl SharedLearningStore {
         let learning = index
             .get_mut(id)
             .ok_or_else(|| StoreError::NotFound(id.to_string()))?;
-        // A rejected learning stays rejected: promotion is not a way to route
-        // around the rejection (terraphim-clients#388).
-        if learning.suggestion_status == SuggestionStatus::Rejected {
-            return Err(StoreError::InvalidInput(format!(
-                "learning {id} was rejected; lift the rejection explicitly with \
-                 approve_after_rejection"
-            )));
-        }
+        Self::ensure_not_rejected(id, learning)?;
         learning.promote_to_l3();
         let updated = learning.clone();
         drop(index);
 
         self.persist(&updated).await?;
         info!("Promoted learning {} to L3", id);
+        Ok(())
+    }
+
+    /// Refuse to promote a rejected learning.
+    ///
+    /// A rejected learning stays rejected: promotion is not a way to route
+    /// around the rejection (terraphim-clients#388). Every promotion path goes
+    /// through this guard, so a new promotion method cannot forget it - the
+    /// guard was missing from `promote_to_l2` and `promote_to_l1`, and a
+    /// rejected learning promoted to L2 was listed as peer-validated and
+    /// synced to the wiki (terraphim-clients#514). Lifting a rejection is a
+    /// decision of its own: [`Self::approve_after_rejection`].
+    fn ensure_not_rejected(id: &str, learning: &SharedLearning) -> Result<(), StoreError> {
+        if learning.suggestion_status == SuggestionStatus::Rejected {
+            return Err(StoreError::InvalidInput(format!(
+                "learning {id} was rejected; lift the rejection explicitly with \
+                 approve_after_rejection"
+            )));
+        }
         Ok(())
     }
 
@@ -409,12 +423,7 @@ impl SharedLearningStore {
         let learning = index
             .get_mut(id)
             .ok_or_else(|| StoreError::NotFound(id.to_string()))?;
-        if learning.suggestion_status == SuggestionStatus::Rejected {
-            return Err(StoreError::InvalidInput(format!(
-                "learning {id} was rejected; lift the rejection explicitly with \
-                 approve_after_rejection"
-            )));
-        }
+        Self::ensure_not_rejected(id, learning)?;
         learning.suggestion_status = SuggestionStatus::Approved;
         learning.promote_to_l3();
         let updated = learning.clone();
@@ -864,6 +873,28 @@ mod tests {
             .promote_to_l3(&id)
             .await
             .expect_err("promoting a rejected learning must fail");
+        assert!(
+            error.to_string().contains("rejected"),
+            "the error must say the learning was rejected, got: {error}"
+        );
+
+        // Every promotion path is guarded, not only the ones that promote to
+        // L3: a rejected learning that could be promoted to L2 would be listed
+        // as peer-validated and would sync to the wiki
+        // (terraphim-clients#514).
+        let error = store
+            .promote_to_l2(&id)
+            .await
+            .expect_err("promoting a rejected learning to L2 must fail");
+        assert!(
+            error.to_string().contains("rejected"),
+            "the error must say the learning was rejected, got: {error}"
+        );
+
+        let error = store
+            .promote_to_l1(&id)
+            .await
+            .expect_err("promoting a rejected learning to L1 must fail");
         assert!(
             error.to_string().contains("rejected"),
             "the error must say the learning was rejected, got: {error}"

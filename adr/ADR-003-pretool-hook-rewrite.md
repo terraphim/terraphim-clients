@@ -49,10 +49,14 @@ The PreToolUse hook pipeline now runs in two distinct modes:
        "tool_input": {"command": "rm -rf /tmp/foo"},
        "tool_name": "Bash",
        "warnings": [
-         "command contained 1 KG-replaceable substring(s); pass --rewrite to enable substitution. Original: `rm -rf /tmp/foo`"
+         "command contained 1 KG-replaceable substring(s); pass --rewrite to enable substitution"
        ]
      }
      ```
+   * Warning text deliberately omits the original command. Commands can contain
+     credentials, tokens, or other sensitive arguments, so duplicating the full
+     input in an informational field would expand secret exposure beyond the
+     existing `tool_input` contract.
    * The agent runtime (Claude Code) is expected to surface the
      `warnings` to the user, who can then decide to either
      re-run the tool with `--rewrite` or amend the command.
