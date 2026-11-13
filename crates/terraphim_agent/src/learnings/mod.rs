@@ -51,7 +51,7 @@ pub use capture::{
     CapturedLearning, CorrectionEvent, ImportanceScore, LearningContext, LearningEntry,
     LearningError, annotate_with_entities, annotate_with_thesaurus, query_all_entries,
 };
-// Re-export KG thesaurus building utilities for use by hook validation pipeline
+// Re-export KG thesaurus discovery/building utilities for learning capture consumers.
 pub use capture::{build_kg_thesaurus_with_hash, find_kg_dir};
 
 // Re-export compile functions for building thesauruses from corrections
@@ -65,7 +65,9 @@ pub use export_kg::{CorrectionTypeFilter, export_corrections_as_kg};
 pub use redaction::redact_secrets;
 
 // Hook types for AI agent integration
-pub use hook::{AgentFormat, LearnHookType, process_hook_input_with_type};
+pub use hook::{
+    AgentFormat, HookInput, LearnHookType, ToolInput, ToolResult, process_hook_input_with_type,
+};
 
 // Install types for AI agent hook installation
 pub use install::{AgentType, install_hook, pi_install_guidance};

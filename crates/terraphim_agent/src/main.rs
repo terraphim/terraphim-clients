@@ -2414,10 +2414,14 @@ async fn handle_hook_command(args: HookArgs, service: &TuiService) -> Result<()>
                     // where any substring match could silently mutate
                     // a destructive command (Refs #126).
                     let thesaurus = service.get_thesaurus(&role_name).await?;
+                    // Findings and replacement must use the same selected-role
+                    // snapshot. Validating before moving the snapshot into the
+                    // replacement service also avoids falling back to an
+                    // unrelated process-global KG.
+                    let kg_validation =
+                        kg_validation::validate_command_with_thesaurus(command, &thesaurus);
                     let replacement_service = terraphim_hooks::ReplacementService::new(thesaurus);
                     let hook_result = replacement_service.replace_fail_open(command);
-
-                    let kg_validation = kg_validation::validate_command_against_kg(command);
 
                     let mut output = input_value.clone();
                     let mut emitted_warning = false;
@@ -2441,8 +2445,8 @@ async fn handle_hook_command(args: HookArgs, service: &TuiService) -> Result<()>
                                     .or_insert(serde_json::Value::Array(vec![]));
                                 if let Some(arr) = warnings.as_array_mut() {
                                     arr.push(serde_json::Value::String(format!(
-                                        "command contained {} KG-replaceable substring(s); pass --rewrite to enable substitution. Original: `{}`",
-                                        hook_result.replacements, command
+                                        "command contained {} KG-replaceable substring(s); pass --rewrite to enable substitution",
+                                        hook_result.replacements
                                     )));
                                 }
                             }
