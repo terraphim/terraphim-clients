@@ -7,6 +7,11 @@
 **Author**: opencode-cli (agent session)
 **Date**: 2026-11-13
 
+> **Reconciliation pointer (2026-11-13, candidate HEAD `05b7530`).** The
+> allow-list and the counts below are the **original dated Gitea #447 record**
+> and are historical. The **current** inventory is in the baseline's
+> reconciliation addendum: `docs/plans/dependency-unsafe-baseline-2026-11-13.md`.
+
 ## What was implemented
 
 ### The compiler gate
@@ -49,7 +54,8 @@ off is a deliberate act on the crate's first line.
   `unsafe trait`, `unsafe extern`) and ignores the word in prose, in the crate
   attribute `#![forbid(unsafe_code)]`, and inside a longer identifier.
 
-The allow-list has two entries:
+The allow-list has two entries (the #447 list ✓; the current list is in the
+baseline addendum ✓):
 
 | File | Items |
 |------|-------|

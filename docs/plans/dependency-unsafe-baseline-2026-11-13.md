@@ -3,6 +3,30 @@
 **Recorded**: 2026-11-13
 **Tool**: `cargo-geiger 0.14.0` (installed into a scratch root from crates.io)
 **Scope**: the `terraphim-clients` workspace
+**Reconciled**: 2026-11-13, candidate HEAD `05b7530` - the workspace's own
+`unsafe` inventory was corrected; the `cargo-geiger` run was **not** repeated.
+
+## Reconciliation addendum (2026-11-13, candidate HEAD `05b7530`)
+
+The rest of this document is the **original dated Gitea #447 baseline**, kept
+as written; this addendum holds the current inventory of the workspace's own
+`unsafe` items - **13, in three files** (7 + 4 + 2):
+
+| File | Items | Why |
+|------|-------|-----|
+| `crates/terraphim_agent/tests/support/server_process.rs` | 7 | the libc FFI the test-server helper needs (one `unsafe extern` block and six expressions) |
+| `crates/terraphim_agent/tests/transaction_lock.rs` | 4 | the POSIX fork regression (one `unsafe extern` block and three expressions) - new in this reconciliation |
+| `crates/terraphim_update/tests/managed_mode_home_env.rs` | 2 | the `HOME` mutation of the one-test binary (#503) |
+
+- The original record's prose said "eight"; its own allow-list counts were
+  7 + 2 = **9** items - the eight was the `unsafe {` **block** count (6 + 2)
+  of the research measurement, which does not count the `unsafe extern` block
+  the guard's counter counts as an item.
+- The third file is new: the reconciliation preserved the fork regression
+  test, in its own integration-test crate, so the crate attribute cannot
+  reach it.
+- No new `cargo-geiger` measurement was taken; the dependency-graph figures
+  below are the ones recorded on 2026-11-13 with `cargo-geiger 0.14.0`.
 
 ## The workspace's own `unsafe`
 
@@ -11,14 +35,15 @@ The baseline for the code this repository owns:
 | Target | `unsafe` items |
 |--------|----------------|
 | the nine library and binary targets | **0** |
-| the integration-test targets | 8, in two files (see below) |
+| the integration-test targets | 13, in three files (the addendum above; the original dated record said 8, in two files) |
 
 The library and binary targets now carry `#![forbid(unsafe_code)]`
 (terraphim-clients#447), so the compiler refuses any `unsafe` there - the
 "0" is enforced, not merely observed.
 
-The eight remaining items are in test crates, which are separate compilation
-units that a crate attribute cannot reach:
+The remaining items are in test crates, which are separate compilation units
+that a crate attribute cannot reach; the two-file list below is the original
+dated record (the current three-file list is the addendum above):
 
 | File | Items | Why |
 |------|-------|-----|

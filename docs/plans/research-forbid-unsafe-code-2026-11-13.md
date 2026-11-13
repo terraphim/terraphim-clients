@@ -5,6 +5,11 @@
 **Date**: 2026-11-13
 **Mode**: `remediation` (the issue names the goal; the research establishes that the precondition now holds)
 
+> **Reconciliation pointer (2026-11-13, candidate HEAD `05b7530`).** The
+> measurement and the counts below are the **original dated Gitea #447
+> record** and are historical. The **current** inventory is in the baseline's
+> reconciliation addendum: `docs/plans/dependency-unsafe-baseline-2026-11-13.md`.
+
 ## Executive Summary
 
 The unsafe-audit epic removed the environment-mutation sites that made
@@ -13,7 +18,8 @@ pointing at can finally be turned on: **every crate's library and binary
 target now carries `#![forbid(unsafe_code)]`**, enforced by the compiler. What
 remains is eight `unsafe` items in two *integration-test* files - separate
 compilation units that the crate attribute cannot reach - and a guard that
-keeps that list from growing.
+keeps that list from growing (the #447 measurement; the current inventory is in
+the baseline addendum ✓).
 
 ## Essential Questions Check
 
@@ -47,7 +53,7 @@ general case.
 - The test targets' remaining exceptions are listed, counted and visible ✓.
 - A new `unsafe` item outside that list fails CI ✓.
 
-## Current State Analysis
+## Current State Analysis (as measured on 2026-11-13)
 
 ### The inventory, measured
 
