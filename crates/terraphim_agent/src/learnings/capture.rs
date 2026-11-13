@@ -1590,7 +1590,109 @@ pub fn query_all_entries_semantic(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
     use tempfile::TempDir;
+
+    #[test]
+    fn test_build_kg_thesaurus_with_hash_returns_thesaurus_and_hash() {
+        let temp_dir = TempDir::new().unwrap();
+        let kg_dir = temp_dir.path();
+
+        let concept_file = kg_dir.join("test-concept.md");
+        let mut file = std::fs::File::create(&concept_file).unwrap();
+        writeln!(file, "synonyms:: test-alias").unwrap();
+
+        let result = build_kg_thesaurus_with_hash(kg_dir);
+        assert!(result.is_some());
+
+        let (_thesaurus, hash) = result.unwrap();
+        assert!(!hash.is_empty());
+        assert_ne!(hash, "unknown");
+    }
+
+    #[test]
+    fn test_build_kg_thesaurus_with_hash_empty_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        assert!(build_kg_thesaurus_with_hash(temp_dir.path()).is_none());
+    }
+
+    #[test]
+    fn test_build_kg_thesaurus_with_hash_nonexistent_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        let missing = temp_dir.path().join("missing");
+        assert!(build_kg_thesaurus_with_hash(&missing).is_none());
+    }
+
+    #[test]
+    fn test_hash_changes_when_new_file_added() {
+        let temp_dir = TempDir::new().unwrap();
+        let kg_dir = temp_dir.path();
+
+        let mut first = std::fs::File::create(kg_dir.join("concept-alpha.md")).unwrap();
+        writeln!(first, "synonyms:: alpha-alias").unwrap();
+        let (initial, hash1) = build_kg_thesaurus_with_hash(kg_dir).unwrap();
+        assert!(
+            initial
+                .get(&terraphim_types::NormalizedTermValue::from("alpha-alias"))
+                .is_some()
+        );
+
+        let mut second = std::fs::File::create(kg_dir.join("concept-beta.md")).unwrap();
+        writeln!(second, "synonyms:: beta-alias").unwrap();
+        let (updated, hash2) = build_kg_thesaurus_with_hash(kg_dir).unwrap();
+
+        assert_ne!(hash1, hash2);
+        assert!(
+            updated
+                .get(&terraphim_types::NormalizedTermValue::from("beta-alias"))
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn test_hash_changes_when_file_modified() {
+        let temp_dir = TempDir::new().unwrap();
+        let kg_dir = temp_dir.path();
+        let concept_file = kg_dir.join("concept-gamma.md");
+        std::fs::write(&concept_file, "synonyms:: gamma-v1\n").unwrap();
+        let (_, hash1) = build_kg_thesaurus_with_hash(kg_dir).unwrap();
+
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(&concept_file)
+            .unwrap();
+        writeln!(file, "synonyms:: gamma-v1, gamma-v2").unwrap();
+        let (updated, hash2) = build_kg_thesaurus_with_hash(kg_dir).unwrap();
+
+        assert_ne!(hash1, hash2);
+        assert!(
+            updated
+                .get(&terraphim_types::NormalizedTermValue::from("gamma-v2"))
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn test_hash_changes_when_file_deleted() {
+        let temp_dir = TempDir::new().unwrap();
+        let kg_dir = temp_dir.path();
+        let first = kg_dir.join("concept-delta.md");
+        let second = kg_dir.join("concept-epsilon.md");
+        std::fs::write(&first, "synonyms:: delta-alias\n").unwrap();
+        std::fs::write(&second, "synonyms:: epsilon-alias\n").unwrap();
+        let (_, hash1) = build_kg_thesaurus_with_hash(kg_dir).unwrap();
+
+        std::fs::remove_file(second).unwrap();
+        let (updated, hash2) = build_kg_thesaurus_with_hash(kg_dir).unwrap();
+
+        assert_ne!(hash1, hash2);
+        assert!(
+            updated
+                .get(&terraphim_types::NormalizedTermValue::from("epsilon-alias"))
+                .is_none()
+        );
+    }
 
     #[test]
     fn test_captured_learning_to_markdown() {

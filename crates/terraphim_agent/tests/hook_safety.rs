@@ -16,7 +16,10 @@
 //! happens to contain a matching synonym (which is how they passed locally
 //! and failed on the Gitea runner).
 
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+
+use tempfile::TempDir;
 
 mod support;
 use support::cli_test_env::apply_hermetic_env;
@@ -51,6 +54,95 @@ fn run_hook(extra_args: &[&str], payload: &str) -> (i32, String, String) {
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     (output.status.code().unwrap_or(-1), stdout, stderr)
+}
+
+fn isolated_role_config(dir: &Path) -> PathBuf {
+    let kg_dir = dir.join("role-kg");
+    std::fs::create_dir(&kg_dir).expect("create isolated role KG");
+    std::fs::write(
+        kg_dir.join("bun-install.md"),
+        "# bun install\n\nsynonyms:: npm install\n",
+    )
+    .expect("write isolated role KG");
+    std::fs::write(kg_dir.join("bun.md"), "# bun\n\nsynonyms:: npm\n")
+        .expect("write isolated role KG term");
+
+    let config_path = dir.join("config.json");
+    let config = serde_json::json!({
+        "id": "Server",
+        "global_shortcut": null,
+        "roles": {
+            "Isolated": {
+                "shortname": "isolated",
+                "name": "Isolated",
+                "relevance_function": "terraphim-graph",
+                "terraphim_it": true,
+                "theme": "lumen",
+                "kg": {
+                    "automata_path": null,
+                    "knowledge_graph_local": {
+                        "input_type": "markdown",
+                        "path": kg_dir
+                    },
+                    "public": false,
+                    "publish": false
+                },
+                "haystacks": [],
+                "llm_provider": null,
+                "llm_auto_summarize": false,
+                "llm_system_prompt": null,
+                "extra": {}
+            }
+        },
+        "default_role": "Isolated",
+        "selected_role": "Isolated"
+    });
+    std::fs::write(
+        &config_path,
+        serde_json::to_vec(&config).expect("serialize isolated config"),
+    )
+    .expect("write isolated config");
+    config_path
+}
+
+/// Run from a directory with no `docs/src/kg`, while selecting a role whose
+/// KG is explicitly configured. This prevents the legacy global-KG lookup
+/// from making the test pass accidentally.
+fn run_hook_with_isolated_role(
+    dir: &Path,
+    config_path: &Path,
+    extra_args: &[&str],
+    payload: &str,
+) -> (i32, String, String) {
+    let mut cmd = Command::new(agent_binary());
+    cmd.arg("--config")
+        .arg(config_path)
+        .arg("hook")
+        .arg("--hook-type")
+        .arg("pre-tool-use")
+        .args(extra_args);
+    apply_hermetic_env(&mut cmd).expect("apply hermetic env");
+    cmd.current_dir(dir);
+    let mut child = cmd
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn isolated terraphim-agent hook");
+
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write;
+        stdin
+            .write_all(payload.as_bytes())
+            .expect("failed to write payload to stdin");
+    }
+
+    let output = child.wait_with_output().expect("failed to read output");
+    (
+        output.status.code().unwrap_or(-1),
+        String::from_utf8_lossy(&output.stdout).to_string(),
+        String::from_utf8_lossy(&output.stderr).to_string(),
+    )
 }
 
 fn parse(stdout: &str) -> serde_json::Value {
@@ -152,5 +244,125 @@ fn allowlisted_rm_rf_path_passes_default_guard() {
         output.get("hookSpecificOutput").is_none(),
         "/tmp/ must remain allowlisted; got decision envelope: {:?}",
         output
+    );
+}
+
+#[test]
+fn isolated_role_kg_emits_findings_without_rewriting_or_leaking_warning_input() {
+    let dir = TempDir::new().expect("tempdir");
+    let config = isolated_role_config(dir.path());
+    let secret = "secret-token-7d938f";
+    let command = format!("npm install react --token={secret}");
+    let payload = make_payload(&command);
+
+    let (code, stdout, stderr) = run_hook_with_isolated_role(dir.path(), &config, &[], &payload);
+    assert_eq!(code, 0, "stderr: {stderr}");
+    let output = parse(&stdout);
+    assert_eq!(output["tool_input"]["command"], command);
+    assert_eq!(output["validations"]["has_findings"], true);
+    assert!(
+        output["validations"]["findings"]
+            .as_array()
+            .is_some_and(|findings| findings.iter().any(|finding| {
+                finding["matched_term"] == "npm install"
+                    && finding["suggested_replacement"] == "bun install"
+            })),
+        "selected role KG finding missing: {output}"
+    );
+    let warnings = output["warnings"].as_array().expect("warnings array");
+    assert!(
+        warnings
+            .iter()
+            .all(|warning| !warning.as_str().unwrap_or_default().contains(secret)),
+        "warnings must not disclose command arguments: {warnings:?}"
+    );
+}
+
+#[test]
+fn isolated_role_kg_rewrite_and_findings_use_the_same_snapshot() {
+    let dir = TempDir::new().expect("tempdir");
+    let config = isolated_role_config(dir.path());
+    let payload = make_payload("npm install react");
+
+    let (code, stdout, stderr) =
+        run_hook_with_isolated_role(dir.path(), &config, &["--rewrite"], &payload);
+    assert_eq!(code, 0, "stderr: {stderr}");
+    let output = parse(&stdout);
+    assert_eq!(output["tool_input"]["command"], "bun install react");
+    assert_eq!(output["validations"]["has_findings"], true);
+}
+
+#[test]
+fn isolated_role_kg_no_match_passes_through_without_findings_or_warnings() {
+    let dir = TempDir::new().expect("tempdir");
+    let config = isolated_role_config(dir.path());
+    let payload = make_payload("printf hello");
+
+    let (code, stdout, stderr) = run_hook_with_isolated_role(dir.path(), &config, &[], &payload);
+    assert_eq!(code, 0, "stderr: {stderr}");
+    assert_eq!(parse(&stdout), parse(&payload));
+}
+
+#[test]
+fn guard_denial_precedes_role_kg_findings_and_rewrite() {
+    let dir = TempDir::new().expect("tempdir");
+    let config = isolated_role_config(dir.path());
+    let payload = make_payload("rm -rf / && npm install react");
+
+    let (code, stdout, stderr) =
+        run_hook_with_isolated_role(dir.path(), &config, &["--rewrite"], &payload);
+    assert_eq!(code, 0, "stderr: {stderr}");
+    let output = parse(&stdout);
+    assert_eq!(output["hookSpecificOutput"]["permissionDecision"], "deny");
+    assert!(output.get("validations").is_none(), "guard must run first");
+    assert!(output.get("warnings").is_none(), "guard must run first");
+    assert!(output.get("tool_input").is_none(), "guard must run first");
+}
+
+#[test]
+fn isolated_role_kg_ignores_url_only_matches() {
+    let dir = TempDir::new().expect("tempdir");
+    let config = isolated_role_config(dir.path());
+    let payload = make_payload("curl https://registry.npmjs.org/npm");
+
+    let (code, stdout, stderr) = run_hook_with_isolated_role(dir.path(), &config, &[], &payload);
+    assert_eq!(code, 0, "stderr: {stderr}");
+    assert_eq!(parse(&stdout), parse(&payload));
+}
+
+#[test]
+fn isolated_role_kg_counts_and_reports_only_actual_rewrites() {
+    let dir = TempDir::new().expect("tempdir");
+    let config = isolated_role_config(dir.path());
+    let command = "npm install && curl https://registry.npmjs.org/npm";
+    let payload = make_payload(command);
+
+    let (code, stdout, stderr) = run_hook_with_isolated_role(dir.path(), &config, &[], &payload);
+    assert_eq!(code, 0, "stderr: {stderr}");
+    let output = parse(&stdout);
+    assert_eq!(output["tool_input"]["command"], command);
+    assert_eq!(
+        output["warnings"],
+        serde_json::json!([
+            "command contained 1 KG-replaceable substring(s); pass --rewrite to enable substitution"
+        ])
+    );
+    let findings = output["validations"]["findings"]
+        .as_array()
+        .expect("findings array");
+    assert_eq!(findings.len(), 1, "findings must equal actual rewrites");
+    assert_eq!(findings[0]["matched_term"], "npm install");
+
+    let (code, stdout, stderr) =
+        run_hook_with_isolated_role(dir.path(), &config, &["--rewrite"], &payload);
+    assert_eq!(code, 0, "stderr: {stderr}");
+    let output = parse(&stdout);
+    assert_eq!(
+        output["tool_input"]["command"],
+        "bun install && curl https://registry.npmjs.org/npm"
+    );
+    assert_eq!(
+        output["validations"]["findings"].as_array().map(Vec::len),
+        Some(1)
     );
 }
