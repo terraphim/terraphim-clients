@@ -721,13 +721,42 @@ fn workspace_rust_sources() -> Vec<PathBuf> {
     let mut out = Vec::new();
     walk(&workspace_root().join("crates"), &mut out);
     // This guard file quotes the very literals it forbids, so exclude it.
+    //
+    // The exclusion is by **path**, not by file name: excluding by name would
+    // silently drop every other file called `ci_guards.rs` in the tree, and a
+    // new environment-mutation site could hide behind such a name
+    // (terraphim-clients#513).
+    let own_path = own_guard_path();
     let own_name = Path::new(file!())
         .file_name()
         .expect("guard file name")
         .to_owned();
-    out.retain(|p| p.file_name() != Some(own_name.as_os_str()));
+    out.retain(|path| {
+        let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.clone());
+        match own_path.as_deref() {
+            Some(own) => canonical != own,
+            // The guard file could not be located, so fall back to the old
+            // name-based exclusion rather than scanning the guard itself.
+            None => path.file_name() != Some(own_name.as_os_str()),
+        }
+    });
     out.sort();
     out
+}
+
+/// The absolute path of this guard file.
+///
+/// `file!()` is relative to the package root in some cargo invocations and to
+/// the workspace root in others, so the file name is combined with the
+/// package's `tests` directory rather than trusting it.
+fn own_guard_path() -> Option<PathBuf> {
+    let name = Path::new(file!()).file_name()?;
+    std::fs::canonicalize(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join(name),
+    )
+    .ok()
 }
 
 /// Every `FilePicker::new` call must refuse fff-search's mmap content cache.
@@ -1310,11 +1339,89 @@ fn no_new_environment_mutation_sites() {
     );
 }
 
+/// Whether a dependency table lists `dependency`.
+///
+/// A dependency can be listed under another name (`tutils = { package =
+/// "terraphim_test_utils", ... }`), so the `package` key is checked as well:
+/// the rename is a legal way to re-add the dependency, and the manifest rule
+/// must see it (terraphim-clients#513).
+fn table_mentions_dependency(table: &toml::Table, dependency: &str) -> bool {
+    table.iter().any(|(key, value)| {
+        key == dependency
+            || value
+                .as_table()
+                .and_then(|spec| spec.get("package"))
+                .and_then(|package| package.as_str())
+                == Some(dependency)
+    })
+}
+
+/// Every dependency table of a manifest, including the target-specific ones.
+///
+/// `[target.'cfg(unix)'.dev-dependencies]` is a legal place to re-add a
+/// dependency, so the target tables are scanned as well
+/// (terraphim-clients#513).
+fn dependency_tables(parsed: &toml::Table) -> Vec<&toml::Table> {
+    const SECTIONS: [&str; 3] = ["dependencies", "dev-dependencies", "build-dependencies"];
+
+    let mut tables = Vec::new();
+    for section in SECTIONS {
+        if let Some(table) = parsed.get(section).and_then(|value| value.as_table()) {
+            tables.push(table);
+        }
+    }
+    if let Some(targets) = parsed.get("target").and_then(|value| value.as_table()) {
+        for (_, target) in targets.iter() {
+            let Some(target) = target.as_table() else {
+                continue;
+            };
+            for section in SECTIONS {
+                if let Some(table) = target.get(section).and_then(|value| value.as_table()) {
+                    tables.push(table);
+                }
+            }
+        }
+    }
+    tables
+}
+
+/// Whether a manifest mentions `dependency` anywhere it can be declared.
+///
+/// The workspace manifest's `[workspace.dependencies]` counts too: a member
+/// can inherit the dependency from there (terraphim-clients#513).
+fn manifest_mentions_dependency(text: &str, dependency: &str) -> bool {
+    let Ok(parsed) = text.parse::<toml::Table>() else {
+        return false;
+    };
+    if dependency_tables(&parsed)
+        .iter()
+        .any(|table| table_mentions_dependency(table, dependency))
+    {
+        return true;
+    }
+    parsed
+        .get("workspace")
+        .and_then(|workspace| workspace.as_table())
+        .and_then(|workspace| workspace.get("dependencies"))
+        .and_then(|dependencies| dependencies.as_table())
+        .is_some_and(|table| table_mentions_dependency(table, dependency))
+}
+
 /// Member manifests that list `dependency` (dev-dependencies included).
 fn member_manifests_depending_on(dependency: &str) -> Vec<String> {
     let root = workspace_root();
     let mut out = Vec::new();
+
+    // The workspace manifest can carry the dependency for its members.
+    let workspace_manifest = root.join("Cargo.toml");
+    if let Ok(text) = std::fs::read_to_string(&workspace_manifest)
+        && manifest_mentions_dependency(&text, dependency)
+    {
+        out.push(workspace_manifest.to_string_lossy().replace('\\', "/"));
+    }
+
     let Ok(members) = std::fs::read_dir(root.join("crates")) else {
+        out.sort();
         return out;
     };
     for member in members.flatten() {
@@ -1325,18 +1432,7 @@ fn member_manifests_depending_on(dependency: &str) -> Vec<String> {
         let Ok(text) = std::fs::read_to_string(&manifest) else {
             continue;
         };
-        let Ok(parsed) = text.parse::<toml::Table>() else {
-            continue;
-        };
-        let mentions = ["dependencies", "dev-dependencies", "build-dependencies"]
-            .iter()
-            .any(|section| {
-                parsed
-                    .get(*section)
-                    .and_then(|value| value.as_table())
-                    .is_some_and(|table| table.contains_key(dependency))
-            });
-        if mentions {
+        if manifest_mentions_dependency(&text, dependency) {
             out.push(manifest.to_string_lossy().replace('\\', "/"));
         }
     }
@@ -1344,9 +1440,102 @@ fn member_manifests_depending_on(dependency: &str) -> Vec<String> {
     out
 }
 
+/// The manifest rule must see every legal way to re-add a dependency
+/// (terraphim-clients#513).
+///
+/// The dependency can be renamed (`tutils = { package = "..." }`), declared
+/// for a target only (`[target.'cfg(unix)'.dev-dependencies]`), or inherited
+/// from the workspace manifest. Each of those is a way to re-open the pattern
+/// the manifest rule exists to stop.
+#[test]
+fn the_manifest_rule_sees_every_way_to_re_add_a_dependency() {
+    let plain = r#"
+[dev-dependencies]
+terraphim_test_utils = { version = "1.20.3", registry = "terraphim" }
+"#;
+    assert!(
+        manifest_mentions_dependency(plain, "terraphim_test_utils"),
+        "a plain dev-dependency must be detected"
+    );
+
+    let renamed = r#"
+[dev-dependencies]
+tutils = { package = "terraphim_test_utils", version = "1.20.3", registry = "terraphim" }
+"#;
+    assert!(
+        manifest_mentions_dependency(renamed, "terraphim_test_utils"),
+        "a renamed dependency must be detected"
+    );
+
+    let target_specific = r#"
+[target.'cfg(unix)'.dev-dependencies]
+terraphim_test_utils = { version = "1.20.3", registry = "terraphim" }
+"#;
+    assert!(
+        manifest_mentions_dependency(target_specific, "terraphim_test_utils"),
+        "a target-specific dependency must be detected"
+    );
+
+    let from_the_workspace = r#"
+[workspace.dependencies]
+terraphim_test_utils = { version = "1.20.3", registry = "terraphim" }
+"#;
+    assert!(
+        manifest_mentions_dependency(from_the_workspace, "terraphim_test_utils"),
+        "a workspace-level dependency must be detected"
+    );
+
+    let unrelated = r#"
+[dev-dependencies]
+serde = "1"
+"#;
+    assert!(
+        !manifest_mentions_dependency(unrelated, "terraphim_test_utils"),
+        "an unrelated manifest must not be reported"
+    );
+}
+
 /// The scanner must find a site that is not on the allow-list.
 ///
 /// Without this, the guard could pass by finding nothing at all.
+/// The guard excludes **itself**, not every file that happens to share its
+/// name (terraphim-clients#513).
+///
+/// The exclusion used to be by file name, so any file called `ci_guards.rs`
+/// anywhere under `crates/` was dropped from the scan - and a new
+/// environment-mutation site could hide behind that name.
+#[test]
+fn the_guard_excludes_only_its_own_file() {
+    let scanned = workspace_rust_sources();
+    let own = own_guard_path().expect("the guard file must be locatable");
+    assert!(
+        !scanned.iter().any(|path| {
+            std::fs::canonicalize(path)
+                .ok()
+                .as_deref()
+                .is_some_and(|path| path == own)
+        }),
+        "the guard file must be excluded from its own scan"
+    );
+
+    // A different file with the same name must still be scanned.
+    let temp = tempfile::tempdir().expect("tempdir");
+    let probe = temp.path().join("ci_guards.rs");
+    std::fs::write(
+        &probe,
+        "fn demo() {\n    unsafe {\n        std::env::set_var(\"HOME\", \"/tmp\");\n    }\n}\n",
+    )
+    .expect("write probe file");
+
+    let found = collect_env_mutation_sites(&probe, temp.path());
+
+    assert_eq!(
+        found,
+        vec![("ci_guards.rs".to_string(), "env::set_var(", 1usize)],
+        "a file with the guard's name must still be scanned"
+    );
+}
+
 #[test]
 fn env_mutation_scanner_reports_an_unlisted_site() {
     // The guard file quotes the forbidden literals, so the *walker* must leave
