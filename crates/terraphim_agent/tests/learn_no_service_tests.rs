@@ -17,10 +17,12 @@ fn agent_binary() -> &'static str {
 fn learn_list_succeeds_from_tmp_dir() {
     let binary = agent_binary();
     let tmp = tempfile::tempdir().expect("create temp dir");
+    let data_dir = tmp.path().join("data");
 
     let output = Command::new(binary)
         .args(["learn", "list"])
         .current_dir(tmp.path())
+        .env("TERRAPHIM_DEFAULT_DATA_PATH", &data_dir)
         .output()
         .expect("failed to run terraphim-agent learn list");
 
@@ -36,10 +38,12 @@ fn learn_list_succeeds_from_tmp_dir() {
 fn learn_hook_succeeds_from_tmp_dir() {
     let binary = agent_binary();
     let tmp = tempfile::tempdir().expect("create temp dir");
+    let data_dir = tmp.path().join("data");
 
     let mut child = Command::new(binary)
         .args(["learn", "hook"])
         .current_dir(tmp.path())
+        .env("TERRAPHIM_DEFAULT_DATA_PATH", &data_dir)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -67,6 +71,7 @@ fn learn_hook_succeeds_from_tmp_dir() {
 fn learn_capture_succeeds_from_tmp_dir() {
     let binary = agent_binary();
     let tmp = tempfile::tempdir().expect("create temp dir");
+    let data_dir = tmp.path().join("data");
 
     let output = Command::new(binary)
         .args([
@@ -79,6 +84,7 @@ fn learn_capture_succeeds_from_tmp_dir() {
             "1",
         ])
         .current_dir(tmp.path())
+        .env("TERRAPHIM_DEFAULT_DATA_PATH", &data_dir)
         .output()
         .expect("failed to run terraphim-agent learn capture");
 
@@ -87,6 +93,44 @@ fn learn_capture_succeeds_from_tmp_dir() {
         "learn capture should succeed from temp dir.\nstdout: {}\nstderr: {}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
+    );
+
+    let expected_learnings_dir = data_dir.join("terraphim").join("learnings");
+    let captured_files: Vec<_> = std::fs::read_dir(&expected_learnings_dir)
+        .expect("read scoped learnings directory")
+        .map(|entry| entry.expect("read captured learning entry").path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("learning-") && name.ends_with(".md"))
+        })
+        .collect();
+    assert_eq!(
+        captured_files.len(),
+        1,
+        "learn capture must persist exactly one learning inside the test data root"
+    );
+    assert!(
+        captured_files[0].starts_with(&expected_learnings_dir)
+            && String::from_utf8_lossy(&output.stdout)
+                .contains(&expected_learnings_dir.display().to_string()),
+        "learn capture must persist inside the test data root.\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+
+    let list = Command::new(binary)
+        .args(["learn", "list"])
+        .current_dir(tmp.path())
+        .env("TERRAPHIM_DEFAULT_DATA_PATH", &data_dir)
+        .output()
+        .expect("failed to read back captured learning");
+    let list_stdout = String::from_utf8_lossy(&list.stdout);
+    assert!(
+        list.status.success() && list_stdout.contains("fake-cmd"),
+        "learn list should read back the scoped capture.\nstdout: {}\nstderr: {}",
+        list_stdout,
+        String::from_utf8_lossy(&list.stderr),
     );
 }
 
