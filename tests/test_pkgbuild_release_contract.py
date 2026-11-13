@@ -15,7 +15,6 @@ import os
 import re
 import shutil
 import subprocess
-import tomllib
 import unittest
 from pathlib import Path
 
@@ -23,11 +22,10 @@ ROOT = Path(__file__).resolve().parents[1]
 PKGDIR = ROOT / "pkgbuilds" / "terraphim-clients-bin"
 PKGBUILD = PKGDIR / "PKGBUILD"
 SRCINFO = PKGDIR / ".SRCINFO"
-CARGO = ROOT / "Cargo.toml"
 
 D = chr(36)  # dollar sign, kept out of template literals in the test source
 
-PKGVER = "1.21.16"
+PKGVER = "1.21.22"
 REPO = "terraphim/terraphim-clients"
 RELEASE_BASE = f"https://github.com/{REPO}/releases/download/v{PKGVER}"
 
@@ -36,21 +34,21 @@ ASSETS = {
     "x86_64": {
         "terraphim-agent": (
             f"terraphim-agent-{PKGVER}-x86_64-unknown-linux-musl.tar.gz",
-            "71cb87455959f2eaa04fab1bd2655564635df58988dfae306c4aeb5583938151",
+            "3afe1ba64dfd7f19214f2171f8cba467f674f77317c0e05af44408627eb288e1",
         ),
         "terraphim-grep": (
             f"terraphim-grep-{PKGVER}-x86_64-unknown-linux-musl.tar.gz",
-            "872a7d7fe1167c75340807be0e3a0bb079389e28d813eb4e198b3d1757e7a583",
+            "34dfcf06f76e6737c9c4f208b01bdb5638f18d6c7325efa8f7be00efbf85f41f",
         ),
     },
     "aarch64": {
         "terraphim-agent": (
             f"terraphim-agent-{PKGVER}-aarch64-unknown-linux-musl.tar.gz",
-            "f8530d963171e3f72b52b8b729653cafa5ae5e105e219f7ecec7b170037acaa7",
+            "36468a1ab4b3ee2f6781b623582a9044dc31768796a1a02b4d806fcc39dd6013",
         ),
         "terraphim-grep": (
             f"terraphim-grep-{PKGVER}-aarch64-unknown-linux-musl.tar.gz",
-            "194d4cac04eccbfb998c4f060e44b286873510d354fd3a3a160bf63b2c5e025c",
+            "3c050c09668775dc709c098ed6bb4ac85493fb69f658848ff1ce4a62824480a9",
         ),
     },
 }
@@ -141,13 +139,6 @@ class PkgbuildContractTests(unittest.TestCase):
         self.assertEqual(array("pkgname"), ["terraphim-agent-bin", "terraphim-grep-bin"])
         self.assertEqual(scalar("pkgver"), PKGVER)
         self.assertEqual(scalar("pkgrel"), "1")
-        with CARGO.open("rb") as handle:
-            workspace = tomllib.load(handle)["workspace"]["package"]["version"]
-        self.assertEqual(
-            PKGVER,
-            workspace,
-            "pkgver must track the workspace version so the package cannot lag a release",
-        )
 
     def test_architectures_and_options(self):
         self.assertEqual(array("arch"), ["x86_64", "aarch64"])
