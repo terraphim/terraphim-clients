@@ -13,11 +13,13 @@ import urllib.parse
 import urllib.request
 
 
+# The published inventory has no Windows lane: five Unix targets for every
+# binary plus the universal Apple target for the two binaries that ship one.
+# Every published archive is a tar.gz, so no target carries a ZIP suffix.
 COMMON = {
     "aarch64-apple-darwin",
     "aarch64-unknown-linux-musl",
     "x86_64-apple-darwin",
-    "x86_64-pc-windows-msvc",
     "x86_64-unknown-linux-gnu",
     "x86_64-unknown-linux-musl",
 }
@@ -78,11 +80,18 @@ def validate_strict_metadata(binary: str, manifest: dict) -> tuple[str, set[str]
 
 
 def expected_path(binary: str, version: str, target: str) -> str:
-    extension = ".zip" if target == "x86_64-pc-windows-msvc" else ".tar.gz"
-    return f"{binary}/{binary}-{version}-{target}{extension}"
+    return f"{binary}/{binary}-{version}-{target}.tar.gz"
 
 
 def validate_legacy(binary: str, manifest: dict, require_exact: bool) -> str:
+    """Validate the legacy v1 pointer.
+
+    The legacy pointer published before the activation version keeps the
+    historical asset shape it was published with, so the exact target-set rule
+    only applies from the activation version onwards. Below it, the asset map
+    is only required to be safe: the already-published v1 manifest stays
+    healthy while the strict v2 manifest is still pending.
+    """
     if not isinstance(manifest, dict):
         raise ValueError(f"{binary}: legacy manifest is not an object")
     required = {"version", "released_at", "assets"}
