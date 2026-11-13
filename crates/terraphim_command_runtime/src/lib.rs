@@ -9,6 +9,12 @@
 //! save path) rather than owning service state, so each front-end keeps its own
 //! struct and simply forwards these calls.
 
+// The workspace is a forbid-soundness project: no `unsafe` in the library or
+// binary target of this crate (terraphim-clients#447, #310). The integration
+// tests under `tests/` are separate crates and keep their own, listed
+// exceptions - see the `no_new_unsafe_sites` guard.
+#![forbid(unsafe_code)]
+
 use terraphim_config::{Config, ConfigState};
 use terraphim_persistence::Persistable;
 use terraphim_types::RoleName;

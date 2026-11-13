@@ -15,6 +15,12 @@
 //! - [`TerraphimMcpError`] -- unified error type covering service, JSON, I/O, and MCP errors
 //! - [`resource_mapper::TerraphimResourceMapper`] -- maps Terraphim documents to MCP resources
 
+// The workspace is a forbid-soundness project: no `unsafe` in the library or
+// binary target of this crate (terraphim-clients#447, #310). The integration
+// tests under `tests/` are separate crates and keep their own, listed
+// exceptions - see the `no_new_unsafe_sites` guard.
+#![forbid(unsafe_code)]
+
 use anyhow::Result;
 use base64::Engine;
 use fff_search::{
