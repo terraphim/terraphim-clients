@@ -1506,6 +1506,233 @@ serde = "1"
     );
 }
 
+/// The publish workflow must stay inside the runner's command policy.
+///
+/// The terraphim-native runner inspects the literal first token of every
+/// `run:` line and rejects anything that is not on its allowlist; a multi-line
+/// block - with comments, shell conditionals or heredocs - is rejected before
+/// the first step runs, which is why the publish workflow could never publish
+/// anything (terraphim-clients#400). The policy classifies the workflow's
+/// text, not a script's contents, so the workflow calls a checked-in script
+/// with a single line - the shape the native-ci lanes use.
+const RUNNER_ALLOWED_PROGRAMS: [&str; 3] = ["bash", "cargo", "test"];
+
+/// Validate the publish workflow's commands against the runner's policy.
+///
+/// Returns `Err` with a diagnostic on the first violation.
+fn validate_publish_workflow_commands(text: &str) -> Result<(), String> {
+    let Ok(workflow) = serde_yaml::from_str::<serde_yaml::Value>(text) else {
+        return Err("the publish workflow is not valid YAML".to_string());
+    };
+    let Some(steps) = workflow
+        .get("jobs")
+        .and_then(|jobs| jobs.get("publish"))
+        .and_then(|job| job.get("steps"))
+        .and_then(|steps| steps.as_sequence())
+    else {
+        return Err("the publish workflow has no jobs.publish.steps".to_string());
+    };
+
+    for step in steps {
+        let name = step
+            .get("name")
+            .and_then(|name| name.as_str())
+            .unwrap_or("<unnamed>");
+        let Some(run) = step.get("run").and_then(|run| run.as_str()) else {
+            continue;
+        };
+
+        if run.contains('\n') {
+            return Err(format!(
+                "publish-registry.yml step '{name}' has a multi-line run: the runner's \
+                 policy classifies the first token of the line and rejects the block \
+                 before any step runs (terraphim-clients#400). Move the shell into a \
+                 checked-in script and call it with one line."
+            ));
+        }
+        if run.contains("${{") {
+            return Err(format!(
+                "publish-registry.yml step '{name}' embeds a ${{{{ ... }}}} expression in \
+                 its run: an expression is classified as a program. Pass it through the \
+                 step's env: instead."
+            ));
+        }
+        let program = run.split_whitespace().next().unwrap_or_default();
+        if !RUNNER_ALLOWED_PROGRAMS.contains(&program) {
+            return Err(format!(
+                "publish-registry.yml step '{name}' runs '{program}', which is not on the \
+                 runner's allowlist ({:?}). Allowed: cargo, repo scripts (bash) and \
+                 test (terraphim-clients#400).",
+                RUNNER_ALLOWED_PROGRAMS
+            ));
+        }
+        if program == "bash" {
+            let script = run.split_whitespace().nth(1).unwrap_or_default();
+            if script.starts_with('-') || script.is_empty() {
+                return Err(format!(
+                    "publish-registry.yml step '{name}' calls bash without naming a script"
+                ));
+            }
+            if !workspace_root().join(script).is_file() {
+                return Err(format!(
+                    "publish-registry.yml step '{name}' calls '{script}', which is not a \
+                     checked-in script of this repository"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The publish workflow must be able to run on the native runner.
+#[test]
+fn publish_workflow_uses_only_policy_compatible_commands() {
+    let workflow = workspace_root().join(".gitea/workflows/publish-registry.yml");
+    let text = std::fs::read_to_string(&workflow).expect("read publish-registry.yml");
+
+    if let Err(diagnostic) = validate_publish_workflow_commands(&text) {
+        panic!("{diagnostic}");
+    }
+}
+
+/// The publish script must refuse what the workflow refuses.
+///
+/// The script is the whole publish path now, so its refusals are the workflow's
+/// refusals: no credential, no crate, a crate terraphim-ai owns, and a crate
+/// that is not in the workspace.
+#[test]
+fn the_publish_script_refuses_what_the_workflow_refused() {
+    use std::process::Command;
+
+    let script = workspace_root().join("scripts/release/publish-registry.sh");
+    assert!(script.is_file(), "missing {}", script.display());
+
+    // A scratch CARGO_HOME, so the script's credential write cannot touch the
+    // developer's own cargo configuration.
+    let scratch = tempfile::tempdir().expect("tempdir");
+    let cargo_home = scratch.path().to_string_lossy().to_string();
+
+    let run = |token: Option<&str>, crate_name: Option<&str>| {
+        let mut command = Command::new("bash");
+        command
+            .arg(script.to_str().expect("utf8 path"))
+            .env("CARGO_HOME", &cargo_home)
+            .env_remove("CARGO_REGISTRIES_TERRAPHIM_TOKEN")
+            .env_remove("CRATE")
+            .env_remove("PUBLISH_DRY_RUN");
+        if let Some(token) = token {
+            command.env("CARGO_REGISTRIES_TERRAPHIM_TOKEN", token);
+        }
+        if let Some(crate_name) = crate_name {
+            command.env("CRATE", crate_name);
+        }
+        let output = command.output().expect("run the publish script");
+        (
+            output.status.code().unwrap_or(-1),
+            String::from_utf8_lossy(&output.stderr).to_string(),
+        )
+    };
+
+    let (code, stderr) = run(None, Some("terraphim_sessions"));
+    assert_eq!(code, 2, "a missing credential must exit 2: {stderr}");
+    assert!(
+        stderr.contains("CARGO_REGISTRIES_TERRAPHIM_TOKEN"),
+        "the error must name the missing credential, got: {stderr}"
+    );
+
+    let (code, stderr) = run(Some("Bearer fake"), None);
+    assert_eq!(code, 2, "a missing crate name must exit 2: {stderr}");
+    assert!(
+        stderr.contains("CRATE"),
+        "the error must name the missing crate, got: {stderr}"
+    );
+
+    let (code, stderr) = run(Some("Bearer fake"), Some("terraphim_lsp"));
+    assert_eq!(code, 1, "the owned crate must be refused: {stderr}");
+    assert!(
+        stderr.contains("terraphim-ai owns terraphim_lsp"),
+        "the error must say who owns it, got: {stderr}"
+    );
+
+    let (code, stderr) = run(Some("Bearer fake"), Some("no_such_crate"));
+    assert_eq!(
+        code, 1,
+        "a crate that is not in the workspace must be refused: {stderr}"
+    );
+    assert!(
+        stderr.contains("crates/no_such_crate"),
+        "the error must name the crate directory, got: {stderr}"
+    );
+}
+
+/// The policy rule must actually reject the shapes the runner rejects.
+#[test]
+fn the_publish_workflow_policy_check_rejects_the_runner_rejected_shapes() {
+    // A comment line in a `run:` block is what the runner named as the
+    // rejected program (run 40470).
+    let with_comment = r#"
+jobs:
+  publish:
+    steps:
+      - name: Publish
+        run: |
+          # Find the crate directory
+          cargo publish -p x
+"#;
+    assert!(
+        validate_publish_workflow_commands(with_comment).is_err(),
+        "a multi-line run block must be rejected"
+    );
+
+    let with_expression = r#"
+jobs:
+  publish:
+    steps:
+      - name: Publish
+        run: cargo publish -p "${{ inputs.crate }}"
+"#;
+    assert!(
+        validate_publish_workflow_commands(with_expression).is_err(),
+        "an expression in a run line must be rejected"
+    );
+
+    let with_unknown_program = r#"
+jobs:
+  publish:
+    steps:
+      - name: Publish
+        run: find crates -name Cargo.toml
+"#;
+    assert!(
+        validate_publish_workflow_commands(with_unknown_program).is_err(),
+        "a program off the allowlist must be rejected"
+    );
+
+    let with_missing_script = r#"
+jobs:
+  publish:
+    steps:
+      - name: Publish
+        run: bash ./scripts/release/not-there.sh
+"#;
+    assert!(
+        validate_publish_workflow_commands(with_missing_script).is_err(),
+        "a script that is not checked in must be rejected"
+    );
+
+    let compliant = r#"
+jobs:
+  publish:
+    steps:
+      - name: Publish
+        run: bash ./scripts/release/publish-registry.sh
+"#;
+    assert!(
+        validate_publish_workflow_commands(compliant).is_ok(),
+        "a single bash line naming a checked-in script must pass"
+    );
+}
+
 /// A file that still holds `unsafe` blocks, and how many.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct UnsafeSite {
