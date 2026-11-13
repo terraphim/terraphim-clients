@@ -398,7 +398,9 @@ mod coverage_pin_parser_tests {
 /// variable: no literal token, no `${{ secrets.* }}` expression, and no
 /// credentials.toml writing may appear in the workflow shell text. The alias
 /// must stay scoped to exactly the lanes that need it: the broad
-/// `--workspace --all-targets` lane and the coverage lane. The alias value must
+/// `--workspace --all-targets` lane and the coverage lane - the two that build
+/// the workspace and therefore resolve the private registry. The alias value
+/// must
 /// carry the HTTP authentication scheme: the Gitea sparse registry rejects a
 /// (PR #332 CI run 33980 / web run 538, job 68643); the raw-token form
 /// `CARGO_REGISTRIES_TERRAPHIM_TOKEN="$GITEA_TOKEN"` is a regression, and
@@ -527,8 +529,17 @@ fn validate_native_ci_token_aliases(text: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// The two lanes that resolve the private `terraphim` registry carry the
+/// conditional registry alias.
+///
+/// The lanes are the broad `--workspace --all-targets` lane and the coverage
+/// lane: both build the workspace, and the workspace's own dependencies
+/// (`terraphim_types`, `terraphim_config`, ...) live in the private registry,
+/// so the alias is still needed. The packaged-graph lane that used to be
+/// guarded here is gone, and the test's name said otherwise
+/// (terraphim-clients#516).
 #[test]
-fn native_ci_aliases_gitea_token_for_packaged_graph_lanes() {
+fn native_ci_aliases_gitea_token_for_the_registry_resolving_lanes() {
     let root = workspace_root();
     let workflow = root.join(".gitea/workflows/native-ci.yml");
     assert!(workflow.is_file(), "missing {}", workflow.display());
