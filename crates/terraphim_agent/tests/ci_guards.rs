@@ -1733,6 +1733,141 @@ jobs:
     );
 }
 
+/// A file that still holds `unsafe` blocks, and how many.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct UnsafeSite {
+    file: &'static str,
+    count: usize,
+}
+
+/// The `unsafe` blocks the integration-test targets still need.
+///
+/// The library and binary targets are compiler-enforced
+/// (`#![forbid(unsafe_code)]`, terraphim-clients#447), so only the test crates
+/// - which are separate compilation units - can still hold `unsafe`.
+///
+/// Every entry is a known exception, and the list shrinks with the remediation
+/// train.
+///
+/// Refs #447, #310.
+const KNOWN_UNSAFE_SITES: &[UnsafeSite] = &[
+    UnsafeSite {
+        // The libc FFI the test server helper needs: one `unsafe extern`
+        // block and six `unsafe` expressions.
+        file: "crates/terraphim_agent/tests/support/server_process.rs",
+        count: 7,
+    },
+    UnsafeSite {
+        // The fork regression needs POSIX FFI in its separate integration-test
+        // crate: one `unsafe extern` block and three `unsafe` expressions.
+        file: "crates/terraphim_agent/tests/transaction_lock.rs",
+        count: 4,
+    },
+    UnsafeSite {
+        file: "crates/terraphim_update/tests/managed_mode_home_env.rs",
+        count: 2,
+    },
+];
+
+/// Count the `unsafe` items in a file.
+///
+/// An item is `unsafe` followed by whitespace and then `{`, `fn`, `impl`,
+/// `trait` or `extern`. The word in prose and in the crate attribute
+/// `#![forbid(unsafe_code)]` is not an item.
+fn count_unsafe_items(text: &str) -> usize {
+    let mut count = 0usize;
+    let mut index = 0usize;
+    while let Some(found) = text[index..].find("unsafe") {
+        let start = index + found;
+        index = start + "unsafe".len();
+
+        // The word must start a token.
+        if start > 0 {
+            let previous = text.as_bytes()[start - 1];
+            if previous.is_ascii_alphanumeric() || previous == b'_' {
+                continue;
+            }
+        }
+        let rest = text[index..].trim_start();
+        if rest.starts_with('{')
+            || rest.starts_with("fn")
+            || rest.starts_with("impl")
+            || rest.starts_with("trait")
+            || rest.starts_with("extern")
+        {
+            count += 1;
+        }
+    }
+    count
+}
+
+/// The counter must see the items and ignore the prose.
+///
+/// The crate attribute `#![forbid(unsafe_code)]` and the word in a comment are
+/// not unsafe items; an identifier that merely starts with "unsafe" is not
+/// one either.
+#[test]
+fn the_unsafe_counter_counts_items_and_ignores_prose() {
+    assert_eq!(count_unsafe_items("unsafe { let x = 1; }"), 1);
+    assert_eq!(count_unsafe_items("unsafe fn f() {}"), 1);
+    assert_eq!(count_unsafe_items("unsafe impl Foo {}"), 1);
+    assert_eq!(count_unsafe_items("unsafe extern \"C\" {}"), 1);
+    assert_eq!(count_unsafe_items("#![forbid(unsafe_code)]"), 0);
+    assert_eq!(count_unsafe_items("// no unsafe in this file"), 0);
+    assert_eq!(count_unsafe_items("let unsafe_value = 1;"), 0);
+    assert_eq!(count_unsafe_items("let x = unsafe { 1 };"), 1);
+}
+
+/// The `unsafe` items in a file, if it holds any.
+fn collect_unsafe_sites(file: &Path, root: &Path) -> Option<(String, usize)> {
+    let Ok(text) = std::fs::read_to_string(file) else {
+        return None;
+    };
+    let count = count_unsafe_items(&text);
+    if count == 0 {
+        return None;
+    }
+    let relative = file
+        .strip_prefix(root)
+        .unwrap_or(file)
+        .to_string_lossy()
+        .replace('\\', "/");
+    Some((relative, count))
+}
+
+/// No new `unsafe` may appear in the integration-test targets.
+///
+/// The library and binary targets cannot grow one: the compiler refuses it
+/// (`#![forbid(unsafe_code)]`). The test crates can, so this arm keeps their
+/// exceptions visible and small.
+///
+/// Refs #447, #310.
+#[test]
+fn no_new_unsafe_sites() {
+    let root = workspace_root();
+    let files = workspace_rust_sources();
+
+    let mut found: Vec<(String, usize)> = Vec::new();
+    for file in &files {
+        if let Some(site) = collect_unsafe_sites(file, &root) {
+            found.push(site);
+        }
+    }
+    found.sort();
+
+    let expected: Vec<(String, usize)> = KNOWN_UNSAFE_SITES
+        .iter()
+        .map(|site| (site.file.to_string(), site.count))
+        .collect();
+
+    assert_eq!(
+        found, expected,
+        "the unsafe inventory under crates/ must match the allow-list exactly. \
+         A new `unsafe` item needs an entry here (and a reason); an item that \
+         disappeared needs its entry removed. Refs #447, #310."
+    );
+}
+
 /// The scanner must find a site that is not on the allow-list.
 ///
 /// Without this, the guard could pass by finding nothing at all.
