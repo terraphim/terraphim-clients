@@ -11,10 +11,12 @@ The real makepkg validation ('.SRCINFO' drift, 'namcap', install,
 the '.SRCINFO' drift assertion here is skipped when 'makepkg' is absent.
 """
 
+import json
 import os
 import re
 import shutil
 import subprocess
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -22,6 +24,9 @@ ROOT = Path(__file__).resolve().parents[1]
 PKGDIR = ROOT / "pkgbuilds" / "terraphim-clients-bin"
 PKGBUILD = PKGDIR / "PKGBUILD"
 SRCINFO = PKGDIR / ".SRCINFO"
+RELEASE_STAGE = PKGDIR / "release-stage.json"
+CONTRACT_WORKFLOW = ROOT / ".github" / "workflows" / "pkgbuild-contract.yml"
+CARGO = ROOT / "Cargo.toml"
 
 D = chr(36)  # dollar sign, kept out of template literals in the test source
 
@@ -105,6 +110,15 @@ def expand(value: str) -> str:
     )
 
 
+def version_key(value: str) -> tuple[int, ...]:
+    """Comparable key for a semver-shaped version string."""
+    return tuple(int(part) for part in re.findall(r"\d+", value))
+
+
+def release_stage() -> dict:
+    return json.loads(RELEASE_STAGE.read_text())
+
+
 def package_function(name: str) -> str:
     pattern = "(?ms)^package_" + re.escape(name) + r"\(\) \{(.*?)^\}"
     match = re.search(pattern, code_only())
@@ -139,6 +153,119 @@ class PkgbuildContractTests(unittest.TestCase):
         self.assertEqual(array("pkgname"), ["terraphim-agent-bin", "terraphim-grep-bin"])
         self.assertEqual(scalar("pkgver"), PKGVER)
         self.assertEqual(scalar("pkgrel"), "1")
+
+    def test_pkgver_tracks_the_published_release_not_the_workspace(self):
+        """The package ships published release archives, so it tracks the
+        published release version, not the unreleased workspace source.
+
+        The old guard demanded 'pkgver == workspace version'. The workspace
+        version runs ahead of the published release while a release is still
+        being prepared, so that guard could only be satisfied by publishing a
+        package for a version that was never released. The correct contract is
+        the opposite one: pkgver equals the published release version recorded
+        in the committed release stage, and pkgver never exceeds the workspace
+        version it is built from.
+        """
+        stage = release_stage()
+        self.assertEqual(
+            stage["version"],
+            PKGVER,
+            "pkgver must equal the published release version in release-stage.json",
+        )
+        with CARGO.open("rb") as handle:
+            workspace = tomllib.load(handle)["workspace"]["package"]["version"]
+        self.assertLessEqual(
+            version_key(PKGVER),
+            version_key(workspace),
+            "the package must never claim a version newer than the workspace source",
+        )
+
+    def test_release_stage_pins_the_published_version_and_its_metadata(self):
+        stage = release_stage()
+        files = stage["files"]
+        match = re.fullmatch(
+            r"client-release-stage-(?P<version>[^-]+)-[0-9a-f]{40}", stage["artifact_name"]
+        )
+        self.assertIsNotNone(match, "the stage artefact name must carry the version")
+        self.assertEqual(
+            match.group("version"),
+            PKGVER,
+            "the sealed stage artefact must belong to the published version",
+        )
+        for name in ("SHA256SUMS", "expected-assets.txt"):
+            self.assertIn(name, files, f"the stage must carry the shipped {name}")
+        for binary in ("terraphim-agent", "terraphim-cli", "terraphim-grep"):
+            for manifest in ("v1.candidate.json", "v2.candidate.json"):
+                name = f"manifests/{binary}.{manifest}"
+                self.assertIn(name, files, f"the stage must carry {name}")
+
+    def test_pkgbuild_sources_and_digests_match_the_release_stage(self):
+        stage = release_stage()
+        files = stage["files"]
+        for arch in ASSETS:
+            sources = array(f"source_{arch}")
+            digests = array(f"sha256sums_{arch}")
+            self.assertEqual(len(sources), len(digests))
+            for entry, digest in zip(sources, digests):
+                alias = expand(entry.partition("::")[0])
+                key = f"release-assets/{alias}"
+                self.assertIn(
+                    key,
+                    files,
+                    f"{arch}: {alias} is not in the sealed release inventory",
+                )
+                self.assertEqual(
+                    files[key],
+                    digest,
+                    f"{arch}: {alias} digest differs from the sealed release inventory",
+                )
+
+    def test_contract_workflow_wires_the_sealed_release_stage(self):
+        text = CONTRACT_WORKFLOW.read_text()
+        for path in (
+            "pkgbuilds/terraphim-clients-bin/**",
+            "tests/test_pkgbuild_release_contract.py",
+            "tests/test_pkgbuild_stage.py",
+            "scripts/prepare-pkgbuild-stage.py",
+            ".github/workflows/pkgbuild-contract.yml",
+        ):
+            self.assertIn(
+                f'"{path}"',
+                text,
+                f"{path} must trigger the pkgbuild contract workflow",
+            )
+        self.assertIn(
+            '-p "test_pkgbuild_release_contract.py"',
+            text,
+            "the contract job must run this suite",
+        )
+        commands = set(
+            re.findall(
+                r"prepare-pkgbuild-stage\.py pkgbuilds/terraphim-clients-bin/"
+                r"release-stage\.json\s+(?:\\\s*)?(?P<command>[a-z]+)",
+                text,
+            )
+        )
+        self.assertEqual(
+            commands,
+            {"identity", "mode", "metadata", "prepare"},
+            "the sealed stage must be driven through every contract command",
+        )
+        for variable in (
+            "PKGBUILD_STAGE_TEST_DIR",
+            "PKGBUILD_STAGE_RUN_JSON",
+            "PKGBUILD_STAGE_ARTIFACT_JSON",
+        ):
+            self.assertIn(
+                variable,
+                text,
+                f"the sealed stage tests need {variable}",
+            )
+        self.assertIn(
+            "-m unittest tests.test_pkgbuild_stage",
+            text,
+            "the sealed stage contract test must run in the arch job",
+        )
 
     def test_architectures_and_options(self):
         self.assertEqual(array("arch"), ["x86_64", "aarch64"])

@@ -15,6 +15,8 @@ env:
 
 jobs:
   reject-fork-pr:
+    # A skipped job is not a failed check, so without this a fork PR would look
+    # green while the Rust build below never ran. Fail closed instead.
     name: Reject fork PR (Rust CI needs the tailnet runner)
     if: >-
       github.event_name == 'pull_request' &&
@@ -30,22 +32,44 @@ jobs:
           exit 1
 
   build:
+    # Never run fork PR code on the persistent self-hosted host.
     if: >-
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name == github.repository
+    # Self-hosted: GitHub-hosted runners cannot download crates from the
+    # private Terraphim registry (Caddy on bigbox rejects off-tailnet requests
+    # without a Bearer header, and cargo sends no token on .crate downloads
+    # because the registry advertises auth-required:false). The release-linux
+    # runner resolves git.terraphim.cloud over the tailnet, as
+    # release-binaries.yml relies on (#366).
     runs-on: [self-hosted, Linux, X64, release-linux]
+    # The registry token is exposed to the "Fetch dependencies" step only, which
+    # runs no repository code (cargo fetch executes no build scripts). Every
+    # later step runs offline without the secret. A fresh CARGO_HOME has no
+    # cached index, and the registry index then requires the token.
     env:
+      # The runner is a persistent host: select the toolchain per job through
+      # the environment so the host's default toolchain is never changed.
+      # RUSTUP_HOME stays shared on purpose: the toolchain is pinned and the
+      # step only installs it, so sharing saves a download without letting job
+      # code change what other workflows resolve. Everything else mutable is
+      # per-run (see "Isolate cargo state").
       RUSTUP_TOOLCHAIN: 1.96.0
+      # The host config sets a host-only rustc wrapper; disable it.
       RUSTC_WRAPPER: ""
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Assert clean checkout
         run: test -z "$(git status --porcelain)"
       - name: Isolate cargo state per run
+        # PR code (build scripts, proc macros, tests) must not mutate
+        # ~/.cargo, which release-binaries.yml also uses on this host. The
+        # runner.* context is not available in job-level env, hence this step.
         run: |
           set -euo pipefail
           cargo_home="$RUNNER_TEMP/cargo-home"
           mkdir -p "$cargo_home" "$RUNNER_TEMP/tools/bin"
+          # Keep the registry definitions, drop the host-only rustc wrapper.
           if [ -f "$HOME/.cargo/config.toml" ]; then
             sed '/rustc-wrapper/d' "$HOME/.cargo/config.toml" > "$cargo_home/config.toml"
           fi
@@ -56,14 +80,18 @@ jobs:
           echo "$RUNNER_TEMP/tools/bin" >> "$GITHUB_PATH"
       - name: Install exact Rust toolchain
         run: rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
-      - name: Fetch dependencies and install the signature verifier
+      # No rust-cache: its toolchain detection breaks on the host's rustup
+      # wrapper output, and cargo state is deliberately per run (cold cache).
+      - name: Fetch dependencies and install the signature verifier (the only step holding the registry token)
         env:
           CARGO_REGISTRIES_TERRAPHIM_TOKEN: ${{ secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN }}
           CARGO_REGISTRIES_TERRAPHIM_MIRROR_TOKEN: ${{ secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN }}
         run: |
           set -euo pipefail
           cargo fetch --locked
+          # Per-run root: never writes into the shared ~/.cargo/bin.
           cargo install zipsign --version 0.2.1 --locked --root "$RUNNER_TEMP/tools"
+          # Everything after this point resolves from the per-run cache.
           echo "CARGO_NET_OFFLINE=true" >> "$GITHUB_ENV"
       - name: Install pinned actionlint
         run: .github/scripts/install-actionlint.sh
@@ -78,14 +106,26 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo build --workspace
       - run: cargo test --workspace --lib --no-fail-fast
+      # #459: the server-mode client (the `--server` mode) lives behind the
+      # `server` feature; the test build enables it through the `repl-full`
+      # dev-dependency, but a plain build does not.
       - run: cargo check -p terraphim_agent --features server --all-targets
       - name: Persist and recover authored memory through the CLI
         run: cargo test --locked -p terraphim_agent --test memory_capture_cli_tests --test memory_apply_cli_tests --test memory_rubric_cli_tests --test agent_store_contract --test agent_learning_store_contract
+      # Exercise the released grep command against real files and exported
+      # synonym graphs, including Linux-only hostile filesystem names.
       - name: Exercise released grep command contracts
         run: cargo test --locked -p terraphim_grep --test synonym_retrieval --test answer_request --test path_guard_hostile_tree --test single_file_search
       - name: Verify authored synonyms and role boundaries over real MCP stdio
         run: cargo test --locked -p terraphim_mcp_server --test test_mcp_role_contract --test test_mcp_agent_contract
+      # GitHub-side home for the updater integration contracts (managed-mode
+      # receipt/refusal, strict v2 manifest readers, R2 checksum fail-closed).
+      # On Gitea these lanes live in .gitea/workflows/native-ci.yml, which is
+      # intentionally not part of the GitHub port.
       - run: cargo test -p terraphim_update --test manifest --test r2_update --test managed_mode --test policy --no-fail-fast
+      # The pi-terraphim-learn plugin package is JavaScript, so the workspace
+      # cargo tests never exercised it (#467). The wrapper is a repo script
+      # because the native runner's command policy allows only cargo and scripts.
       - name: pi-terraphim-learn functional test
         run: bash ./scripts/ci/pi-terraphim-learn-tests.sh
       - name: Assert the build left the checkout and lockfile untouched
