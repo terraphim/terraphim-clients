@@ -36,8 +36,6 @@ pub(crate) async fn run_memory_command(
                 !content.trim().is_empty(),
                 "Memory lesson must not be blank"
             );
-            // Validate before loading or saving the store. The evolution crate
-            // enforces the same byte limit when adding the MemoryItem.
             anyhow::ensure!(content.len() <= 1_000_000, "Memory lesson exceeds 1 MB");
             match terraphim_agent::agent_store::AgentStore::for_cli()?
                 .memory_capture(&content, provenance_tag.as_deref())

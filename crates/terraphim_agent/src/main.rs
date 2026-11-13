@@ -1,6 +1,6 @@
 use std::io;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 use crossterm::{
     event::{
@@ -20,7 +20,9 @@ use ratatui::{
 use serde::Serialize;
 #[cfg(feature = "repl")]
 use terraphim_agent::repl;
-use terraphim_agent::{guard_patterns, learnings, onboarding, robot, tui_backend};
+use terraphim_agent::{
+    cache_export, cache_flush, guard_patterns, learnings, onboarding, robot, tui_backend,
+};
 use terraphim_persistence::Persistable;
 use tokio::runtime::Runtime;
 
@@ -52,7 +54,7 @@ mod judge;
 
 #[cfg(feature = "server")]
 use terraphim_agent::client::ApiClient;
-use terraphim_agent::service::TuiService;
+use terraphim_agent::service::{TuiService, checklist_names};
 use terraphim_types::{Document, Layer, NormalizedTermValue, RoleName, SearchQuery};
 use terraphim_update::{TerraphimUpdater, UpdaterConfig};
 
@@ -593,7 +595,6 @@ fn run_tui_offline_mode(transparent: bool) -> Result<()> {
     run_tui(None, transparent)
 }
 
-#[cfg(feature = "server")]
 fn run_tui_server_mode(server_url: &str, transparent: bool) -> Result<()> {
     run_tui(Some(server_url.to_string()), transparent)
 }
@@ -1526,7 +1527,7 @@ async fn run_offline_command(
 
     // Cache is stateless - handle before TuiService initialization
     if let Command::Cache { sub } = &command {
-        return run_cache_command(sub).await;
+        return run_cache_command(sub, config_path).await;
     }
 
     // Learn is stateless - handle before TuiService initialization.
@@ -1665,6 +1666,7 @@ async fn run_offline_command(
             with_guard,
             no_with_guard,
             rewrite,
+            guard_program,
         } => {
             return handle_hook_command(
                 HookArgs {
@@ -1674,6 +1676,7 @@ async fn run_offline_command(
                     with_guard,
                     no_with_guard,
                     rewrite,
+                    guard_program,
                 },
                 &service,
             )
@@ -2216,7 +2219,19 @@ async fn handle_validate_command(args: ValidateArgs, service: &TuiService) -> Re
             println!("  {}", result.message);
         }
     } else if let Some(checklist_name) = args.checklist {
-        // Checklist validation mode
+        // Reject an unknown name before doing any work. validate_checklist returns an
+        // error for it, but the generic error path exits 0, so a typo'd checklist name
+        // read as success to every shell gate. Exit 2 (usage error, as the other CLI
+        // usage failures do) so it is distinguishable from "the checklist ran and the
+        // text failed it", which is a successful run reporting passed: false.
+        let available = checklist_names();
+        if !available.iter().any(|n| n == &checklist_name) {
+            eprintln!(
+                "Error: Unknown checklist '{}'. Available: {:?}",
+                checklist_name, available
+            );
+            std::process::exit(2);
+        }
         let result = service
             .validate_checklist(&role_name, &checklist_name, &input_text)
             .await?;
@@ -2233,13 +2248,23 @@ async fn handle_validate_command(args: ValidateArgs, service: &TuiService) -> Re
             if !result.satisfied.is_empty() {
                 println!("  Satisfied items:");
                 for item in &result.satisfied {
-                    println!("    ✓ {}", item);
+                    match result.evidence.get(item) {
+                        Some(why) => println!("    ✓ {} ({})", item, why),
+                        None => println!("    ✓ {}", item),
+                    }
                 }
             }
             if !result.missing.is_empty() {
                 println!("  Missing items:");
                 for item in &result.missing {
-                    println!("    ✗ {}", item);
+                    if result.unreachable.contains(item) {
+                        println!(
+                            "    ✗ {} (no knowledge-graph concept can credit this)",
+                            item
+                        );
+                    } else {
+                        println!("    ✗ {}", item);
+                    }
                 }
             }
         }
@@ -2273,6 +2298,7 @@ struct HookArgs {
     with_guard: bool,
     no_with_guard: bool,
     rewrite: bool,
+    guard_program: Option<std::path::PathBuf>,
 }
 
 // Third post-TuiService match arm extracted. Hook follows the same
@@ -2321,24 +2347,62 @@ async fn handle_hook_command(args: HookArgs, service: &TuiService) -> Result<()>
                 {
                     // Guard check if --with-guard flag is set (default ON
                     // for pre-tool-use; see the Hook args doc comment).
+                    //
+                    // The guard runs out of process: a crash, an abort or an
+                    // OOM kill inside it must not turn into an allow, and the
+                    // hook has to be able to say "the guard did not decide"
+                    // instead of dying with it. When the guard produces no
+                    // decision, the call is blocked. Refs #465.
                     if with_guard {
-                        let guard = guard_patterns::CommandGuard::new();
-                        let guard_result = guard.check(command);
+                        let guard_program = match args.guard_program.as_ref() {
+                            Some(program) => program.clone(),
+                            None => std::env::current_exe().map_err(|error| {
+                                anyhow::anyhow!(
+                                    "The guard could not be located, so the command cannot be \
+                                     checked; blocking by default: {error}"
+                                )
+                            })?,
+                        };
 
-                        if guard_result.decision == guard_patterns::GuardDecision::Block {
-                            // Output deny response for Claude Code
-                            let output = serde_json::json!({
-                                "hookSpecificOutput": {
-                                    "hookEventName": "PreToolUse",
-                                    "permissionDecision": "deny",
-                                    "permissionDecisionReason": format!(
-                                        "BLOCKED: {}",
-                                        guard_result.reason.unwrap_or_default()
-                                    )
-                                }
-                            });
-                            println!("{}", serde_json::to_string(&output)?);
-                            return Ok(());
+                        let outcome =
+                            terraphim_agent::hook_guard::run_guard(&guard_program, command).await;
+
+                        match outcome {
+                            terraphim_agent::hook_guard::GuardOutcome::Block { reason } => {
+                                // Output deny response for Claude Code
+                                let output = serde_json::json!({
+                                    "hookSpecificOutput": {
+                                        "hookEventName": "PreToolUse",
+                                        "permissionDecision": "deny",
+                                        "permissionDecisionReason": format!(
+                                            "BLOCKED: {}",
+                                            reason
+                                        )
+                                    }
+                                });
+                                println!("{}", serde_json::to_string(&output)?);
+                                return Ok(());
+                            }
+                            terraphim_agent::hook_guard::GuardOutcome::Failed { message } => {
+                                // The guard did not decide, so the call is
+                                // blocked: failing open would turn every
+                                // internal failure of the guard into a bypass
+                                // of the guard itself.
+                                let output = serde_json::json!({
+                                    "hookSpecificOutput": {
+                                        "hookEventName": "PreToolUse",
+                                        "permissionDecision": "deny",
+                                        "permissionDecisionReason": format!(
+                                            "BLOCKED: guard failed to produce a decision \
+                                             ({message}); blocking by default"
+                                        )
+                                    }
+                                });
+                                println!("{}", serde_json::to_string(&output)?);
+                                return Ok(());
+                            }
+                            terraphim_agent::hook_guard::GuardOutcome::Allow
+                            | terraphim_agent::hook_guard::GuardOutcome::Sandbox { .. } => {}
                         }
                     }
 
@@ -2350,10 +2414,14 @@ async fn handle_hook_command(args: HookArgs, service: &TuiService) -> Result<()>
                     // where any substring match could silently mutate
                     // a destructive command (Refs #126).
                     let thesaurus = service.get_thesaurus(&role_name).await?;
+                    // Findings and replacement must use the same selected-role
+                    // snapshot. Validating before moving the snapshot into the
+                    // replacement service also avoids falling back to an
+                    // unrelated process-global KG.
+                    let kg_validation =
+                        kg_validation::validate_command_with_thesaurus(command, &thesaurus);
                     let replacement_service = terraphim_hooks::ReplacementService::new(thesaurus);
                     let hook_result = replacement_service.replace_fail_open(command);
-
-                    let kg_validation = kg_validation::validate_command_against_kg(command);
 
                     let mut output = input_value.clone();
                     let mut emitted_warning = false;
@@ -2377,8 +2445,8 @@ async fn handle_hook_command(args: HookArgs, service: &TuiService) -> Result<()>
                                     .or_insert(serde_json::Value::Array(vec![]));
                                 if let Some(arr) = warnings.as_array_mut() {
                                     arr.push(serde_json::Value::String(format!(
-                                        "command contained {} KG-replaceable substring(s); pass --rewrite to enable substitution. Original: `{}`",
-                                        hook_result.replacements, command
+                                        "command contained {} KG-replaceable substring(s); pass --rewrite to enable substitution",
+                                        hook_result.replacements
                                     )));
                                 }
                             }
@@ -2456,53 +2524,228 @@ async fn handle_hook_command(args: HookArgs, service: &TuiService) -> Result<()>
     Ok(())
 }
 
-async fn run_cache_command(sub: &CacheSub) -> Result<()> {
+async fn run_cache_command(sub: &CacheSub, config_path: Option<String>) -> Result<()> {
     use terraphim_persistence::DeviceStorage;
 
     match sub {
         CacheSub::Flush { role } => {
             let storage = DeviceStorage::instance().await?;
-            let fastest_op = &storage.fastest_op;
 
             if let Some(role_name) = role {
-                let key = format!("thesaurus_{}.json", role_name.to_lowercase());
-                match fastest_op.delete(&key).await {
-                    Ok(_) => {
-                        println!("Flushed cache for role: {}", role_name);
-                    }
-                    Err(e) => {
-                        eprintln!("Failed to flush cache for role '{}': {}", role_name, e);
-                        std::process::exit(1);
-                    }
+                // The persisted key follows the *thesaurus* name, which for a
+                // role with a compiled automata path is not the role name
+                // (terraphim-clients#460). Resolve both candidates and delete
+                // them from every profile the thesaurus was written to.
+                let config = TuiService::load_config(config_path, false).await?;
+                let keys = cache_flush::role_thesaurus_keys(&config, role_name)?;
+
+                let mut removed = 0usize;
+                let mut unreachable: Vec<(String, String)> = Vec::new();
+                for key in &keys.keys {
+                    let outcome = cache_flush::delete_key_everywhere(storage, key).await?;
+                    removed += outcome.removed;
+                    unreachable.extend(outcome.unreachable_profiles);
+                }
+
+                if removed == 0 {
+                    // A no-op must not claim success: the old code printed
+                    // "Flushed cache for role" whether or not anything was
+                    // removed.
+                    println!(
+                        "No cached thesaurus matched role '{}' (looked for {})",
+                        role_name,
+                        keys.keys.join(", ")
+                    );
+                } else {
+                    println!(
+                        "Flushed {} cache entr{} for role '{}'",
+                        removed,
+                        if removed == 1 { "y" } else { "ies" },
+                        role_name
+                    );
+                }
+
+                // Truthful reporting: a profile that could not be reached may
+                // still hold a copy, and a thesaurus name that could not be
+                // determined may hide one (terraphim-clients#514).
+                for (profile, reason) in &unreachable {
+                    eprintln!("Profile '{profile}' could not be reached: {reason}");
+                }
+                if let Some(reason) = &keys.undetermined {
+                    eprintln!("{reason}");
+                }
+                if !unreachable.is_empty() || keys.undetermined.is_some() {
+                    return Err(anyhow::anyhow!(
+                        "The flush may be incomplete: {} profile(s) could not be reached{}. \
+                         Re-run it once the profiles are reachable.",
+                        unreachable.len(),
+                        if keys.undetermined.is_some() {
+                            ", and the thesaurus name of a remote automata file is not known"
+                        } else {
+                            ""
+                        }
+                    ));
                 }
             } else {
-                // Flush all thesaurus entries
+                // Flush all thesaurus entries, from every profile: a thesaurus
+                // is saved to all of them, so the fastest one is not the only
+                // place a stale copy can live.
                 let prefix = "thesaurus_";
-                match fastest_op.list(prefix).await {
-                    Ok(entries) => {
-                        let mut count = 0;
-                        for entry in entries {
-                            let path = entry.path();
-                            if path.ends_with(".json") {
-                                match fastest_op.delete(path).await {
-                                    Ok(_) => count += 1,
-                                    Err(e) => {
-                                        log::warn!("Failed to delete '{}': {}", path, e);
-                                    }
+                let mut count = 0usize;
+                let mut failures: Vec<(String, String, String)> = Vec::new();
+                for (profile, (operator, _latency)) in &storage.ops {
+                    let entries = match operator.list(prefix).await {
+                        Ok(entries) => entries,
+                        Err(error) => {
+                            eprintln!("Failed to list cache entries in '{profile}': {error}");
+                            std::process::exit(1);
+                        }
+                    };
+                    for entry in entries {
+                        let path = entry.path();
+                        if path.ends_with(".json") {
+                            match operator.delete(path).await {
+                                Ok(_) => count += 1,
+                                Err(e) => {
+                                    log::warn!("Failed to delete '{}': {}", path, e);
+                                    failures.push((
+                                        profile.clone(),
+                                        path.to_string(),
+                                        e.to_string(),
+                                    ));
                                 }
                             }
                         }
-                        println!("Flushed {} cached thesaurus entries", count);
                     }
-                    Err(e) => {
-                        eprintln!("Failed to list cache entries: {}", e);
-                        std::process::exit(1);
+                }
+                println!("Flushed {} cached thesaurus entries", count);
+                if !failures.is_empty() {
+                    for (profile, path, reason) in &failures {
+                        eprintln!("Failed to delete '{path}' from profile '{profile}': {reason}");
                     }
+                    return Err(anyhow::anyhow!(
+                        "{} cached thesaurus entr{} could not be deleted; the flush is incomplete",
+                        failures.len(),
+                        if failures.len() == 1 { "y" } else { "ies" }
+                    ));
                 }
             }
             Ok(())
         }
+        CacheSub::List => {
+            let storage = DeviceStorage::instance().await?;
+            let cached = cache_export::list_cached_thesauri(storage).await?;
+
+            // Map the persisted keys back to the roles that own them, so the
+            // listing shows which role a cached vocabulary belongs to.
+            let config = TuiService::load_config(config_path, false).await?;
+            let mut role_for_key: std::collections::HashMap<String, String> =
+                std::collections::HashMap::new();
+            for (name, _) in TuiService::roles_with_info_of(&config) {
+                if let Ok(keys) = cache_flush::role_thesaurus_keys(&config, &name) {
+                    for key in keys.keys {
+                        role_for_key.insert(key, name.clone());
+                    }
+                }
+            }
+
+            println!("{:<28} {:<44} {:>8}  SOURCE HASH", "ROLE", "KEY", "ENTRIES");
+            for entry in &cached {
+                let role = role_for_key
+                    .get(&entry.key)
+                    .cloned()
+                    .unwrap_or_else(|| "-".to_string());
+                let hash = entry.source_hash.as_deref().unwrap_or("-");
+                println!(
+                    "{:<28} {:<44} {:>8}  {}",
+                    role, entry.key, entry.entries, hash
+                );
+            }
+            println!("{} cached thesaurus entries", cached.len());
+            Ok(())
+        }
+        CacheSub::Export {
+            role,
+            all,
+            out,
+            dir,
+        } => {
+            if role.is_none() && !all {
+                return Err(anyhow::anyhow!(
+                    "Nothing to export: pass --role <name|shortname>, or --all --dir <dir>"
+                ));
+            }
+
+            let config = TuiService::load_config(config_path.clone(), false).await?;
+            let service = TuiService::new(config_path, false).await?;
+
+            // Resolve the requested role by name or shortname; with --all, the
+            // export covers every configured role.
+            let targets: Vec<(String, String)> = match role.as_deref() {
+                Some(query) => {
+                    let resolved = service.resolve_role(Some(query)).await?;
+                    let name = resolved.to_string();
+                    let stem = role_file_stem(&config, &name);
+                    vec![(name, stem)]
+                }
+                None => TuiService::roles_with_info_of(&config)
+                    .into_iter()
+                    .map(|(name, shortname)| {
+                        let stem = shortname.unwrap_or_else(|| name.clone());
+                        (name, stem)
+                    })
+                    .collect(),
+            };
+
+            if targets.is_empty() {
+                eprintln!("No roles are configured, so there is nothing to export.");
+                return Ok(());
+            }
+
+            for (name, stem) in &targets {
+                let role_name = terraphim_types::RoleName::new(name);
+                // `get_thesaurus` rebuilds the role's vocabulary from its
+                // knowledge graph, so an export reflects an edited graph
+                // without a prior search.
+                let thesaurus = service.get_thesaurus(&role_name).await?;
+                let json = cache_export::thesaurus_json(&thesaurus)?;
+
+                let destination = match (out.as_deref(), dir.as_deref()) {
+                    (Some("-"), _) | (None, None) => {
+                        println!("{json}");
+                        continue;
+                    }
+                    (Some(path), _) => std::path::PathBuf::from(path),
+                    (None, Some(directory)) => {
+                        std::path::PathBuf::from(directory).join(format!("{stem}.json"))
+                    }
+                };
+
+                if let Some(parent) = destination.parent()
+                    && !parent.as_os_str().is_empty()
+                {
+                    std::fs::create_dir_all(parent)
+                        .with_context(|| format!("Failed to create {}", parent.display()))?;
+                }
+                std::fs::write(&destination, json)
+                    .with_context(|| format!("Failed to write {}", destination.display()))?;
+                println!("Exported role '{name}' to {}", destination.display());
+            }
+            Ok(())
+        }
     }
+}
+
+/// The file name stem used for a role's export.
+///
+/// The shortname is the stable, machine-friendly identifier; the role name is
+/// the fallback.
+fn role_file_stem(config: &terraphim_config::Config, role_name: &str) -> String {
+    TuiService::roles_with_info_of(config)
+        .into_iter()
+        .find(|(name, _)| name == role_name)
+        .and_then(|(_, shortname)| shortname)
+        .unwrap_or_else(|| role_name.to_string())
 }
 
 fn load_evolution() -> Result<terraphim_agent_evolution::AgentEvolutionSystem> {
@@ -2984,8 +3227,9 @@ async fn run_shared_learning_command(
                 }
             } else {
                 println!(
-                    "Injection complete: {} injected, {} skipped (trust), {} skipped (context), {} skipped (exists)",
+                    "Injection complete: {} injected, {} skipped (rejected), {} skipped (trust), {} skipped (context), {} skipped (exists)",
                     result.injected,
+                    result.skipped_rejected,
                     result.skipped_trust,
                     result.skipped_context,
                     result.skipped_exists

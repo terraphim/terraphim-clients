@@ -414,12 +414,17 @@ pub fn validate_manifest(
     Ok(())
 }
 
+/// The exact published target set for an official binary.
+///
+/// The inventory has no Windows lane: five Unix targets for every binary plus
+/// the universal Apple target for the two binaries that ship one. A manifest
+/// that advertises a target outside this set, or misses one of them, is
+/// rejected.
 fn expected_targets_for_bin(bin_name: &str) -> Option<BTreeSet<&'static str>> {
     let mut targets = BTreeSet::from([
         "aarch64-apple-darwin",
         "aarch64-unknown-linux-musl",
         "x86_64-apple-darwin",
-        "x86_64-pc-windows-msvc",
         "x86_64-unknown-linux-gnu",
         "x86_64-unknown-linux-musl",
     ]);
@@ -448,16 +453,16 @@ pub fn current_target_triples() -> Vec<String> {
 
 /// All target triples the updater publishes assets for, deduplicated.
 ///
-/// Used by the test fixture to derive the manifest's asset count so adding
-/// a new platform here (or to `target_triples_for_host`) automatically extends
-/// the fixture without a magic-number update.
+/// The published inventory has no Windows lane. Used by the test fixture to
+/// derive the manifest's asset count so adding a new platform here (or to
+/// `target_triples_for_host`) automatically extends the fixture without a
+/// magic-number update.
 pub fn all_target_triples() -> Vec<String> {
     [
         "aarch64-apple-darwin",
         "aarch64-unknown-linux-musl",
         "universal-apple-darwin",
         "x86_64-apple-darwin",
-        "x86_64-pc-windows-msvc",
         "x86_64-unknown-linux-gnu",
         "x86_64-unknown-linux-musl",
     ]
@@ -466,9 +471,12 @@ pub fn all_target_triples() -> Vec<String> {
     .collect()
 }
 
-/// Static map from `ARCH-OS` host string to the target triples we publish
-/// assets for. Single source of truth for both `current_target_triples()` and
-/// `all_target_triples()`; adding a new platform is a one-line change here.
+/// Static map from `ARCH-OS` host string to the target triples the updater
+/// looks for on that host.
+///
+/// The published inventory has no Windows lane, so a Windows host resolves to
+/// the Windows triple that no manifest advertises and fails closed with "no
+/// asset for this target" instead of installing an unverified archive.
 ///
 /// Unknown hosts return an empty list -- callers that depend on a match (the
 /// manifest module's `resolve_asset_url`) treat an empty result as

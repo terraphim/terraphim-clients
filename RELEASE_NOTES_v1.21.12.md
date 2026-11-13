@@ -16,8 +16,13 @@ line on current main and carries everything landed there since.
   package now resolves `terraphim_sessions >= 1.21.2` from the canonical terraphim
   sparse index, fixing the broken install graph shipped in 1.21.1 (missing
   `terraphim-markdown-parser`, stale crates.io `terraphim_sessions`). Guarded by the
-  `packaged_install_graph_regression` test, which packages, installs, and runs the
-  artifact end to end.
+  `packaged_install_graph_regression` test, which checks the source manifest and
+  workspace metadata without contacting the registry. Before publishing
+  `terraphim_agent`, run `scripts/release/verify-agent-package.sh`; its separate,
+  ignored-by-default `agent_package_release_gate` target packages, unpacks and
+  installs the artefact with its locked canonical-registry graph. The ignored
+  target keeps workspace, focused PR and llvm-cov nextest lanes from accidentally
+  running a registry-dependent pre-publish check.
 
 ### Added
 
@@ -39,6 +44,7 @@ line on current main and carries everything landed there since.
 
 ## Versions
 
-- Workspace crates (`terraphim-cli`, `terraphim_grep`, `terraphim_lsp`,
+- Workspace crates (`terraphim-cli`, `terraphim_grep`,
   `terraphim_negative_contribution`, `terraphim-session-analyzer`): **1.21.12**
+- `terraphim_lsp` moved to terraphim-ai after this release; terraphim-clients no longer ships it.
 - `terraphim_agent`: **1.21.12** (explicit package version, kept >= 1.21.2 per #95)

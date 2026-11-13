@@ -126,7 +126,7 @@ A user who prefers cargo - the most cargo-culted path for a Rust tool - gets cod
 | Dependency | Version | Risk | Alternative |
 |---|---|---|---|
 | crates.io | live | Irreversible publishes; rate limits | none |
-| `CARGO_REGISTRY_TOKEN` secret | present | Missing or expired blocks publish | 1Password | 
+| `CARGO_REGISTRY_TOKEN` secret | present | Missing or expired blocks publish | 1Password |
 
 ## Risks and Unknowns
 

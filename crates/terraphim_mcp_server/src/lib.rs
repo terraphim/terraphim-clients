@@ -15,6 +15,12 @@
 //! - [`TerraphimMcpError`] -- unified error type covering service, JSON, I/O, and MCP errors
 //! - [`resource_mapper::TerraphimResourceMapper`] -- maps Terraphim documents to MCP resources
 
+// The workspace is a forbid-soundness project: no `unsafe` in the library or
+// binary target of this crate (terraphim-clients#447, #310). The integration
+// tests under `tests/` are separate crates and keep their own, listed
+// exceptions - see the `no_new_unsafe_sites` guard.
+#![forbid(unsafe_code)]
+
 use anyhow::Result;
 use base64::Engine;
 use fff_search::{
@@ -43,6 +49,7 @@ use thiserror::Error;
 use tracing::{error, info};
 
 mod agent_tools;
+mod catalogue;
 pub mod resource_mapper;
 
 use crate::resource_mapper::TerraphimResourceMapper;
@@ -398,8 +405,6 @@ fn reject_hostile_tree(base: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 
-// RoleGraph keys documents by ID. Use a temporary composite key during union
-// ranking so equal source IDs from different haystacks cannot overwrite each other.
 fn rank_expanded_documents(
     graph: &mut terraphim_rolegraph::RoleGraph,
     canonical: &str,
@@ -428,13 +433,14 @@ fn rank_expanded_documents(
     Ok(())
 }
 
-// A deserialised index has no role provenance. Keep it available to the explicit
-// index operations without allowing it to impersonate a configured role.
 #[derive(Default)]
 struct AutocompleteState {
     active: Option<Arc<AutocompleteIndex>>,
     roles: HashMap<RoleName, (Role, Arc<AutocompleteIndex>)>,
 }
+
+/// Upper bound on documents remembered from `resources/list` pages.
+const LISTED_DOCUMENTS_CAP: usize = 512;
 
 /// The main service type for the Terraphim MCP server
 #[derive(Clone)]
@@ -447,6 +453,14 @@ pub struct McpService {
     /// Optional persistent frecency tracker (LMDB-backed) for access-frequency scoring.
     frecency: Option<SharedFrecency>,
     agent_store: Option<Arc<tokio::sync::Mutex<terraphim_agent::agent_store::AgentStore>>>,
+    /// Documents returned by the most recent `resources/list` pages.
+    ///
+    /// `read_resource` must be able to serve every URI it advertised. Haystack
+    /// search results are not persistence keys, so the page documents are kept
+    /// here instead of re-searching, which used to re-index the corpus for
+    /// every read. Bounded by [`LISTED_DOCUMENTS_CAP`].
+    listed_documents:
+        Arc<std::sync::Mutex<std::collections::HashMap<String, terraphim_types::Document>>>,
 }
 
 impl McpService {
@@ -473,11 +487,10 @@ impl McpService {
             kg_scorer: None,
             frecency,
             agent_store: None,
+            listed_documents: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         }
     }
 
-    /// Enable local agent tools with an already validated explicit storage root.
-    /// Default service instances expose no agent memory/learning tools.
     pub fn with_agent_store(mut self, store: terraphim_agent::agent_store::AgentStore) -> Self {
         self.agent_store = Some(Arc::new(tokio::sync::Mutex::new(store)));
         self
@@ -2159,6 +2172,48 @@ impl McpService {
             }
         }
     }
+
+    /// Fallback resource discovery for roles that have no catalogue file.
+    ///
+    /// Runs a small number of broad searches and keeps the returned
+    /// `Document`s. It deliberately never calls `get_document_by_id` per
+    /// result: that used to trigger one full haystack scan per document.
+    async fn collect_resources_by_search(
+        &self,
+    ) -> Result<Vec<terraphim_types::Document>, ErrorData> {
+        let mut service = self
+            .terraphim_service()
+            .await
+            .map_err(TerraphimMcpError::Anyhow)?;
+
+        let mut collected: std::collections::BTreeMap<String, terraphim_types::Document> =
+            std::collections::BTreeMap::new();
+
+        for term in ["terraphim", "graph", "service", "haystack"] {
+            let search_query = terraphim_types::SearchQuery {
+                search_term: terraphim_types::NormalizedTermValue::new(term.to_string()),
+                search_terms: None,
+                operator: None,
+                limit: Some(catalogue::PAGE_SIZE),
+                skip: None,
+                role: None,
+                layer: terraphim_types::Layer::default(),
+                include_pinned: false,
+                min_quality: None,
+            };
+
+            match service.search(&search_query).await {
+                Ok(documents) => {
+                    for document in documents {
+                        collected.entry(document.id.clone()).or_insert(document);
+                    }
+                }
+                Err(_) => continue,
+            }
+        }
+
+        Ok(collected.into_values().collect())
+    }
 }
 
 impl ServerHandler for McpService {
@@ -3306,94 +3361,53 @@ impl ServerHandler for McpService {
 
     async fn list_resources(
         &self,
-        _request: Option<rmcp::model::PaginatedRequestParam>,
+        request: Option<rmcp::model::PaginatedRequestParam>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, ErrorData> {
-        let mut service = self
-            .terraphim_service()
-            .await
-            .map_err(TerraphimMcpError::Anyhow)?;
+        let offset = request
+            .as_ref()
+            .and_then(|request| request.cursor.as_deref())
+            .and_then(|cursor| cursor.parse::<usize>().ok())
+            .unwrap_or(0);
 
-        // Use a broad search term to find documents instead of empty search
-        // We'll try common terms that should match documents in our KG
-        let search_terms = vec!["terraphim", "graph", "service", "haystack"];
-        let mut all_documents = std::collections::HashSet::new();
-
-        // Perform multiple searches to gather available documents
-        for term in search_terms {
-            let search_query = terraphim_types::SearchQuery {
-                search_term: terraphim_types::NormalizedTermValue::new(term.to_string()),
-                search_terms: None,
-                operator: None,
-                limit: Some(50), // Reasonable limit per search
-                skip: None,
-                role: None,
-                layer: terraphim_types::Layer::default(),
-                include_pinned: false,
-                min_quality: None,
+        // Preferred path: answer from the pre-built catalogue. This performs no
+        // search at all, so `resources/list` cannot re-index the haystack.
+        // See Gitea #448.
+        let documents: std::sync::Arc<Vec<terraphim_types::Document>> =
+            match catalogue::documents().await {
+                Some(documents) => documents,
+                None => std::sync::Arc::new(self.collect_resources_by_search().await?),
             };
 
-            match service.search(&search_query).await {
-                Ok(documents) => {
-                    for doc in documents {
-                        all_documents.insert(doc.id.clone());
-                    }
-                }
-                Err(_) => {
-                    // Continue with other terms if one fails
-                    continue;
-                }
+        let total = documents.len();
+        let page: Vec<_> = documents
+            .iter()
+            .skip(offset)
+            .take(catalogue::PAGE_SIZE)
+            .cloned()
+            .collect();
+
+        // Remember what we advertised so `read_resource` can serve it without
+        // searching. See the field documentation.
+        if let Ok(mut cache) = self.listed_documents.lock() {
+            if cache.len() + page.len() > LISTED_DOCUMENTS_CAP {
+                cache.clear();
+            }
+            for document in &page {
+                cache.insert(document.id.clone(), document.clone());
             }
         }
-
-        // If we still have no documents, try a final broad search
-        if all_documents.is_empty() {
-            let fallback_query = terraphim_types::SearchQuery {
-                search_term: terraphim_types::NormalizedTermValue::new("*".to_string()),
-                search_terms: None,
-                operator: None,
-                limit: Some(100),
-                skip: None,
-                role: None,
-                layer: terraphim_types::Layer::default(),
-                include_pinned: false,
-                min_quality: None,
-            };
-
-            let documents = service
-                .search(&fallback_query)
-                .await
-                .map_err(TerraphimMcpError::Service)?;
-
-            let resources = self
-                .resource_mapper
-                .documents_to_resources(&documents)
-                .map_err(TerraphimMcpError::Anyhow)?;
-
-            return Ok(ListResourcesResult {
-                resources,
-                next_cursor: None,
-            });
-        }
-
-        // Convert unique document IDs back to documents for resource mapping
-        // For now, we'll do individual searches to get full document objects
-        let mut final_documents = Vec::new();
-        for doc_id in all_documents.iter().take(50) {
-            // Limit to 50 resources
-            if let Ok(Some(doc)) = service.get_document_by_id(doc_id).await {
-                final_documents.push(doc);
-            }
-        }
+        let next_offset = offset + page.len();
+        let next_cursor = (next_offset < total).then(|| next_offset.to_string());
 
         let resources = self
             .resource_mapper
-            .documents_to_resources(&final_documents)
+            .documents_to_resources(&page)
             .map_err(TerraphimMcpError::Anyhow)?;
 
         Ok(ListResourcesResult {
             resources,
-            next_cursor: None,
+            next_cursor,
         })
     }
 
@@ -3410,10 +3424,26 @@ impl ServerHandler for McpService {
             .terraphim_service()
             .await
             .map_err(TerraphimMcpError::Anyhow)?;
-        let document = service
+        let mut document = service
             .get_document_by_id(&doc_id)
             .await
             .map_err(TerraphimMcpError::Service)?;
+
+        // Catalogue ids are haystack ids, not necessarily persistence keys.
+        // Fall back to the catalogue (and the file it points at), then to the
+        // documents advertised by the last listing, instead of searching.
+        // See Gitea #448.
+        if document.is_none() {
+            document = catalogue::document_by_id(&doc_id).await;
+        }
+        if document.is_none() {
+            document = self
+                .listed_documents
+                .lock()
+                .ok()
+                .and_then(|cache| cache.get(&doc_id).cloned());
+        }
+
         if let Some(doc) = document {
             let contents = self
                 .resource_mapper

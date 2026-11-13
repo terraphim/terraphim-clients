@@ -13,8 +13,11 @@ import urllib.parse
 from typing import NoReturn
 
 
-# 2026-10-04: x86_64-pc-windows-msvc removed with the Windows lane while the
-# private crates are unpublished; restore the ".zip" entry with the lane.
+# The published inventory has no Windows lane: five Unix targets for every
+# binary plus the universal Apple target for the two binaries that ship one.
+# The producer never emits an x86_64-pc-windows-msvc ZIP, so a stage that
+# advertises one, or that carries one on disk, is rejected here rather than
+# promoted.
 COMMON_TARGETS = {
     "aarch64-apple-darwin": ".tar.gz",
     "aarch64-unknown-linux-musl": ".tar.gz",

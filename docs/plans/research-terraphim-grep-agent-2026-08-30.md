@@ -89,6 +89,13 @@ Two source trees under `terraphim-clients/crates/`:
 
 ### Data Flow (PreToolUse hook)
 
+> **Historical snapshot (superseded):** The following diagram records the
+> pipeline as observed on 2026-08-30. The current implementation no longer has
+> `validate_command_against_kg`; validation receives the selected role's
+> thesaurus explicitly through `validate_command_with_thesaurus`, and replacement
+> uses the same snapshot. The old names remain below to preserve the research
+> record rather than rewriting history.
+
 ```
 input_json
     │

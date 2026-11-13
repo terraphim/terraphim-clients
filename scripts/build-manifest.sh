@@ -23,12 +23,12 @@
 #
 #     Writes a v2 (object-valued assets with sha256 + size) candidate to the
 #     fourth argument. The candidate schema is strict: every advertised
-#     target for the binary must be present and well-formed (Windows zip
-#     included for agent and grep, omitted for cli), no extra or wrong-version
-#     archives may appear, and the filename must encode the exact version
-#     and target. The candidate builder refuses to overwrite a stable
-#     pointer (stable.json / stable-v2.json) -- stable promotion is a
-#     separately authorized promote-release.sh operation.
+#     target for the binary must be present and well-formed. The current
+#     producer has no Windows lane: Windows is absent from every target set,
+#     and any extra or wrong-version archive is rejected. The filename must
+#     encode the exact version and target. The candidate builder refuses to
+#     overwrite a stable pointer (stable.json / stable-v2.json) -- stable
+#     promotion is a separately authorized promote-release.sh operation.
 #
 # SOURCE_DATE_EPOCH is mandatory in the 4-arg mode (deterministic
 # released_at); the 3-arg legacy mode uses the current wall clock because the
@@ -45,7 +45,8 @@ Usage:
       release finalizer.
   scripts/build-manifest.sh VERSION BINARY ARTIFACTS_DIR OUTPUT.candidate.json
       Write a v2 strict candidate manifest -- used by the v1.21.16
-      producer's seal-release-stage step.
+      producer's seal-release-stage step. The strict inventory contains
+      Unix archives only; Windows is not built or advertised.
 EOF
     exit 2
 }

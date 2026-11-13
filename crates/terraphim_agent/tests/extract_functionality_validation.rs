@@ -4,9 +4,13 @@
 
 use anyhow::Result;
 use serial_test::serial;
-use std::process::{Child, Command, Output};
-use std::sync::{Mutex, OnceLock};
+use std::process::{Command, Output};
 use std::time::Duration;
+
+mod support;
+use support::binary::{agent_binary, server_binary, skip_without_server};
+use support::cli_test_env::apply_hermetic_env;
+use support::server_process::ServerProcessGuard;
 
 /// Run a command with a timeout, killing the child if it exceeds the deadline.
 fn run_command_with_timeout(cmd: &mut Command, timeout: Duration) -> Result<Output> {
@@ -37,31 +41,33 @@ fn run_command_with_timeout(cmd: &mut Command, timeout: Duration) -> Result<Outp
     }
 }
 
-#[path = "support/binary.rs"]
-mod binary;
-use binary::{agent_binary, server_binary};
-
-static SERVER_PORT: OnceLock<u16> = OnceLock::new();
-static SERVER_CHILD: Mutex<Option<Child>> = Mutex::new(None);
 /// Start the terraphim server for tests on a random available port
-fn start_test_server() -> Result<(Child, u16)> {
+fn start_test_server() -> Result<(ServerProcessGuard, u16)> {
     let port = find_available_port()?;
 
     println!("Starting test server on port {}...", port);
 
     let mut cmd = Command::new(server_binary());
-    cmd.args(["--port", &port.to_string()])
-        .env("TERRAPHIM_SERVER_PORT", port.to_string())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
+    cmd.args([
+        "--config",
+        "terraphim_server/default/terraphim_engineer_config.json",
+    ])
+    .env("TERRAPHIM_SERVER_HOSTNAME", format!("127.0.0.1:{port}"))
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped());
+    apply_hermetic_env(&mut cmd)?;
 
-    let child = cmd.spawn()?;
+    let mut child = ServerProcessGuard::spawn(&mut cmd)?;
 
     let client = reqwest::blocking::Client::new();
     let health_url = format!("http://127.0.0.1:{}/health", port);
 
-    let mut retries = 5;
-    let mut backoff = Duration::from_millis(50);
+    // The server is a full Rust service; on a loaded host (several CI jobs starting
+    // servers at once) it needs seconds, not milliseconds. The old window was 5 retries
+    // starting at 50 ms - about 1.5 s total - which passed on an idle machine and failed
+    // intermittently under concurrency (terraphim-clients#486).
+    let mut retries = 60;
+    let mut backoff = Duration::from_millis(100);
     while retries > 0 {
         if let Ok(response) = client
             .get(&health_url)
@@ -72,8 +78,22 @@ fn start_test_server() -> Result<(Child, u16)> {
             println!("Test server is ready on port {}", port);
             return Ok((child, port));
         }
+        if let Ok(Some(status)) = child.try_wait() {
+            let stderr = child
+                .take_stderr()
+                .map(|mut stderr| {
+                    let mut output = String::new();
+                    std::io::Read::read_to_string(&mut stderr, &mut output).ok();
+                    output
+                })
+                .unwrap_or_default();
+            return Err(anyhow::anyhow!(
+                "Server exited during startup with {status}: {stderr}"
+            ));
+        }
         std::thread::sleep(backoff);
-        backoff = backoff.saturating_mul(2);
+        // Cap the growth: 60 retries with unbounded doubling would wait for years.
+        backoff = (backoff * 2).min(Duration::from_millis(500));
         retries -= 1;
     }
 
@@ -91,23 +111,19 @@ fn find_available_port() -> Result<u16> {
     Ok(port)
 }
 
-/// Initialize server once for all tests
-fn ensure_server_running() -> Result<u16> {
-    if let Some(&port) = SERVER_PORT.get() {
-        return Ok(port);
+/// Start a server owned by the calling test.
+///
+/// Returns `Ok(None)` when this workspace cannot produce a server: `terraphim_server`
+/// is not a member crate (refs #113), so the binary exists only if someone put it in
+/// `target/debug` (or set `TERRAPHIM_SERVER_BIN`). Whether it was there depended on the
+/// restored build cache, which made these tests pass or fail by cache state rather than
+/// by code - see terraphim-clients#486. The skip notice is the shared one, so every
+/// server-dependent suite reports absence the same way (refs #466).
+fn ensure_server_running() -> Result<Option<(ServerProcessGuard, u16)>> {
+    if skip_without_server("extract_functionality_validation") {
+        return Ok(None);
     }
-
-    match start_test_server() {
-        Ok((child, port)) => {
-            *SERVER_CHILD.lock().unwrap() = Some(child);
-            let _ = SERVER_PORT.set(port);
-            Ok(port)
-        }
-        Err(e) => {
-            eprintln!("Failed to start test server: {}", e);
-            Err(e)
-        }
-    }
+    start_test_server().map(Some)
 }
 
 /// Detect if running in CI environment (GitHub Actions, Docker containers in CI, etc.)
@@ -182,13 +198,8 @@ fn test_extract_basic_functionality_validation() -> Result<()> {
     println!("Validating extract basic functionality");
 
     // Try to start server, but don't fail if it doesn't work
-    let port = match ensure_server_running() {
-        Ok(p) => p,
-        Err(e) => {
-            println!("Warning: Could not start test server: {}", e);
-            println!("Skipping test - server unavailable");
-            return Ok(());
-        }
+    let Some((_server, port)) = ensure_server_running()? else {
+        return Ok(());
     };
 
     // Test with simple text first
@@ -235,13 +246,8 @@ fn test_extract_matching_capability() -> Result<()> {
     println!("Testing extract matching capability with various inputs");
 
     // Try to start server, but don't fail if it doesn't work
-    let port = match ensure_server_running() {
-        Ok(p) => p,
-        Err(e) => {
-            println!("Warning: Could not start test server: {}", e);
-            println!("Skipping test - server unavailable");
-            return Ok(());
-        }
+    let Some((_server, port)) = ensure_server_running()? else {
+        return Ok(());
     };
 
     let long_content = format!(
@@ -398,13 +404,8 @@ fn test_extract_with_known_technical_terms() -> Result<()> {
     println!("Testing extract with well-known technical terms");
 
     // Try to start server, but don't fail if it doesn't work
-    let port = match ensure_server_running() {
-        Ok(p) => p,
-        Err(e) => {
-            println!("Warning: Could not start test server: {}", e);
-            println!("Skipping test - server unavailable");
-            return Ok(());
-        }
+    let Some((_server, port)) = ensure_server_running()? else {
+        return Ok(());
     };
 
     // These are terms that are very likely to appear in any technical thesaurus

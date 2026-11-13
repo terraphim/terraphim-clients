@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use terraphim_automata::LinkType as AutomataLinkType;
+use terraphim_automata::url_protector::{ProtectedUrl, UrlProtector};
 use terraphim_types::Thesaurus;
 use thiserror::Error;
 
@@ -106,10 +107,22 @@ impl ReplacementService {
         let result_bytes =
             terraphim_automata::replace_matches(text, &self.thesaurus, self.link_type)?;
         let result = String::from_utf8(result_bytes)?;
+
+        // `replace_matches` substitutes a match with the concept's display
+        // value. A thesaurus that maps a term to itself (for example a KG whose
+        // concept is named after the term and lists it as its own synonym)
+        // matches but leaves the text unchanged. Report that honestly: callers
+        // gate on `changed`, and claiming `true` for a no-op is the silent
+        // failure described in #401.
+        let replacements = matches
+            .iter()
+            .filter(|matched| self.match_changes_text(text, matched))
+            .count();
+
         Ok(HookResult::with_count(
             text.to_string(),
             result,
-            matches.len(),
+            replacements,
         ))
     }
 
@@ -128,11 +141,27 @@ impl ReplacementService {
         &self,
         text: &str,
     ) -> Result<Vec<terraphim_automata::Matched>, ReplacementError> {
-        Ok(terraphim_automata::find_matches(
-            text,
-            &self.thesaurus,
-            true,
-        )?)
+        let protector = UrlProtector::new();
+        let (masked_text, protected_urls) = protector.mask_urls(text);
+        let mut matches = terraphim_automata::find_matches(&masked_text, &self.thesaurus, true)?;
+
+        if protected_urls.is_empty() {
+            return Ok(matches);
+        }
+
+        let spans = protected_spans(&masked_text, &protected_urls);
+        matches.retain_mut(|matched| {
+            let Some(position) = matched.pos else {
+                return false;
+            };
+            let Some(original_position) = original_position(position, &spans) else {
+                return false;
+            };
+            matched.pos = Some(original_position);
+            true
+        });
+
+        Ok(matches)
     }
 
     /// Check if text contains any terms from the thesaurus.
@@ -141,6 +170,79 @@ impl ReplacementService {
             .map(|matches| !matches.is_empty())
             .unwrap_or(false)
     }
+
+    fn match_changes_text(&self, text: &str, matched: &terraphim_automata::Matched) -> bool {
+        let Some((start, end)) = matched.pos else {
+            return false;
+        };
+        let Some(source) = text.get(start..end) else {
+            return false;
+        };
+
+        let display = matched.normalized_term.display();
+        let replacement = match self.link_type {
+            AutomataLinkType::WikiLinks => format!("[[{display}]]"),
+            AutomataLinkType::HTMLLinks => format!(
+                "<a href=\"{}\">{display}</a>",
+                matched.normalized_term.url.as_deref().unwrap_or_default()
+            ),
+            AutomataLinkType::MarkdownLinks => format!(
+                "[{display}]({})",
+                matched.normalized_term.url.as_deref().unwrap_or_default()
+            ),
+            AutomataLinkType::PlainText => display.to_string(),
+        };
+
+        source != replacement
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ProtectedSpan {
+    masked_start: usize,
+    masked_end: usize,
+    original_len: usize,
+}
+
+fn protected_spans(masked_text: &str, protected_urls: &[ProtectedUrl]) -> Vec<ProtectedSpan> {
+    let mut spans: Vec<_> = protected_urls
+        .iter()
+        .filter_map(|protected| {
+            masked_text
+                .find(&protected.placeholder)
+                .map(|masked_start| ProtectedSpan {
+                    masked_start,
+                    masked_end: masked_start + protected.placeholder.len(),
+                    original_len: protected.url.len(),
+                })
+        })
+        .collect();
+    spans.sort_unstable_by_key(|span| span.masked_start);
+    spans
+}
+
+fn original_position(
+    (masked_start, masked_end): (usize, usize),
+    spans: &[ProtectedSpan],
+) -> Option<(usize, usize)> {
+    let mut byte_delta = 0isize;
+
+    for span in spans {
+        if masked_end <= span.masked_start {
+            break;
+        }
+        if masked_start < span.masked_end && masked_end > span.masked_start {
+            return None;
+        }
+        if span.masked_end <= masked_start {
+            byte_delta +=
+                span.original_len as isize - (span.masked_end - span.masked_start) as isize;
+        }
+    }
+
+    let original_start = (masked_start as isize + byte_delta).try_into().ok()?;
+    let original_end = (masked_end as isize + byte_delta).try_into().ok()?;
+    Some((original_start, original_end))
 }
 
 #[cfg(test)]
@@ -167,7 +269,43 @@ mod tests {
 
         let result = service.replace("npm install").unwrap();
         assert!(result.changed);
+        assert_eq!(result.replacements, 1);
         assert_eq!(result.result, "bun install");
+    }
+
+    /// #401: a thesaurus entry whose replacement text equals the matched term
+    /// changes nothing. The scan still finds a match, but `changed` must stay
+    /// false so a caller does not treat a no-op as a successful rewrite.
+    #[test]
+    fn test_replace_reports_unchanged_when_mapping_is_identity() {
+        let mut thesaurus = Thesaurus::new("identity".to_string());
+        let concept = NormalizedTerm::new(1u64, NormalizedTermValue::from("claude code"))
+            .with_display_value("Claude Code".to_string());
+        thesaurus.insert(NormalizedTermValue::from("claude code"), concept);
+
+        let service = ReplacementService::new(thesaurus);
+        let result = service.replace("Claude Code fix").unwrap();
+
+        assert_eq!(result.result, "Claude Code fix");
+        assert!(
+            !result.changed,
+            "an identity mapping must not claim a change: {result:?}"
+        );
+        assert_eq!(result.replacements, 0);
+    }
+
+    #[test]
+    fn test_replace_counts_real_substitutions_only() {
+        let thesaurus = create_test_thesaurus();
+        let service = ReplacementService::new(thesaurus);
+
+        let changed = service.replace("npm install").unwrap();
+        assert!(changed.changed);
+        assert_eq!(changed.replacements, 1);
+
+        let unchanged = service.replace("cargo build").unwrap();
+        assert!(!unchanged.changed);
+        assert_eq!(unchanged.replacements, 0);
     }
 
     #[test]
@@ -386,6 +524,53 @@ mod tests {
             );
             assert_eq!(result.changed, expected > 0, "changed flag for {text:?}");
         }
+    }
+
+    #[test]
+    fn find_matches_excludes_terms_inside_urls() {
+        let service = ReplacementService::new(create_test_thesaurus());
+        let input = "curl https://registry.npmjs.org/npm";
+
+        let matches = service.find_matches(input).unwrap();
+        let result = service.replace(input).unwrap();
+
+        assert!(matches.is_empty(), "URL-protected terms are not rewrites");
+        assert_eq!(result.result, input);
+        assert_eq!(result.replacements, 0);
+        assert!(!result.changed);
+    }
+
+    #[test]
+    fn replace_counts_only_matches_outside_urls() {
+        let service = ReplacementService::new(create_test_thesaurus());
+        let input = "npm install && curl https://registry.npmjs.org/npm";
+
+        let matches = service.find_matches(input).unwrap();
+        let result = service.replace(input).unwrap();
+
+        assert_eq!(matches.len(), 1, "only the command term is rewritable");
+        assert_eq!(
+            result.result,
+            "bun install && curl https://registry.npmjs.org/npm"
+        );
+        assert_eq!(result.replacements, 1);
+        assert!(result.changed);
+    }
+
+    #[test]
+    fn replace_count_excludes_identity_matches_when_another_term_changes() {
+        let mut thesaurus = Thesaurus::new("identity-and-synonym".to_string());
+        let bun = NormalizedTerm::new(1u64, NormalizedTermValue::from("bun"))
+            .with_display_value("bun".to_string());
+        thesaurus.insert(NormalizedTermValue::from("bun"), bun.clone());
+        thesaurus.insert(NormalizedTermValue::from("npm"), bun);
+        let service = ReplacementService::new(thesaurus);
+
+        let result = service.replace("bun && npm").unwrap();
+
+        assert_eq!(result.result, "bun && bun");
+        assert_eq!(result.replacements, 1);
+        assert!(result.changed);
     }
 
     #[test]

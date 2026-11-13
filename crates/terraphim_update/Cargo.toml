@@ -1,15 +1,15 @@
 [package]
 name = "terraphim_update"
-version = "1.20.2"
+version = "1.23.0"
 edition.workspace = true
 authors = ["Terraphim Contributors"]
 description = "Shared auto-update functionality for Terraphim AI binaries"
 documentation = "https://terraphim.ai"
 homepage = "https://terraphim.ai"
-repository = "https://github.com/terraphim/terraphim-ai"
+repository = "https://git.terraphim.cloud/terraphim/terraphim-clients"
 keywords = ["ai", "auto-update", "self-update", "binary", "release"]
 license = "Apache-2.0"
-readme = "../../README.md"
+readme = "README.md"
 
 [dependencies]
 anyhow = { workspace = true }
@@ -39,7 +39,14 @@ base64 = "0.22"
 # Archive extraction
 flate2 = "1.1"
 tar = "0.4"
-zip = "8"
+# zip 9 is the first release without the advisories that hit zip 7 and 8
+# (RUSTSEC-2026-0367, -0368, -0369, -0429). `zipsign-api 0.2.2` follows the
+# same major, so the graph carries no vulnerable copy.
+#
+# The upper bound is what the registry mirror can resolve today: the newest
+# zip 9.x needs `lzma-rust2 0.25`, which the mirror does not carry yet. The
+# bound can go when the mirror catches up.
+zip = ">=9.0, <9.2"
 tempfile = { workspace = true }
 
 

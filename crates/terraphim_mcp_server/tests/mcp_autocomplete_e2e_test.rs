@@ -15,9 +15,67 @@ use tokio::process::Command;
 // Additional imports for thesaurus building
 use terraphim_automata::AutomataPath;
 
+/// A hermetic environment for one autocomplete test.
+///
+/// Settings, home and the thesaurus file all live under a unique temporary
+/// root. The MCP server is spawned as a child process, and without this it
+/// persisted its role config into the shared `/tmp/terraphim_sqlite` profile
+/// and wrote its thesaurus to a fixed `/tmp` path that a concurrent run could
+/// overwrite. Both leaked into other suites (the agent's checklist test
+/// resolved the polluted role and credited a different category). Refs #494.
+struct HermeticEnv {
+    root: tempfile::TempDir,
+}
+
+impl HermeticEnv {
+    fn new() -> Result<Self> {
+        let root = tempfile::tempdir()?;
+        let home = root.path().join("home");
+        let data = root.path().join("data");
+        let dashmap = root.path().join("dashmap");
+        std::fs::create_dir_all(home.join(".config"))?;
+        std::fs::create_dir_all(&data)?;
+        std::fs::create_dir_all(&dashmap)?;
+
+        let settings = format!(
+            "server_hostname = \"127.0.0.1:8000\"\n\
+             api_endpoint = \"http://localhost:8000/api\"\n\
+             initialized = \"false\"\n\
+             default_data_path = \"{data}\"\n\
+             \n\
+             [profiles.dashmap]\n\
+             type = \"dashmap\"\n\
+             root = \"{dashmap}\"\n",
+            data = data.display(),
+            dashmap = dashmap.display(),
+        );
+        std::fs::write(root.path().join("settings.toml"), settings)?;
+
+        // The child inherits the environment, so the redirects reach it.
+        set_env_var(
+            "TERRAPHIM_SETTINGS_PATH",
+            root.path().to_string_lossy().to_string(),
+        );
+        set_env_var("HOME", home.to_string_lossy().to_string());
+        set_env_var(
+            "XDG_CONFIG_HOME",
+            home.join(".config").to_string_lossy().to_string(),
+        );
+
+        Ok(Self { root })
+    }
+
+    /// Where this test's thesaurus file lives. Unique per test run.
+    fn thesaurus_path(&self) -> std::path::PathBuf {
+        self.root
+            .path()
+            .join("terraphim_engineer_autocomplete_thesaurus.json")
+    }
+}
+
 /// Create a comprehensive test configuration with the "Terraphim Engineer" role
 /// that uses local KG files and builds thesaurus from local markdown files
-async fn create_autocomplete_test_config() -> Result<String> {
+async fn create_autocomplete_test_config(env: &HermeticEnv) -> Result<String> {
     // Use memory-only persistence to avoid RocksDB filesystem issues in CI
     set_env_var("TERRAPHIM_PROFILE_MEMORY_TYPE", "memory");
     let log_dir = tempfile::Builder::new()
@@ -61,9 +119,8 @@ async fn create_autocomplete_test_config() -> Result<String> {
     // Reload thesaurus from persistence to get canonical version
     thesaurus = thesaurus.load().await?;
 
-    // Create automata path pointing to the persisted thesaurus
-    let temp_dir = std::env::temp_dir();
-    let thesaurus_path = temp_dir.join("terraphim_engineer_autocomplete_thesaurus.json");
+    // Create automata path pointing to this test's own thesaurus file
+    let thesaurus_path = env.thesaurus_path();
 
     // Write thesaurus to temp file for automata path
     let thesaurus_json = serde_json::to_string_pretty(&thesaurus)?;
@@ -123,6 +180,11 @@ async fn create_autocomplete_test_config() -> Result<String> {
 async fn start_mcp_server() -> Result<TokioChildProcess> {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_terraphim_mcp_server"));
 
+    if std::env::var_os("CI").is_some() {
+        cmd.arg("--features").arg("zlob");
+        cmd.arg("--release");
+    }
+
     cmd.stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
@@ -137,7 +199,8 @@ async fn start_mcp_server() -> Result<TokioChildProcess> {
 async fn test_build_autocomplete_index_terraphim_engineer() -> Result<()> {
     println!("🧪 Testing autocomplete index building for Terraphim Engineer role");
 
-    let config_json = create_autocomplete_test_config().await?;
+    let env = HermeticEnv::new()?;
+    let config_json = create_autocomplete_test_config(&env).await?;
     let transport = start_mcp_server().await?;
     let service = ().serve(transport).await?;
 
@@ -185,13 +248,115 @@ async fn test_build_autocomplete_index_terraphim_engineer() -> Result<()> {
     Ok(())
 }
 
+/// Test fuzzy autocomplete search using Jaro-Winkler algorithm with knowledge graph terms
+#[tokio::test]
+#[serial]
+#[ignore = "Test expects specific autocomplete results that may not be available"]
+async fn test_fuzzy_autocomplete_search_kg_terms() -> Result<()> {
+    println!("🧪 Testing fuzzy autocomplete search with knowledge graph terms");
+
+    let env = HermeticEnv::new()?;
+    let config_json = create_autocomplete_test_config(&env).await?;
+    let transport = start_mcp_server().await?;
+    let service = ().serve(transport).await?;
+
+    // Update configuration
+    let update_config_args = json!({"config_str": config_json});
+    let _update_result = service
+        .call_tool(CallToolRequestParam {
+            name: "update_config_tool".into(),
+            arguments: Some(update_config_args.as_object().unwrap().clone()),
+        })
+        .await?;
+
+    // Build autocomplete index
+    let build_index_args = json!({"role": "Terraphim Engineer"});
+    let build_result = service
+        .call_tool(CallToolRequestParam {
+            name: "build_autocomplete_index".into(),
+            arguments: Some(build_index_args.as_object().unwrap().clone()),
+        })
+        .await?;
+
+    assert!(build_result.is_error != Some(true));
+
+    // Test various knowledge graph terms
+    let test_queries = vec![
+        ("terrapi", vec!["terraphim-graph"]), // Partial match
+        ("graph", vec!["terraphim-graph", "graph embeddings"]), // Common term
+        ("embedd", vec!["graph embeddings"]), // Partial embedding
+        ("hayst", vec!["haystack"]),          // Haystack term
+        ("servic", vec!["service"]),          // Service term
+        ("machine", vec![]),                  // Should not match KG terms
+    ];
+
+    for (query, expected_terms) in test_queries {
+        println!("🔍 Testing query: '{}'", query);
+
+        let search_args = json!({
+            "query": query,
+            "similarity": 0.6,
+            "limit": 10
+        });
+
+        let search_result = service
+            .call_tool(CallToolRequestParam {
+                name: "fuzzy_autocomplete_search".into(),
+                arguments: Some(search_args.as_object().unwrap().clone()),
+            })
+            .await?;
+
+        println!("Search result for '{}': {:?}", query, search_result);
+        assert!(search_result.is_error != Some(true));
+
+        // Check if expected terms are found
+        if let Some(summary_content) = search_result.content.first() {
+            let summary_text = summary_content.as_text().unwrap().text.clone();
+            println!("Summary: {}", summary_text);
+
+            // For terms that should match, verify suggestions are returned
+            if !expected_terms.is_empty() {
+                assert!(summary_text.contains("Found"));
+                assert!(!summary_text.contains("Found 0"));
+
+                // Check individual suggestions
+                for (i, content) in search_result.content.iter().skip(1).enumerate() {
+                    let suggestion_text = content.as_text().unwrap().text.clone();
+                    println!("Suggestion {}: {}", i + 1, suggestion_text);
+
+                    // Verify suggestions contain expected terms
+                    let suggestion_contains_expected = expected_terms.iter().any(|expected| {
+                        suggestion_text
+                            .to_lowercase()
+                            .contains(&expected.to_lowercase())
+                    });
+
+                    if !suggestion_contains_expected {
+                        println!(
+                            "⚠️  Suggestion '{}' doesn't contain expected terms: {:?}",
+                            suggestion_text, expected_terms
+                        );
+                    }
+                }
+            } else {
+                // For queries that shouldn't match, verify few or no results
+                println!("Query '{}' expected to have no matches", query);
+            }
+        }
+    }
+
+    println!("✅ Fuzzy autocomplete search testing completed");
+    Ok(())
+}
+
 /// Test Levenshtein autocomplete search for comparison
 #[tokio::test]
 #[serial]
 async fn test_levenshtein_autocomplete_search_kg_terms() -> Result<()> {
     println!("🧪 Testing Levenshtein autocomplete search with knowledge graph terms");
 
-    let config_json = create_autocomplete_test_config().await?;
+    let env = HermeticEnv::new()?;
+    let config_json = create_autocomplete_test_config(&env).await?;
     let transport = start_mcp_server().await?;
     let service = ().serve(transport).await?;
 
@@ -269,7 +434,8 @@ async fn test_levenshtein_autocomplete_search_kg_terms() -> Result<()> {
 async fn test_autocomplete_algorithm_comparison() -> Result<()> {
     println!("🧪 Testing autocomplete algorithm comparison: Jaro-Winkler vs Levenshtein");
 
-    let config_json = create_autocomplete_test_config().await?;
+    let env = HermeticEnv::new()?;
+    let config_json = create_autocomplete_test_config(&env).await?;
     let transport = start_mcp_server().await?;
     let service = ().serve(transport).await?;
 
@@ -351,11 +517,70 @@ async fn test_autocomplete_algorithm_comparison() -> Result<()> {
     Ok(())
 }
 
+/// Test new autocomplete_terms tool (prefix + fuzzy)
+#[tokio::test]
+#[serial]
+#[ignore = "Test expects specific autocomplete results that may not be available"]
+async fn test_autocomplete_terms_tool() -> Result<()> {
+    let env = HermeticEnv::new()?;
+    let config_json = create_autocomplete_test_config(&env).await?;
+    let transport = start_mcp_server().await?;
+    let service = ().serve(transport).await?;
+
+    // Update configuration
+    let update_config_args = json!({"config_str": config_json});
+    service
+        .call_tool(CallToolRequestParam {
+            name: "update_config_tool".into(),
+            arguments: Some(update_config_args.as_object().unwrap().clone()),
+        })
+        .await?;
+
+    // Build index
+    let build_index_args = json!({"role": "Terraphim Engineer"});
+    let build_result = service
+        .call_tool(CallToolRequestParam {
+            name: "build_autocomplete_index".into(),
+            arguments: Some(build_index_args.as_object().unwrap().clone()),
+        })
+        .await?;
+    assert!(build_result.is_error != Some(true));
+
+    // Call autocomplete_terms: expect graph expansion to include synonyms of same concept id
+    let ac_args = json!({"query": "terraph", "limit": 8});
+    let ac_result = service
+        .call_tool(CallToolRequestParam {
+            name: "autocomplete_terms".into(),
+            arguments: Some(ac_args.as_object().unwrap().clone()),
+        })
+        .await?;
+    assert!(ac_result.is_error != Some(true));
+    if let Some(summary) = ac_result.content.first() {
+        let text = summary.as_text().unwrap().text.clone();
+        assert!(text.contains("Found"));
+    }
+    // Verify that related terms like "graph" or "graph embeddings" appear via concept expansion
+    let all_texts: Vec<String> = ac_result
+        .content
+        .iter()
+        .skip(1)
+        .filter_map(|c| c.as_text().map(|t| t.text.clone()))
+        .collect();
+    let has_graph_related = all_texts.iter().any(|t| t.to_lowercase().contains("graph"));
+    assert!(
+        has_graph_related,
+        "Autocomplete should include graph-related synonyms via concept expansion: {:?}",
+        all_texts
+    );
+    Ok(())
+}
+
 /// Test new autocomplete_with_snippets tool
 #[tokio::test]
 #[serial]
 async fn test_autocomplete_with_snippets_tool() -> Result<()> {
-    let config_json = create_autocomplete_test_config().await?;
+    let env = HermeticEnv::new()?;
+    let config_json = create_autocomplete_test_config(&env).await?;
     let transport = start_mcp_server().await?;
     let service = ().serve(transport).await?;
 
@@ -501,7 +726,8 @@ async fn test_autocomplete_error_handling() -> Result<()> {
 async fn test_role_specific_autocomplete() -> Result<()> {
     println!("🧪 Testing role-specific autocomplete functionality");
 
-    let config_json = create_autocomplete_test_config().await?;
+    let env = HermeticEnv::new()?;
+    let config_json = create_autocomplete_test_config(&env).await?;
     let transport = start_mcp_server().await?;
     let service = ().serve(transport).await?;
 

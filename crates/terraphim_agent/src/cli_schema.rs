@@ -281,6 +281,14 @@ pub(crate) enum Command {
         /// to enable KG-driven rewriting.
         #[arg(long, default_value_t = false)]
         rewrite: bool,
+        /// The program the pre-tool-use hook asks for a guard decision.
+        ///
+        /// The guard runs out of process so that a crash inside it cannot turn
+        /// into an allow, and so the hook can block the call when the guard
+        /// produced no decision. The default is this binary. This option exists
+        /// for tests and for wrappers; the installed hook does not pass it.
+        #[arg(long, value_name = "PATH", hide = true)]
+        guard_program: Option<std::path::PathBuf>,
     },
     /// Check command against safety guard patterns (blocks destructive git/fs commands)
     Guard {
@@ -393,6 +401,23 @@ pub(crate) enum CacheSub {
         /// Specific role to flush (if omitted, flushes all cached thesauri)
         #[arg(long)]
         role: Option<String>,
+    },
+    /// List the compiled thesaurus cache entries
+    List,
+    /// Export a role's compiled thesaurus (recompiled if its source changed)
+    Export {
+        /// Role to export (name or shortname)
+        #[arg(long, conflicts_with = "all")]
+        role: Option<String>,
+        /// Export every configured role (one file per role, needs --dir)
+        #[arg(long, requires = "dir")]
+        all: bool,
+        /// Write the export to this file ("-" means stdout)
+        #[arg(long, conflicts_with = "dir", requires = "role")]
+        out: Option<String>,
+        /// Write one file per role into this directory (needs --all)
+        #[arg(long, requires = "all")]
+        dir: Option<String>,
     },
 }
 
@@ -927,4 +952,63 @@ pub(crate) enum MemorySub {
         #[arg(long)]
         issue: u64,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    #[test]
+    fn learn_install_hook_accepts_pi() {
+        let cli = Cli::try_parse_from(["terraphim-agent", "learn", "install-hook", "pi"])
+            .expect("`learn install-hook pi` must parse");
+
+        match cli.command {
+            Some(Command::Learn {
+                sub: LearnSub::InstallHook { agent },
+            }) => assert_eq!(agent, learnings::AgentType::Pi),
+            other => panic!("expected learn install-hook pi, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn learn_install_hook_still_accepts_existing_agents() {
+        for (arg, expected) in [
+            ("claude", learnings::AgentType::Claude),
+            ("codex", learnings::AgentType::Codex),
+            ("opencode", learnings::AgentType::Opencode),
+        ] {
+            let cli = Cli::try_parse_from(["terraphim-agent", "learn", "install-hook", arg])
+                .unwrap_or_else(|e| panic!("`learn install-hook {arg}` must parse: {e}"));
+            match cli.command {
+                Some(Command::Learn {
+                    sub: LearnSub::InstallHook { agent },
+                }) => assert_eq!(agent, expected),
+                other => panic!("expected learn install-hook {arg}, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn learn_install_hook_rejects_unknown_agent() {
+        assert!(Cli::try_parse_from(["terraphim-agent", "learn", "install-hook", "nope"]).is_err());
+    }
+
+    #[test]
+    fn learn_install_hook_help_lists_pi() {
+        let mut cmd = Cli::command();
+        let help = cmd
+            .find_subcommand_mut("learn")
+            .and_then(|learn| {
+                learn
+                    .find_subcommand_mut("install-hook")
+                    .map(|ih| ih.render_long_help().to_string())
+            })
+            .expect("learn install-hook subcommand must exist");
+        assert!(
+            help.contains("pi"),
+            "install-hook help must mention pi, got: {help}"
+        );
+    }
 }

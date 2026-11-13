@@ -106,11 +106,16 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo build --workspace
       - run: cargo test --workspace --lib --no-fail-fast
+      # #459: the server-mode client (the `--server` mode) lives behind the
+      # `server` feature; the test build enables it through the `repl-full`
+      # dev-dependency, but a plain build does not.
+      - run: cargo check -p terraphim_agent --features server --all-targets
       - name: Persist and recover authored memory through the CLI
         run: cargo test --locked -p terraphim_agent --test memory_capture_cli_tests --test memory_apply_cli_tests --test memory_rubric_cli_tests --test agent_store_contract --test agent_learning_store_contract
       # Exercise the released grep command against real files and exported
       # synonym graphs, including Linux-only hostile filesystem names.
-      - run: cargo test --locked -p terraphim_grep --test synonym_retrieval --test answer_request --test path_guard_hostile_tree --test single_file_search
+      - name: Exercise released grep command contracts
+        run: cargo test --locked -p terraphim_grep --test synonym_retrieval --test answer_request --test path_guard_hostile_tree --test single_file_search
       - name: Verify authored synonyms and role boundaries over real MCP stdio
         run: cargo test --locked -p terraphim_mcp_server --test test_mcp_role_contract --test test_mcp_agent_contract
       # GitHub-side home for the updater integration contracts (managed-mode
@@ -118,6 +123,11 @@ jobs:
       # On Gitea these lanes live in .gitea/workflows/native-ci.yml, which is
       # intentionally not part of the GitHub port.
       - run: cargo test -p terraphim_update --test manifest --test r2_update --test managed_mode --test policy --no-fail-fast
+      # The pi-terraphim-learn plugin package is JavaScript, so the workspace
+      # cargo tests never exercised it (#467). The wrapper is a repo script
+      # because the native runner's command policy allows only cargo and scripts.
+      - name: pi-terraphim-learn functional test
+        run: bash ./scripts/ci/pi-terraphim-learn-tests.sh
       - name: Assert the build left the checkout and lockfile untouched
         run: |
           set -euo pipefail

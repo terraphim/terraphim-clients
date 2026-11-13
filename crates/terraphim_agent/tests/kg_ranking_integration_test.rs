@@ -14,7 +14,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
 
@@ -24,9 +24,9 @@ use serial_test::serial;
 use terraphim_agent::client::ApiClient;
 use terraphim_types::{Document, Layer, NormalizedTermValue, RoleName, SearchQuery};
 
-use tokio::sync::OnceCell;
-
-static SHARED_SERVER_URL: OnceCell<String> = OnceCell::const_new();
+mod support;
+use support::binary::{server_binary_path, skip_without_server};
+use support::server_process::ServerProcessGuard;
 
 /// BM25 baseline role in `tests/test_config.json`.
 ///
@@ -93,46 +93,22 @@ fn get_workspace_root() -> Result<PathBuf> {
     Ok(PathBuf::from("."))
 }
 
-/// Pre-compile server binary for fast startup
-fn ensure_server_binary() -> Result<PathBuf> {
-    // CI installs terraphim_server from terraphim-ai into a temp root and
-    // points TERRAPHIM_SERVER_BIN at it (see native-ci.yml, Refs #113).
-    // Local dev runs can also export the same var to point at a prebuilt
-    // binary instead of relying on target/debug/terraphim_server.
-    if let Ok(bin) = std::env::var("TERRAPHIM_SERVER_BIN") {
-        let path = PathBuf::from(bin);
-        if path.exists() {
-            return Ok(path);
-        }
-    }
-
-    let workspace_root = get_workspace_root()?;
-    let binary_path = workspace_root.join("target/debug/terraphim_server");
-
-    // terraphim_server is not a workspace member here, so there is nothing to
-    // build -- and a nested `cargo build` under `cargo test` would deadlock on
-    // the outer build lock regardless. Refs #113.
-    if !binary_path.exists() {
-        return Err(anyhow::anyhow!(
-            "terraphim_server is not a member of this workspace, so it cannot be built here. Set TERRAPHIM_SERVER_BIN to a prebuilt binary to run this test. Refs #113"
-        ));
-    }
-
-    Ok(binary_path)
-}
-
 /// Test helper to start a real terraphim server with minimal test config
-async fn start_test_server() -> Result<(Child, String)> {
+async fn start_test_server() -> Result<Option<(ServerProcessGuard, String)>> {
+    if skip_without_server("kg_ranking_integration_test") {
+        return Ok(None);
+    }
     let port = portpicker::pick_unused_port().expect("Failed to find unused port");
     let server_url = format!("http://localhost:{}", port);
     let server_hostname = format!("127.0.0.1:{}", port);
 
     println!("[TEST] Starting test server on {}", server_url);
     println!("[TEST] Server hostname: {}", server_hostname);
-    println!("[TEST] Binary path: {:?}", ensure_server_binary()?);
+    let binary_path = server_binary_path()
+        .expect("server_binary_path must resolve when skip_without_server returned false");
+    println!("[TEST] Binary path: {:?}", binary_path);
 
     // Use pre-compiled binary for instant startup
-    let binary_path = ensure_server_binary()?;
     let workspace_root = get_workspace_root()?;
 
     // Use minimal test config for faster KG initialization
@@ -163,7 +139,8 @@ async fn start_test_server() -> Result<(Child, String)> {
         "[TEST] Spawning server process with config: {}",
         config_path_absolute
     );
-    let mut server = Command::new(&binary_path)
+    let mut command = Command::new(&binary_path);
+    command
         .args(["--config", &config_path_absolute])
         .current_dir(&workspace_root)
         .env("TERRAPHIM_SERVER_HOSTNAME", &server_hostname)
@@ -175,8 +152,8 @@ async fn start_test_server() -> Result<(Child, String)> {
         .env("TERRAPHIM_DATA_PATH", &test_data_path)
         .env("RUST_LOG", "warn")
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
+        .stderr(Stdio::piped());
+    let mut server = ServerProcessGuard::spawn(&mut command)?;
 
     println!("[TEST] Server spawned with PID: {:?}", server.id());
 
@@ -197,7 +174,7 @@ async fn start_test_server() -> Result<(Child, String)> {
         match client.get(&health_url).send().await {
             Ok(response) if response.status().is_success() => {
                 println!("✓ Server ready after {} seconds", attempt / 2);
-                return Ok((server, server_url));
+                return Ok(Some((server, server_url)));
             }
             Ok(response) => {
                 println!("[TEST] Health check returned status: {}", response.status());
@@ -211,8 +188,7 @@ async fn start_test_server() -> Result<(Child, String)> {
 
         if let Ok(Some(status)) = server.try_wait() {
             let stderr = server
-                .stderr
-                .take()
+                .take_stderr()
                 .map(|mut s| {
                     let mut buf = String::new();
                     std::io::Read::read_to_string(&mut s, &mut buf).ok();
@@ -220,8 +196,7 @@ async fn start_test_server() -> Result<(Child, String)> {
                 })
                 .unwrap_or_default();
             let stdout = server
-                .stdout
-                .take()
+                .take_stdout()
                 .map(|mut s| {
                     let mut buf = String::new();
                     std::io::Read::read_to_string(&mut s, &mut buf).ok();
@@ -235,27 +210,7 @@ async fn start_test_server() -> Result<(Child, String)> {
         }
     }
 
-    let _ = server.kill();
     Err(anyhow::anyhow!("Server failed to start within 60s"))
-}
-
-/// Get or start a shared test server instance across all tests.
-///
-/// Spawning a server per test causes `cargo test --workspace` to time out
-/// (>10 min) because each startup rebuilds the rolegraph from 29 KG files.
-/// A single shared server eliminates redundant startup and keeps total
-/// runtime under 60 s.
-async fn get_shared_server_url() -> &'static String {
-    SHARED_SERVER_URL
-        .get_or_init(|| async {
-            let (_server, url) = start_test_server()
-                .await
-                .expect("Failed to start shared test server");
-            // Drop the Child handle; the server process continues to run
-            // independently.  The OS will reap it when the test runner exits.
-            url
-        })
-        .await
 }
 
 /// Clean up test resources (directories and files).  Does **not** kill the
@@ -343,7 +298,7 @@ async fn search_via_server(
     // Retry role switch with backoff - server may need time to initialise
     let mut retries = 0;
     loop {
-        match client.update_selected_role(role).await {
+        match client.switch_role(role).await {
             Ok(_) => break,
             Err(e) => {
                 retries += 1;
@@ -531,8 +486,10 @@ async fn test_knowledge_graph_ranking_impact() -> Result<()> {
     create_test_knowledge_graph()?;
 
     println!("Step 1: Starting test server...");
-    let server_url = get_shared_server_url().await;
-    let api_client = ApiClient::new(server_url);
+    let Some((_server, server_url)) = start_test_server().await? else {
+        return Ok(());
+    };
+    let api_client = ApiClient::new(&server_url);
 
     thread::sleep(Duration::from_secs(3));
 
@@ -691,8 +648,10 @@ async fn test_term_specific_boosting() -> Result<()> {
     println!("╚════════════════════════════════════════════════════════════════════════╝\n");
 
     create_test_knowledge_graph()?;
-    let server_url = get_shared_server_url().await;
-    let client = ApiClient::new(server_url);
+    let Some((_server, server_url)) = start_test_server().await? else {
+        return Ok(());
+    };
+    let client = ApiClient::new(&server_url);
 
     // Wait longer for KG initialization (lightweight test KG initializes faster)
     println!("Waiting for server and KG initialization...");
@@ -739,8 +698,10 @@ async fn test_role_switching() -> Result<()> {
     println!("╚════════════════════════════════════════════════════════════════════════╝\n");
 
     create_test_knowledge_graph()?;
-    let server_url = get_shared_server_url().await;
-    let client = ApiClient::new(server_url);
+    let Some((_server, server_url)) = start_test_server().await? else {
+        return Ok(());
+    };
+    let client = ApiClient::new(&server_url);
 
     // Wait longer for KG initialization
     println!("Waiting for server and KG initialization...");
@@ -756,7 +717,7 @@ async fn test_role_switching() -> Result<()> {
             // Role switch with retry logic - allow time for KG loading
             let mut switch_retry = 0;
             let switch_result = loop {
-                match client.update_selected_role(role).await {
+                match client.switch_role(role).await {
                     Ok(_config) => break Ok(()),
                     Err(e) => {
                         switch_retry += 1;

@@ -15,9 +15,8 @@ ROLLBACK = ROOT / "scripts" / "rollback-release-pointers.sh"
 VERSION = "1.21.15"
 SOURCE_SHA = "a" * 40
 CORRELATION_ID = "terraphim-clients/release-1.21.15:248"
-# 2026-10-04: x86_64-pc-windows-msvc removed with the Windows lane; restore
-# it (and the ".zip" branches below) when the crates are public and the lane
-# returns.
+# The published inventory has no Windows lane: five Unix targets for every
+# binary plus the universal Apple target for the two binaries that ship one.
 COMMON_TARGETS = (
     "aarch64-apple-darwin",
     "aarch64-unknown-linux-musl",
@@ -58,8 +57,7 @@ def prepare_complete_stage(root: Path) -> Path:
             targets.append("universal-apple-darwin")
         manifest_assets = {}
         for target in targets:
-            suffix = ".tar.gz"
-            filename = f"{binary}-{VERSION}-{target}{suffix}"
+            filename = f"{binary}-{VERSION}-{target}.tar.gz"
             payload = f"signed-final-{binary}-{target}".encode()
             (assets / filename).write_bytes(payload)
             digest = hashlib.sha256(payload).hexdigest()
@@ -286,8 +284,7 @@ def replace_live_pointers(remote: Path, version: str = "1.21.16") -> dict[Path, 
             targets.append("universal-apple-darwin")
         strict_assets = {}
         for target in targets:
-            suffix = ".tar.gz"
-            path = f"{binary}/{binary}-{version}-{target}{suffix}"
+            path = f"{binary}/{binary}-{version}-{target}.tar.gz"
             strict_assets[target] = {
                 "path": path,
                 "sha256": hashlib.sha256(f"{version}:{binary}:{target}".encode()).hexdigest(),

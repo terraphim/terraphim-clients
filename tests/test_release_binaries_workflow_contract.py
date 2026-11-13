@@ -10,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "release-binaries.yml"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+CROSS = ROOT / "Cross.toml"
 SIGN_MACOS_BINARY = ROOT / "scripts" / "sign-macos-binary.sh"
 ASSEMBLE_CLIENT_INVENTORY = (
     ROOT / ".github" / "scripts" / "release" / "assemble-client-release-inventory.sh"
@@ -176,7 +177,7 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
     def test_release_uses_checked_in_version_and_never_mutates_source(self) -> None:
         text = workflow_text()
         workspace = tomllib.loads((ROOT / "Cargo.toml").read_text())
-        self.assertEqual(workspace["workspace"]["package"]["version"], "1.21.22")
+        self.assertEqual(workspace["workspace"]["package"]["version"], "1.21.24")
         for forbidden in (
             "Set release version",
             "set_section_version",
@@ -281,7 +282,6 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
             "change-nfpm-version": text.replace(f"NFPM_VERSION: {NFPM_VERSION}", "NFPM_VERSION: 2.46.0", 1),
             "change-nfpm-archive-sha": text.replace(NFPM_X86_ARCHIVE_SHA256, "0" * 64, 1),
             "change-nfpm-binary-sha": text.replace(NFPM_X86_BINARY_SHA256, "0" * 64, 1),
-            # The build job is SHA-pinned too, so mutate inside the packaging block.
             "unpin-checkout": text.replace(
                 block, block.replace(f"actions/checkout@{CHECKOUT_SHA}", "actions/checkout@v4", 1), 1
             ),
@@ -336,10 +336,24 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
         )
         self.assertEqual(actual, expected)
         self.assertIn("fail-fast: false", text)
-        # The Windows lane returns once the private crates are public on
-        # crates.io; GitHub-hosted runners cannot authenticate to the
-        # Bearer-only off-tailnet cargo registry (Gitea #341).
         self.assertNotIn("windows-latest", text)
+
+    def test_rust_cache_never_runs_on_a_persistent_self_hosted_host(self) -> None:
+        block = job_block("build-binaries")
+        step = block[block.index("- uses: Swatinem/rust-cache@") :]
+        step = step[: step.index("\n      - ", 1)]
+        self.assertIn("if: runner.environment == 'github-hosted'", step)
+
+    def test_private_registry_tokens_reach_release_builds_and_cross_containers(self) -> None:
+        block = job_block("build-binaries")
+        self.assertIn(
+            "CARGO_REGISTRIES_TERRAPHIM_MIRROR_TOKEN: ${{ secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN }}",
+            block,
+        )
+        cross = tomllib.loads(CROSS.read_text())
+        passthrough = cross["build"]["env"]["passthrough"]
+        self.assertIn("CARGO_REGISTRIES_TERRAPHIM_TOKEN", passthrough)
+        self.assertIn("CARGO_REGISTRIES_TERRAPHIM_MIRROR_TOKEN", passthrough)
 
     def test_builds_are_locked_and_grep_features_are_preserved(self) -> None:
         block = job_block("build-binaries")
@@ -356,15 +370,6 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
             block,
         )
 
-    def test_rust_cache_never_runs_on_a_persistent_self_hosted_host(self) -> None:
-        # rust-cache's post step deletes every regular file in
-        # $CARGO_HOME/bin the job did not install and prunes the registry, so
-        # on a self-hosted runner it wipes the host user's cargo tools.
-        block = job_block("build-binaries")
-        step = block[block.index("- uses: Swatinem/rust-cache@") :]
-        step = step[: step.index("\n      - ", 1)]
-        self.assertIn("if: runner.environment == 'github-hosted'", step)
-
     def test_all_binaries_get_exact_version_and_architecture_checks(self) -> None:
         block = job_block("build-binaries")
         self.assertIn("for binary in terraphim-agent terraphim-cli terraphim-grep", block)
@@ -380,8 +385,6 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
         self.assertIn("for binary in terraphim-agent terraphim-cli terraphim-grep", stage)
         self.assertIn('if [ "$binary" != "terraphim-cli" ]; then targets+=(universal-apple-darwin); fi', stage)
         self.assertIn('test "$(wc -l < expected-assets.txt | tr -d \' \')" = 17', stage)
-        # Windows lane removed: 17 tar.gz assets (6 agent + 5 cli + 6 grep);
-        # restore 20 only when the Windows zip lane returns.
         self.assertNotIn("x86_64-pc-windows-msvc", stage)
 
     def test_macos_is_signed_before_deterministic_packaging(self) -> None:
@@ -408,8 +411,6 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
             "scripts/validate-release-archive.py",
         ):
             self.assertIn(token, stage)
-        # create-deterministic-zip.py left with the Windows zip lane; it must
-        # return together with that lane (and the = 17 count becomes 20).
         self.assertNotIn("create-deterministic-zip", stage)
 
     def test_final_bytes_are_signed_before_checksums_and_manifests(self) -> None:
@@ -493,10 +494,6 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
                     self.assert_seal_package_result_contract(mutant)
 
     def assert_lipo_verify_arch_order(self, block: str) -> None:
-        # Newer lipo (Xcode 27) rejects several architectures in a single
-        # -verify_arch ("requires exactly one input file"), and the input file
-        # must precede the flags. Verify each architecture on its own, then
-        # require exactly the two slices from `lipo -archs`.
         self.assertIn("for arch in x86_64 arm64; do", block)
         self.assertIn(
             'lipo "universal/${binary}-universal-apple-darwin" -verify_arch "$arch"', block
@@ -719,7 +716,7 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
         self.assertIn("aarch64 MUSL", lifecycle_text)
         self.assertNotIn("only for the x86_64 MUSL leg", lifecycle_text)
 
-    def test_managed_inventory_is_version_bound_and_separate_from_20_archives(self) -> None:
+    def test_managed_inventory_is_version_bound_and_separate_from_17_archives(self) -> None:
         stage = job_block("seal-release-stage")
         assemble = stage.index("assemble-client-release-inventory.sh")
         checksum = stage.index("../SHA256SUMS", assemble)
@@ -927,11 +924,6 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
 
     def test_macos_thin_execution_has_deterministic_runner_semantics(self) -> None:
         text = workflow_text()
-        # 2026-10-04: both macOS thin builds run on the Apple Silicon
-        # self-hosted runner (x86_64 is a cross-compile from the arm64 host);
-        # the sign/notarize job stays on GitHub-hosted macos-15 because it
-        # needs sudo for Rosetta provisioning and never touches the cargo
-        # registry.
         self.assertIn(
             "os: [self-hosted, macOS, ARM64, release-macos]\n"
             "            target: x86_64-apple-darwin",

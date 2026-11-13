@@ -105,6 +105,7 @@ impl ImportOptions {
 }
 
 /// Trait for session connectors
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait SessionConnector: Send + Sync {
     /// Unique identifier for this connector

@@ -274,15 +274,21 @@ pub(crate) async fn run_server_command(
                     // server's update_selected_role does its own contains_key
                     // check and returns a clean "Role not found" error on
                     // miss, so we preserve correctness either way.
-                    let role_name = match api.get_config().await {
-                        Ok(cfg) => {
+                    //
+                    // The read also yields the ETag of the configuration, which
+                    // the write carries as `If-Match` - the config plane
+                    // rejects a write that is based on a configuration that
+                    // has changed since.
+                    let (role_name, etag) = match api.get_config_snapshot().await {
+                        Ok(snapshot) => {
                             let query_lower = name.to_lowercase();
-                            cfg.config
+                            let role_name = snapshot
+                                .config
                                 .roles
                                 .iter()
                                 .find(|(n, _)| n.to_string().to_lowercase() == query_lower)
                                 .or_else(|| {
-                                    cfg.config.roles.iter().find(|(_, role)| {
+                                    snapshot.config.roles.iter().find(|(_, role)| {
                                         role.shortname
                                             .as_ref()
                                             .map(|s| s.to_lowercase() == query_lower)
@@ -295,7 +301,8 @@ pub(crate) async fn run_server_command(
                                         "Role '{}' not found (checked name and shortname)",
                                         name
                                     )
-                                })?
+                                })?;
+                            (role_name, snapshot.etag)
                         }
                         Err(e) => {
                             log::warn!(
@@ -303,10 +310,12 @@ pub(crate) async fn run_server_command(
                                  falling back to user-supplied name verbatim",
                                 e
                             );
-                            name.to_string()
+                            (name.to_string(), None)
                         }
                     };
-                    let _ = api.update_selected_role(&role_name).await?;
+                    let _ = api
+                        .update_selected_role(&role_name, etag.as_deref())
+                        .await?;
                     println!("selected:{}", role_name);
                 }
             }
@@ -319,11 +328,15 @@ pub(crate) async fn run_server_command(
                     println!("{}", serde_json::to_string_pretty(&cfg.config)?);
                 }
                 ConfigSub::Set { key, value } => {
-                    let mut cfg = api.get_config().await?.config;
+                    // The read yields the ETag of the configuration, which the
+                    // write carries as `If-Match`, so a configuration that
+                    // changed in the meantime is not overwritten silently.
+                    let snapshot = api.get_config_snapshot().await?;
+                    let mut cfg = snapshot.config;
                     match key.as_str() {
                         "selected_role" => {
                             cfg.selected_role = RoleName::new(&value);
-                            let _ = api.post_config(&cfg).await?;
+                            let _ = api.post_config(&cfg, snapshot.etag.as_deref()).await?;
                             println!("updated selected_role to {}", value);
                         }
                         _ => {

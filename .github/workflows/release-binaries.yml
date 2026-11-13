@@ -238,7 +238,7 @@ jobs:
       - name: Install QEMU for supported foreign execution
         if: matrix.target == 'aarch64-unknown-linux-musl'
         run: sudo apt-get update -qq && sudo apt-get install -y -qq qemu-user-static
-      - name: Prove Rosetta for x86_64 thin verification on Apple Silicon
+      - name: Prove Rosetta for x86_64 verification on Apple Silicon
         # The release-macos runner is an Apple Silicon host that verifies the
         # cross-compiled x86_64 binary by executing it under Rosetta. The
         # install is a no-op when Rosetta is already present; sudo is
@@ -276,8 +276,6 @@ jobs:
             # containerised lanes a lane-local CARGO_HOME whose config omits
             # the wrapper, with the shared download caches linked in.
             lane_cargo="${RUNNER_TEMP:-/tmp}/cargo-${{ matrix.target }}"
-            mkdir -p "$lane_cargo"
-            grep -v 'rustc-wrapper' /home/alex/.cargo/config.toml > "$lane_cargo/config.toml"
             # Both caches are lane-local: matrix lanes run concurrently on
             # one runner, and cargo's on-disk cache layout (index cache
             # writes, bare-repo updates, cache dir creation) is not safe for
@@ -286,6 +284,7 @@ jobs:
             # git and registry caches. Cold-cache cost is one download set
             # per lane per run.
             mkdir -p "$lane_cargo/registry" "$lane_cargo/git"
+            sed '/rustc-wrapper/d' /home/alex/.cargo/config.toml > "$lane_cargo/config.toml"
             export CARGO_HOME="$lane_cargo"
             unset RUSTC_WRAPPER
             build=(rustup run 1.99.0 cross)

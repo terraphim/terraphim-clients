@@ -1,26 +1,17 @@
 use anyhow::Result;
 use serial_test::serial;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::str;
 use std::thread;
 use std::time::Duration;
 use tokio::time::timeout;
 
-/// Detect if running in CI environment (GitHub Actions, Docker containers in CI, etc.)
-fn is_ci_environment() -> bool {
-    // Check standard CI environment variables
-    std::env::var("CI").is_ok()
-        || std::env::var("GITHUB_ACTIONS").is_ok()
-        // Check if running as root in a container (common in CI Docker containers)
-        || (std::env::var("USER").as_deref() == Ok("root")
-            && std::path::Path::new("/.dockerenv").exists())
-        // Check if the home directory is /root (typical for CI containers)
-        || std::env::var("HOME").as_deref() == Ok("/root")
-}
+mod support;
+use support::binary::{server_binary_path, skip_without_server};
+use support::server_process::ServerProcessGuard;
 
 /// Test helper to start a real terraphim server for testing
-/// Returns None if in CI environment and server fails to start (expected behavior)
-async fn start_test_server() -> Result<Option<(Child, String)>> {
+async fn start_test_server() -> Result<Option<(ServerProcessGuard, String)>> {
     // Find an available port
     let port = portpicker::pick_unused_port().expect("Failed to find unused port");
     let server_url = format!("http://localhost:{}", port);
@@ -31,13 +22,17 @@ async fn start_test_server() -> Result<Option<(Child, String)>> {
     // terraphim_server is not a workspace member, so it cannot be run from
     // here; a nested cargo would also deadlock under `cargo test`. Point
     // TERRAPHIM_SERVER_BIN at a prebuilt binary to exercise this. Refs #113.
-    let server_bin = std::env::var("TERRAPHIM_SERVER_BIN").map_err(|_| {
-        anyhow::anyhow!(
-            "TERRAPHIM_SERVER_BIN is not set and terraphim_server is not a \
-             member of this workspace; cannot start a server. Refs #113"
-        )
-    })?;
-    let mut server = Command::new(server_bin)
+    if skip_without_server("server_mode_tests") {
+        // No server binary on this machine: skip with the shared notice
+        // instead of failing (Refs #466).
+        return Ok(None);
+    }
+    let server_bin = server_binary_path()
+        .expect("server_binary_path must resolve when skip_without_server returned false")
+        .to_string_lossy()
+        .to_string();
+    let mut command = Command::new(server_bin);
+    command
         .args([
             "--config",
             "terraphim_server/default/terraphim_engineer_config.json",
@@ -45,8 +40,8 @@ async fn start_test_server() -> Result<Option<(Child, String)>> {
         .env("TERRAPHIM_SERVER_HOSTNAME", format!("127.0.0.1:{}", port))
         .env("RUST_LOG", "info")
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
+        .stderr(Stdio::piped());
+    let mut server = ServerProcessGuard::spawn(&mut command)?;
 
     // Wait for server to be ready
     let client = reqwest::Client::new();
@@ -70,14 +65,6 @@ async fn start_test_server() -> Result<Option<(Child, String)>> {
         // Check if server process is still running
         match server.try_wait() {
             Ok(Some(status)) => {
-                // In CI, server startup may fail due to missing resources
-                if is_ci_environment() {
-                    println!(
-                        "Server exited early with status {} (expected in CI)",
-                        status
-                    );
-                    return Ok(None);
-                }
                 return Err(anyhow::anyhow!(
                     "Server exited early with status: {}",
                     status
@@ -86,15 +73,6 @@ async fn start_test_server() -> Result<Option<(Child, String)>> {
             Ok(None) => {} // Still running
             Err(e) => return Err(anyhow::anyhow!("Error checking server status: {}", e)),
         }
-    }
-
-    // Kill server if we couldn't connect
-    let _ = server.kill();
-
-    // In CI, server may take longer or fail to start - this is expected
-    if is_ci_environment() {
-        println!("Server failed to start within 30 seconds (expected in CI)");
-        return Ok(None);
     }
 
     Err(anyhow::anyhow!(
@@ -122,8 +100,7 @@ fn run_server_command(server_url: &str, args: &[&str]) -> Result<(String, String
 #[tokio::test]
 #[serial]
 async fn test_server_mode_config_show() -> Result<()> {
-    let Some((mut server, server_url)) = start_test_server().await? else {
-        println!("Test skipped in CI - server failed to start");
+    let Some((server, server_url)) = start_test_server().await? else {
         return Ok(());
     };
 
@@ -131,8 +108,7 @@ async fn test_server_mode_config_show() -> Result<()> {
     let (stdout, stderr, code) = run_server_command(&server_url, &["config", "show"])?;
 
     // Cleanup
-    let _ = server.kill();
-    let _ = server.wait();
+    drop(server);
 
     assert_eq!(
         code, 0,
@@ -166,8 +142,7 @@ async fn test_server_mode_config_show() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_server_mode_roles_list() -> Result<()> {
-    let Some((mut server, server_url)) = start_test_server().await? else {
-        println!("Test skipped in CI - server failed to start");
+    let Some((server, server_url)) = start_test_server().await? else {
         return Ok(());
     };
 
@@ -175,8 +150,7 @@ async fn test_server_mode_roles_list() -> Result<()> {
     let (stdout, stderr, code) = run_server_command(&server_url, &["roles", "list"])?;
 
     // Cleanup
-    let _ = server.kill();
-    let _ = server.wait();
+    drop(server);
 
     assert_eq!(
         code, 0,
@@ -202,8 +176,7 @@ async fn test_server_mode_roles_list() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_server_mode_search_with_selected_role() -> Result<()> {
-    let Some((mut server, server_url)) = start_test_server().await? else {
-        println!("Test skipped in CI - server failed to start");
+    let Some((server, server_url)) = start_test_server().await? else {
         return Ok(());
     };
 
@@ -219,8 +192,7 @@ async fn test_server_mode_search_with_selected_role() -> Result<()> {
         run_server_command(&server_url, &["search", "rust programming", "--limit", "5"])?;
 
     // Cleanup
-    let _ = server.kill();
-    let _ = server.wait();
+    drop(server);
 
     // Search may fail if no roles/haystacks are configured
     assert!(
@@ -247,8 +219,7 @@ async fn test_server_mode_search_with_selected_role() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_server_mode_search_with_role_override() -> Result<()> {
-    let Some((mut server, server_url)) = start_test_server().await? else {
-        println!("Test skipped in CI - server failed to start");
+    let Some((server, server_url)) = start_test_server().await? else {
         return Ok(());
     };
 
@@ -262,8 +233,7 @@ async fn test_server_mode_search_with_role_override() -> Result<()> {
     )?;
 
     // Cleanup
-    let _ = server.kill();
-    let _ = server.wait();
+    drop(server);
 
     // Search may succeed or fail depending on whether Default role exists
     assert!(
@@ -287,8 +257,7 @@ async fn test_server_mode_search_with_role_override() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_server_mode_roles_select() -> Result<()> {
-    let Some((mut server, server_url)) = start_test_server().await? else {
-        println!("Test skipped in CI - server failed to start");
+    let Some((server, server_url)) = start_test_server().await? else {
         return Ok(());
     };
 
@@ -302,8 +271,7 @@ async fn test_server_mode_roles_select() -> Result<()> {
         let (_, stderr, code) = run_server_command(&server_url, &["roles", "select", "Default"])?;
 
         // Cleanup
-        let _ = server.kill();
-        let _ = server.wait();
+        drop(server);
 
         assert_eq!(
             code, 1,
@@ -327,8 +295,7 @@ async fn test_server_mode_roles_select() -> Result<()> {
     let (stdout, stderr, code) = run_server_command(&server_url, &["roles", "select", role_name])?;
 
     // Cleanup
-    let _ = server.kill();
-    let _ = server.wait();
+    drop(server);
 
     assert_eq!(
         code, 0,
@@ -347,8 +314,7 @@ async fn test_server_mode_roles_select() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_server_mode_graph_command() -> Result<()> {
-    let Some((mut server, server_url)) = start_test_server().await? else {
-        println!("Test skipped in CI - server failed to start");
+    let Some((server, server_url)) = start_test_server().await? else {
         return Ok(());
     };
 
@@ -359,8 +325,7 @@ async fn test_server_mode_graph_command() -> Result<()> {
     let (stdout, stderr, code) = run_server_command(&server_url, &["graph", "--top-k", "10"])?;
 
     // Cleanup
-    let _ = server.kill();
-    let _ = server.wait();
+    drop(server);
 
     // Some server builds may not support role-specific rolegraph queries and can return 404.
     assert!(
@@ -381,8 +346,7 @@ async fn test_server_mode_graph_command() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_server_mode_chat_command() -> Result<()> {
-    let Some((mut server, server_url)) = start_test_server().await? else {
-        println!("Test skipped in CI - server failed to start");
+    let Some((server, server_url)) = start_test_server().await? else {
         return Ok(());
     };
 
@@ -390,8 +354,7 @@ async fn test_server_mode_chat_command() -> Result<()> {
     let (stdout, stderr, code) = run_server_command(&server_url, &["chat", "Hello, how are you?"])?;
 
     // Cleanup
-    let _ = server.kill();
-    let _ = server.wait();
+    drop(server);
 
     assert_eq!(
         code, 0,
@@ -410,8 +373,7 @@ async fn test_server_mode_chat_command() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_server_mode_extract_command() -> Result<()> {
-    let Some((mut server, server_url)) = start_test_server().await? else {
-        println!("Test skipped in CI - server failed to start");
+    let Some((server, server_url)) = start_test_server().await? else {
         return Ok(());
     };
 
@@ -424,8 +386,7 @@ async fn test_server_mode_extract_command() -> Result<()> {
     let (stdout, stderr, code) = run_server_command(&server_url, &["extract", test_text])?;
 
     // Cleanup
-    let _ = server.kill();
-    let _ = server.wait();
+    drop(server);
 
     assert!(
         code == 0 || code == 1,
@@ -441,8 +402,7 @@ async fn test_server_mode_extract_command() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_server_mode_config_set() -> Result<()> {
-    let Some((mut server, server_url)) = start_test_server().await? else {
-        println!("Test skipped in CI - server failed to start");
+    let Some((server, server_url)) = start_test_server().await? else {
         return Ok(());
     };
 
@@ -453,8 +413,7 @@ async fn test_server_mode_config_set() -> Result<()> {
     )?;
 
     // Cleanup server first
-    let _ = server.kill();
-    let _ = server.wait();
+    drop(server);
 
     assert_eq!(
         code, 0,
@@ -474,8 +433,7 @@ async fn test_server_mode_config_set() -> Result<()> {
 #[serial]
 async fn test_server_vs_offline_mode_comparison() -> Result<()> {
     // Start server for comparison
-    let Some((mut server, server_url)) = start_test_server().await? else {
-        println!("Test skipped in CI - server failed to start");
+    let Some((server, server_url)) = start_test_server().await? else {
         return Ok(());
     };
 
@@ -484,8 +442,7 @@ async fn test_server_vs_offline_mode_comparison() -> Result<()> {
         run_server_command(&server_url, &["config", "show"])?;
 
     // Cleanup server
-    let _ = server.kill();
-    let _ = server.wait();
+    drop(server);
 
     // Run offline command
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_terraphim-agent"));
@@ -532,8 +489,7 @@ async fn test_server_vs_offline_mode_comparison() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_server_startup_and_health() -> Result<()> {
-    let Some((mut server, server_url)) = start_test_server().await? else {
-        println!("Test skipped in CI - server failed to start");
+    let Some((server, server_url)) = start_test_server().await? else {
         return Ok(());
     };
 
@@ -544,8 +500,7 @@ async fn test_server_startup_and_health() -> Result<()> {
     let response = timeout(Duration::from_secs(5), client.get(&health_url).send()).await??;
 
     // Cleanup
-    let _ = server.kill();
-    let _ = server.wait();
+    drop(server);
 
     assert!(
         response.status().is_success(),

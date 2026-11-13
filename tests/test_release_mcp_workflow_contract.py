@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "release-mcp.yml"
 RELEASE_BINARIES = ROOT / ".github" / "workflows" / "release-binaries.yml"
+CROSS = ROOT / "Cross.toml"
 CHECK_TAG = ROOT / ".github" / "scripts" / "release-mcp" / "check-tag.py"
 ASSEMBLE = ROOT / ".github" / "scripts" / "release-mcp" / "assemble-assets.sh"
 
@@ -117,6 +118,18 @@ class ReleaseMcpWorkflow(unittest.TestCase):
             self.assertIn(pinned, reference)
         self.assertIn('"${build[@]}" build --locked --release --target', build)
         self.assertIn("-p terraphim_mcp_server --bin terraphim_mcp_server", build)
+
+    def test_mirror_token_and_macos_cache_recovery_are_present(self) -> None:
+        build = job_block("build")
+        self.assertIn(
+            "CARGO_REGISTRIES_TERRAPHIM_MIRROR_TOKEN: ${{ secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN }}",
+            build,
+        )
+        self.assertIn("Clear stale sqlx_macros proc-macro artefacts", build)
+        self.assertIn("libsqlx_macros-*.dylib", build)
+        cross = CROSS.read_text()
+        self.assertIn("CARGO_REGISTRIES_TERRAPHIM_TOKEN", cross)
+        self.assertIn("CARGO_REGISTRIES_TERRAPHIM_MIRROR_TOKEN", cross)
 
     def test_assets_are_raw_binaries_with_exact_names(self) -> None:
         self.assertIn(

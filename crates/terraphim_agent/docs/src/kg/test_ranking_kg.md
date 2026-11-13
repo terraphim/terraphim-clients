@@ -16,7 +16,7 @@ Type: Programming Language
 Domain: Systems Programming
 Related: systems-programming, memory-safety, concurrency
 
-### python  
+### python
 Python is an interpreted, high-level, general-purpose programming language known for its readability and versatility.
 
 Type: Programming Language

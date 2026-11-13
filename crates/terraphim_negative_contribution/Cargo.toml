@@ -1,6 +1,6 @@
 [package]
 name = "terraphim_negative_contribution"
-version.workspace = true
+version = "0.1.1"
 edition.workspace = true
 authors = ["Terraphim AI <team@terraphim.ai>"]
 description = "Static detection of Explicit Deferral Markers (todo!(), unimplemented!()) in Rust source files"

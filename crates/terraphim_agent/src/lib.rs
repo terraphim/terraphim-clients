@@ -3,8 +3,17 @@
 //! Bundles the interactive REPL, robot-mode JSON output, forgiving CLI parser,
 //! MCP tool index, onboarding workflows, and optional shared-learning store.
 //! Feature flags gate heavier subsystems: `server`, `repl`, `shared-learning`.
-/// Explicit local storage shared with the MCP adapter.
+// The workspace is a forbid-soundness project: no `unsafe` in the library or
+// binary target of this crate (terraphim-clients#447, #310). The integration
+// tests under `tests/` are separate crates and keep their own, listed
+// exceptions - see the `no_new_unsafe_sites` guard.
+#![forbid(unsafe_code)]
+
 pub mod agent_store;
+/// Checklist definitions (embedded TOML) and phrase matching.
+pub mod cache_export;
+pub mod cache_flush;
+pub mod checklists;
 #[cfg(feature = "server")]
 pub mod client;
 pub mod logging;
@@ -33,6 +42,7 @@ pub mod mcp_tool_index;
 
 // Command guard patterns - always available for risk classification
 pub mod guard_patterns;
+pub mod hook_guard;
 
 // Learning capture system - always available so secret-redaction and hook
 // passthrough logic are exercised by `cargo test --lib` and `--doc` gates.

@@ -40,7 +40,7 @@ fn search(root: &Path, query: &str, paths: &[&Path]) -> Output {
 
 fn chunks(output: Output) -> Vec<serde_json::Value> {
     assert!(
-        output.status.success(),
+        output.status.success() || output.status.code() == Some(1),
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );

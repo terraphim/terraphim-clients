@@ -12,11 +12,15 @@
 //! at `tests/test_kg/`) and the evolution store lives under a temp `HOME`.
 //! No mocks: the store file is the one the binary writes.
 //!
-//! The baseline captures content with no knowledge-graph term in it,
-//! so that item is not retrieved and the injected size is zero.
-//! The non-zero case adds an item whose content names the `trash` concept
-//! twice (`rm -rf` and `rm -r`), through the real `MemoryState::add_memory`,
-//! into the store the CLI created.
+//! `memory capture` stores the authored text it is given verbatim, so a
+//! captured item is retrieved only when that text names a knowledge-graph
+//! concept. The zero case captures text naming none, so a captured item alone
+//! is never retrieved and the injected size is zero. The non-zero case adds
+//! an item whose content names the `trash` concept twice (`rm -rf` and
+//! `rm -r`), through the real `MemoryState::add_memory`, into the store the
+//! CLI created. A third case captures authored text that does name the
+//! concept, and checks the CLI reports it as retrieved and measures it
+//! exactly.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -45,7 +49,18 @@ fn run(root: &Path, args: &[&str]) -> (String, String, bool) {
     )
 }
 
-fn capture_item(root: &Path, tag: &str) -> String {
+/// Authored text captured by the tests that expect no retrieval.
+///
+/// It names no concept of the role's thesaurus, so the captured item is not
+/// indexed and is never retrieved. The fixture knowledge graph
+/// (`tests/test_kg/`) declares one concept, `trash`, whose synonyms are
+/// `rm -rf` and `rm -r`; `terms.md` declares no `synonyms::` line and so
+/// contributes no thesaurus key at all.
+const CONCEPT_FREE_CONTENT: &str =
+    "Release checklist: confirm the changelog, tag the commit, then publish.";
+
+/// Capture `content` verbatim and return the ID the CLI reported.
+fn capture_item(root: &Path, tag: &str, content: &str) -> String {
     let (stdout, stderr, ok) = run(
         root,
         &[
@@ -54,7 +69,7 @@ fn capture_item(root: &Path, tag: &str) -> String {
             "memory",
             "capture",
             "--content",
-            "A baseline note with no configured concepts.",
+            content,
             "--provenance-tag",
             tag,
         ],
@@ -99,6 +114,18 @@ fn find_store(dir: &Path) -> Option<PathBuf> {
         }
     }
     None
+}
+
+/// Read one stored item back out of the evolution store the CLI wrote.
+fn stored_item(store: &Path, id: &str) -> MemoryItem {
+    let raw = std::fs::read_to_string(store).expect("read store");
+    let envelope: serde_json::Value = serde_json::from_str(&raw).expect("store JSON");
+    let memory: MemoryState =
+        serde_json::from_value(envelope["memory"].clone()).expect("deserialise MemoryState");
+    terraphim_agent::memory_retrieve::collect_memory_items(&memory)
+        .into_iter()
+        .find(|item| item.id == id)
+        .unwrap_or_else(|| panic!("captured item {id} must be in the store"))
 }
 
 fn trash_item(id: &str) -> MemoryItem {
@@ -159,7 +186,15 @@ fn assert_fields_consistent(value: &serde_json::Value) -> (u64, u64) {
 #[test]
 fn apply_json_reports_injected_bytes_and_estimated_tokens() {
     let root = create_hermetic_root().expect("hermetic root");
-    capture_item(&root, "apply-cli-test");
+    let id = capture_item(&root, "apply-cli-test", CONCEPT_FREE_CONTENT);
+    // The zero below must come from the retrieval finding nothing, not from
+    // the capture having stored nothing: assert the item is in the store.
+    let store = find_store(&root).expect("capture must have written cli-agent.json");
+    let item = stored_item(&store, &id);
+    assert_eq!(
+        item.content, CONCEPT_FREE_CONTENT,
+        "capture must store the authored text verbatim"
+    );
 
     let value = apply_json(&root, "why did bun install fail");
     let (bytes, tokens) = assert_fields_consistent(&value);
@@ -173,7 +208,7 @@ fn apply_json_reports_injected_bytes_and_estimated_tokens() {
 #[test]
 fn apply_json_injected_size_matches_retrieved_items() {
     let root = create_hermetic_root().expect("hermetic root");
-    capture_item(&root, "apply-cli-test-trash");
+    capture_item(&root, "apply-cli-test-trash", CONCEPT_FREE_CONTENT);
     let store = find_store(&root).expect("capture must have written cli-agent.json");
     let item = trash_item("trash-lesson-1");
     add_item_to_store(&store, item.clone());
@@ -195,4 +230,42 @@ fn apply_json_injected_size_matches_retrieved_items() {
         value["count"].as_u64().unwrap_or(0) >= 1,
         "the prompt term must still be listed as a replacement: {value}"
     );
+}
+
+/// Authored capture content that names the `trash` concept is retrieved and
+/// measured, and the store keeps that content verbatim.
+///
+/// This is the regression guard for the authored-content capture semantics:
+/// when `memory capture` rewrote the authored text (older builds folded the
+/// provenance into the content instead), the item below would carry different
+/// bytes and the injected size would silently differ from the stored item.
+#[test]
+fn captured_authored_content_naming_a_concept_is_retrieved_and_measured() {
+    let root = create_hermetic_root().expect("hermetic root");
+    let content = "Never rm -rf the build directory; use rm -r on the cache only after a backup";
+    let id = capture_item(&root, "apply-cli-test-authored", content);
+
+    let store = find_store(&root).expect("capture must have written cli-agent.json");
+    let item = stored_item(&store, &id);
+    assert_eq!(
+        item.content, content,
+        "capture must store the authored text verbatim"
+    );
+    assert_eq!(
+        item.tags,
+        vec!["provenance:apply-cli-test-authored".to_string()],
+        "the provenance travels as a tag, not as rewritten content"
+    );
+
+    // The authored text names the `trash` concept twice (`rm -rf` and
+    // `rm -r`), so the real store retrieval returns it.
+    let prompt = "rm -rf target";
+    let value = apply_json(&root, prompt);
+    let (bytes, tokens) = assert_fields_consistent(&value);
+
+    assert_eq!(value["retrieved_items"], 1, "{value}");
+    let expected = injected_size(prompt, std::slice::from_ref(&item));
+    assert!(bytes > 0, "{value}");
+    assert_eq!(bytes, expected.bytes, "{value}");
+    assert_eq!(tokens, expected.estimated_tokens, "{value}");
 }

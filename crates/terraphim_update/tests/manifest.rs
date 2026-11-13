@@ -31,16 +31,10 @@ fn test_generated_legacy_manifest_executes_pre12115_wire_contract() {
     let root = tempfile::tempdir().expect("temporary stage");
     let assets = root.path().join("release-assets");
     std::fs::create_dir(&assets).expect("asset directory");
-    // scripts/build-manifest.sh no longer accepts the Windows zip (#50), so the
-    // staged fixture must not contain one.
-    let targets: Vec<String> = terraphim_update::manifest::all_target_triples()
-        .into_iter()
-        .filter(|target| target != "x86_64-pc-windows-msvc")
-        .collect();
+    let targets = terraphim_update::manifest::all_target_triples();
     for (index, target) in targets.iter().enumerate() {
-        let extension = ".tar.gz";
         std::fs::write(
-            assets.join(format!("terraphim-agent-1.21.15-{target}{extension}")),
+            assets.join(format!("terraphim-agent-1.21.15-{target}.tar.gz")),
             format!("sealed-payload-{index}"),
         )
         .expect("fixture asset");
@@ -89,13 +83,7 @@ fn test_generated_legacy_manifest_executes_pre12115_wire_contract() {
         old.notes_url.as_deref(),
         Some("https://github.com/terraphim/terraphim-clients/releases/tag/v1.21.15")
     );
-    // Host-independent: pick the first current-host triple that the generated
-    // manifest actually advertises (the fixture has no Windows asset, and an
-    // aarch64 Linux host lists a -gnu triple the published set lacks).
-    let current_target = terraphim_update::manifest::current_target_triples()
-        .into_iter()
-        .find(|target| old.assets.contains_key(target))
-        .expect("a current-host target present in the generated legacy manifest");
+    let current_target = terraphim_update::manifest::current_target_triples()[0].clone();
     let advertised = old.assets.get(&current_target).expect("current target");
     let expected_name = format!(
         "terraphim-agent-1.21.15-{current_target}{}",
@@ -123,6 +111,14 @@ fn test_generated_legacy_manifest_executes_pre12115_wire_contract() {
         serde_json::from_slice::<Pre12115ReleaseManifest>(&strict_bytes).is_err(),
         "strict object-valued assets must not masquerade as the old wire shape"
     );
+
+    // The producer's strict candidate is what the reader consumes, so the
+    // reader must accept it: the exact published target set, the exact
+    // filename identity, and the integrity metadata the producer recorded.
+    let strict_manifest: terraphim_update::manifest::ReleaseManifest =
+        serde_json::from_slice(&strict_bytes).expect("strict manifest");
+    validate_manifest(&strict_manifest, &ManifestConfig::new("terraphim-agent"))
+        .expect("the producer's candidate must satisfy the exact target-set reader");
 }
 
 #[test]
@@ -193,6 +189,20 @@ fn test_official_manifest_requires_exact_targets_and_filename_identity() {
 
     manifest.assets.remove("aarch64-unknown-linux-musl");
     assert!(validate_manifest(&manifest, &config).is_err());
+
+    // The published inventory has no Windows lane, so a manifest advertising
+    // one is rejected even though its path is otherwise well formed.
+    let mut windows: terraphim_update::manifest::ReleaseManifest =
+        serde_json::from_str(&sample_manifest_json()).expect("strict fixture");
+    windows.assets.insert(
+        "x86_64-pc-windows-msvc".to_string(),
+        terraphim_update::manifest::ReleaseAsset {
+            path: "terraphim-agent/terraphim-agent-1.21.9-x86_64-pc-windows-msvc.zip".to_string(),
+            sha256: "a".repeat(64),
+            size: 1,
+        },
+    );
+    assert!(validate_manifest(&windows, &config).is_err());
 
     let mut wrong_path: terraphim_update::manifest::ReleaseManifest =
         serde_json::from_str(&sample_manifest_json()).expect("strict fixture");
@@ -306,13 +316,8 @@ fn sample_manifest_json() -> String {
     let entries: Vec<String> = terraphim_update::manifest::all_target_triples()
         .into_iter()
         .map(|target| {
-            let extension = if target == "x86_64-pc-windows-msvc" {
-                ".zip"
-            } else {
-                ".tar.gz"
-            };
             format!(
-                "    \"{target}\": {{\"path\":\"terraphim-agent/terraphim-agent-1.21.9-{target}{extension}\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":1}}"
+                "    \"{target}\": {{\"path\":\"terraphim-agent/terraphim-agent-1.21.9-{target}.tar.gz\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":1}}"
             )
         })
         .collect();
