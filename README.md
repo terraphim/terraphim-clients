@@ -5,8 +5,10 @@ Client + integration crates extracted from terraphim-ai (#1910):
 - `terraphim-cli` / `terraphim_agent` -- CLI + agent REPL
 - `terraphim_mcp_server` -- MCP server (graph tools and optional [local agent memory/learning tools](docs/mcp/agent-tools.md))
 - `terraphim_sessions` -- session import/search
-- `terraphim_lsp` -- LSP server (EDM diagnostics)
 - `terraphim_grep`, `terraphim_hooks`, `terraphim_update`, `terraphim_command_runtime`, `terraphim_negative_contribution`
+
+The `terraphim_lsp` crate and `terraphim-lsp` binary are owned and shipped by
+[terraphim-ai](https://git.terraphim.cloud/terraphim/terraphim-ai), not this repository.
 
 Consumes upstream crates (core, config-persistence, service, agents, kg-agents) from the `terraphim` Gitea cargo registry. Licensed Apache-2.0.
 
@@ -56,7 +58,9 @@ example and the required input change.
 
 ```
 terraphim-agent memory capture --content 'Use the project validation command.'
+terraphim-agent memory distill     # Compile learnings into KG entries
 terraphim-agent memory scope       # Show role/project KG boundaries
+terraphim-agent memory provenance  # Search session history
 terraphim-agent memory retrieve    # Search memory items
 terraphim-agent memory apply       # Show hook injection effects
 terraphim-agent memory validate    # Score items against reliability rubric
