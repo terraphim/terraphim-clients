@@ -1,13 +1,13 @@
 [package]
 name = "terraphim_mcp_server"
-version = "1.0.0"
+version.workspace = true
 edition.workspace = true
 description = "Model Context Protocol (MCP) server for Terraphim AI"
 documentation = "https://terraphim.ai"
 homepage = "https://terraphim.ai"
-repository = "https://github.com/terraphim/terraphim-ai"
+repository = "https://github.com/terraphim/terraphim-clients"
 keywords = ["ai", "mcp", "server"]
-license = "MIT"
+license = "Apache-2.0"
 readme = "../../README.md"
 
 [[bin]]
@@ -22,6 +22,8 @@ clap = { version = "4.5", features = ["derive"] }
 rmcp = { version = "0.9.0", features = ["server", "transport-sse-server", "transport-io"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
+schemars = "1.2"
+terraphim_agent = { path = "../terraphim_agent", version = "1.21.16", default-features = false }
 
 # Pinned exactly, not `^0.8.4` (Refs #293, #257).
 #

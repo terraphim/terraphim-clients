@@ -1,0 +1,5 @@
+# Custom labels of the self-hosted runners (see ci.yml and release-binaries.yml).
+self-hosted-runner:
+  labels:
+    - release-linux
+    - release-macos

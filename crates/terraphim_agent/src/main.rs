@@ -2748,50 +2748,8 @@ fn role_file_stem(config: &terraphim_config::Config, role_name: &str) -> String 
         .unwrap_or_else(|| role_name.to_string())
 }
 
-fn evolution_path() -> std::path::PathBuf {
-    dirs::config_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("terraphim")
-        .join("evolution")
-        .join("cli-agent.json")
-}
-
-fn load_evolution() -> terraphim_agent_evolution::AgentEvolutionSystem {
-    let path = evolution_path();
-    if path.exists()
-        && let Ok(data) = std::fs::read_to_string(&path)
-    {
-        #[derive(serde::Deserialize)]
-        struct EvolutionState {
-            memory: terraphim_agent_evolution::MemoryState,
-            lessons: terraphim_agent_evolution::LessonsState,
-        }
-        if let Ok(state) = serde_json::from_str::<EvolutionState>(&data) {
-            let mut evolution =
-                terraphim_agent_evolution::AgentEvolutionSystem::new("cli-agent".to_string());
-            evolution.memory.current_state = state.memory;
-            evolution.lessons.current_state = state.lessons;
-            return evolution;
-        }
-    }
-    terraphim_agent_evolution::AgentEvolutionSystem::new("cli-agent".to_string())
-}
-
-fn save_evolution(
-    evolution: &terraphim_agent_evolution::AgentEvolutionSystem,
-) -> Result<(), anyhow::Error> {
-    let path = evolution_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let state = serde_json::json!({
-        "agent_id": evolution.agent_id,
-        "saved_at": chrono::Utc::now().to_rfc3339(),
-        "memory": evolution.memory.current_state,
-        "lessons": evolution.lessons.current_state,
-    });
-    std::fs::write(&path, serde_json::to_string_pretty(&state)?)?;
-    Ok(())
+fn load_evolution() -> Result<terraphim_agent_evolution::AgentEvolutionSystem> {
+    terraphim_agent::agent_store::AgentStore::for_cli()?.load_evolution()
 }
 
 #[cfg(feature = "shared-learning")]

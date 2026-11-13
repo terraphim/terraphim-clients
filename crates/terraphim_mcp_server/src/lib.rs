@@ -29,21 +29,61 @@ use rmcp::{
     },
     service::RequestContext,
 };
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 use terraphim_automata::builder::json_decode;
 use terraphim_automata::matcher::{extract_paragraphs_from_automata, find_matches};
 use terraphim_automata::{AutocompleteConfig, AutocompleteIndex, AutocompleteResult};
-use terraphim_config::{Config, ConfigState};
+use terraphim_config::{Config, ConfigState, Role};
 use terraphim_file_search::kg_scorer::KgPathScorer;
 use terraphim_service::TerraphimService;
-use terraphim_types::{Layer, NormalizedTermValue, RoleName, SearchQuery};
+use terraphim_types::{
+    Document, Layer, NormalizedTermValue, RelevanceFunction, RoleName, SearchQuery,
+};
 use thiserror::Error;
 use tracing::{error, info};
 
+mod agent_tools;
 mod catalogue;
 pub mod resource_mapper;
 
 use crate::resource_mapper::TerraphimResourceMapper;
+
+/// Merge prefix and fuzzy suggestions without letting repeated terms consume slots.
+///
+/// The fuzzy search already includes prefix matches. Keep distinct authored aliases
+/// of one concept, but accept each normalised displayed term/concept pair only once.
+fn prefix_fuzzy_suggestions(
+    index: &AutocompleteIndex,
+    query: &str,
+    limit: usize,
+) -> Vec<AutocompleteResult> {
+    let mut results = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    if limit == 0 {
+        return results;
+    }
+    if let Ok(prefix) = terraphim_automata::autocomplete_search(index, query, Some(limit)) {
+        for result in prefix {
+            if seen.insert((NormalizedTermValue::from(result.term.as_str()), result.id)) {
+                results.push(result);
+            }
+        }
+    }
+    if results.len() < limit
+        && let Ok(fuzzy) =
+            terraphim_automata::fuzzy_autocomplete_search(index, query, 0.6, Some(limit))
+    {
+        for result in fuzzy {
+            if seen.insert((NormalizedTermValue::from(result.term.as_str()), result.id)) {
+                results.push(result);
+                if results.len() == limit {
+                    break;
+                }
+            }
+        }
+    }
+    results
+}
 
 /// Find the terraphim_rlm binary in common locations.
 fn find_terraphim_rlm_binary() -> std::path::PathBuf {
@@ -359,6 +399,40 @@ fn reject_hostile_tree(base: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 
+fn rank_expanded_documents(
+    graph: &mut terraphim_rolegraph::RoleGraph,
+    canonical: &str,
+    documents: &mut [Document],
+) -> Result<()> {
+    documents.sort_by(|a, b| {
+        a.source_haystack
+            .cmp(&b.source_haystack)
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    let keys: Vec<_> = documents
+        .iter()
+        .map(|document| serde_json::to_string(&(&document.source_haystack, &document.id)))
+        .collect::<Result<_, _>>()?;
+    for (key, document) in keys.iter().zip(documents.iter()) {
+        graph.insert_document(key, document.clone());
+    }
+    let ranks: HashMap<_, _> = graph
+        .query_graph(canonical, None, None)?
+        .into_iter()
+        .map(|(id, document)| (id, document.rank))
+        .collect();
+    for (key, document) in keys.iter().zip(documents.iter_mut()) {
+        document.rank = Some(ranks.get(key).copied().unwrap_or(0));
+    }
+    Ok(())
+}
+
+#[derive(Default)]
+struct AutocompleteState {
+    active: Option<Arc<AutocompleteIndex>>,
+    roles: HashMap<RoleName, (Role, Arc<AutocompleteIndex>)>,
+}
+
 /// Upper bound on documents remembered from `resources/list` pages.
 const LISTED_DOCUMENTS_CAP: usize = 512;
 
@@ -367,11 +441,12 @@ const LISTED_DOCUMENTS_CAP: usize = 512;
 pub struct McpService {
     config_state: Arc<ConfigState>,
     resource_mapper: Arc<TerraphimResourceMapper>,
-    autocomplete_index: Arc<tokio::sync::RwLock<Option<AutocompleteIndex>>>,
+    autocomplete_index: Arc<tokio::sync::RwLock<AutocompleteState>>,
     /// Optional KG scorer for boosting file search results by path concept matches.
     kg_scorer: Option<Arc<KgPathScorer>>,
     /// Optional persistent frecency tracker (LMDB-backed) for access-frequency scoring.
     frecency: Option<SharedFrecency>,
+    agent_store: Option<Arc<tokio::sync::Mutex<terraphim_agent::agent_store::AgentStore>>>,
     /// Documents returned by the most recent `resources/list` pages.
     ///
     /// `read_resource` must be able to serve every URI it advertised. Haystack
@@ -402,11 +477,17 @@ impl McpService {
         Self {
             config_state,
             resource_mapper: Arc::new(TerraphimResourceMapper::new()),
-            autocomplete_index: Arc::new(tokio::sync::RwLock::new(None)),
+            autocomplete_index: Arc::new(tokio::sync::RwLock::new(AutocompleteState::default())),
             kg_scorer: None,
             frecency,
+            agent_store: None,
             listed_documents: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         }
+    }
+
+    pub fn with_agent_store(mut self, store: terraphim_agent::agent_store::AgentStore) -> Self {
+        self.agent_store = Some(Arc::new(tokio::sync::Mutex::new(store)));
+        self
     }
 
     /// Read-only access to the optional frecency tracker (for consumers that
@@ -456,6 +537,7 @@ impl McpService {
         let config = self.config_state.config.clone();
         let mut current_config = config.lock().await;
         *current_config = new_config;
+        *self.autocomplete_index.write().await = AutocompleteState::default();
         Ok(())
     }
 
@@ -498,19 +580,16 @@ impl McpService {
             (result.role.clone(), Some(result))
         };
 
-        let search_query = SearchQuery {
-            search_term: NormalizedTermValue::from(query),
-            search_terms: None,
-            operator: None,
-            role: Some(role_name),
-            limit: limit.map(|l| l as usize),
-            skip: skip.map(|s| s as usize),
-            layer: Layer::default(),
-            include_pinned: false,
-            min_quality: None,
-        };
+        if limit.is_some_and(|value| value < 0) || skip.is_some_and(|value| value < 0) {
+            return Ok(CallToolResult::error(vec![Content::text(
+                "Search limit and skip must be non-negative",
+            )]));
+        }
 
-        match service.search(&search_query).await {
+        match self
+            .search_role_documents(&mut service, &query, &role_name, limit, skip)
+            .await
+        {
             Ok(documents) => {
                 let mut contents = Vec::new();
                 if let Some(ref ar) = auto {
@@ -547,6 +626,141 @@ impl McpService {
         }
     }
 
+    // Expand only exact authored concepts, using the same normalised-term
+    // identity as terraphim-grep. Free-text and compound query syntax is unchanged.
+    async fn search_role_documents(
+        &self,
+        service: &mut TerraphimService,
+        query: &str,
+        role_name: &RoleName,
+        limit: Option<i32>,
+        skip: Option<i32>,
+    ) -> Result<Vec<Document>> {
+        let role =
+            self.config_state.get_role(role_name).await.ok_or_else(|| {
+                anyhow::anyhow!("Role '{}' not found in configuration", role_name)
+            })?;
+        let mut terms = vec![query.to_owned()];
+        let mut expansion_graph = None;
+        if role.relevance_function == RelevanceFunction::TerraphimGraph {
+            let thesaurus = service.ensure_thesaurus_loaded(role_name).await?;
+            let normalised_query = NormalizedTermValue::from(query.trim());
+            if let Some(matched) = find_matches(query.trim(), &thesaurus, false)?
+                .into_iter()
+                .find(|matched| {
+                    NormalizedTermValue::from(matched.term.as_str()) == normalised_query
+                })
+            {
+                let canonical = matched.normalized_term.value;
+                terms.clear();
+                terms.extend(
+                    (&thesaurus)
+                        .into_iter()
+                        .filter(|(_, term)| term.value == canonical)
+                        .map(|(alias, _)| alias.to_string()),
+                );
+                terms.push(canonical.to_string());
+                terms.sort();
+                terms.dedup();
+                expansion_graph = Some((
+                    terraphim_rolegraph::RoleGraph::new_sync(role_name.clone(), thesaurus)?,
+                    canonical,
+                ));
+            }
+        }
+        if expansion_graph.is_none() {
+            // Preserve existing pagination and ordering for non-KG/free-text
+            // queries instead of widening their underlying retrieval.
+            return Ok(service
+                .search(&SearchQuery {
+                    search_term: NormalizedTermValue::from(query),
+                    search_terms: None,
+                    operator: None,
+                    role: Some(role_name.clone()),
+                    limit: limit.map(|value| value as usize),
+                    skip: skip.map(|value| value as usize),
+                    layer: Layer::default(),
+                    include_pinned: false,
+                    min_quality: None,
+                })
+                .await?);
+        }
+        let expanded = terms.len() > 1;
+        let mut documents = HashMap::new();
+        for term in terms {
+            let search_query = SearchQuery {
+                search_term: NormalizedTermValue::from(term),
+                search_terms: None,
+                operator: None,
+                role: Some(role_name.clone()),
+                // Apply pagination once to the merged, deduplicated documents.
+                limit: None,
+                skip: None,
+                layer: Layer::default(),
+                include_pinned: false,
+                min_quality: None,
+            };
+            for document in service.search(&search_query).await? {
+                let key = (document.source_haystack.clone(), document.id.clone());
+                let entry = documents.entry(key).or_insert_with(|| document.clone());
+                if document.rank > entry.rank {
+                    *entry = document;
+                }
+            }
+        }
+        let mut documents: Vec<Document> = documents.into_values().collect();
+        if let Some((mut graph, canonical)) = expansion_graph {
+            // Per-query ranks describe different haystacks and cannot be merged
+            // as scores. Rank the union once with the existing RoleGraph engine.
+            // Insert in identity order to keep repeated calls deterministic.
+            rank_expanded_documents(&mut graph, canonical.as_str(), &mut documents)?;
+        }
+        // A stable identity tie-breaker makes synonym and canonical pagination
+        // agree, independent of the haystack/index map's iteration order.
+        documents.sort_by(|a, b| {
+            b.rank
+                .cmp(&a.rank)
+                .then_with(|| a.id.cmp(&b.id))
+                .then_with(|| a.source_haystack.cmp(&b.source_haystack))
+        });
+        tracing::debug!(
+            expanded,
+            documents = documents.len(),
+            "Resolved MCP search documents"
+        );
+        Ok(documents
+            .into_iter()
+            .skip(skip.unwrap_or(0) as usize)
+            .take(limit.map_or(usize::MAX, |value| value as usize))
+            .collect())
+    }
+
+    async fn role_autocomplete_index(
+        &self,
+        role: Option<String>,
+    ) -> Result<(RoleName, Arc<AutocompleteIndex>), CallToolResult> {
+        // Lock order is config then index, also used by update/build. A request
+        // receives one coherent role snapshot rather than another role's cache.
+        let config = self.config_state.config.lock().await;
+        let name = role
+            .map(RoleName::from)
+            .unwrap_or_else(|| config.selected_role.clone());
+        let Some(role) = config.roles.get(&name) else {
+            return Err(CallToolResult::error(vec![Content::text(format!(
+                "Role '{}' not found in configuration",
+                name
+            ))]));
+        };
+        let state = self.autocomplete_index.read().await;
+        match state.roles.get(&name) {
+            Some((built_role, index)) if built_role == role => Ok((name, Arc::clone(index))),
+            _ => Err(CallToolResult::error(vec![Content::text(format!(
+                "Autocomplete index not built for role '{}'. Run 'build_autocomplete_index' for this role first.",
+                name
+            ))])),
+        }
+    }
+
     /// Update the Terraphim configuration
     pub async fn update_config_tool(
         &self,
@@ -578,11 +792,6 @@ impl McpService {
         &self,
         role: Option<String>,
     ) -> Result<CallToolResult, ErrorData> {
-        let mut service = self
-            .terraphim_service()
-            .await
-            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-
         // Determine which role to use (provided role or selected role)
         let role_name = if let Some(role_str) = role {
             RoleName::from(role_str)
@@ -592,7 +801,7 @@ impl McpService {
 
         // Check if the role exists and has proper knowledge graph configuration
         let role_config = self.config_state.get_role(&role_name).await;
-        if let Some(role_cfg) = role_config {
+        if let Some(ref role_cfg) = role_config {
             // Check if role uses TerraphimGraph relevance function (required for knowledge graph)
             if role_cfg.relevance_function != terraphim_types::RelevanceFunction::TerraphimGraph {
                 let error_content = Content::text(format!(
@@ -625,6 +834,11 @@ impl McpService {
             return Ok(CallToolResult::error(vec![error_content]));
         }
 
+        let mut service = self
+            .terraphim_service()
+            .await
+            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
+
         // Load thesaurus for the role
         match service.ensure_thesaurus_loaded(&role_name).await {
             Ok(thesaurus_data) => {
@@ -648,9 +862,19 @@ impl McpService {
                     Some(config),
                 ) {
                     Ok(index) => {
-                        // Store the index with role context
-                        let mut autocomplete_lock = self.autocomplete_index.write().await;
-                        *autocomplete_lock = Some(index);
+                        let config = self.config_state.config.lock().await;
+                        if config.roles.get(&role_name) != role_config.as_ref() {
+                            return Ok(CallToolResult::error(vec![Content::text(
+                                "Role configuration changed while building the index; rebuild it",
+                            )]));
+                        }
+                        let index = Arc::new(index);
+                        let mut state = self.autocomplete_index.write().await;
+                        state.roles.insert(
+                            role_name.clone(),
+                            (role_config.unwrap(), Arc::clone(&index)),
+                        );
+                        state.active = Some(index);
 
                         let content = Content::text(format!(
                             "Autocomplete index built successfully with {} terms for role '{}'",
@@ -685,89 +909,63 @@ impl McpService {
         limit: Option<usize>,
         role: Option<String>,
     ) -> Result<CallToolResult, ErrorData> {
-        // Determine which role to use (provided role or selected role)
-        let _role_name = if let Some(role_str) = role {
-            RoleName::from(role_str)
-        } else {
-            self.config_state.get_selected_role().await
+        let (_, index) = match self.role_autocomplete_index(role).await {
+            Ok(value) => value,
+            Err(result) => return Ok(result),
         };
-
-        // Check if we need to rebuild the autocomplete index for this role
-        // For now, we'll use the existing index, but in the future we could implement
-        // role-specific indices or rebuild when the role changes
-        let autocomplete_lock = self.autocomplete_index.read().await;
-        if let Some(ref index) = *autocomplete_lock {
-            let max_results = limit.unwrap_or(10);
-            let mut combined: Vec<AutocompleteResult> = Vec::new();
-            // Prefer exact/prefix first
-            if let Ok(mut exact) =
-                terraphim_automata::autocomplete_search(index, &query, Some(max_results))
-            {
-                combined.append(&mut exact);
-            }
-            // Fill remaining with fuzzy
-            if combined.len() < max_results {
-                let remaining = max_results - combined.len();
-                if let Ok(mut fuzzy) = terraphim_automata::fuzzy_autocomplete_search(
-                    index,
-                    &query,
-                    0.6,
-                    Some(remaining),
-                ) {
-                    combined.append(&mut fuzzy);
+        let max_results = limit.unwrap_or(10);
+        let mut combined = prefix_fuzzy_suggestions(&index, &query, max_results);
+        // Graph embeddings-style expansion: include additional synonyms sharing the same concept id
+        if combined.len() < max_results {
+            use std::collections::HashSet;
+            let mut seen_terms: HashSet<_> = combined
+                .iter()
+                .map(|r| (NormalizedTermValue::from(r.term.as_str()), r.id))
+                .collect();
+            let concept_ids: HashSet<u64> = combined.iter().map(|r| r.id).collect();
+            let mut candidates: Vec<AutocompleteResult> = Vec::new();
+            // Iterate over all metadata and pick terms with same concept id
+            for (_, meta) in terraphim_automata::autocomplete_helpers::iter_metadata(&index) {
+                let identity = (
+                    NormalizedTermValue::from(meta.original_term.as_str()),
+                    meta.id,
+                );
+                if concept_ids.contains(&meta.id) && !seen_terms.contains(&identity) {
+                    candidates.push(AutocompleteResult {
+                        term: meta.original_term.clone(),
+                        normalized_term: meta.normalized_term.clone(),
+                        id: meta.id,
+                        url: meta.url.clone(),
+                        score: 0.0,
+                    });
                 }
             }
-            // Graph embeddings-style expansion: include additional synonyms sharing the same concept id
-            if combined.len() < max_results {
-                use std::collections::HashSet;
-                let mut seen_terms: HashSet<String> =
-                    combined.iter().map(|r| r.term.clone()).collect();
-                let concept_ids: HashSet<u64> = combined.iter().map(|r| r.id).collect();
-                let mut candidates: Vec<AutocompleteResult> = Vec::new();
-                // Iterate over all metadata and pick terms with same concept id
-                for (term, meta) in terraphim_automata::autocomplete_helpers::iter_metadata(index) {
-                    if concept_ids.contains(&meta.id) && !seen_terms.contains(term) {
-                        candidates.push(AutocompleteResult {
-                            term: meta.original_term.clone(),
-                            normalized_term: meta.normalized_term.clone(),
-                            id: meta.id,
-                            url: meta.url.clone(),
-                            score: 0.0,
-                        });
-                    }
+            // Prefer shorter terms, stable order
+            candidates.sort_by(|a, b| {
+                a.term
+                    .len()
+                    .cmp(&b.term.len())
+                    .then_with(|| a.term.cmp(&b.term))
+            });
+            for cand in candidates {
+                if combined.len() >= max_results {
+                    break;
                 }
-                // Prefer shorter terms, stable order
-                candidates.sort_by(|a, b| {
-                    a.term
-                        .len()
-                        .cmp(&b.term.len())
-                        .then_with(|| a.term.cmp(&b.term))
-                });
-                for cand in candidates {
-                    if combined.len() >= max_results {
-                        break;
-                    }
-                    if seen_terms.insert(cand.term.clone()) {
-                        combined.push(cand);
-                    }
+                if seen_terms.insert((NormalizedTermValue::from(cand.term.as_str()), cand.id)) {
+                    combined.push(cand);
                 }
             }
-            let mut contents = Vec::new();
-            contents.push(Content::text(format!(
-                "Found {} suggestions",
-                combined.len()
-            )));
-            for r in combined.into_iter().take(max_results) {
-                let line = r.term.to_string();
-                contents.push(Content::text(line));
-            }
-            return Ok(CallToolResult::success(contents));
         }
-        let error_content = Content::text(
-            "Autocomplete index not built. Please run 'build_autocomplete_index' first."
-                .to_string(),
-        );
-        Ok(CallToolResult::error(vec![error_content]))
+        let mut contents = Vec::new();
+        contents.push(Content::text(format!(
+            "Found {} suggestions",
+            combined.len()
+        )));
+        for r in combined.into_iter().take(max_results) {
+            let line = r.term.to_string();
+            contents.push(Content::text(line));
+        }
+        Ok(CallToolResult::success(contents))
     }
 
     /// Autocomplete with snippets: returns term and a short snippet (stub/description) when available
@@ -777,87 +975,49 @@ impl McpService {
         limit: Option<usize>,
         role: Option<String>,
     ) -> Result<CallToolResult, ErrorData> {
-        // Determine which role to use (provided role or selected role)
-        let _role_name = if let Some(role_str) = role {
-            RoleName::from(role_str)
-        } else {
-            self.config_state.get_selected_role().await
+        let (role_name, index) = match self.role_autocomplete_index(role).await {
+            Ok(value) => value,
+            Err(result) => return Ok(result),
         };
+        let max_results = limit.unwrap_or(10);
+        let results = prefix_fuzzy_suggestions(&index, &query, max_results);
 
-        // We only need the terms from automata index, snippets will be pulled from documents when possible
-        // For now, we'll use the existing index, but in the future we could implement
-        // role-specific indices or rebuild when the role changes
-        let autocomplete_lock = self.autocomplete_index.read().await;
-        if let Some(ref index) = *autocomplete_lock {
-            let max_results = limit.unwrap_or(10);
-            let mut results: Vec<AutocompleteResult> = Vec::new();
-            if let Ok(mut prefix) =
-                terraphim_automata::autocomplete_search(index, &query, Some(max_results))
-            {
-                results.append(&mut prefix);
-            }
-            if results.len() < max_results {
-                let remaining = max_results - results.len();
-                if let Ok(mut fuzzy) = terraphim_automata::fuzzy_autocomplete_search(
-                    index,
-                    &query,
-                    0.6,
-                    Some(remaining),
-                ) {
-                    results.append(&mut fuzzy);
-                }
-            }
-
-            // Build snippets by searching for each term to fetch a related document and use its stub/description/body excerpt
-            let mut service = self
-                .terraphim_service()
+        // Build snippets by searching for each term to fetch a related document and use its stub/description/body excerpt
+        let mut service = self
+            .terraphim_service()
+            .await
+            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
+        let mut contents = Vec::new();
+        contents.push(Content::text(format!(
+            "Found {} suggestions",
+            results.len()
+        )));
+        for r in results.into_iter().take(max_results) {
+            let snippet = match self
+                .search_role_documents(&mut service, &r.term, &role_name, Some(1), Some(0))
                 .await
-                .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-            let mut contents = Vec::new();
-            contents.push(Content::text(format!(
-                "Found {} suggestions",
-                results.len()
-            )));
-            for r in results.into_iter().take(max_results) {
-                let sq = SearchQuery {
-                    search_term: NormalizedTermValue::from(r.term.clone()),
-                    search_terms: None,
-                    operator: None,
-                    role: None,
-                    limit: Some(1),
-                    skip: Some(0),
-                    layer: Layer::default(),
-                    include_pinned: false,
-                    min_quality: None,
-                };
-                let snippet = match service.search(&sq).await {
-                    Ok(documents) if !documents.is_empty() => {
-                        let d = &documents[0];
-                        if let Some(stub) = &d.stub {
-                            stub.clone()
-                        } else if let Some(desc) = &d.description {
-                            desc.clone()
-                        } else {
-                            let body = d.body.as_str();
-                            body.chars().take(160).collect::<String>()
-                        }
+            {
+                Ok(documents) if !documents.is_empty() => {
+                    let d = &documents[0];
+                    if let Some(stub) = &d.stub {
+                        stub.clone()
+                    } else if let Some(desc) = &d.description {
+                        desc.clone()
+                    } else {
+                        let body = d.body.as_str();
+                        body.chars().take(160).collect::<String>()
                     }
-                    _ => String::new(),
-                };
-                let line = if snippet.is_empty() {
-                    r.term
-                } else {
-                    format!("{} — {}", r.term, snippet)
-                };
-                contents.push(Content::text(line));
-            }
-            return Ok(CallToolResult::success(contents));
+                }
+                _ => String::new(),
+            };
+            let line = if snippet.is_empty() {
+                r.term
+            } else {
+                format!("{} — {}", r.term, snippet)
+            };
+            contents.push(Content::text(line));
         }
-        let error_content = Content::text(
-            "Autocomplete index not built. Please run 'build_autocomplete_index' first."
-                .to_string(),
-        );
-        Ok(CallToolResult::error(vec![error_content]))
+        Ok(CallToolResult::success(contents))
     }
 
     /// Fuzzy autocomplete search using Jaro-Winkler similarity (default, faster)
@@ -869,7 +1029,7 @@ impl McpService {
     ) -> Result<CallToolResult, ErrorData> {
         let autocomplete_lock = self.autocomplete_index.read().await;
 
-        if let Some(ref index) = *autocomplete_lock {
+        if let Some(index) = autocomplete_lock.active.as_deref() {
             let min_similarity = similarity.unwrap_or(0.6);
             let max_results = limit.unwrap_or(10);
 
@@ -919,7 +1079,7 @@ impl McpService {
     ) -> Result<CallToolResult, ErrorData> {
         let autocomplete_lock = self.autocomplete_index.read().await;
 
-        if let Some(ref index) = *autocomplete_lock {
+        if let Some(index) = autocomplete_lock.active.as_deref() {
             let max_distance = max_edit_distance.unwrap_or(2);
             let max_results = limit.unwrap_or(10);
 
@@ -970,7 +1130,7 @@ impl McpService {
     ) -> Result<CallToolResult, ErrorData> {
         let autocomplete_lock = self.autocomplete_index.read().await;
 
-        if let Some(ref index) = *autocomplete_lock {
+        if let Some(index) = autocomplete_lock.active.as_deref() {
             let min_similarity = similarity.unwrap_or(0.6);
             let max_results = limit.unwrap_or(10);
 
@@ -1016,7 +1176,7 @@ impl McpService {
     pub async fn serialize_autocomplete_index(&self) -> Result<CallToolResult, ErrorData> {
         let autocomplete_lock = self.autocomplete_index.read().await;
 
-        if let Some(ref index) = *autocomplete_lock {
+        if let Some(index) = autocomplete_lock.active.as_deref() {
             match terraphim_automata::serialize_autocomplete_index(index) {
                 Ok(bytes) => {
                     let mut contents = Vec::new();
@@ -1066,12 +1226,13 @@ impl McpService {
             Ok(index) => {
                 // Store the deserialized index
                 let mut autocomplete_lock = self.autocomplete_index.write().await;
-                *autocomplete_lock = Some(index);
+                let count = index.len();
+                autocomplete_lock.active = Some(Arc::new(index));
 
                 let mut contents = Vec::new();
                 contents.push(Content::text(format!(
                     "Successfully deserialized autocomplete index with {} terms",
-                    autocomplete_lock.as_ref().unwrap().len()
+                    count
                 )));
 
                 Ok(CallToolResult::success(contents))
@@ -2082,11 +2243,15 @@ impl ServerHandler for McpService {
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "Maximum number of results to return"
+                    "description": "Maximum number of deduplicated results to return",
+                    "minimum": 0,
+                    "maximum": 2147483647
                 },
                 "skip": {
                     "type": "integer",
-                    "description": "Number of results to skip"
+                    "description": "Number of deduplicated results to skip",
+                    "minimum": 0,
+                    "maximum": 2147483647
                 }
             },
             "required": ["query"]
@@ -2250,11 +2415,11 @@ impl ServerHandler for McpService {
         });
         let is_all_terms_connected_map = is_all_terms_connected_schema.as_object().unwrap().clone();
 
-        let tools = vec![
+        let mut tools = vec![
             Tool {
                 name: "search".into(),
                 title: Some("Search Knowledge Graph".into()),
-                description: Some("Search for documents in Terraphim knowledge graph".into()),
+                description: Some("Search documents in the selected role. Exact authored KG concepts expand to their synonyms; compound queries retain their existing semantics. Pagination applies after deduplication.".into()),
                 input_schema: Arc::new(search_map),
                 output_schema: None,
                 annotations: None,
@@ -2698,6 +2863,9 @@ impl ServerHandler for McpService {
             }
         ];
 
+        if self.agent_store.is_some() {
+            tools.extend(agent_tools::tools());
+        }
         tracing::debug!("Created {} tools", tools.len());
         tracing::debug!("First tool name: {:?}", tools.first().map(|t| &t.name));
 
@@ -2719,6 +2887,17 @@ impl ServerHandler for McpService {
         request: CallToolRequestParam,
         _context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
+        if request.name.starts_with("agent_") {
+            let store = self.agent_store.as_ref().ok_or_else(|| ErrorData::invalid_params(
+                "Agent tools are disabled; start the local stdio server with an explicit --agent-data-dir", None))?;
+            return agent_tools::call_guarded(
+                store,
+                &_context.ct,
+                &request.name,
+                serde_json::Value::Object(request.arguments.unwrap_or_default()),
+            )
+            .await;
+        }
         match request.name.as_ref() {
             "search" => {
                 let arguments = request.arguments.unwrap_or_default();
@@ -2735,15 +2914,28 @@ impl ServerHandler for McpService {
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string());
 
-                let limit = arguments
-                    .get("limit")
-                    .and_then(|v| v.as_i64())
-                    .map(|i| i as i32);
-
-                let skip = arguments
-                    .get("skip")
-                    .and_then(|v| v.as_i64())
-                    .map(|i| i as i32);
+                let parse_page = |name: &str| -> Result<Option<i32>, ErrorData> {
+                    arguments
+                        .get(name)
+                        .map(|value| {
+                            value
+                                .as_i64()
+                                .and_then(|number| i32::try_from(number).ok())
+                                .filter(|number| *number >= 0)
+                                .ok_or_else(|| {
+                                    ErrorData::invalid_params(
+                                        format!(
+                                            "'{name}' must be an integer from 0 to {}",
+                                            i32::MAX
+                                        ),
+                                        None,
+                                    )
+                                })
+                        })
+                        .transpose()
+                };
+                let limit = parse_page("limit")?;
+                let skip = parse_page("skip")?;
 
                 self.search(query, role, limit, skip)
                     .await
@@ -3264,6 +3456,13 @@ impl ServerHandler for McpService {
 
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
+            // Declare exactly what is implemented: tools (call_tool/list_tools)
+            // and resources (list_resources/read_resource). Clients that gate
+            // on capabilities otherwise show no tools.
+            capabilities: rmcp::model::ServerCapabilities::builder()
+                .enable_tools()
+                .enable_resources()
+                .build(),
             server_info: rmcp::model::Implementation {
                 name: "terraphim-mcp".to_string(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
@@ -3274,5 +3473,45 @@ impl ServerHandler for McpService {
             instructions: Some("This server provides Terraphim knowledge graph search capabilities through the Model Context Protocol. You can search for documents using the search tool and access resources that represent Terraphim documents.".to_string()),
             ..Default::default()
         }
+    }
+}
+
+#[cfg(test)]
+mod synonym_ranking_tests {
+    use super::*;
+    use terraphim_types::{NormalizedTerm, Thesaurus};
+
+    #[test]
+    fn same_document_id_in_different_haystacks_keeps_distinct_graph_ranks() -> Result<()> {
+        let mut thesaurus = Thesaurus::new("concepts".into());
+        for term in ["risk", "concern"] {
+            thesaurus.insert(
+                NormalizedTermValue::from(term),
+                NormalizedTerm::new(1, NormalizedTermValue::from("risk")),
+            );
+        }
+        let mut graph =
+            terraphim_rolegraph::RoleGraph::new_sync(RoleName::from("project"), thesaurus)?;
+        let mut documents = vec![
+            Document {
+                id: "same-id".into(),
+                source_haystack: Some("one".into()),
+                body: "Risk Concern Risk".into(),
+                ..Default::default()
+            },
+            Document {
+                id: "same-id".into(),
+                source_haystack: Some("two".into()),
+                body: "Risk".into(),
+                ..Default::default()
+            },
+        ];
+        rank_expanded_documents(&mut graph, "risk", &mut documents)?;
+        assert_eq!(graph.get_document_count(), 2);
+        assert!(documents[0].rank > documents[1].rank);
+        assert_eq!(documents[1].rank, Some(0));
+        assert_eq!(documents[0].id, "same-id");
+        assert_eq!(documents[1].id, "same-id");
+        Ok(())
     }
 }

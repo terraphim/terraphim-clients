@@ -6,30 +6,65 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
 
 jobs:
-  build:
+  reject-fork-pr:
+    name: Reject fork PR (Rust CI needs the tailnet runner)
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
-    # The workspace pins twelve private-registry deps (Cargo.toml lines
-    # 82-85 and others). Without this token the hosted runner cannot
-    # resolve them, which has been the failure mode blocking every CI run
-    # on this workflow (#26, run 36156158322 and earlier). release-binaries.yml
-    # already maps the same secret; ci.yml just needs it in job env so the
-    # build and updater integration steps can fetch terraphim-markdown-parser
-    # and the rest.
-    env:
-      CARGO_REGISTRIES_TERRAPHIM_TOKEN: ${{ secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN }}
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
-      - name: Install release signature verifier
-        run: cargo install zipsign --version 0.2.1 --locked
+      - name: Explain and fail
+        run: |
+          echo "Fork PRs cannot run the Rust CI: it needs the tailnet-only cargo registry and runs on a persistent self-hosted host that must not execute fork code."
+          echo "A maintainer must push the branch to this repository to get a real run."
+          exit 1
+
+  build:
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, release-linux]
+    env:
+      RUSTUP_TOOLCHAIN: 1.96.0
+      RUSTC_WRAPPER: ""
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Assert clean checkout
+        run: test -z "$(git status --porcelain)"
+      - name: Isolate cargo state per run
+        run: |
+          set -euo pipefail
+          cargo_home="$RUNNER_TEMP/cargo-home"
+          mkdir -p "$cargo_home" "$RUNNER_TEMP/tools/bin"
+          if [ -f "$HOME/.cargo/config.toml" ]; then
+            sed '/rustc-wrapper/d' "$HOME/.cargo/config.toml" > "$cargo_home/config.toml"
+          fi
+          {
+            echo "CARGO_HOME=$cargo_home"
+            echo "CARGO_TARGET_DIR=$RUNNER_TEMP/target"
+          } >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/tools/bin" >> "$GITHUB_PATH"
+      - name: Install exact Rust toolchain
+        run: rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
+      - name: Fetch dependencies and install the signature verifier
+        env:
+          CARGO_REGISTRIES_TERRAPHIM_TOKEN: ${{ secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN }}
+          CARGO_REGISTRIES_TERRAPHIM_MIRROR_TOKEN: ${{ secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN }}
+        run: |
+          set -euo pipefail
+          cargo fetch --locked
+          cargo install zipsign --version 0.2.1 --locked --root "$RUNNER_TEMP/tools"
+          echo "CARGO_NET_OFFLINE=true" >> "$GITHUB_ENV"
       - name: Install pinned actionlint
         run: .github/scripts/install-actionlint.sh
       - name: Release workflow and sealing contracts
@@ -43,20 +78,24 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo build --workspace
       - run: cargo test --workspace --lib --no-fail-fast
-      # #459: the server-mode client (the `--server` mode) lives behind the
-      # `server` feature; the test build enables it through the `repl-full`
-      # dev-dependency, but a plain build does not.
       - run: cargo check -p terraphim_agent --features server --all-targets
-      # GitHub-side home for the updater integration contracts (managed-mode
-      # receipt/refusal, strict v2 manifest readers, R2 checksum fail-closed).
-      # On Gitea these lanes live in .gitea/workflows/native-ci.yml, which is
-      # intentionally not part of the GitHub port.
+      - name: Persist and recover authored memory through the CLI
+        run: cargo test --locked -p terraphim_agent --test memory_capture_cli_tests --test memory_apply_cli_tests --test memory_rubric_cli_tests --test agent_store_contract --test agent_learning_store_contract
+      - name: Exercise released grep command contracts
+        run: cargo test --locked -p terraphim_grep --test synonym_retrieval --test answer_request --test path_guard_hostile_tree --test single_file_search
+      - name: Verify authored synonyms and role boundaries over real MCP stdio
+        run: cargo test --locked -p terraphim_mcp_server --test test_mcp_role_contract --test test_mcp_agent_contract
       - run: cargo test -p terraphim_update --test manifest --test r2_update --test managed_mode --test policy --no-fail-fast
-      # The pi-terraphim-learn plugin package is JavaScript, so the workspace
-      # cargo tests never exercised it (#467). The wrapper is a repo script
-      # because the native runner's command policy allows only cargo and scripts.
       - name: pi-terraphim-learn functional test
         run: bash ./scripts/ci/pi-terraphim-learn-tests.sh
+      - name: Assert the build left the checkout and lockfile untouched
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- Cargo.toml Cargo.lock
+          test -z "$(git status --porcelain)"
+      - name: Remove per-run state
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/cargo-home" "$RUNNER_TEMP/target" "$RUNNER_TEMP/tools"
 
   client-packaging-contracts:
     name: Client DEB/RPM packaging producer contracts

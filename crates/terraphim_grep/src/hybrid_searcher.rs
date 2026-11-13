@@ -369,6 +369,19 @@ fn haystack_constraints(haystack: Haystack) -> Vec<fff_search::Constraint<'stati
     constraints
 }
 
+fn path_matches_haystack(haystack: Haystack, path: &str) -> bool {
+    if is_lockfile_path(path) {
+        return false;
+    }
+    match haystack {
+        Haystack::Code => extension_lowercase(path)
+            .is_some_and(|extension| CODE_EXTENSIONS.contains(&extension.as_str())),
+        Haystack::Docs => extension_lowercase(path)
+            .is_some_and(|extension| DOC_EXTENSIONS.contains(&extension.as_str())),
+        Haystack::All => true,
+    }
+}
+
 /// The `haystack` label a result carries in JSON output and in the sufficiency
 /// judge's diversity count.
 fn chunk_haystack(haystack: Haystack, path: &str) -> &'static str {
@@ -616,13 +629,40 @@ impl HybridSearcher {
                 parse_grep_query,
             };
 
-            // Refuse the tree before its base path reaches fff-search: a
-            // non-UTF-8 or over-long entry name defeats the library's
-            // `from_utf8_unchecked` on the stored relative path. UF-040 / #296.
-            crate::path_guard::reject_hostile_tree(&search_path)?;
+            let metadata = std::fs::symlink_metadata(&search_path).map_err(|error| {
+                format!(
+                    "Cannot inspect search path {}: {error}",
+                    search_path.display()
+                )
+            })?;
+            if !metadata.is_file() && !metadata.is_dir() {
+                return Err(format!(
+                    "Search path must be a regular file or directory, not a symlink or special file: {}",
+                    search_path.display()
+                ));
+            }
+            let selected_file = if metadata.is_file() {
+                Some(std::fs::canonicalize(&search_path).map_err(|error| {
+                    format!(
+                        "Cannot resolve search file {}: {error}",
+                        search_path.display()
+                    )
+                })?)
+            } else {
+                None
+            };
+            let guarded_path = selected_file.as_deref().unwrap_or(&search_path);
+            crate::path_guard::reject_hostile_tree(guarded_path)?;
+            let base_path = if selected_file.is_some() {
+                guarded_path
+                    .parent()
+                    .ok_or("Search file has no parent directory")?
+            } else {
+                &search_path
+            };
 
             let mut picker = FilePicker::new(FilePickerOptions {
-                base_path: search_path.to_string_lossy().to_string(),
+                base_path: base_path.to_string_lossy().to_string(),
                 mode: FFFMode::Ai,
                 watch: false,
                 // See `no_mmap_budget` -- UF-039 / #293.
@@ -636,9 +676,15 @@ impl HybridSearcher {
             })
             .map_err(|e| format!("FilePicker init failed: {}", e))?;
 
-            picker
-                .collect_files()
-                .map_err(|e| format!("File scan failed: {}", e))?;
+            if let Some(file) = &selected_file {
+                picker
+                    .add_new_file(file)
+                    .ok_or_else(|| format!("Cannot index selected file: {}", file.display()))?;
+            } else {
+                picker
+                    .collect_files()
+                    .map_err(|e| format!("File scan failed: {}", e))?;
+            }
 
             if picker.get_files().is_empty() {
                 return Ok(vec![]);
@@ -658,30 +704,68 @@ impl HybridSearcher {
                 ..GrepSearchOptions::default()
             };
 
-            // Exact KG aliases are data, so bypass the query parser entirely.
-            // One Aho-Corasick batch scans each file once, including aliases that
-            // sort after the displayed concepts. Free-text queries retain filters
-            // by parsing the query and passing its constraints through.
-            //
-            // Haystack constraints are applied by fff-search BEFORE grepping, so
-            // a `code` search cannot be starved of source hits by a lockfile or
-            // Markdown match further up the file list (#404).
-            let parsed = parse_grep_query(query);
-            let mut constraints: Vec<fff_search::Constraint<'_>> = haystack_constraints(haystack);
-            constraints.extend(parsed.constraints.iter().cloned());
-
-            let grep_text = parsed.grep_text();
-            let pattern_owned: Vec<String> = if aliases.is_empty() {
-                vec![grep_text]
+            let result = if let Some(file) = &selected_file {
+                let source = file.file_name().unwrap_or_default().to_string_lossy();
+                if !path_matches_haystack(haystack, &source) {
+                    return Ok(vec![]);
+                }
+                if aliases.is_empty() {
+                    let mut fff_query = parse_grep_query(query);
+                    if !fff_query.constraints.is_empty() {
+                        let mut filter = fff_search::FFFQuery {
+                            raw_query: "",
+                            constraints: fff_query.constraints.clone(),
+                            fuzzy_query: fff_search::FuzzyQuery::Empty,
+                            location: None,
+                        };
+                        let mut matched = !picker
+                            .fuzzy_search(&filter, None, fff_search::FuzzySearchOptions::default())
+                            .items
+                            .is_empty();
+                        if !matched
+                            && filter.constraints.iter().any(|constraint| {
+                                matches!(constraint, fff_search::Constraint::FilePath(_))
+                            })
+                        {
+                            filter.constraints.retain(|constraint| {
+                                !matches!(constraint, fff_search::Constraint::FilePath(_))
+                            });
+                            matched = !picker
+                                .fuzzy_search(
+                                    &filter,
+                                    None,
+                                    fff_search::FuzzySearchOptions::default(),
+                                )
+                                .items
+                                .is_empty();
+                        }
+                        if !matched {
+                            return Ok(vec![]);
+                        }
+                        fff_query.constraints.clear();
+                    }
+                    picker.grep(&fff_query, &options)
+                } else {
+                    let patterns: Vec<&str> = aliases.iter().map(String::as_str).collect();
+                    picker.multi_grep(&patterns, &[], &options)
+                }
             } else {
-                aliases.to_vec()
+                let parsed = parse_grep_query(query);
+                let mut constraints: Vec<fff_search::Constraint<'_>> =
+                    haystack_constraints(haystack);
+                constraints.extend(parsed.constraints.iter().cloned());
+                let grep_text = parsed.grep_text();
+                let pattern_owned: Vec<String> = if aliases.is_empty() {
+                    vec![grep_text]
+                } else {
+                    aliases.to_vec()
+                };
+                if pattern_owned.iter().all(|p| p.is_empty()) {
+                    return Ok(vec![]);
+                }
+                let patterns: Vec<&str> = pattern_owned.iter().map(String::as_str).collect();
+                picker.multi_grep(&patterns, &constraints, &options)
             };
-            if pattern_owned.iter().all(|p| p.is_empty()) {
-                return Ok(vec![]);
-            }
-            let patterns: Vec<&str> = pattern_owned.iter().map(String::as_str).collect();
-
-            let result = picker.multi_grep(&patterns, &constraints, &options);
 
             let mut seen = std::collections::HashSet::new();
             let chunks = result

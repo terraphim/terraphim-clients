@@ -3,6 +3,7 @@
 //! Bundles the interactive REPL, robot-mode JSON output, forgiving CLI parser,
 //! MCP tool index, onboarding workflows, and optional shared-learning store.
 //! Feature flags gate heavier subsystems: `server`, `repl`, `shared-learning`.
+pub mod agent_store;
 /// Checklist definitions (embedded TOML) and phrase matching.
 pub mod cache_export;
 pub mod cache_flush;

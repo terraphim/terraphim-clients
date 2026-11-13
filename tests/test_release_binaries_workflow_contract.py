@@ -10,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "release-binaries.yml"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+CROSS = ROOT / "Cross.toml"
 SIGN_MACOS_BINARY = ROOT / "scripts" / "sign-macos-binary.sh"
 ASSEMBLE_CLIENT_INVENTORY = (
     ROOT / ".github" / "scripts" / "release" / "assemble-client-release-inventory.sh"
@@ -281,7 +282,9 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
             "change-nfpm-version": text.replace(f"NFPM_VERSION: {NFPM_VERSION}", "NFPM_VERSION: 2.46.0", 1),
             "change-nfpm-archive-sha": text.replace(NFPM_X86_ARCHIVE_SHA256, "0" * 64, 1),
             "change-nfpm-binary-sha": text.replace(NFPM_X86_BINARY_SHA256, "0" * 64, 1),
-            "unpin-checkout": text.replace(f"actions/checkout@{CHECKOUT_SHA}", "actions/checkout@v4", 1),
+            "unpin-checkout": text.replace(
+                block, block.replace(f"actions/checkout@{CHECKOUT_SHA}", "actions/checkout@v4", 1), 1
+            ),
             "unpin-setup-python": text.replace(f"actions/setup-python@{SETUP_PYTHON_SHA}", "actions/setup-python@v5", 1),
             "delete-archive-verification": text.replace(
                 '          printf \'%s  %s\\n\' "$NFPM_ARCHIVE_SHA256" "$archive" | sha256sum -c -\n',
@@ -316,24 +319,41 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
                 with self.assertRaises((AssertionError, ValueError)):
                     self.assert_client_packaging_ci_contract(mutant)
 
-    def test_matrix_is_the_exact_six_lane_contract(self) -> None:
+    def test_matrix_is_the_exact_five_lane_self_hosted_contract(self) -> None:
         text = workflow_text()
         expected = {
-            ("ubuntu-22.04", "x86_64-unknown-linux-gnu", "false"),
-            ("ubuntu-22.04", "x86_64-unknown-linux-musl", "true"),
-            ("ubuntu-22.04", "aarch64-unknown-linux-musl", "true"),
-            ("macos-15-intel", "x86_64-apple-darwin", "false"),
-            ("macos-15", "aarch64-apple-darwin", "false"),
-            ("windows-latest", "x86_64-pc-windows-msvc", "false"),
+            ("[self-hosted, Linux, X64, release-linux]", "x86_64-unknown-linux-gnu", "false"),
+            ("[self-hosted, Linux, X64, release-linux]", "x86_64-unknown-linux-musl", "true"),
+            ("[self-hosted, Linux, X64, release-linux]", "aarch64-unknown-linux-musl", "true"),
+            ("[self-hosted, macOS, ARM64, release-macos]", "x86_64-apple-darwin", "false"),
+            ("[self-hosted, macOS, ARM64, release-macos]", "aarch64-apple-darwin", "false"),
         }
         actual = set(
             re.findall(
-                r"- os: ([^\n]+)\n\s+target: ([^\n]+)\n\s+use_cross: (true|false)",
+                r"- os: (\[[^\n]+\])\n\s+target: ([^\n]+)\n\s+use_cross: (true|false)",
                 text,
             )
         )
         self.assertEqual(actual, expected)
         self.assertIn("fail-fast: false", text)
+        self.assertNotIn("windows-latest", text)
+
+    def test_rust_cache_never_runs_on_a_persistent_self_hosted_host(self) -> None:
+        block = job_block("build-binaries")
+        step = block[block.index("- uses: Swatinem/rust-cache@") :]
+        step = step[: step.index("\n      - ", 1)]
+        self.assertIn("if: runner.environment == 'github-hosted'", step)
+
+    def test_private_registry_tokens_reach_release_builds_and_cross_containers(self) -> None:
+        block = job_block("build-binaries")
+        self.assertIn(
+            "CARGO_REGISTRIES_TERRAPHIM_MIRROR_TOKEN: ${{ secrets.CARGO_REGISTRIES_TERRAPHIM_TOKEN }}",
+            block,
+        )
+        cross = tomllib.loads(CROSS.read_text())
+        passthrough = cross["build"]["env"]["passthrough"]
+        self.assertIn("CARGO_REGISTRIES_TERRAPHIM_TOKEN", passthrough)
+        self.assertIn("CARGO_REGISTRIES_TERRAPHIM_MIRROR_TOKEN", passthrough)
 
     def test_builds_are_locked_and_grep_features_are_preserved(self) -> None:
         block = job_block("build-binaries")
@@ -364,7 +384,8 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
         self.assertIn("aarch64-unknown-linux-musl", stage)
         self.assertIn("for binary in terraphim-agent terraphim-cli terraphim-grep", stage)
         self.assertIn('if [ "$binary" != "terraphim-cli" ]; then targets+=(universal-apple-darwin); fi', stage)
-        self.assertIn('test "$(wc -l < expected-assets.txt | tr -d \' \')" = 20', stage)
+        self.assertIn('test "$(wc -l < expected-assets.txt | tr -d \' \')" = 17', stage)
+        self.assertNotIn("x86_64-pc-windows-msvc", stage)
 
     def test_macos_is_signed_before_deterministic_packaging(self) -> None:
         text = workflow_text()
@@ -383,7 +404,6 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
             "tar --sort=name",
             '--owner=0 --group=0 --numeric-owner',
             "gzip -n -9",
-            "scripts/create-deterministic-zip.py",
             "LICENSE-Apache-2.0",
             "LICENSE-MIT",
             "expected-assets.txt",
@@ -391,6 +411,7 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
             "scripts/validate-release-archive.py",
         ):
             self.assertIn(token, stage)
+        self.assertNotIn("create-deterministic-zip", stage)
 
     def test_final_bytes_are_signed_before_checksums_and_manifests(self) -> None:
         stage = job_block("seal-release-stage")
@@ -473,28 +494,27 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
                     self.assert_seal_package_result_contract(mutant)
 
     def assert_lipo_verify_arch_order(self, block: str) -> None:
-        # Xcode 16.4 lipo requires the input file before the -verify_arch
-        # command and its architecture flags: the legacy order
-        # `lipo -verify_arch x86_64 arm64 FILE` parses FILE as an
-        # architecture and fails the universal macOS step. The only safe
-        # order is `lipo FILE -verify_arch x86_64 arm64`.
+        self.assertIn("for arch in x86_64 arm64; do", block)
         self.assertIn(
-            'lipo "universal/${binary}-universal-apple-darwin" -verify_arch x86_64 arm64',
-            block,
+            'lipo "universal/${binary}-universal-apple-darwin" -verify_arch "$arch"', block
         )
-        self.assertNotIn("lipo -verify_arch x86_64 arm64", block)
+        self.assertIn('lipo -archs "universal/${binary}-universal-apple-darwin"', block)
+        self.assertIn('= "arm64 x86_64 "', block)
+        self.assertNotIn("-verify_arch x86_64 arm64", block)
+        self.assertNotIn("lipo -verify_arch", block)
 
     def test_universal_lipo_verify_arch_uses_safe_argument_order(self) -> None:
         block = job_block("create-universal-macos")
         self.assert_lipo_verify_arch_order(block)
 
+        safe = 'lipo "universal/${binary}-universal-apple-darwin" -verify_arch "$arch"'
         mutations = {
             "flags-first": block.replace(
-                'lipo "universal/${binary}-universal-apple-darwin" -verify_arch x86_64 arm64',
-                'lipo -verify_arch x86_64 arm64 "universal/${binary}-universal-apple-darwin"',
-                1,
+                safe, 'lipo -verify_arch "$arch" "universal/${binary}-universal-apple-darwin"', 1
             ),
-            "verify-dropped": block.replace(" -verify_arch x86_64 arm64", "", 1),
+            "multi-arch": block.replace(safe, safe.replace('"$arch"', "x86_64 arm64"), 1),
+            "verify-dropped": block.replace(safe, "true", 1),
+            "archs-check-dropped": block.replace('= "arm64 x86_64 "', '= ""', 1),
         }
         for name, mutant in mutations.items():
             with self.subTest(mutation=name):
@@ -696,7 +716,7 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
         self.assertIn("aarch64 MUSL", lifecycle_text)
         self.assertNotIn("only for the x86_64 MUSL leg", lifecycle_text)
 
-    def test_managed_inventory_is_version_bound_and_separate_from_20_archives(self) -> None:
+    def test_managed_inventory_is_version_bound_and_separate_from_17_archives(self) -> None:
         stage = job_block("seal-release-stage")
         assemble = stage.index("assemble-client-release-inventory.sh")
         checksum = stage.index("../SHA256SUMS", assemble)
@@ -708,7 +728,7 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
         self.assertIn("--managed-target aarch64-unknown-linux-musl", stage)
         self.assertIn("managed-release-assets/*", stage)
         self.assertLess(assemble, checksum)
-        self.assertIn('test "$(wc -l < SHA256SUMS | tr -d \' \')" = 20', stage)
+        self.assertIn('test "$(wc -l < SHA256SUMS | tr -d \' \')" = 17', stage)
 
     def test_producer_is_stage_only_and_has_no_public_writer(self) -> None:
         text = workflow_text()
@@ -776,7 +796,7 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
             "dtolnay/rust-toolchain@stable", "cargo install zipsign --locked",
         ):
             self.assertNotIn(mutable, text)
-        self.assertIn("rustup toolchain install 1.96.0", text)
+        self.assertIn("rustup toolchain install 1.99.0", text)
         self.assertIn("cargo install zipsign --version 0.2.1 --locked", text)
         self.assertIn("--rev 88f49ff79e777bef6d3564531636ee4d3cc2f8d2", text)
         self.assertIn(
@@ -904,8 +924,16 @@ class ReleaseBinariesWorkflowContract(unittest.TestCase):
 
     def test_macos_thin_execution_has_deterministic_runner_semantics(self) -> None:
         text = workflow_text()
-        self.assertIn("os: macos-15-intel\n            target: x86_64-apple-darwin", text)
-        self.assertIn("os: macos-15\n            target: aarch64-apple-darwin", text)
+        self.assertIn(
+            "os: [self-hosted, macOS, ARM64, release-macos]\n"
+            "            target: x86_64-apple-darwin",
+            text,
+        )
+        self.assertIn(
+            "os: [self-hosted, macOS, ARM64, release-macos]\n"
+            "            target: aarch64-apple-darwin",
+            text,
+        )
         signing = job_block("sign-and-notarize-macos")
         self.assertIn("runs-on: macos-15", signing)
         provision = signing.index("softwareupdate --install-rosetta --agree-to-license")

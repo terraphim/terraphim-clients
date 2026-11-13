@@ -13,12 +13,13 @@
 //! store lives in a temp directory and nothing touches the developer's own
 //! store. No mocks: the store file is the real one the binary writes.
 //!
-//! `memory capture` hard-codes `ImportanceLevel::Medium` and has no flag to
-//! raise it, so a Critical item cannot be produced through the CLI. The test
-//! therefore captures a Medium item through the CLI (which proves the store
-//! location and exercises the real save path), then loads the store file,
-//! routes a Critical item through the real `MemoryState::add_memory` (which
-//! places it in `long_term`) and writes the file back in the same envelope.
+//! `memory capture` stores the authored text it is given and hard-codes
+//! `ImportanceLevel::Medium` with no flag to raise it, so a Critical item
+//! cannot be produced through the CLI. The test therefore captures a Medium
+//! item through the CLI (which proves the store location and exercises the
+//! real save path), then loads the store file, routes a Critical item through
+//! the real `MemoryState::add_memory` (which places it in `long_term`) and
+//! writes the file back in the same envelope.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -50,6 +51,12 @@ fn run(home: &Path, args: &[&str]) -> (String, String, bool) {
     )
 }
 
+/// Authored text for the Medium item captured through the CLI.
+///
+/// `memory capture` stores the text it is given verbatim, so the capture
+/// needs one. The rubric scores the item, not its wording.
+const CAPTURED_CONTENT: &str = "Keep the release checklist current: tag the commit first.";
+
 fn capture_medium_item(home: &Path) -> String {
     let (stdout, stderr, ok) = run(
         home,
@@ -58,6 +65,8 @@ fn capture_medium_item(home: &Path) -> String {
             "json",
             "memory",
             "capture",
+            "--content",
+            CAPTURED_CONTENT,
             "--provenance-tag",
             "rubric-cli-test",
         ],

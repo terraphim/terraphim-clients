@@ -7,12 +7,12 @@
 //! `compute_risk`) that only this command uses. Extracted verbatim; only the
 //! imports are new.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use terraphim_agent::service::TuiService;
 
 use crate::cli_schema::MemorySub;
-use crate::{CommandOutputConfig, load_evolution, save_evolution, truncate_snippet};
+use crate::{CommandOutputConfig, load_evolution, truncate_snippet};
 
 pub(crate) async fn run_memory_command(
     sub: MemorySub,
@@ -20,33 +20,28 @@ pub(crate) async fn run_memory_command(
     config_path: Option<String>,
 ) -> Result<()> {
     match sub {
-        MemorySub::Capture { provenance_tag } => {
-            use terraphim_agent_evolution::{ImportanceLevel, MemoryItem, MemoryItemType};
-
-            let mut evolution = load_evolution();
-            let content = provenance_tag
-                .as_ref()
-                .map(|tag| format!("Memory item captured via CLI with provenance: {}", tag))
-                .unwrap_or_else(|| "Memory item captured via CLI".to_string());
-            let tags: Vec<String> = provenance_tag
-                .clone()
-                .map(|tag| vec![format!("provenance:{}", tag)])
-                .unwrap_or_default();
-            let memory = MemoryItem {
-                id: uuid::Uuid::new_v4().to_string(),
-                item_type: MemoryItemType::Experience,
-                content,
-                created_at: chrono::Utc::now(),
-                last_accessed: None,
-                access_count: 0,
-                importance: ImportanceLevel::Medium,
-                tags,
-                associations: std::collections::HashMap::new(),
+        MemorySub::Capture {
+            content,
+            file,
+            provenance_tag,
+        } => {
+            let content = match (content, file) {
+                (Some(content), None) => content,
+                (None, Some(path)) => std::fs::read_to_string(&path).with_context(|| {
+                    format!("Cannot read memory lesson from {}", path.display())
+                })?,
+                _ => anyhow::bail!("Provide exactly one of --content or --file"),
             };
-            let id = memory.id.clone();
-            match evolution.memory.add_memory(memory).await {
-                Ok(()) => {
-                    save_evolution(&evolution)?;
+            anyhow::ensure!(
+                !content.trim().is_empty(),
+                "Memory lesson must not be blank"
+            );
+            anyhow::ensure!(content.len() <= 1_000_000, "Memory lesson exceeds 1 MB");
+            match terraphim_agent::agent_store::AgentStore::for_cli()?
+                .memory_capture(&content, provenance_tag.as_deref())
+            {
+                Ok(memory) => {
+                    let id = memory.id;
                     if output.is_machine_readable() {
                         println!(
                             "{}",
@@ -195,7 +190,7 @@ pub(crate) async fn run_memory_command(
                 )
             })?;
 
-            let evolution = load_evolution();
+            let evolution = load_evolution()?;
             let items = collect_memory_items(&evolution.memory.current_state);
 
             let outcome = retrieve(
@@ -312,7 +307,7 @@ pub(crate) async fn run_memory_command(
             // Injected size (#261): retrieve the memory items the hook would
             // inject for this prompt, through the unchanged `retrieve` with
             // the benchmark's limit, and measure the exact injection text.
-            let evolution = load_evolution();
+            let evolution = load_evolution()?;
             let store_items = collect_memory_items(&evolution.memory.current_state);
             let injected_items: Vec<terraphim_agent_evolution::MemoryItem> = retrieve(
                 &role_name,
@@ -381,7 +376,7 @@ pub(crate) async fn run_memory_command(
         MemorySub::Validate { all, lesson_id } => {
             use terraphim_agent_evolution::MemoryItem;
 
-            let evolution = load_evolution();
+            let evolution = load_evolution()?;
             // TODO(#208): replace with MemoryState::iter_all()
             let all_items = terraphim_agent::memory_retrieve::collect_memory_items(
                 &evolution.memory.current_state,
@@ -508,7 +503,7 @@ pub(crate) async fn run_memory_command(
         } => {
             use terraphim_agent_evolution::MemoryItem;
 
-            let evolution = load_evolution();
+            let evolution = load_evolution()?;
             // TODO(#208): replace with MemoryState::iter_all()
             let all_items = terraphim_agent::memory_retrieve::collect_memory_items(
                 &evolution.memory.current_state,
@@ -690,7 +685,7 @@ pub(crate) async fn run_memory_command(
             Ok(())
         }
         MemorySub::List { item_type, limit } => {
-            let evolution = load_evolution();
+            let evolution = load_evolution()?;
             let state = &evolution.memory.current_state;
             // TODO(#208): replace with MemoryState::iter_all()
             let mut all_items = terraphim_agent::memory_retrieve::collect_memory_items(state);
@@ -770,7 +765,7 @@ pub(crate) async fn run_memory_command(
             Ok(())
         }
         MemorySub::Show { id, json } => {
-            let evolution = load_evolution();
+            let evolution = load_evolution()?;
 
             // TODO(#208): replace with MemoryState::get(id)
             let memory_item = terraphim_agent::memory_retrieve::collect_memory_items(
@@ -859,7 +854,7 @@ pub(crate) async fn run_memory_command(
             format,
             output: outfile,
         } => {
-            let evolution = load_evolution();
+            let evolution = load_evolution()?;
 
             // TODO(#208): replace with MemoryState::iter_all()
             let all_items = terraphim_agent::memory_retrieve::collect_memory_items(
