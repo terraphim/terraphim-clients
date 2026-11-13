@@ -162,6 +162,12 @@ fn run_extract_command_with_port(args: &[&str], port: u16) -> Result<(String, St
             format!("http://127.0.0.1:{}/api", port),
         )
         .env("TERRAPHIM_SERVER_HOSTNAME", format!("127.0.0.1:{}", port));
+    // The agent must not write to the shared persistence profiles: without a
+    // hermetic environment it reads and writes `/tmp/terraphim_sqlite`, so two
+    // CI lanes racing over the same role configuration make this test fail for
+    // a reason the diff cannot cause (terraphim-clients#513, and the flake that
+    // failed the #537 lane).
+    apply_hermetic_env(&mut cmd)?;
 
     let output = run_command_with_timeout(&mut cmd, Duration::from_secs(5))?;
 
