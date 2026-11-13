@@ -1377,10 +1377,24 @@ impl TerraphimUpdater {
 
         for i in 0..archive.len() {
             let mut file = archive.by_index(i)?;
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            let outpath = target_dir.join(file.mangled_name());
+            let name = file.name()?.to_string();
+            let is_directory = name.ends_with('/');
 
-            if file.name().ends_with('/') {
+            // The path the entry is written to must stay inside the target
+            // directory. `mangled_name` only sanitises the characters of the
+            // file name - a `../../etc/passwd` entry still escapes the target
+            // when it is joined onto it - so the archive's own
+            // traversal-safe name is used, and an entry without one is skipped.
+            let Some(safe_name) = file.enclosed_name() else {
+                warn!(
+                    "Skipping '{name}' in {}: the path escapes the target directory",
+                    archive_path.display()
+                );
+                continue;
+            };
+            let outpath = target_dir.join(safe_name);
+
+            if is_directory {
                 fs::create_dir_all(&outpath)?;
             } else {
                 if let Some(parent) = outpath.parent() {
