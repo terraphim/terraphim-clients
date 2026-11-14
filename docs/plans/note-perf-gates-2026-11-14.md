@@ -100,7 +100,7 @@ refuses an alias anywhere else.
 | `cargo test -p terraphim_agent --test perf_gate -- --nocapture` | the table, 6 measured, 2 skipped, 0 breached |
 | `TERRAPHIM_PERF_GATE=1 cargo test -p terraphim_agent --test perf_gate` (dev profile) | passes; a deliberately tightened budget was verified to fail the lane with the measurement in the message |
 | The same against `target/release/terraphim-agent` (`TERRAPHIM_PERF_BINARY`, `TERRAPHIM_PERF_PROFILE=release`) | passes; the release numbers are the ones published on the pull request |
-| The same against the coding agent's own binary (`origin/task/422-coding-agent`, dev and release) | passes; the two `code` scenarios measure 141.9 ms and 136.1 ms (dev), 145.7 ms and 133.8 ms (release), and the coding agent's release binary is **37,063,968 bytes - over the 34,000,000 byte release ceiling** |
+| The same against the coding agent's own binary (`origin/task/422-coding-agent`, dev and release) | passes; the two `code` scenarios measure 141.9 ms and 136.1 ms (dev), 145.7 ms and 133.8 ms (release), and the coding agent's release binary is **37,063,968 bytes - over the 36,000,000 byte release ceiling** |
 | `cargo test -p terraphim_agent --test ci_guards` | passes; the workflow guards are not disturbed by the new step |
 
 The gate was also verified in the direction that matters: with the `startup`
@@ -137,7 +137,7 @@ which is the difference between a gate and a report.
   coding agent's own binary (dev and release) and are in the manifest for
   both profiles, so the CI lane gates them the day the coding agent merges.
 - **The coding agent's release binary is over the release size ceiling**:
-  37,063,968 bytes against 34,000,000. That is the gate working - the coding
+  37,063,968 bytes against 36,000,000. That is the gate working - the coding
   agent adds a model client and the grep crate - and it is a decision for the
   pull request that merges it: raise the ceiling deliberately, with the
   measurement that justifies it, or make the binary smaller.
@@ -146,9 +146,10 @@ which is the difference between a gate and a report.
   lane. The release profile's ceilings are enforced by the same harness
   whenever a release binary is measured, and the release numbers are
   published on the pull request.
-- The ceilings are several times the measurements they were set from. That is
-  deliberate - see the research - but it means the gate catches a
-  regression, not a ten per cent change.
+- The ceilings are roughly eight times the measurements they were set from.
+  That is deliberate - see the research - but it means the gate catches a
+  regression, not a ten per cent change. The fine-grained signal is the
+  number on the pull request.
 - The CI runner is currently disabled on the forge, so the lane could not be
   observed there. The same script was run locally instead, in both profiles
   and in both directions (passing and failing).

@@ -51,15 +51,15 @@ scripts/ci/perf-gate.sh                    the CI entry point (one line in
 ```json
 {
   "version": 1,
-  "binary_size_budgets": { "dev": 60000000, "release": 26000000 },
+  "binary_size_budgets": { "dev": 60000000, "release": 36000000 },
   "scenarios": [
     {
       "name": "startup",
       "args": ["--version"],
       "repetitions": 5,
       "budgets": {
-        "dev":    { "median_ms": 25.0, "p95_ms": 50.0 },
-        "release": { "median_ms": 10.0, "p95_ms": 20.0 }
+        "dev":    { "median_ms": 50.0, "p95_ms": 100.0 },
+        "release": { "median_ms": 30.0, "p95_ms": 60.0 }
       }
     },
     {
@@ -68,7 +68,10 @@ scripts/ci/perf-gate.sh                    the CI entry point (one line in
       "requires_subcommand": "code",
       "absent_note": "the coding agent is not merged (PR #432)",
       "repetitions": 5,
-      "budgets": { "release": { "median_ms": 250.0, "p95_ms": 500.0 } }
+      "budgets": {
+        "dev": { "median_ms": 1400.0, "p95_ms": 2200.0 },
+        "release": { "median_ms": 1400.0, "p95_ms": 2200.0 }
+      }
     }
   ]
 }

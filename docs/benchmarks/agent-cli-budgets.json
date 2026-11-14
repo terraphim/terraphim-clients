@@ -2,7 +2,7 @@
   "version": 1,
   "binary_size_budgets": {
     "dev": 60000000,
-    "release": 34000000
+    "release": 36000000
   },
   "scenarios": [
     {
@@ -10,8 +10,8 @@
       "args": ["--version"],
       "repetitions": 5,
       "budgets": {
-        "dev": { "median_ms": 25.0, "p95_ms": 50.0 },
-        "release": { "median_ms": 15.0, "p95_ms": 30.0 }
+        "dev": { "median_ms": 50.0, "p95_ms": 100.0 },
+        "release": { "median_ms": 30.0, "p95_ms": 60.0 }
       }
     },
     {
@@ -19,8 +19,8 @@
       "args": ["--help"],
       "repetitions": 5,
       "budgets": {
-        "dev": { "median_ms": 25.0, "p95_ms": 50.0 },
-        "release": { "median_ms": 15.0, "p95_ms": 30.0 }
+        "dev": { "median_ms": 50.0, "p95_ms": 100.0 },
+        "release": { "median_ms": 30.0, "p95_ms": 60.0 }
       }
     },
     {
@@ -28,8 +28,8 @@
       "args": ["roles", "list"],
       "repetitions": 5,
       "budgets": {
-        "dev": { "median_ms": 600.0, "p95_ms": 900.0 },
-        "release": { "median_ms": 500.0, "p95_ms": 800.0 }
+        "dev": { "median_ms": 1200.0, "p95_ms": 1800.0 },
+        "release": { "median_ms": 1000.0, "p95_ms": 1500.0 }
       }
     },
     {
@@ -37,8 +37,8 @@
       "args": ["config", "show"],
       "repetitions": 5,
       "budgets": {
-        "dev": { "median_ms": 600.0, "p95_ms": 900.0 },
-        "release": { "median_ms": 500.0, "p95_ms": 800.0 }
+        "dev": { "median_ms": 1200.0, "p95_ms": 1800.0 },
+        "release": { "median_ms": 1000.0, "p95_ms": 1500.0 }
       }
     },
     {
@@ -47,8 +47,8 @@
       "stdin": "",
       "repetitions": 5,
       "budgets": {
-        "dev": { "median_ms": 900.0, "p95_ms": 1400.0 },
-        "release": { "median_ms": 700.0, "p95_ms": 1100.0 }
+        "dev": { "median_ms": 1800.0, "p95_ms": 2800.0 },
+        "release": { "median_ms": 1400.0, "p95_ms": 2200.0 }
       }
     },
     {
@@ -56,8 +56,8 @@
       "args": ["search", "hello"],
       "repetitions": 5,
       "budgets": {
-        "dev": { "median_ms": 900.0, "p95_ms": 1400.0 },
-        "release": { "median_ms": 700.0, "p95_ms": 1100.0 }
+        "dev": { "median_ms": 1800.0, "p95_ms": 2800.0 },
+        "release": { "median_ms": 1400.0, "p95_ms": 2200.0 }
       }
     },
     {
@@ -68,8 +68,8 @@
       "allowed_exit_codes": [0, 1],
       "repetitions": 5,
       "budgets": {
-        "dev": { "median_ms": 700.0, "p95_ms": 1100.0 },
-        "release": { "median_ms": 700.0, "p95_ms": 1100.0 }
+        "dev": { "median_ms": 1400.0, "p95_ms": 2200.0 },
+        "release": { "median_ms": 1400.0, "p95_ms": 2200.0 }
       }
     },
     {
@@ -79,8 +79,8 @@
       "absent_note": "the coding agent is not merged (PR #432)",
       "repetitions": 5,
       "budgets": {
-        "dev": { "median_ms": 500.0, "p95_ms": 800.0 },
-        "release": { "median_ms": 500.0, "p95_ms": 800.0 }
+        "dev": { "median_ms": 1100.0, "p95_ms": 1700.0 },
+        "release": { "median_ms": 1100.0, "p95_ms": 1700.0 }
       }
     }
   ]

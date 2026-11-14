@@ -105,6 +105,13 @@ fn the_cli_scenarios_run_and_meet_their_budgets() {
             )
         });
         let outcome = run_scenario(binary.as_path(), scenario, &|command: &mut Command| {
+            // The coverage lane gives every test process an
+            // `LLVM_PROFILE_FILE`. Thirty child processes inheriting it would
+            // write their profile data into the parent's file and truncate
+            // it, so the children are measured without instrumentation. The
+            // agent's own coverage is measured by the suites that spawn it
+            // once.
+            command.env_remove("LLVM_PROFILE_FILE");
             set_hermetic_env(command, &root).map_err(|error| error.to_string())
         })
         .unwrap_or_else(|error| panic!("the scenario `{}` failed: {error}", scenario.name));

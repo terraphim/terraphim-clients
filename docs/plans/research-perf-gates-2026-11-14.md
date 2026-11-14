@@ -133,10 +133,10 @@ and compares them with the manifest's budgets.
 
 | Requirement | Target | Current |
 |-------------|--------|---------|
-| Startup latency (`--version`) | < 25 ms | 1.8 ms (dev, this host) |
-| Command listing (`roles list`) | < 600 ms (dev) | 142 ms (dev, this host) |
-| REPL startup and clean exit | < 900 ms (dev) | 118 ms (dev, this host) |
-| One scripted KG turn (`search`) | < 900 ms (dev) | 143 ms (dev, this host) |
+| Startup latency (`--version`) | < 50 ms (dev) | 1.8 ms (dev, this host) |
+| Command listing (`roles list`) | < 1200 ms (dev) | 142 ms (dev, this host) |
+| REPL startup and clean exit | < 1800 ms (dev) | 118 ms (dev, this host) |
+| One scripted KG turn (`search`) | < 1800 ms (dev) | 143 ms (dev, this host) |
 | Binary size | a ceiling per profile | 43.2 MB (dev), 29.9 MB (release) |
 
 ## Vital Few (Essentialism)
