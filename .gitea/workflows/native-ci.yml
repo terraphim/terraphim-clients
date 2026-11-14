@@ -205,6 +205,13 @@ jobs:
       # notice when the runner has no node; the GitHub lane runs it.
       - name: pi-terraphim-learn functional test
         run: bash ./scripts/ci/pi-terraphim-learn-tests.sh
+      # #437: the agent CLI performance gate. The budgets live in
+      # docs/benchmarks/agent-cli-budgets.json and the script turns the gate
+      # on, so the ceilings are asserted here rather than only measured. One
+      # line, one program: the runner's command policy classifies the first
+      # token of the step, and a checked-in script is the shape it accepts.
+      - name: Agent CLI performance gate
+        run: bash ./scripts/ci/perf-gate.sh
       # #313: first coverage lane in the monorepo. nextest runs each test
       # binary in its own process so llvm-cov can attribute per-test
       # coverage. --workspace --all-targets mirrors the existing cargo
