@@ -201,6 +201,19 @@ pub enum InstallError {
     /// Hook already exists
     #[error("hook already exists at {0}")]
     AlreadyExists(String),
+    /// The agent has no shell hook to install: its hook is an extension
+    /// package the user installs with the agent's own tool, so this command
+    /// printed the instructions and installed nothing.
+    ///
+    /// Printing the guidance is not installing the hook. A scripted caller
+    /// that sees a successful exit concludes the extension is installed; it
+    /// is not, and the exit code is the only signal it has. Refs
+    /// terraphim-clients#517.
+    #[error(
+        "the {agent} agent's hook was not installed: it is an extension package, \
+         not a shell hook - the instructions above are the installation"
+    )]
+    ManualInstallRequired { agent: &'static str },
 }
 
 /// Install hook for the specified AI agent.
@@ -220,6 +233,12 @@ pub enum InstallError {
 ///
 /// Ok(()) if installation succeeds, Err(InstallError) otherwise.
 ///
+/// # Errors
+///
+/// [`InstallError::ManualInstallRequired`] when the agent has no shell hook
+/// to install: the guidance is printed, nothing is written, and the caller
+/// must not read the outcome as "installed". Refs terraphim-clients#517.
+///
 /// # Examples
 ///
 /// ```rust,ignore
@@ -232,9 +251,13 @@ pub async fn install_hook(agent: AgentType) -> Result<(), InstallError> {
     // explicitly on the agent rather than inferring it from `hook_script()`,
     // so a future agent without a shell hook cannot silently be routed to the
     // Pi guidance. Refs terraphim-clients#458.
+    //
+    // The guidance is printed, but nothing is installed, so the outcome is a
+    // distinct error and not a success: a scripted caller sees a non-zero
+    // exit and knows a manual step is outstanding. Refs terraphim-clients#517.
     if matches!(agent, AgentType::Pi) {
         println!("{}", pi_install_guidance());
-        return Ok(());
+        return Err(InstallError::ManualInstallRequired { agent: "pi" });
     }
 
     let hook_content = agent
@@ -511,6 +534,26 @@ mod tests {
         assert_eq!(
             err.to_string(),
             "failed to create config directory: permission denied"
+        );
+    }
+
+    /// The pi branch must not report a success it did not achieve.
+    ///
+    /// `install_hook(Pi)` prints the extension-package guidance and installs
+    /// nothing, so the outcome is a distinct error: a scripted caller that
+    /// sees exit 0 concludes the hook is installed. Refs #517.
+    #[tokio::test]
+    async fn the_pi_branch_reports_that_nothing_was_installed() {
+        let error = install_hook(AgentType::Pi)
+            .await
+            .expect_err("the pi branch installs nothing, so it must not report success");
+        assert!(
+            matches!(error, InstallError::ManualInstallRequired { agent: "pi" }),
+            "unexpected error: {error:?}"
+        );
+        assert!(
+            error.to_string().contains("was not installed"),
+            "the message must say that nothing was installed: {error}"
         );
     }
 }
