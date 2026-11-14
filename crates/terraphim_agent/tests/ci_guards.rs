@@ -398,7 +398,9 @@ mod coverage_pin_parser_tests {
 /// variable: no literal token, no `${{ secrets.* }}` expression, and no
 /// credentials.toml writing may appear in the workflow shell text. The alias
 /// must stay scoped to exactly the lanes that need it: the broad
-/// `--workspace --all-targets` lane and the coverage lane. The alias value must
+/// `--workspace --all-targets` lane and the coverage lane - the two that build
+/// the workspace and therefore resolve the private registry. The alias value
+/// must
 /// carry the HTTP authentication scheme: the Gitea sparse registry rejects a
 /// (PR #332 CI run 33980 / web run 538, job 68643); the raw-token form
 /// `CARGO_REGISTRIES_TERRAPHIM_TOKEN="$GITEA_TOKEN"` is a regression, and
@@ -527,8 +529,17 @@ fn validate_native_ci_token_aliases(text: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// The two lanes that resolve the private `terraphim` registry carry the
+/// conditional registry alias.
+///
+/// The lanes are the broad `--workspace --all-targets` lane and the coverage
+/// lane: both build the workspace, and the workspace's own dependencies
+/// (`terraphim_types`, `terraphim_config`, ...) live in the private registry,
+/// so the alias is still needed. The packaged-graph lane that used to be
+/// guarded here is gone, and the test's name said otherwise
+/// (terraphim-clients#516).
 #[test]
-fn native_ci_aliases_gitea_token_for_packaged_graph_lanes() {
+fn native_ci_aliases_gitea_token_for_the_registry_resolving_lanes() {
     let root = workspace_root();
     let workflow = root.join(".gitea/workflows/native-ci.yml");
     assert!(workflow.is_file(), "missing {}", workflow.display());
@@ -721,13 +732,42 @@ fn workspace_rust_sources() -> Vec<PathBuf> {
     let mut out = Vec::new();
     walk(&workspace_root().join("crates"), &mut out);
     // This guard file quotes the very literals it forbids, so exclude it.
+    //
+    // The exclusion is by **path**, not by file name: excluding by name would
+    // silently drop every other file called `ci_guards.rs` in the tree, and a
+    // new environment-mutation site could hide behind such a name
+    // (terraphim-clients#513).
+    let own_path = own_guard_path();
     let own_name = Path::new(file!())
         .file_name()
         .expect("guard file name")
         .to_owned();
-    out.retain(|p| p.file_name() != Some(own_name.as_os_str()));
+    out.retain(|path| {
+        let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.clone());
+        match own_path.as_deref() {
+            Some(own) => canonical != own,
+            // The guard file could not be located, so fall back to the old
+            // name-based exclusion rather than scanning the guard itself.
+            None => path.file_name() != Some(own_name.as_os_str()),
+        }
+    });
     out.sort();
     out
+}
+
+/// The absolute path of this guard file.
+///
+/// `file!()` is relative to the package root in some cargo invocations and to
+/// the workspace root in others, so the file name is combined with the
+/// package's `tests` directory rather than trusting it.
+fn own_guard_path() -> Option<PathBuf> {
+    let name = Path::new(file!()).file_name()?;
+    std::fs::canonicalize(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join(name),
+    )
+    .ok()
 }
 
 /// Every `FilePicker::new` call must refuse fff-search's mmap content cache.
@@ -1310,11 +1350,89 @@ fn no_new_environment_mutation_sites() {
     );
 }
 
+/// Whether a dependency table lists `dependency`.
+///
+/// A dependency can be listed under another name (`tutils = { package =
+/// "terraphim_test_utils", ... }`), so the `package` key is checked as well:
+/// the rename is a legal way to re-add the dependency, and the manifest rule
+/// must see it (terraphim-clients#513).
+fn table_mentions_dependency(table: &toml::Table, dependency: &str) -> bool {
+    table.iter().any(|(key, value)| {
+        key == dependency
+            || value
+                .as_table()
+                .and_then(|spec| spec.get("package"))
+                .and_then(|package| package.as_str())
+                == Some(dependency)
+    })
+}
+
+/// Every dependency table of a manifest, including the target-specific ones.
+///
+/// `[target.'cfg(unix)'.dev-dependencies]` is a legal place to re-add a
+/// dependency, so the target tables are scanned as well
+/// (terraphim-clients#513).
+fn dependency_tables(parsed: &toml::Table) -> Vec<&toml::Table> {
+    const SECTIONS: [&str; 3] = ["dependencies", "dev-dependencies", "build-dependencies"];
+
+    let mut tables = Vec::new();
+    for section in SECTIONS {
+        if let Some(table) = parsed.get(section).and_then(|value| value.as_table()) {
+            tables.push(table);
+        }
+    }
+    if let Some(targets) = parsed.get("target").and_then(|value| value.as_table()) {
+        for (_, target) in targets.iter() {
+            let Some(target) = target.as_table() else {
+                continue;
+            };
+            for section in SECTIONS {
+                if let Some(table) = target.get(section).and_then(|value| value.as_table()) {
+                    tables.push(table);
+                }
+            }
+        }
+    }
+    tables
+}
+
+/// Whether a manifest mentions `dependency` anywhere it can be declared.
+///
+/// The workspace manifest's `[workspace.dependencies]` counts too: a member
+/// can inherit the dependency from there (terraphim-clients#513).
+fn manifest_mentions_dependency(text: &str, dependency: &str) -> bool {
+    let Ok(parsed) = text.parse::<toml::Table>() else {
+        return false;
+    };
+    if dependency_tables(&parsed)
+        .iter()
+        .any(|table| table_mentions_dependency(table, dependency))
+    {
+        return true;
+    }
+    parsed
+        .get("workspace")
+        .and_then(|workspace| workspace.as_table())
+        .and_then(|workspace| workspace.get("dependencies"))
+        .and_then(|dependencies| dependencies.as_table())
+        .is_some_and(|table| table_mentions_dependency(table, dependency))
+}
+
 /// Member manifests that list `dependency` (dev-dependencies included).
 fn member_manifests_depending_on(dependency: &str) -> Vec<String> {
     let root = workspace_root();
     let mut out = Vec::new();
+
+    // The workspace manifest can carry the dependency for its members.
+    let workspace_manifest = root.join("Cargo.toml");
+    if let Ok(text) = std::fs::read_to_string(&workspace_manifest)
+        && manifest_mentions_dependency(&text, dependency)
+    {
+        out.push(workspace_manifest.to_string_lossy().replace('\\', "/"));
+    }
+
     let Ok(members) = std::fs::read_dir(root.join("crates")) else {
+        out.sort();
         return out;
     };
     for member in members.flatten() {
@@ -1325,18 +1443,7 @@ fn member_manifests_depending_on(dependency: &str) -> Vec<String> {
         let Ok(text) = std::fs::read_to_string(&manifest) else {
             continue;
         };
-        let Ok(parsed) = text.parse::<toml::Table>() else {
-            continue;
-        };
-        let mentions = ["dependencies", "dev-dependencies", "build-dependencies"]
-            .iter()
-            .any(|section| {
-                parsed
-                    .get(*section)
-                    .and_then(|value| value.as_table())
-                    .is_some_and(|table| table.contains_key(dependency))
-            });
-        if mentions {
+        if manifest_mentions_dependency(&text, dependency) {
             out.push(manifest.to_string_lossy().replace('\\', "/"));
         }
     }
@@ -1344,9 +1451,464 @@ fn member_manifests_depending_on(dependency: &str) -> Vec<String> {
     out
 }
 
+/// The manifest rule must see every legal way to re-add a dependency
+/// (terraphim-clients#513).
+///
+/// The dependency can be renamed (`tutils = { package = "..." }`), declared
+/// for a target only (`[target.'cfg(unix)'.dev-dependencies]`), or inherited
+/// from the workspace manifest. Each of those is a way to re-open the pattern
+/// the manifest rule exists to stop.
+#[test]
+fn the_manifest_rule_sees_every_way_to_re_add_a_dependency() {
+    let plain = r#"
+[dev-dependencies]
+terraphim_test_utils = { version = "1.20.3", registry = "terraphim" }
+"#;
+    assert!(
+        manifest_mentions_dependency(plain, "terraphim_test_utils"),
+        "a plain dev-dependency must be detected"
+    );
+
+    let renamed = r#"
+[dev-dependencies]
+tutils = { package = "terraphim_test_utils", version = "1.20.3", registry = "terraphim" }
+"#;
+    assert!(
+        manifest_mentions_dependency(renamed, "terraphim_test_utils"),
+        "a renamed dependency must be detected"
+    );
+
+    let target_specific = r#"
+[target.'cfg(unix)'.dev-dependencies]
+terraphim_test_utils = { version = "1.20.3", registry = "terraphim" }
+"#;
+    assert!(
+        manifest_mentions_dependency(target_specific, "terraphim_test_utils"),
+        "a target-specific dependency must be detected"
+    );
+
+    let from_the_workspace = r#"
+[workspace.dependencies]
+terraphim_test_utils = { version = "1.20.3", registry = "terraphim" }
+"#;
+    assert!(
+        manifest_mentions_dependency(from_the_workspace, "terraphim_test_utils"),
+        "a workspace-level dependency must be detected"
+    );
+
+    let unrelated = r#"
+[dev-dependencies]
+serde = "1"
+"#;
+    assert!(
+        !manifest_mentions_dependency(unrelated, "terraphim_test_utils"),
+        "an unrelated manifest must not be reported"
+    );
+}
+
+/// The publish workflow must stay inside the runner's command policy.
+///
+/// The terraphim-native runner inspects the literal first token of every
+/// `run:` line and rejects anything that is not on its allowlist; a multi-line
+/// block - with comments, shell conditionals or heredocs - is rejected before
+/// the first step runs, which is why the publish workflow could never publish
+/// anything (terraphim-clients#400). The policy classifies the workflow's
+/// text, not a script's contents, so the workflow calls a checked-in script
+/// with a single line - the shape the native-ci lanes use.
+const RUNNER_ALLOWED_PROGRAMS: [&str; 3] = ["bash", "cargo", "test"];
+
+/// Validate the publish workflow's commands against the runner's policy.
+///
+/// Returns `Err` with a diagnostic on the first violation.
+fn validate_publish_workflow_commands(text: &str) -> Result<(), String> {
+    let Ok(workflow) = serde_yaml::from_str::<serde_yaml::Value>(text) else {
+        return Err("the publish workflow is not valid YAML".to_string());
+    };
+    let Some(steps) = workflow
+        .get("jobs")
+        .and_then(|jobs| jobs.get("publish"))
+        .and_then(|job| job.get("steps"))
+        .and_then(|steps| steps.as_sequence())
+    else {
+        return Err("the publish workflow has no jobs.publish.steps".to_string());
+    };
+
+    for step in steps {
+        let name = step
+            .get("name")
+            .and_then(|name| name.as_str())
+            .unwrap_or("<unnamed>");
+        let Some(run) = step.get("run").and_then(|run| run.as_str()) else {
+            continue;
+        };
+
+        if run.contains('\n') {
+            return Err(format!(
+                "publish-registry.yml step '{name}' has a multi-line run: the runner's \
+                 policy classifies the first token of the line and rejects the block \
+                 before any step runs (terraphim-clients#400). Move the shell into a \
+                 checked-in script and call it with one line."
+            ));
+        }
+        if run.contains("${{") {
+            return Err(format!(
+                "publish-registry.yml step '{name}' embeds a ${{{{ ... }}}} expression in \
+                 its run: an expression is classified as a program. Pass it through the \
+                 step's env: instead."
+            ));
+        }
+        let program = run.split_whitespace().next().unwrap_or_default();
+        if !RUNNER_ALLOWED_PROGRAMS.contains(&program) {
+            return Err(format!(
+                "publish-registry.yml step '{name}' runs '{program}', which is not on the \
+                 runner's allowlist ({:?}). Allowed: cargo, repo scripts (bash) and \
+                 test (terraphim-clients#400).",
+                RUNNER_ALLOWED_PROGRAMS
+            ));
+        }
+        if program == "bash" {
+            let script = run.split_whitespace().nth(1).unwrap_or_default();
+            if script.starts_with('-') || script.is_empty() {
+                return Err(format!(
+                    "publish-registry.yml step '{name}' calls bash without naming a script"
+                ));
+            }
+            if !workspace_root().join(script).is_file() {
+                return Err(format!(
+                    "publish-registry.yml step '{name}' calls '{script}', which is not a \
+                     checked-in script of this repository"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The publish workflow must be able to run on the native runner.
+#[test]
+fn publish_workflow_uses_only_policy_compatible_commands() {
+    let workflow = workspace_root().join(".gitea/workflows/publish-registry.yml");
+    let text = std::fs::read_to_string(&workflow).expect("read publish-registry.yml");
+
+    if let Err(diagnostic) = validate_publish_workflow_commands(&text) {
+        panic!("{diagnostic}");
+    }
+}
+
+/// The publish script must refuse what the workflow refuses.
+///
+/// The script is the whole publish path now, so its refusals are the workflow's
+/// refusals: no credential, no crate, a crate terraphim-ai owns, and a crate
+/// that is not in the workspace.
+#[test]
+fn the_publish_script_refuses_what_the_workflow_refused() {
+    use std::process::Command;
+
+    let script = workspace_root().join("scripts/release/publish-registry.sh");
+    assert!(script.is_file(), "missing {}", script.display());
+
+    // A scratch CARGO_HOME, so the script's credential write cannot touch the
+    // developer's own cargo configuration.
+    let scratch = tempfile::tempdir().expect("tempdir");
+    let cargo_home = scratch.path().to_string_lossy().to_string();
+
+    let run = |token: Option<&str>, crate_name: Option<&str>| {
+        let mut command = Command::new("bash");
+        command
+            .arg(script.to_str().expect("utf8 path"))
+            .env("CARGO_HOME", &cargo_home)
+            .env_remove("CARGO_REGISTRIES_TERRAPHIM_TOKEN")
+            .env_remove("CRATE")
+            .env_remove("PUBLISH_DRY_RUN");
+        if let Some(token) = token {
+            command.env("CARGO_REGISTRIES_TERRAPHIM_TOKEN", token);
+        }
+        if let Some(crate_name) = crate_name {
+            command.env("CRATE", crate_name);
+        }
+        let output = command.output().expect("run the publish script");
+        (
+            output.status.code().unwrap_or(-1),
+            String::from_utf8_lossy(&output.stderr).to_string(),
+        )
+    };
+
+    let (code, stderr) = run(None, Some("terraphim_sessions"));
+    assert_eq!(code, 2, "a missing credential must exit 2: {stderr}");
+    assert!(
+        stderr.contains("CARGO_REGISTRIES_TERRAPHIM_TOKEN"),
+        "the error must name the missing credential, got: {stderr}"
+    );
+
+    let (code, stderr) = run(Some("Bearer fake"), None);
+    assert_eq!(code, 2, "a missing crate name must exit 2: {stderr}");
+    assert!(
+        stderr.contains("CRATE"),
+        "the error must name the missing crate, got: {stderr}"
+    );
+
+    let (code, stderr) = run(Some("Bearer fake"), Some("terraphim_lsp"));
+    assert_eq!(code, 1, "the owned crate must be refused: {stderr}");
+    assert!(
+        stderr.contains("terraphim-ai owns terraphim_lsp"),
+        "the error must say who owns it, got: {stderr}"
+    );
+
+    let (code, stderr) = run(Some("Bearer fake"), Some("no_such_crate"));
+    assert_eq!(
+        code, 1,
+        "a crate that is not in the workspace must be refused: {stderr}"
+    );
+    assert!(
+        stderr.contains("crates/no_such_crate"),
+        "the error must name the crate directory, got: {stderr}"
+    );
+}
+
+/// The policy rule must actually reject the shapes the runner rejects.
+#[test]
+fn the_publish_workflow_policy_check_rejects_the_runner_rejected_shapes() {
+    // A comment line in a `run:` block is what the runner named as the
+    // rejected program (run 40470).
+    let with_comment = r#"
+jobs:
+  publish:
+    steps:
+      - name: Publish
+        run: |
+          # Find the crate directory
+          cargo publish -p x
+"#;
+    assert!(
+        validate_publish_workflow_commands(with_comment).is_err(),
+        "a multi-line run block must be rejected"
+    );
+
+    let with_expression = r#"
+jobs:
+  publish:
+    steps:
+      - name: Publish
+        run: cargo publish -p "${{ inputs.crate }}"
+"#;
+    assert!(
+        validate_publish_workflow_commands(with_expression).is_err(),
+        "an expression in a run line must be rejected"
+    );
+
+    let with_unknown_program = r#"
+jobs:
+  publish:
+    steps:
+      - name: Publish
+        run: find crates -name Cargo.toml
+"#;
+    assert!(
+        validate_publish_workflow_commands(with_unknown_program).is_err(),
+        "a program off the allowlist must be rejected"
+    );
+
+    let with_missing_script = r#"
+jobs:
+  publish:
+    steps:
+      - name: Publish
+        run: bash ./scripts/release/not-there.sh
+"#;
+    assert!(
+        validate_publish_workflow_commands(with_missing_script).is_err(),
+        "a script that is not checked in must be rejected"
+    );
+
+    let compliant = r#"
+jobs:
+  publish:
+    steps:
+      - name: Publish
+        run: bash ./scripts/release/publish-registry.sh
+"#;
+    assert!(
+        validate_publish_workflow_commands(compliant).is_ok(),
+        "a single bash line naming a checked-in script must pass"
+    );
+}
+
+/// A file that still holds `unsafe` blocks, and how many.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct UnsafeSite {
+    file: &'static str,
+    count: usize,
+}
+
+/// The `unsafe` blocks the integration-test targets still need.
+///
+/// The library and binary targets are compiler-enforced
+/// (`#![forbid(unsafe_code)]`, terraphim-clients#447), so only the test crates
+/// - which are separate compilation units - can still hold `unsafe`.
+///
+/// Every entry is a known exception, and the list shrinks with the remediation
+/// train.
+///
+/// Refs #447, #310.
+const KNOWN_UNSAFE_SITES: &[UnsafeSite] = &[
+    UnsafeSite {
+        // The libc FFI the test server helper needs: one `unsafe extern`
+        // block and six `unsafe` expressions.
+        file: "crates/terraphim_agent/tests/support/server_process.rs",
+        count: 7,
+    },
+    UnsafeSite {
+        // The fork regression needs POSIX FFI in its separate integration-test
+        // crate: one `unsafe extern` block and three `unsafe` expressions.
+        file: "crates/terraphim_agent/tests/transaction_lock.rs",
+        count: 4,
+    },
+    UnsafeSite {
+        file: "crates/terraphim_update/tests/managed_mode_home_env.rs",
+        count: 2,
+    },
+];
+
+/// Count the `unsafe` items in a file.
+///
+/// An item is `unsafe` followed by whitespace and then `{`, `fn`, `impl`,
+/// `trait` or `extern`. The word in prose and in the crate attribute
+/// `#![forbid(unsafe_code)]` is not an item.
+fn count_unsafe_items(text: &str) -> usize {
+    let mut count = 0usize;
+    let mut index = 0usize;
+    while let Some(found) = text[index..].find("unsafe") {
+        let start = index + found;
+        index = start + "unsafe".len();
+
+        // The word must start a token.
+        if start > 0 {
+            let previous = text.as_bytes()[start - 1];
+            if previous.is_ascii_alphanumeric() || previous == b'_' {
+                continue;
+            }
+        }
+        let rest = text[index..].trim_start();
+        if rest.starts_with('{')
+            || rest.starts_with("fn")
+            || rest.starts_with("impl")
+            || rest.starts_with("trait")
+            || rest.starts_with("extern")
+        {
+            count += 1;
+        }
+    }
+    count
+}
+
+/// The counter must see the items and ignore the prose.
+///
+/// The crate attribute `#![forbid(unsafe_code)]` and the word in a comment are
+/// not unsafe items; an identifier that merely starts with "unsafe" is not
+/// one either.
+#[test]
+fn the_unsafe_counter_counts_items_and_ignores_prose() {
+    assert_eq!(count_unsafe_items("unsafe { let x = 1; }"), 1);
+    assert_eq!(count_unsafe_items("unsafe fn f() {}"), 1);
+    assert_eq!(count_unsafe_items("unsafe impl Foo {}"), 1);
+    assert_eq!(count_unsafe_items("unsafe extern \"C\" {}"), 1);
+    assert_eq!(count_unsafe_items("#![forbid(unsafe_code)]"), 0);
+    assert_eq!(count_unsafe_items("// no unsafe in this file"), 0);
+    assert_eq!(count_unsafe_items("let unsafe_value = 1;"), 0);
+    assert_eq!(count_unsafe_items("let x = unsafe { 1 };"), 1);
+}
+
+/// The `unsafe` items in a file, if it holds any.
+fn collect_unsafe_sites(file: &Path, root: &Path) -> Option<(String, usize)> {
+    let Ok(text) = std::fs::read_to_string(file) else {
+        return None;
+    };
+    let count = count_unsafe_items(&text);
+    if count == 0 {
+        return None;
+    }
+    let relative = file
+        .strip_prefix(root)
+        .unwrap_or(file)
+        .to_string_lossy()
+        .replace('\\', "/");
+    Some((relative, count))
+}
+
+/// No new `unsafe` may appear in the integration-test targets.
+///
+/// The library and binary targets cannot grow one: the compiler refuses it
+/// (`#![forbid(unsafe_code)]`). The test crates can, so this arm keeps their
+/// exceptions visible and small.
+///
+/// Refs #447, #310.
+#[test]
+fn no_new_unsafe_sites() {
+    let root = workspace_root();
+    let files = workspace_rust_sources();
+
+    let mut found: Vec<(String, usize)> = Vec::new();
+    for file in &files {
+        if let Some(site) = collect_unsafe_sites(file, &root) {
+            found.push(site);
+        }
+    }
+    found.sort();
+
+    let expected: Vec<(String, usize)> = KNOWN_UNSAFE_SITES
+        .iter()
+        .map(|site| (site.file.to_string(), site.count))
+        .collect();
+
+    assert_eq!(
+        found, expected,
+        "the unsafe inventory under crates/ must match the allow-list exactly. \
+         A new `unsafe` item needs an entry here (and a reason); an item that \
+         disappeared needs its entry removed. Refs #447, #310."
+    );
+}
+
 /// The scanner must find a site that is not on the allow-list.
 ///
 /// Without this, the guard could pass by finding nothing at all.
+/// The guard excludes **itself**, not every file that happens to share its
+/// name (terraphim-clients#513).
+///
+/// The exclusion used to be by file name, so any file called `ci_guards.rs`
+/// anywhere under `crates/` was dropped from the scan - and a new
+/// environment-mutation site could hide behind that name.
+#[test]
+fn the_guard_excludes_only_its_own_file() {
+    let scanned = workspace_rust_sources();
+    let own = own_guard_path().expect("the guard file must be locatable");
+    assert!(
+        !scanned.iter().any(|path| {
+            std::fs::canonicalize(path)
+                .ok()
+                .as_deref()
+                .is_some_and(|path| path == own)
+        }),
+        "the guard file must be excluded from its own scan"
+    );
+
+    // A different file with the same name must still be scanned.
+    let temp = tempfile::tempdir().expect("tempdir");
+    let probe = temp.path().join("ci_guards.rs");
+    std::fs::write(
+        &probe,
+        "fn demo() {\n    unsafe {\n        std::env::set_var(\"HOME\", \"/tmp\");\n    }\n}\n",
+    )
+    .expect("write probe file");
+
+    let found = collect_env_mutation_sites(&probe, temp.path());
+
+    assert_eq!(
+        found,
+        vec![("ci_guards.rs".to_string(), "env::set_var(", 1usize)],
+        "a file with the guard's name must still be scanned"
+    );
+}
+
 #[test]
 fn env_mutation_scanner_reports_an_unlisted_site() {
     // The guard file quotes the forbidden literals, so the *walker* must leave

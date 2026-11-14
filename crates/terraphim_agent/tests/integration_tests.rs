@@ -736,12 +736,24 @@ async fn test_full_feature_matrix() -> Result<()> {
     // Test matrix: [Mode] x [Command] x [Options]
     let modes = vec![("offline", None::<String>)];
 
-    // Add server mode if we can start a server
-    let server_info = if let Ok(Some((server, url))) = start_test_server().await {
-        Some((server, url))
-    } else {
-        println!("⚠ Skipping server mode tests - could not start server");
-        None
+    // Add server mode if we can start a server.
+    //
+    // The two "no server" cases must not be conflated: `Ok(None)` means this
+    // machine has no server binary and the suite skips with the shared
+    // notice, while `Err(_)` means a binary *was* present and the server
+    // failed to start or to become ready - a real failure that must fail the
+    // test (terraphim-clients#466, #513).
+    let server_info = match start_test_server().await {
+        Ok(Some((server, url))) => Some((server, url)),
+        Ok(None) => {
+            println!("⚠ Skipping server mode tests - no terraphim_server binary");
+            None
+        }
+        Err(error) => {
+            return Err(error.context(
+                "the terraphim_server binary is present but the server did not start;                  the suite must not report a skip",
+            ));
+        }
     };
 
     for (mode_name, _) in modes {

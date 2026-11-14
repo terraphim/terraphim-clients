@@ -244,3 +244,89 @@ fn project_thesaurus_still_takes_precedence_over_the_user_role() {
         "the user role KG must not override a project thesaurus, got {concepts:?}"
     );
 }
+
+/// A thesaurus file for **another** role must not replace the requested role's
+/// vocabulary (terraphim-clients#515).
+///
+/// The filesystem heuristic used to take the first `*_thesaurus.json` it
+/// found, whatever role it belonged to, so `--role code-reviewer` silently
+/// loaded an unrelated file and the role's own concepts never appeared.
+#[test]
+fn a_thesaurus_file_for_another_role_does_not_replace_the_requested_role() {
+    let fixture = Fixture::new();
+    let kg = write_code_reviewer_kg(&fixture);
+    fixture.write_user_role(&kg);
+    fixture.write_repo_file();
+
+    // A thesaurus for an unrelated role, in the directory the heuristic
+    // scans. It must not be loaded for the code-reviewer role.
+    std::fs::write(
+        fixture.repo.join("unrelated_thesaurus.json"),
+        r#"{
+  "name": "unrelated",
+  "data": {
+    "unrelated-sentinel": { "id": 1, "nterm": "unrelated sentinel" }
+  }
+}"#,
+    )
+    .expect("write unrelated thesaurus");
+
+    let (output, json) = fixture.run_json("code-reviewer", "rollback plan");
+
+    assert!(
+        output.status.success(),
+        "role search should succeed\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+
+    let concepts = concept_names(&json);
+    assert!(
+        concepts.iter().any(|name| name.contains("rollback")),
+        "the requested role's vocabulary must be used, got {concepts:?}"
+    );
+    assert!(
+        !concepts.iter().any(|name| name.contains("unrelated")),
+        "the unrelated role's vocabulary must not be loaded, got {concepts:?}"
+    );
+}
+
+/// A thesaurus file whose name **does** mention the role is still found by
+/// the filesystem heuristic (terraphim-clients#515).
+#[test]
+fn a_role_scoped_thesaurus_file_is_still_found() {
+    let fixture = Fixture::new();
+    let kg = write_code_reviewer_kg(&fixture);
+    fixture.write_user_role(&kg);
+    fixture.write_repo_file();
+
+    std::fs::write(
+        fixture.repo.join("code_reviewer_thesaurus.json"),
+        r#"{
+  "name": "code reviewer",
+  "data": {
+    "review-sentinel": { "id": 1, "nterm": "review sentinel" }
+  }
+}"#,
+    )
+    .expect("write role-scoped thesaurus");
+    std::fs::write(
+        fixture.repo.join("review-sentinel.txt"),
+        "review sentinel is the documented marker\n",
+    )
+    .expect("write sentinel text");
+
+    let (output, json) = fixture.run_json("code-reviewer", "review-sentinel");
+
+    assert!(
+        output.status.success(),
+        "the role-scoped file must be found\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+    let concepts = concept_names(&json);
+    assert!(
+        concepts.iter().any(|name| name.contains("review-sentinel")),
+        "expected the role-scoped thesaurus concept, got {concepts:?}"
+    );
+}

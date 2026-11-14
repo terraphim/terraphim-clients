@@ -1031,6 +1031,8 @@ pub fn capture_failed_command(
 
     // Determine storage location
     let storage_dir = config.storage_location();
+    let _transaction = crate::agent_store::lock_learning_directory(&storage_dir)
+        .map_err(|error| LearningError::StorageError(format!("{error:#}")))?;
 
     // Create storage directory if it doesn't exist
     fs::create_dir_all(&storage_dir)
@@ -1143,6 +1145,8 @@ pub fn capture_correction(
     let redacted_context = redact_secrets(context_description);
 
     let storage_dir = config.storage_location();
+    let _transaction = crate::agent_store::lock_learning_directory(&storage_dir)
+        .map_err(|error| LearningError::StorageError(format!("{error:#}")))?;
     fs::create_dir_all(&storage_dir)
         .map_err(|e| LearningError::StorageError(format!("Cannot create storage dir: {}", e)))?;
 
@@ -1304,6 +1308,8 @@ pub fn correct_learning(
         return Err(LearningError::NotFound(id.to_string()));
     }
 
+    let _transaction = crate::agent_store::lock_learning_directory(storage_dir)
+        .map_err(|error| LearningError::StorageError(format!("{error:#}")))?;
     let entries = fs::read_dir(storage_dir)?;
 
     for entry in entries.flatten() {

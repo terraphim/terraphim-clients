@@ -6,17 +6,32 @@
 
 mod support;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use support::binary::resolve_server_binary;
+
+/// Write a fake server binary that this process can actually run.
+///
+/// The resolution rules require the executable bit: a regular file that
+/// cannot be run is a broken artifact, not a server
+/// (terraphim-clients#513).
+fn write_runnable_binary(path: &Path) {
+    std::fs::write(path, "#!/bin/sh\n").expect("write fake binary");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
+            .expect("make the fake binary executable");
+    }
+}
 
 #[test]
 fn an_environment_value_that_points_at_a_file_wins() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let binary = tmp.path().join("terraphim_server");
-    std::fs::write(&binary, "#!/bin/sh\n").expect("write fake binary");
+    write_runnable_binary(&binary);
     let fallback = tmp.path().join("target/debug/terraphim_server");
     std::fs::create_dir_all(fallback.parent().expect("parent")).expect("create fallback dir");
-    std::fs::write(&fallback, "#!/bin/sh\n").expect("write fake fallback");
+    write_runnable_binary(&fallback);
 
     let resolved = resolve_server_binary(Some(binary.to_str().expect("utf8 path")), &fallback);
 
@@ -27,7 +42,7 @@ fn an_environment_value_that_points_at_a_file_wins() {
 fn the_fallback_is_used_when_no_environment_value_is_set() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let fallback = tmp.path().join("terraphim_server");
-    std::fs::write(&fallback, "#!/bin/sh\n").expect("write fake fallback");
+    write_runnable_binary(&fallback);
 
     let resolved = resolve_server_binary(None, &fallback);
 
@@ -39,7 +54,7 @@ fn an_environment_value_that_points_at_a_missing_file_is_absent() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let missing = tmp.path().join("not-installed");
     let fallback = tmp.path().join("terraphim_server");
-    std::fs::write(&fallback, "#!/bin/sh\n").expect("write fake fallback");
+    write_runnable_binary(&fallback);
 
     // A misconfigured environment value must not silently fall back to a
     // different binary; the test skips instead.
@@ -73,11 +88,76 @@ fn a_directory_is_not_a_usable_binary() {
 fn the_resolved_path_is_usable_as_a_command() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let binary = tmp.path().join("terraphim_server");
-    std::fs::write(&binary, "#!/bin/sh\n").expect("write fake binary");
+    write_runnable_binary(&binary);
 
     let resolved: PathBuf =
         resolve_server_binary(Some(binary.to_str().expect("utf8 path")), &binary)
             .expect("binary resolves");
 
     assert!(resolved.is_file());
+}
+
+/// An environment value that is set but empty counts as *unset*.
+///
+/// Setting a variable to the empty string is how a CI matrix usually spells
+/// "not configured"; it must not silently skip the suite when a usable binary
+/// is available (terraphim-clients#513).
+#[test]
+fn an_empty_environment_value_counts_as_unset() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let fallback = tmp.path().join("terraphim_server");
+    write_runnable_binary(&fallback);
+
+    let resolved = resolve_server_binary(Some(""), &fallback);
+
+    assert_eq!(
+        resolved,
+        Some(fallback),
+        "an empty value must fall back, not skip the suite"
+    );
+}
+
+/// A value that is only whitespace counts as unset too.
+#[test]
+fn a_whitespace_environment_value_counts_as_unset() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let fallback = tmp.path().join("terraphim_server");
+    write_runnable_binary(&fallback);
+
+    let resolved = resolve_server_binary(Some("   \t"), &fallback);
+
+    assert_eq!(resolved, Some(fallback));
+}
+
+/// A file that cannot be run is not a server.
+///
+/// A stale artifact left behind by an interrupted build is a regular file,
+/// so accepting it would turn a broken local artifact into an opaque test
+/// failure (terraphim-clients#513).
+#[test]
+fn a_file_that_is_not_executable_is_not_a_server() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let not_executable = tmp.path().join("terraphim_server");
+    std::fs::write(&not_executable, "#!/bin/sh\n").expect("write fake binary");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&not_executable, std::fs::Permissions::from_mode(0o644))
+            .expect("remove the executable bit");
+    }
+
+    let fallback = tmp.path().join("target/debug/terraphim_server");
+    std::fs::create_dir_all(fallback.parent().expect("parent")).expect("create fallback dir");
+    write_runnable_binary(&fallback);
+
+    assert_eq!(
+        resolve_server_binary(Some(not_executable.to_str().expect("utf8 path")), &fallback),
+        None,
+        "a non-executable file must not be accepted as a server"
+    );
+    assert_eq!(
+        resolve_server_binary(None, &not_executable),
+        None,
+        "a non-executable fallback must not be accepted as a server"
+    );
 }

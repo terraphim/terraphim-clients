@@ -3,7 +3,7 @@
 //! Parses Aider's `.aider.chat.history.md` files into Terraphim Session objects.
 //! Leverages `terraphim-markdown-parser` for heading extraction and AST parsing.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::connector::{ConnectorStatus, ImportOptions, SessionConnector};
 use crate::model::{Message, MessageRole, Session, SessionMetadata};
@@ -66,9 +66,21 @@ impl SessionConnector for AiderConnector {
     }
 
     fn default_path(&self) -> Option<PathBuf> {
-        // Aider stores files in individual project directories
-        // We use the current working directory as a starting point
-        std::env::current_dir().ok()
+        // Aider stores its history in the project directory, so there is no
+        // global location to read: the current directory is the only candidate.
+        //
+        // It is only a candidate when it is inside the user's HOME. The other
+        // connectors read a HOME-derived location (`~/.claude/projects`,
+        // `~/.codex/sessions`, ...), and an isolated run - HOME pointed at a
+        // temporary directory - must not import sessions from wherever it was
+        // launched (terraphim-clients#397). A caller that knows better passes
+        // the directory explicitly through `ImportOptions::path`.
+        let cwd = std::env::current_dir().ok()?;
+        let home = dirs::home_dir()?;
+        if !is_inside_home(&cwd, &home) {
+            return None;
+        }
+        Some(cwd)
     }
 
     async fn import(&self, options: &ImportOptions) -> Result<Vec<Session>> {
@@ -100,6 +112,22 @@ impl SessionConnector for AiderConnector {
         crate::redaction::redact_sessions(&mut sessions);
         Ok(sessions)
     }
+}
+
+/// Whether a directory is inside the user's home directory.
+///
+/// The Aider connector's only candidate location is the current directory
+/// (Aider writes its history into the project), so the scan is allowed only
+/// when that directory is inside HOME: an isolated run - HOME pointed at a
+/// temporary directory - must not import sessions from wherever it was launched
+/// (terraphim-clients#397).
+fn is_inside_home(cwd: &Path, home: &Path) -> bool {
+    // The comparison is canonical: the current directory is already canonical,
+    // but HOME can be a symlink, and a lexical comparison would treat
+    // "/home/user/../elsewhere" as inside HOME.
+    let canonical_home = std::fs::canonicalize(home).unwrap_or_else(|_| home.to_path_buf());
+    let canonical_cwd = std::fs::canonicalize(cwd).unwrap_or_else(|_| cwd.to_path_buf());
+    canonical_cwd.starts_with(&canonical_home)
 }
 
 impl AiderConnector {
@@ -499,6 +527,43 @@ mod tests {
             count_aider_history_files(dir.path()),
             0,
             "a file below the depth cap must not be counted"
+        );
+    }
+
+    /// The Aider connector may only scan a directory inside HOME
+    /// (terraphim-clients#397).
+    ///
+    /// The rule is a pure function of the two paths, so it can be asserted
+    /// without touching the process environment (mutating it is `unsafe`).
+    #[test]
+    fn the_cwd_is_only_scannable_inside_home() {
+        // An outer directory so that the "leaves HOME" case can be created
+        // without writing outside the test's own tree.
+        let outer = tempfile::tempdir().expect("tempdir");
+        let home = outer.path().join("home");
+        let project = home.join("code/project");
+        std::fs::create_dir_all(&project).expect("create project dir");
+        let elsewhere = outer.path().join("elsewhere");
+        std::fs::create_dir_all(&elsewhere).expect("create elsewhere dir");
+
+        assert!(
+            is_inside_home(&project, &home),
+            "a project inside HOME must stay scannable"
+        );
+        assert!(
+            is_inside_home(&home, &home),
+            "HOME itself must stay scannable"
+        );
+        assert!(
+            !is_inside_home(&elsewhere, &home),
+            "a directory outside HOME must not be scanned"
+        );
+
+        // A path that leaves HOME again is outside it.
+        let leaving = home.join("../elsewhere");
+        assert!(
+            !is_inside_home(&leaving, &home),
+            "a path that leaves HOME must not be scanned"
         );
     }
 

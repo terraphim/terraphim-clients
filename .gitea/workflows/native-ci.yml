@@ -142,9 +142,15 @@ jobs:
       # the workflow text; the alias stays scoped to exactly the lanes that
       # need it, guarded by
       # ci_guards.rs::native_ci_aliases_gitea_token_for_packaged_graph_lanes.
+      # TERRAPHIM_STRICT_TOOLCHAIN=1: this lane runs the ci_guards binary too
+      # (it is part of --all-targets), and the pinned tools are installed above
+      # into the very CARGO_HOME/bin this lane puts first on PATH. The
+      # local-vs-pin drift check must therefore be fatal here as well: leaving
+      # it report-only meant the drift could reach main unnoticed, because the
+      # only strict lane was a focused one (Refs #497, #500, #513).
       - run: |
           test -z "$GITEA_TOKEN" || export CARGO_REGISTRIES_TERRAPHIM_TOKEN="Bearer $GITEA_TOKEN"
-          RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER="" PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH" TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo test --workspace --all-targets --no-fail-fast
+          RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER="" PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH" TERRAPHIM_STRICT_TOOLCHAIN=1 TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo test --workspace --all-targets --no-fail-fast
       # #248: focused strict-manifest/integrity rollback attribution. Python
       # workflow contracts run on GitHub because the native runner command
       # policy allows cargo and repo scripts, not arbitrary Python commands.
@@ -188,9 +194,11 @@ jobs:
       # cargo-nextest directly. Scope the same install path to this lane.
       # TERRAPHIM_STRICT_TOOLCHAIN=1: this lane has the pinned toolchain first
       # on PATH, so the local-vs-pin drift check must be fatal here. Elsewhere
-      # (developer machines, and the workspace lane whose PATH does not carry
-      # the pinned installs) the same drift is reported, not fatal -- it is a
-      # property of the machine, not of the repository. Refs #497.
+      # (developer machines, whose toolchain is not the pinned one) the same
+      # drift is reported, not fatal -- it is a property of the machine, not
+      # of the repository. The workspace lane above is strict too, because it
+      # runs this guard as well and carries the same pinned installs.
+      # Refs #497, #500, #513.
       - run: RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER="" TERRAPHIM_STRICT_TOOLCHAIN=1 PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH" cargo test -p terraphim_agent --test ci_guards -- --nocapture
       # #467: the pi-terraphim-learn plugin package is JavaScript, so the
       # workspace cargo tests never exercised it. The wrapper skips with a

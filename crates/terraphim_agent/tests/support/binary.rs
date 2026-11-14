@@ -45,24 +45,52 @@ pub fn server_binary() -> String {
         .to_string()
 }
 
+/// Whether a path is a file this process can run.
+///
+/// A stale artifact left behind by an interrupted build is a regular file, so
+/// `is_file` alone would accept a truncated server and turn a broken local
+/// artifact into an opaque test failure (terraphim-clients#513). The
+/// executable bit is required on Unix.
+pub fn is_usable_binary(path: &Path) -> bool {
+    if !path.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::metadata(path)
+            .map(|metadata| metadata.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
+}
+
 /// Resolve a `terraphim_server` binary from an explicit environment value and
 /// a fallback path.
 ///
 /// Pure: the inputs are arguments, so the resolution rules are testable
 /// without touching the process environment.
 ///
-/// * An environment value that points at a real file wins.
-/// * An environment value that points at a missing file is treated as
-///   *absent* rather than silently falling back, so a misconfigured run is
-///   visible instead of quietly using a different binary.
-/// * Without an environment value, the fallback path is used when it is a file.
+/// * An environment value that points at a runnable file wins.
+/// * An environment value that is empty or only whitespace counts as *unset*:
+///   setting a variable to the empty string is how a CI matrix usually spells
+///   "not configured", and it must not silently skip the suite
+///   (terraphim-clients#513).
+/// * An environment value that points at a missing or non-executable file is
+///   treated as *absent* rather than silently falling back, so a misconfigured
+///   run is visible instead of quietly using a different binary.
+/// * Without an environment value, the fallback path is used when it is a
+///   runnable file.
 pub fn resolve_server_binary(env_value: Option<&str>, fallback: &Path) -> Option<PathBuf> {
-    match env_value {
+    match env_value.map(str::trim).filter(|value| !value.is_empty()) {
         Some(value) => {
             let path = PathBuf::from(value);
-            path.is_file().then_some(path)
+            is_usable_binary(&path).then_some(path)
         }
-        None => fallback.is_file().then(|| fallback.to_path_buf()),
+        None => is_usable_binary(fallback).then(|| fallback.to_path_buf()),
     }
 }
 
@@ -83,6 +111,23 @@ pub fn server_binary_path() -> Option<PathBuf> {
 pub fn skip_without_server(test: &str) -> bool {
     if server_binary_path().is_some() {
         return false;
+    }
+    // A file that exists but cannot be run is a different failure from an
+    // absent binary, and the notice must say so: the developer sees the real
+    // cause instead of "no binary" (terraphim-clients#513).
+    let configured = std::env::var("TERRAPHIM_SERVER_BIN")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    if let Some(configured) = configured {
+        let path = PathBuf::from(&configured);
+        if path.is_file() {
+            println!(
+                "skipping: {test}: the terraphim_server binary at '{configured}' is not \
+                 executable; refs #113, #466, #513"
+            );
+            return true;
+        }
     }
     println!(
         "skipping: {test}: no terraphim_server binary \
