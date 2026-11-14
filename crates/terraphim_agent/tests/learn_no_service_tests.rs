@@ -19,13 +19,6 @@ fn learn_list_succeeds_from_tmp_dir() {
     let tmp = tempfile::tempdir().expect("create temp dir");
     let data_dir = tmp.path().join("data");
 
-    // Steer storage into the temp dir so the test neither reads nor writes
-    // the developer's real learnings store (TERRAPHIM_DEFAULT_DATA_PATH is
-    // honoured by LearningCaptureConfig, Refs #144). Without it the test
-    // writes to the shared store, and two CI lanes racing over it make the
-    // test fail for a reason the diff cannot cause.
-    let data_dir = tmp.path().join("data");
-
     let output = Command::new(binary)
         .args(["learn", "list"])
         .current_dir(tmp.path())
@@ -78,10 +71,6 @@ fn learn_hook_succeeds_from_tmp_dir() {
 fn learn_capture_succeeds_from_tmp_dir() {
     let binary = agent_binary();
     let tmp = tempfile::tempdir().expect("create temp dir");
-    let data_dir = tmp.path().join("data");
-
-    // Steer storage into the temp dir so the test neither reads nor writes
-    // the developer's real learnings store (Refs #144).
     let data_dir = tmp.path().join("data");
 
     let output = Command::new(binary)
