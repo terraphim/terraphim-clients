@@ -108,10 +108,10 @@ fn the_cli_scenarios_run_and_meet_their_budgets() {
             // The coverage lane gives every test process an
             // `LLVM_PROFILE_FILE`. Thirty child processes inheriting it would
             // write their profile data into the parent's file and truncate
-            // it, so the children are measured without instrumentation. The
-            // agent's own coverage is measured by the suites that spawn it
-            // once.
-            command.env_remove("LLVM_PROFILE_FILE");
+            // it, so every child writes its own file inside the hermetic
+            // root, where it is discarded with the rest of the root. (An
+            // uninstrumented binary ignores the variable.)
+            command.env("LLVM_PROFILE_FILE", root.join("child.profraw"));
             set_hermetic_env(command, &root).map_err(|error| error.to_string())
         })
         .unwrap_or_else(|error| panic!("the scenario `{}` failed: {error}", scenario.name));
