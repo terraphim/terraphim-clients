@@ -133,11 +133,11 @@ and compares them with the manifest's budgets.
 
 | Requirement | Target | Current |
 |-------------|--------|---------|
-| Startup latency (`--version`) | < 50 ms (dev) | 1.8 ms (dev, this host) |
-| Command listing (`roles list`) | < 1200 ms (dev) | 142 ms (dev, this host) |
-| REPL startup and clean exit | < 1800 ms (dev) | 118 ms (dev, this host) |
-| One scripted KG turn (`search`) | < 1800 ms (dev) | 143 ms (dev, this host) |
-| Binary size | a ceiling per profile | 43.2 MB (dev), 29.9 MB (release) |
+| Startup latency (`--version`) | < 15 ms (dev) | 1.8 ms (reference host), 3.0 ms (CI runner) |
+| Command listing (`roles list`) | < 450 ms (dev) | 142 ms (reference host), 147 ms (CI runner) |
+| REPL startup and clean exit | < 450 ms (dev) | 118 ms (reference host), 132 ms (CI runner) |
+| One scripted KG turn (`search`) | < 450 ms (dev) | 143 ms (reference host), 134 ms (CI runner) |
+| Binary size | a ceiling for the release binary | 29.9 MB (release); the dev binary is 43 MB on the reference host and 500 MB on the CI runner, so it carries no ceiling |
 
 ## Vital Few (Essentialism)
 
@@ -315,10 +315,17 @@ milliseconds.
 | `repl` (end-of-file) | 118.0 | 137.6 | 110.5 | 125.1 |
 | `search hello` | 142.7 | 145.0 | 136.3 | 156.3 |
 
-Binary size: 43,164,400 bytes (dev), 29,942,240 bytes (release).
+The CI runner's own lane output for the same suite: `startup` 3.0 ms,
+`help` 4.1 ms, `roles list` 146.9 ms, `config show` 144.2 ms, `repl` 131.8 ms,
+`search` 134.2 ms - within a few per cent of the reference host on the
+commands that load the settings.
+
+Binary size: 43,164,400 bytes (dev, reference host), 499,729,064 bytes (dev,
+CI runner), 29,942,240 bytes (release).
 
 The dev and the release numbers are close: the cost of these commands is the
 settings load and the role-graph build, not the arithmetic an optimiser would
-have removed. The dev binary is bigger than the release one because it
-carries debug information, which is why the two profiles carry separate size
-ceilings.
+have removed. The dev binary's *size* is a different matter: the same source
+builds a 43 MB binary on the reference host and a 500 MB binary on the CI
+runner, so the dev profile carries no size ceiling - the number is published,
+but the ceiling applies to the release binary, whose size is the code.

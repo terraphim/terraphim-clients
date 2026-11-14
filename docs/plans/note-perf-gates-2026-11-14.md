@@ -102,6 +102,28 @@ refuses an alias anywhere else.
 | The same against `target/release/terraphim-agent` (`TERRAPHIM_PERF_BINARY`, `TERRAPHIM_PERF_PROFILE=release`) | passes; the release numbers are the ones published on the pull request |
 | The same against the coding agent's own binary (`origin/task/422-coding-agent`, dev and release) | passes; the two `code` scenarios measure 141.9 ms and 136.1 ms (dev), 145.7 ms and 133.8 ms (release), and the coding agent's release binary is **37,063,968 bytes - over the 36,000,000 byte release ceiling** |
 | `cargo test -p terraphim_agent --test ci_guards` | passes; the workflow guards are not disturbed by the new step |
+| the lane on the forge (run 46285, job 85367) | **failed on the first run, and the failure was the gate's** - see below |
+
+The first run of the lane on the forge failed, and it is worth recording what
+it caught. The lane measured the CI host's timings - `startup` 3.0 ms,
+`roles_list` 146.9 ms, `search_turn` 134.2 ms - and every latency budget
+passed. What failed was the **binary size**: the CI runner's dev binary is
+**499,729,064 bytes**, against the 60,000,000 byte ceiling the change had set
+from the reference host's 43,164,400 byte binary.
+
+The same source, built by a different toolchain and a different cargo
+configuration, produces a binary eleven times the size. That is debug
+information, not code, so an absolute byte ceiling on the dev binary is a
+statement about the runner rather than about the product. The dev profile
+therefore carries **no** size ceiling - the number is still published in every
+report - and the ceiling applies to the release binary, whose size is the
+code.
+
+The same run also settled the question the ceilings had been guessed at: the
+CI host runs these commands within a few per cent of the reference host, so
+the ceilings were tightened from roughly eight times the measurement to
+roughly three times it, with the CI host's own numbers in the manifest's
+justification.
 
 The gate was also verified in the direction that matters: with the `startup`
 budget tightened to 0.1 ms the lane fails with
@@ -146,13 +168,15 @@ which is the difference between a gate and a report.
   lane. The release profile's ceilings are enforced by the same harness
   whenever a release binary is measured, and the release numbers are
   published on the pull request.
-- The ceilings are roughly eight times the measurements they were set from.
+- The ceilings are roughly three times the measurements they were set from,
+  on two hosts that run the commands within a few per cent of each other.
   That is deliberate - see the research - but it means the gate catches a
   regression, not a ten per cent change. The fine-grained signal is the
   number on the pull request.
-- The CI runner is currently disabled on the forge, so the lane could not be
-  observed there. The same script was run locally instead, in both profiles
-  and in both directions (passing and failing).
+- The lane was observed on the forge once, and it failed there for the
+  reason above; the ceiling that was wrong is the one the fix removed. The
+  same script was run locally in both profiles and in both directions
+  (passing and failing).
 - `ubs` reports the harness's two `Command::new(<path>)` calls as a critical
   "command executable from an untrusted-looking value". The executable is the
   binary under test, or a path the operator chose in their own workspace; the
