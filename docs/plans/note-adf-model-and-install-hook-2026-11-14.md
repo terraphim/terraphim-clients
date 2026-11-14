@@ -64,13 +64,30 @@ had. It reads `.terraphim/adf.toml` and asserts:
 | Arm | What it checks | Host-dependent? |
 |---|---|---|
 | The prefixes | Every `model` and `fallback_model` provider prefix is on the orchestrator's allow-list | No |
-| The fallback path | Every `fallback_provider` is an absolute path | No |
-| The fallback exists | When the host has `opencode` on `PATH`, the `fallback_provider` is a file | Conditionally |
+| The fallback path | Every `fallback_provider` is an absolute path to an `opencode` binary | No |
 | The orchestrator | When the host has the `adf` binary, `adf --local --check` reports no validation failure | Conditionally |
 
 The portable arms always run, so the guard is never a no-op on the CI runner.
-The host-dependent arms skip with a printed notice when the tool is absent -
+The host-dependent arm skips with a printed notice when the tool is absent -
 the pattern `tests/support/binary.rs::skip_without_server` established.
+
+**The first CI run failed on the guard, and the guard was wrong.** It also
+asserted that the configured `fallback_provider` *exists* on the running
+host. The CI runner has an opencode of its own (`/usr/local/bin/opencode`),
+so the assertion was about the wrong machine - the configured path names the
+fleet host's opencode - and the lane failed:
+
+```text
+the agent `implementation-swarm` falls back to `/home/alex/.local/share/mise/shims/opencode`,
+which does not exist on this host: the fallback would fail to start. `which opencode` says
+/usr/local/bin/opencode. Refs #517.
+```
+
+That arm is gone: whether the path exists is a property of the machine the
+fleet runs on, not of this repository, and a test that asserted it would have
+to know which host it is on. The existence is verified by hand instead
+(`opencode --version` through the configured path prints `opencode v2.3.0`)
+and recorded here.
 
 ## Verification
 
@@ -147,10 +164,13 @@ and nothing was written under the fake home.
   into the guard, so the two can drift. The guard also asks the orchestrator
   itself whenever the host has the binary, which is the authoritative check;
   the quoted list is the portable fallback.
-- The `adf` binary and pi's model registry are not present on the CI runner,
-  so the host-dependent arms of the guard skip there with a printed notice.
-  The prefix arm - the one that catches the defect that was merged - always
-  runs.
+- The `adf` binary is not present on the CI runner, so the orchestrator's
+  verdict arm skips there with a printed notice. The prefix arm - the one
+  that catches the defect that was merged - always runs.
+- Whether the configured `fallback_provider` exists is verified by hand
+  rather than by a test, because it names the fleet host's opencode and the
+  CI runner is a different machine. The first CI run of this branch failed
+  exactly there; see the guard section above.
 - The fallback's *model id* (`kimi-for-coding/k2p6`) belongs to opencode's
   registry, not pi's, because the fallback CLI is opencode. It is the id the
   sibling fleet repositories use; this repository cannot check it against

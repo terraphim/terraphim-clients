@@ -19,10 +19,13 @@ Two changes, both in this repository, plus the guard that keeps them fixed:
   command that installed nothing must not report success.
 - **The guard** (`crates/terraphim_agent/tests/adf_config_guard.rs`): a test
   that fails when an agent's model prefix is not on the orchestrator's
-  allow-list, when a fallback path is not absolute, or when the host has
-  opencode and the fallback path does not exist. When the deployed
-  orchestrator is on the host, the guard also runs its own
-  `adf --local --check` and fails on a validation error.
+  allow-list, or when a fallback path is not an absolute path to an
+  `opencode` binary. When the deployed orchestrator is on the host, the guard
+  also runs its own `adf --local --check` and fails on a validation error.
+
+  Whether the configured fallback path *exists* is not a test arm: it names
+  the fleet host's opencode, and the CI runner is a different machine with
+  its own. The existence is verified by hand and recorded in the note.
 
 ## Motivation
 
@@ -101,8 +104,7 @@ unchanged: they write a real hook file and exit 0.
 | Arm | What it checks | Host-dependent? |
 |---|---|---|
 | The prefixes | Every `model` and `fallback_model` provider prefix is on the orchestrator's allow-list | No |
-| The fallback path | Every `fallback_provider` is an absolute path | No |
-| The fallback exists | When the host has `opencode` on PATH, the `fallback_provider` is a file on disk | Yes, conditionally |
+| The fallback path | Every `fallback_provider` is an absolute path to an `opencode` binary | No |
 | The orchestrator | When the host has the `adf` binary, `adf --local --check` reports no validation failure | Yes, conditionally |
 
 The host-dependent arms skip with a printed notice when the tool is absent -
