@@ -202,3 +202,64 @@ fn unreachable_categories_are_labelled_in_the_report() {
         "unreachable categories are not distinguished from missing text: {stdout}"
     );
 }
+
+#[test]
+fn satisfied_and_unreachable_never_overlap() {
+    // terraphim-clients#512. `unreachable` was computed from thesaurus-pattern presence
+    // before any proof ran, so a category credited by the phrase fallback appeared in
+    // both lists at once — the JSON said "we reached this" and "this cannot be reached"
+    // about the same category. The invariant holds on any host, with or without a graph:
+    // without one every category has no concept backing, and every credited category is
+    // reachable in the only sense that matters to the reader.
+    let out = agent()
+        .args([
+            "--format",
+            "json",
+            "validate",
+            "--checklist",
+            "code_review",
+            "we ran the tests, wrote the documentation, handled errors, checked security and performance",
+            "--json",
+        ])
+        .output()
+        .expect("run");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let line = stdout
+        .lines()
+        .find(|l| l.trim_start().starts_with('{'))
+        .unwrap_or_else(|| panic!("no JSON in output: {stdout}"));
+
+    let field = |name: &str| -> Vec<String> {
+        let start = line
+            .find(&format!("\"{name}\""))
+            .unwrap_or_else(|| panic!("{name} missing from {line}"));
+        let rest = &line[start..];
+        let open = rest
+            .find('[')
+            .unwrap_or_else(|| panic!("no array for {name}: {rest}"));
+        let close = rest[open..]
+            .find(']')
+            .unwrap_or_else(|| panic!("unterminated array for {name}: {rest}"));
+        rest[open + 1..open + close]
+            .split(',')
+            .map(|s| s.trim().trim_matches('"').to_string())
+            .filter(|s| !s.is_empty())
+            .collect()
+    };
+
+    let satisfied = field("satisfied");
+    let unreachable = field("unreachable");
+    assert!(
+        !satisfied.is_empty(),
+        "fixture text should credit at least one category: {line}"
+    );
+
+    let both: Vec<&String> = satisfied
+        .iter()
+        .filter(|c| unreachable.contains(c))
+        .collect();
+    assert!(
+        both.is_empty(),
+        "categories claimed as both satisfied and unreachable: {both:?}\n{line}"
+    );
+}

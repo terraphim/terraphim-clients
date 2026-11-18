@@ -830,12 +830,11 @@ impl TuiService {
         let mut satisfied = Vec::new();
         let mut missing = Vec::new();
         let mut evidence = std::collections::BTreeMap::new();
-        let mut unreachable = Vec::new();
+        let mut no_concept_backing = Vec::new();
 
         for category in &checklist.categories {
-            let reachable = category.terms.iter().any(|t| patterns.contains(t));
-            if !reachable {
-                unreachable.push(category.name.clone());
+            if !category.terms.iter().any(|t| patterns.contains(t)) {
+                no_concept_backing.push(category.name.clone());
             }
 
             if let Some(term) = category.terms.iter().find(|t| matched_terms.contains(*t)) {
@@ -853,6 +852,18 @@ impl TuiService {
             }
         }
 
+        // `unreachable` is a claim about credit, so it is computed after the proofs and
+        // can only ever name a category that nothing credited. Graph coverage is a
+        // separate question — `no_concept_backing` — because a category can lack a
+        // thesaurus pattern and still be reached by a literal mention. Reporting one as
+        // the other made the JSON say both "satisfied" and "unreachable" about the same
+        // category (terraphim-clients#512).
+        let unreachable: Vec<String> = missing
+            .iter()
+            .filter(|name| no_concept_backing.contains(name))
+            .cloned()
+            .collect();
+
         let total_items = satisfied.len() + missing.len();
         Ok(ChecklistResult {
             checklist_name: checklist.name.clone(),
@@ -862,6 +873,7 @@ impl TuiService {
             missing,
             evidence,
             unreachable,
+            no_concept_backing,
         })
     }
 
@@ -939,6 +951,10 @@ pub struct ChecklistResult {
     /// property of the graph, not of the text - reporting them as merely "missing" tells
     /// the reader to edit prose that cannot ever satisfy the check.
     pub unreachable: Vec<String>,
+    /// Categories with no thesaurus pattern at all — the graph cannot express them, so
+    /// only a literal mention can credit them. Disjoint from `unreachable`, which is
+    /// about credit rather than coverage.
+    pub no_concept_backing: Vec<String>,
 }
 
 /// Returns `true` when a thesaurus term occupying the byte span
