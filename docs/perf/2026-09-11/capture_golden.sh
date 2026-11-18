@@ -44,9 +44,12 @@ trap 'rm -rf "$STAGING"' EXIT
 
 WORKLOAD_NAMES=(GREP_CODE GREP_KG_MISS AGENT_SEARCH MEM_STARTUP)
 RUNS=5
-# A golden is only blessed when a real majority of the runs agree. The grep
-# and memory workloads are byte-stable, so all five must agree; agent-search
-# scores drift between runs (terraphim/terraphim-ai#3376), so three are enough.
+# A golden is only blessed when a real majority of the runs agree. Three of
+# five is the threshold applied to every workload: the grep and memory
+# workloads are observed to agree five times out of five, but only the
+# threshold is enforced, because agent-search scores drift between runs
+# (terraphim/terraphim-ai#3376) and a stricter rule would make that lane
+# unblessable.
 MAJORITY=3
 
 # Portable sha256: the capture host is macOS (shasum), CI is Linux (sha256sum).

@@ -40,6 +40,11 @@ check "trailing blank lines are dropped" "0000000   a  \n" "$out"
 out="$(printf '  indented\n' | normalise)"
 check "leading whitespace is preserved" "  indented" "$out"
 
+# The byte-level guarantee must not depend on the ambient locale. A UTF-8
+# locale must not let the glyph through, and must not eat the ASCII around it.
+out="$(printf 'A\u2705B\n' | LC_ALL=en_US.UTF-8 normalise)"
+check "the byte removal holds under a non-C locale" "AB" "$out"
+
 # A file that is entirely blank normalises to nothing.
 out="$(printf '\n\n' | normalise)"
 check "an all-blank input normalises to empty" "" "$out"

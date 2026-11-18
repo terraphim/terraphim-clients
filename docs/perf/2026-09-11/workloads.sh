@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Perf workloads for #253.
 #
 # Each workload is a shell function so the capture script can run it and read

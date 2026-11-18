@@ -34,7 +34,7 @@ Golden outputs (`golden/`, `golden_checksums.txt`) are byte-stable across 5 runs
 
 ## Hotspot 1: the update check before every agent command
 
-MEM_STARTUP spends 177 ms of wall time for 24 ms of CPU, with the widest variance of any workload (138 to 230 ms). The agent performs an HTTPS update check before dispatching every subcommand (`crates/terraphim_agent/src/main.rs:448-456`), including the Claude Code hook subcommands.
+MEM_STARTUP spends 177 ms of wall time for 24 ms of CPU, with the widest variance of any workload (138 to 230 ms). The agent performs an HTTPS update check before dispatching every subcommand (`crates/terraphim_agent/src/main.rs`, the pre-dispatch update check in `main`), including the Claude Code hook subcommands.
 
 ### What the measurements show
 
@@ -47,7 +47,7 @@ The differential (`hyperfine_connection_refused.md`) points the manifest URL at 
 
 Two things follow from this, and one thing does not.
 
-**Established - the retry backoff, on a connection-refused endpoint.** The differential costs about **1.4 s** on top of the online run for MEM_STARTUP (1574 - 177 = 1397 ms) and about **2.0 s** for AGENT_SEARCH (2645 - 617 = 2028 ms). The backoff itself is 500 ms + 1000 ms of sleeping; the remainder is the refused connections themselves. The two ends of that range bracket the retry path rather than measuring one fixed cost.
+**Established - the retry backoff, on a connection-refused endpoint.** The differential costs about **1.4 s** on top of the online run for MEM_STARTUP (1574 - 177 = 1397 ms) and about **2.0 s** for AGENT_SEARCH (2645 - 617 = 2028 ms). Both are broadly consistent with the retry path's 500 ms + 1000 ms of sleeping, but the measurements cannot decompose that sleeping from the refused connections themselves: MEM_STARTUP's 1397 ms differential is itself slightly *below* the 1500 ms of backoff, so the two cannot be separated from these runs. Treat the figures as noisy end-to-end differentials, not as a decomposition of the retry path.
 
 **Not established - the online cost of the update check.** This capture has **no update-disabled control**: there is no run with the check switched off, so its cost cannot be separated from the rest of the command. The gap between MEM_STARTUP's 177 ms of wall time and its 24 ms of CPU is 153 ms of *unaccounted* time - it may be network round trip, TLS handshake, DNS, or the updater's own work - and nothing here separates them. Attributing that gap to the network would be an inference from wall time minus CPU time rather than a measurement, so this document puts no figure on the online cost of the update check.
 

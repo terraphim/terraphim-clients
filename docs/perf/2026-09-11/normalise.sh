@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Shared normalisation for the #253 capture.
 #
 # Sourced by capture_golden.sh, and exercised by normalise_test.sh.
@@ -18,7 +19,7 @@
 # above 0x7F on both.
 
 normalise() {
-    tr -d '\200-\377' \
+    LC_ALL=C tr -d '\200-\377' \
         | sed -E '/^Search latency:/d' \
         | awk '
             { lines[NR] = $0 }
