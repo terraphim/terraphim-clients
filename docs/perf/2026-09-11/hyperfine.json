@@ -47,7 +47,7 @@
       ]
     },
     {
-      "command": "GREP_KG",
+      "command": "GREP_KG_MISS",
       "mean": 0.03640173974000001,
       "stddev": 0.0006460305555056888,
       "median": 0.036260543840000006,
@@ -139,7 +139,7 @@
       ]
     },
     {
-      "command": "MEM_RETRIEVE",
+      "command": "MEM_STARTUP",
       "mean": 0.17735260254000002,
       "stddev": 0.033168992968415675,
       "median": 0.16376483584,

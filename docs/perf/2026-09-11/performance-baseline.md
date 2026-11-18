@@ -38,7 +38,7 @@ MEM_STARTUP spends 177 ms of wall time for 24 ms of CPU, with the widest varianc
 
 ### What the measurements show
 
-The differential (`hyperfine_no_update.md`) points the manifest URL at a **closed local port**. The updater treats that as a fetch failure and retries with backoff (`crates/terraphim_update/src/manifest.rs:263,297`: 3 attempts, `500 ms` doubling, and a **15 s** timeout per attempt):
+The differential (`hyperfine_connection_refused.md`) points the manifest URL at a **closed local port**. The updater treats that as a fetch failure and retries with backoff (`crates/terraphim_update/src/manifest.rs:263,297`: 3 attempts, `500 ms` doubling, and a **15 s** timeout per attempt):
 
 | Workload | Reachable endpoint | Update check pointed at a closed port |
 |---|---|---|
@@ -53,23 +53,23 @@ Two things follow from this, and one thing does not.
 
 **Not established - "unreachable" covers two failure modes.** A **connection-refused** endpoint (a closed local port: the case measured here) fails immediately, so the cost is the retry backoff, about 1.4-2.0 s. A **blackholed** endpoint - a dropped packet, a silent firewall, a slow CDN - instead waits out the per-attempt timeout of **15 s** (`crates/terraphim_update/src/manifest.rs:263`), so the same code path costs tens of seconds. The two differ by more than an order of magnitude and must not be quoted as one number.
 
-**The differential's raw data is not committed.** `hyperfine_no_update.md` is a summary; the raw Hyperfine JSON for the differential runs, and the exact invocation and environment, are not in this tree, so the differential cannot be re-derived from what is committed here.
+**The differential's raw data is not committed.** `hyperfine_connection_refused.md` is a summary; the raw Hyperfine JSON for the differential runs, and the exact invocation and environment, are not in this tree, so the differential cannot be re-derived from what is committed here.
 
 ## Hotspot 2: agent search CPU
 
-AGENT_SEARCH is CPU-bound (620 ms CPU for 617 ms wall) and stable. The samply profile (`agent_search.profile.json`, open with `samply load`) shows the work on the main thread with tokio workers nearly idle. From the traced call chain in terraphim-ai#3376: every document is inserted into all 11 role graphs by terraphim_middleware, then the queried role's graph is discarded and rebuilt from scratch and the documents re-inserted, so each search does 12 rolegraph inserts per document where one is needed.
+AGENT_SEARCH is CPU-bound (620 ms CPU for 617 ms wall) and stable. A samply profile of that run was taken on the capture host and shows the work on the main thread with tokio workers nearly idle, but **the profile file is not committed to this tree** and neither are the exact Hyperfine invocations, so neither the profile nor the benchmark run can be reproduced from what is here alone. The traced call chain below is the reproducible part. From the traced call chain in terraphim-ai#3376: every document is inserted into all 11 role graphs by terraphim_middleware, then the queried role's graph is discarded and rebuilt from scratch and the documents re-inserted, so each search does 12 rolegraph inserts per document where one is needed.
 
 ## Opportunity matrix (score = impact x confidence / effort; implement only >= 2.0)
 
 | Hotspot | Impact | Confidence | Effort | Score | Isomorphism |
 |---|---|---|---|---|---|
-| Gate the pre-dispatch update check: skip for hook, learn hook, guard and memory apply subcommands; persist last-check time and honour the 24 h interval already in `UpdateConfig`; never retry inside a one-shot command | 5 | 5 (measured) | 2 | 12.5 | Output unchanged; only a side effect (a network request and a notification line) is removed or deferred |
+| Gate the pre-dispatch update check: skip for hook, learn hook, guard and memory apply subcommands; persist last-check time and honour the 24 h interval already in `UpdateConfig`; never retry inside a one-shot command | 5 | 4 (the retry backoff is measured; the online cost is not) | 2 | 10 | Output unchanged; only a side effect (a network request and a notification line) is removed or deferred |
 | Remove the discarded first indexing pass (terraphim_middleware indexer/mod.rs:190 then terraphim_service search.rs:740) | 4 | 5 (traced) | 2 (upstream, one loop) | 10 | No score change for the queried role |
 | Fix rolegraph counter seeding (rolegraph lib.rs:1235) and add a document-id tie-break | 3 (correctness) | 5 | 1 | 15 | Scores change deterministically; ordering may differ only where it is already unstable |
 | Grep: per-query thesaurus clone (`hybrid_searcher.rs:177`) | 2 | 3 | 2 | 3 | None; borrow instead of clone |
 
-The first row is the lever for this repo (the other two live in terraphim-ai). It also removes the retry storm that makes a connection-refused endpoint cost an agent invocation 1.4-2.0 s.
+The first row is the lever for this repo (the other two live in terraphim-ai). It also removes the retry storm that the connection-refused differential measures at roughly 1.4-2.0 s per agent invocation.
 
 ## Regression protocol
 
-Before any change: `cargo test`, then extend a regression test for the changed path. After: `cargo test`, then `bash docs/perf/2026-09-11/capture_golden.sh`, which re-captures the five runs into a temporary directory and compares the majority output against the committed goldens, failing loudly on any difference and refusing to capture at all if a workload fails or produces empty output. `bash docs/perf/2026-09-11/capture_golden.sh --update` re-blesses the goldens when a change is intended. Then re-run `hyperfine` with the same workloads and compare against `hyperfine.json` on the same machine at comparable load. Criterion benches (`hybrid_search`, `search_nfr`) are run separately with `--save-baseline` once the machine is quiet; they are not part of this capture because the machine was shared during the audit.
+Before any change: `cargo test`, then extend a regression test for the changed path. After: `cargo test`, then `bash docs/perf/2026-09-11/normalise_test.sh` and `bash docs/perf/2026-09-11/capture_golden.sh`, which re-captures the five runs into a temporary directory and compares the majority output against the committed goldens, failing loudly on any difference and refusing to capture at all if a workload fails or produces empty output. `bash docs/perf/2026-09-11/capture_golden.sh --update` re-blesses the goldens when a change is intended. Then re-run `hyperfine` with the same workloads and compare against `hyperfine.json` on the same machine at comparable load. Criterion benches (`hybrid_search`, `search_nfr`) are run separately with `--save-baseline` once the machine is quiet; they are not part of this capture because the machine was shared during the audit.

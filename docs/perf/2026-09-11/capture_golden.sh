@@ -18,13 +18,20 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GOLDEN_DIR="$HERE/golden"
 WORKLOADS="$HERE/workloads.sh"
+NORMALISER="$HERE/normalise.sh"
 
 if [ ! -r "$WORKLOADS" ]; then
     echo "missing workloads file: $WORKLOADS" >&2
     exit 1
 fi
+if [ ! -r "$NORMALISER" ]; then
+    echo "missing normaliser: $NORMALISER" >&2
+    exit 1
+fi
 # shellcheck source=/dev/null
 source "$WORKLOADS"
+# shellcheck source=/dev/null
+source "$NORMALISER"
 
 # The workloads use a relative --paths, so run them from the repository root.
 REPO_ROOT="$(git -C "$HERE" rev-parse --show-toplevel 2>/dev/null || echo "$HERE")"
@@ -37,6 +44,10 @@ trap 'rm -rf "$STAGING"' EXIT
 
 WORKLOAD_NAMES=(GREP_CODE GREP_KG_MISS AGENT_SEARCH MEM_STARTUP)
 RUNS=5
+# A golden is only blessed when a real majority of the runs agree. The grep
+# and memory workloads are byte-stable, so all five must agree; agent-search
+# scores drift between runs (terraphim/terraphim-ai#3376), so three are enough.
+MAJORITY=3
 
 # Portable sha256: the capture host is macOS (shasum), CI is Linux (sha256sum).
 sha256_of() {
@@ -45,10 +56,6 @@ sha256_of() {
     else
         shasum -a 256 "$@"
     fi
-}
-
-normalise() {
-    LC_ALL=C sed -E -e '/^Search latency:/d' -e 's/[\200-\377]//g'
 }
 
 capture_run() {
@@ -64,8 +71,8 @@ capture_run() {
         exit 1
     fi
     normalise <"$raw" >"$out"
-    if [ ! -s "$out" ]; then
-        echo "workload $name (run $run) produced empty output; refusing to bless it" >&2
+    if [ ! -s "$out" ] || ! LC_ALL=C grep -q '[^[:space:]]' "$out"; then
+        echo "workload $name (run $run) produced no non-whitespace output; refusing to bless it" >&2
         exit 1
     fi
 }
@@ -89,16 +96,27 @@ for name in "${WORKLOAD_NAMES[@]}"; do
     for run in $(seq 1 "$RUNS"); do
         files+=("$STAGING/$name.r$run")
     done
-    best="$(sha256_of "${files[@]}" | awk '{print $1}' | sort | uniq -c | sort -rn | head -1)"
-    count="${best%% *}"
-    sha="${best##* }"
+    # `uniq -c` pads its count with leading spaces, so the count and the hash
+    # are read with `read` rather than cut out of the string.
+    best_count=0
+    best_sha=""
+    while read -r count sha; do
+        if [ "$count" -gt "$best_count" ]; then
+            best_count="$count"
+            best_sha="$sha"
+        fi
+    done < <(sha256_of "${files[@]}" | awk '{print $1}' | sort | uniq -c | sort -rn)
+    if [ "$best_count" -lt "$MAJORITY" ]; then
+        echo "workload $name: only $best_count/$RUNS runs agreed; refusing to bless it" >&2
+        exit 1
+    fi
     for run in $(seq 1 "$RUNS"); do
-        if [ "$(sha256_of <"$STAGING/$name.r$run")" = "$sha  -" ]; then
+        if [ "$(sha256_of <"$STAGING/$name.r$run")" = "$best_sha  -" ]; then
             cp "$STAGING/$name.r$run" "$STAGING/$name.golden"
             break
         fi
     done
-    printf '%-13s majority=%s/%s\n' "$name" "$count" "$RUNS"
+    printf '%-13s majority=%s/%s\n' "$name" "$best_count" "$RUNS"
     (cd "$STAGING" && sha256_of "$name.golden" >>golden_checksums.txt)
 done
 
