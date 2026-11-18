@@ -47,11 +47,12 @@ UA = "terraphim-release-acceptance/1.0"
 CRATES_UA = "terraphim-release-verifier/1.0 (release validation)"
 
 BINARIES = ("terraphim-agent", "terraphim-cli", "terraphim-grep")
+# The published inventory has no Windows lane: five Unix targets for every
+# binary plus the universal Apple target for the two binaries that ship one.
 COMMON_TARGETS = {
     "aarch64-apple-darwin",
     "aarch64-unknown-linux-musl",
     "x86_64-apple-darwin",
-    "x86_64-pc-windows-msvc",
     "x86_64-unknown-linux-gnu",
     "x86_64-unknown-linux-musl",
 }

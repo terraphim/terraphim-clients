@@ -12,7 +12,9 @@ use tracing::{info, warn};
 
 #[cfg(feature = "shared-learning")]
 use crate::shared_learning::redact_secrets;
-use crate::shared_learning::types::{LearningSource, QualityMetrics, SharedLearning, TrustLevel};
+use crate::shared_learning::types::{
+    LearningSource, QualityMetrics, SharedLearning, SuggestionStatus, TrustLevel,
+};
 use crate::shared_learning::validation;
 
 #[derive(Error, Debug)]
@@ -79,6 +81,13 @@ struct LearningFrontmatter {
     #[serde(default)]
     promoted_at: Option<String>,
     trust_level: String,
+    /// The review status of the learning.
+    ///
+    /// It travels with the learning so that every consumer - the injector, the
+    /// wiki sync, another agent's store - can see that the learning was
+    /// rejected and must not be used (terraphim-clients#388).
+    #[serde(default)]
+    suggestion_status: String,
     source: String,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     applicable_agents: Vec<String>,
@@ -318,6 +327,7 @@ impl MarkdownLearningStore {
             updated_at: Some(learning.updated_at.to_rfc3339()),
             promoted_at: learning.promoted_at.map(|dt| dt.to_rfc3339()),
             trust_level: learning.trust_level.as_str().to_string(),
+            suggestion_status: learning.suggestion_status.to_string(),
             source: Self::learning_source_to_string(&learning.source),
             applicable_agents: learning.applicable_agents.clone(),
             keywords: learning.keywords.clone(),
@@ -364,6 +374,10 @@ impl MarkdownLearningStore {
 
         learning.id = frontmatter.id;
         learning.trust_level = trust_level;
+        learning.suggestion_status = frontmatter
+            .suggestion_status
+            .parse::<SuggestionStatus>()
+            .unwrap_or(SuggestionStatus::Pending);
         learning.created_at = frontmatter
             .captured_at
             .and_then(|s| s.parse().ok())

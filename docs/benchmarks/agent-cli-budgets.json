@@ -1,0 +1,158 @@
+{
+  "version": 1,
+  "binary_size_budgets": {
+    "release": 36000000
+  },
+  "scenarios": [
+    {
+      "name": "startup",
+      "args": [
+        "--version"
+      ],
+      "repetitions": 5,
+      "budgets": {
+        "dev": {
+          "median_ms": 15.0,
+          "p95_ms": 30.0
+        },
+        "release": {
+          "median_ms": 10.0,
+          "p95_ms": 20.0
+        }
+      }
+    },
+    {
+      "name": "help",
+      "args": [
+        "--help"
+      ],
+      "repetitions": 5,
+      "budgets": {
+        "dev": {
+          "median_ms": 20.0,
+          "p95_ms": 40.0
+        },
+        "release": {
+          "median_ms": 15.0,
+          "p95_ms": 30.0
+        }
+      }
+    },
+    {
+      "name": "roles_list",
+      "args": [
+        "roles",
+        "list"
+      ],
+      "repetitions": 5,
+      "budgets": {
+        "dev": {
+          "median_ms": 450.0,
+          "p95_ms": 700.0
+        },
+        "release": {
+          "median_ms": 400.0,
+          "p95_ms": 650.0
+        }
+      }
+    },
+    {
+      "name": "config_show",
+      "args": [
+        "config",
+        "show"
+      ],
+      "repetitions": 5,
+      "budgets": {
+        "dev": {
+          "median_ms": 450.0,
+          "p95_ms": 700.0
+        },
+        "release": {
+          "median_ms": 400.0,
+          "p95_ms": 650.0
+        }
+      }
+    },
+    {
+      "name": "repl_startup",
+      "args": [
+        "repl"
+      ],
+      "stdin": "",
+      "repetitions": 5,
+      "budgets": {
+        "dev": {
+          "median_ms": 450.0,
+          "p95_ms": 700.0
+        },
+        "release": {
+          "median_ms": 400.0,
+          "p95_ms": 650.0
+        }
+      }
+    },
+    {
+      "name": "search_turn",
+      "args": [
+        "search",
+        "hello"
+      ],
+      "repetitions": 5,
+      "budgets": {
+        "dev": {
+          "median_ms": 450.0,
+          "p95_ms": 700.0
+        },
+        "release": {
+          "median_ms": 400.0,
+          "p95_ms": 650.0
+        }
+      }
+    },
+    {
+      "name": "code_doctor",
+      "args": [
+        "code",
+        "doctor"
+      ],
+      "requires_subcommand": "code",
+      "absent_note": "the coding agent is not merged (PR #432)",
+      "allowed_exit_codes": [
+        0,
+        1
+      ],
+      "repetitions": 5,
+      "budgets": {
+        "dev": {
+          "median_ms": 450.0,
+          "p95_ms": 700.0
+        },
+        "release": {
+          "median_ms": 450.0,
+          "p95_ms": 700.0
+        }
+      }
+    },
+    {
+      "name": "code_commands",
+      "args": [
+        "code",
+        "commands"
+      ],
+      "requires_subcommand": "code",
+      "absent_note": "the coding agent is not merged (PR #432)",
+      "repetitions": 5,
+      "budgets": {
+        "dev": {
+          "median_ms": 450.0,
+          "p95_ms": 700.0
+        },
+        "release": {
+          "median_ms": 450.0,
+          "p95_ms": 700.0
+        }
+      }
+    }
+  ]
+}

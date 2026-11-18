@@ -1,0 +1,25 @@
+# Security checklist.
+#
+# See code_review.toml for how categories and terms are used.
+name = "security"
+title = "Security"
+
+[[categories]]
+name = "authentication"
+terms = ["authentication", "auth", "login"]
+
+[[categories]]
+name = "authorization"
+terms = ["authorization", "access control", "permissions"]
+
+[[categories]]
+name = "input_validation"
+terms = ["input validation", "sanitization"]
+
+[[categories]]
+name = "encryption"
+terms = ["encryption", "encrypted", "ssl", "tls"]
+
+[[categories]]
+name = "logging"
+terms = ["logging", "audit log"]
