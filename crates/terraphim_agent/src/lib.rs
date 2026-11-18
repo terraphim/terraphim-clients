@@ -22,6 +22,8 @@ pub mod memory_bench;
 /// Knowledge-graph retrieval over the agent evolution memory store.
 pub mod memory_retrieve;
 pub mod onboarding;
+/// The timed-commands performance gate for the agent's own CLI (#437).
+pub mod perf_gate;
 pub mod service;
 #[cfg(feature = "shared-learning")]
 pub mod shared_learning;
