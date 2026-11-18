@@ -22,9 +22,21 @@ evolution_enabled = true
 name = "implementation-swarm"
 layer = "Core"
 cli_tool = "/home/alex/.local/bin/pi-rust"
-model = "terraphim-proxy/fastest"
-fallback_provider = "/usr/local/bin/opencode"
-fallback_model = "terraphim-proxy/auto"
+# #517: the provider prefix has to be on the orchestrator's allow-list
+# (claude-code, opencode-go, kimi-for-coding, minimax-coding-plan,
+# zai-coding-plan) or the fleet refuses to load this project at all, and the
+# model id has to resolve in pi's own registry. `terraphim-proxy/*` is
+# neither: the orchestrator rejected it ("banned LLM provider
+# 'terraphim-proxy/fastest'") and pi has no `fastest` or `auto` model id.
+# `zai-coding-plan/glm-5.1` is the pair the sibling fleet repositories use
+# and the one the deployed orchestrator accepts.
+model = "zai-coding-plan/glm-5.1"
+# The fallback is opencode, so its model id is opencode's, not pi's. The CLI
+# path is the mise shim: it is what `which opencode` resolves to on this
+# host, and the fleet's older `/home/alex/.bun/bin/opencode` does not exist
+# here (neither did the `/usr/local/bin/opencode` this replaced).
+fallback_provider = "/home/alex/.local/share/mise/shims/opencode"
+fallback_model = "kimi-for-coding/k2p6"
 persona = "Echo"
 terraphim_role = "Terraphim AI Developer"
 skill_chain = [

@@ -3,34 +3,36 @@
 #![cfg(target_os = "linux")]
 
 use serial_test::serial;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 use std::thread;
 use std::time::{Duration, Instant};
 
 mod support;
+use support::binary::{server_binary_path, skip_without_server};
 use support::server_process::ServerProcessGuard;
 
-fn server_binary() -> PathBuf {
-    std::env::var_os("TERRAPHIM_SERVER_BIN")
-        .map(PathBuf::from)
-        .filter(|path| path.is_file())
-        .expect(
-            "TERRAPHIM_SERVER_BIN must point to a real terraphim_server binary; \
-             CI installs terraphim-ai v1.21.3 before running this suite",
-        )
-}
-
-fn spawn_server() -> ServerProcessGuard {
+/// Start a server for the calling test, or `None` when this machine has no
+/// server binary.
+///
+/// CI installs terraphim-ai v1.21.3 before running this suite; a local
+/// checkout usually has no server at all, in which case the test skips with
+/// the shared notice instead of failing (Refs #466).
+fn spawn_server(test: &str) -> Option<ServerProcessGuard> {
+    if skip_without_server(test) {
+        return None;
+    }
+    let binary = server_binary_path()
+        .expect("server_binary_path must resolve when skip_without_server returned false");
     let port = portpicker::pick_unused_port().expect("find unused server port");
-    let mut command = Command::new(server_binary());
+    let mut command = Command::new(binary);
     command
         .args([
             "--config",
             "terraphim_server/default/terraphim_engineer_config.json",
         ])
         .env("TERRAPHIM_SERVER_HOSTNAME", format!("127.0.0.1:{port}"));
-    ServerProcessGuard::spawn(&mut command).expect("start terraphim_server through guard")
+    Some(ServerProcessGuard::spawn(&mut command).expect("start terraphim_server through guard"))
 }
 
 fn assert_process_exists(pid: u32) {
@@ -50,7 +52,9 @@ fn assert_process_reaped(pid: u32) {
 #[test]
 #[serial]
 fn drop_stops_and_reaps_server() {
-    let server = spawn_server();
+    let Some(server) = spawn_server("drop_stops_and_reaps_server") else {
+        return;
+    };
     let pid = server.id();
     assert_process_exists(pid);
 
@@ -90,9 +94,13 @@ fn leader_exit_is_observed_without_reaping_before_drop() {
 #[test]
 #[serial]
 fn panic_unwinding_stops_and_reaps_server() {
+    if skip_without_server("panic_unwinding_stops_and_reaps_server") {
+        return;
+    }
     let mut pid = None;
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let server = spawn_server();
+        let server = spawn_server("panic_unwinding_stops_and_reaps_server")
+            .expect("server binary was resolved before this test started");
         pid = Some(server.id());
         assert_process_exists(server.id());
         panic!("exercise guard drop during panic unwinding");

@@ -1,7 +1,14 @@
 use anyhow::Result;
-use reqwest::Client;
+use reqwest::header::{AUTHORIZATION, ETAG, HeaderMap, HeaderValue, IF_MATCH};
+use reqwest::{Client, RequestBuilder, StatusCode};
 use serde::{Deserialize, Serialize};
 use terraphim_types::{Document, SearchQuery};
+
+/// The environment variable that carries the API key of the config plane.
+///
+/// The server authenticates its config endpoints with a bearer key. In
+/// loopback developer mode no key is needed, so the variable is optional.
+pub const API_KEY_ENV: &str = "TERRAPHIM_SERVER_API_KEY";
 
 #[derive(Clone, Debug)]
 pub struct ApiClient {
@@ -9,23 +16,63 @@ pub struct ApiClient {
     base: String,
 }
 
+/// The server's configuration together with the ETag that identifies it.
+///
+/// The ETag is what the config plane uses for optimistic concurrency: a write
+/// that carries the ETag of a configuration that has changed since is rejected
+/// (412) rather than overwriting somebody else's change.
+#[derive(Debug, Clone)]
+pub struct ConfigSnapshot {
+    /// The configuration as the server holds it right now.
+    pub config: terraphim_config::Config,
+    /// The `ETag` of the response, when the server sent one.
+    pub etag: Option<String>,
+}
+
 impl ApiClient {
+    /// Build a client for the server at `base_url`.
+    ///
+    /// The API key is read from [`API_KEY_ENV`] when it is set. In loopback
+    /// developer mode the server needs no key, so an unset variable is not an
+    /// error.
     pub fn new(base_url: impl Into<String>) -> Self {
+        let api_key = std::env::var(API_KEY_ENV)
+            .ok()
+            .map(|key| key.trim().to_string())
+            .filter(|key| !key.is_empty());
+        Self::build(base_url.into(), api_key.as_deref())
+    }
+
+    /// Build a client that authenticates with `api_key`.
+    ///
+    /// The key is sent as `Authorization: Bearer <key>` on every request, so
+    /// it reaches the config endpoints that require it.
+    pub fn with_api_key(base_url: impl Into<String>, api_key: impl Into<String>) -> Self {
+        let api_key = api_key.into();
+        Self::build(base_url.into(), Some(api_key.as_str()))
+    }
+
+    fn build(base: String, api_key: Option<&str>) -> Self {
         // Use longer timeout for CI/CD environments where search may be slow
         let timeout_secs: u64 = match std::env::var("TERRAPHIM_CLIENT_TIMEOUT") {
             Ok(v) => v.parse().unwrap_or(60),
             Err(_) => 30,
         };
-        let client = Client::builder()
+        let mut builder = Client::builder()
             .timeout(std::time::Duration::from_secs(timeout_secs))
-            .user_agent("Terraphim-TUI/1.0")
-            .build()
-            .unwrap_or_else(|_| Client::new());
+            .user_agent("Terraphim-TUI/1.0");
 
-        Self {
-            http: client,
-            base: base_url.into(),
+        if let Some(key) = api_key {
+            let mut headers = HeaderMap::new();
+            if let Ok(value) = HeaderValue::from_str(&format!("Bearer {key}")) {
+                headers.insert(AUTHORIZATION, value);
+            }
+            builder = builder.default_headers(headers);
         }
+
+        let client = builder.build().unwrap_or_else(|_| Client::new());
+
+        Self { http: client, base }
     }
 
     pub async fn health(&self) -> Result<()> {
@@ -39,10 +86,32 @@ impl ApiClient {
     }
 
     pub async fn get_config(&self) -> Result<ConfigResponse> {
+        Ok(self.fetch_config().await?.0)
+    }
+
+    /// Fetch the configuration together with the ETag that identifies it.
+    ///
+    /// The ETag is what a write has to carry as `If-Match`, so this is the
+    /// read every write is based on.
+    pub async fn get_config_snapshot(&self) -> Result<ConfigSnapshot> {
+        let (response, etag) = self.fetch_config().await?;
+        Ok(ConfigSnapshot {
+            config: response.config,
+            etag,
+        })
+    }
+
+    /// Read `/config` and keep both the body and the `ETag` header.
+    async fn fetch_config(&self) -> Result<(ConfigResponse, Option<String>)> {
         let url = format!("{}/config", self.base);
         let res = self.http.get(url).send().await?;
+        let etag = res
+            .headers()
+            .get(ETAG)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string);
         let body = res.error_for_status()?.json::<ConfigResponse>().await?;
-        Ok(body)
+        Ok((body, etag))
     }
 
     /// Resolve a role string (name or shortname) to a RoleName using server config.
@@ -68,27 +137,105 @@ impl ApiClient {
         Ok(RoleName::new(role))
     }
 
-    pub async fn update_selected_role(&self, role: &str) -> Result<ConfigResponse> {
+    /// Switch the server's selected role.
+    ///
+    /// `etag` is the ETag of the configuration the change is based on. The
+    /// server rejects the write when the configuration changed since (412);
+    /// see [`Self::send_config_write`].
+    pub async fn update_selected_role(
+        &self,
+        role: &str,
+        etag: Option<&str>,
+    ) -> Result<ConfigResponse> {
         let url = format!("{}/config/selected_role", self.base);
         #[derive(Serialize)]
         struct Payload<'a> {
             selected_role: &'a str,
         }
-        let res = self
-            .http
-            .post(url)
-            .json(&Payload {
+        self.send_config_write(etag, |etag| {
+            let request = self.http.post(&url).json(&Payload {
                 selected_role: role,
-            })
-            .send()
-            .await?;
-        let body = res.error_for_status()?.json::<ConfigResponse>().await?;
-        Ok(body)
+            });
+            match etag {
+                Some(etag) => request.header(IF_MATCH, etag),
+                None => request,
+            }
+        })
+        .await
     }
 
-    pub async fn post_config(&self, cfg: &terraphim_config::Config) -> Result<ConfigResponse> {
+    /// Switch the server's selected role.
+    ///
+    /// This is the shape every caller wants: read the configuration, then
+    /// write with the ETag of that configuration as `If-Match`. A write that
+    /// is based on a configuration that has changed since is reported, not
+    /// retried.
+    pub async fn switch_role(&self, role: &str) -> Result<ConfigResponse> {
+        let snapshot = self.get_config_snapshot().await?;
+        self.update_selected_role(role, snapshot.etag.as_deref())
+            .await
+    }
+
+    /// Write the configuration back to the server.
+    ///
+    /// The configuration is sent unchanged - including the values the server
+    /// redacted, which are sent back as they were received so the server can
+    /// keep the values it holds.
+    ///
+    /// `etag` is the ETag of the configuration the write is based on; see
+    /// [`Self::send_config_write`].
+    pub async fn post_config(
+        &self,
+        cfg: &terraphim_config::Config,
+        etag: Option<&str>,
+    ) -> Result<ConfigResponse> {
         let url = format!("{}/config", self.base);
-        let res = self.http.post(url).json(cfg).send().await?;
+        self.send_config_write(etag, |etag| {
+            let request = self.http.post(&url).json(cfg);
+            match etag {
+                Some(etag) => request.header(IF_MATCH, etag),
+                None => request,
+            }
+        })
+        .await
+    }
+
+    /// Send a write to the config plane and interpret its answer.
+    ///
+    /// The config plane protects writes with `If-Match`: a write that carries
+    /// the ETag of a configuration that has changed since is rejected with 412.
+    /// The write is **not** retried - the caller is told that the
+    /// configuration changed elsewhere, because retrying would apply a change
+    /// that was computed against a configuration that no longer exists.
+    async fn send_config_write(
+        &self,
+        etag: Option<&str>,
+        build: impl FnOnce(Option<&str>) -> RequestBuilder,
+    ) -> Result<ConfigResponse> {
+        let res = build(etag).send().await?;
+
+        if res.status() == StatusCode::PRECONDITION_FAILED {
+            // Fetch the configuration once more, so the report can say what it
+            // looks like now, and then report the conflict.
+            let current = self.get_config_snapshot().await.ok();
+            let selected = current.map(|snapshot| snapshot.config.selected_role.to_string());
+            anyhow::bail!(
+                "the configuration changed elsewhere: the server rejected the write (412 \
+                 precondition failed){} - the write was not applied, read the configuration \
+                 again and re-apply the change",
+                selected
+                    .map(|role| format!("; the selected role is now '{role}'"))
+                    .unwrap_or_default()
+            );
+        }
+
+        if res.status() == StatusCode::PRECONDITION_REQUIRED {
+            anyhow::bail!(
+                "the server requires If-Match on configuration writes but did not return an \
+                 ETag - the client and the server are out of step"
+            );
+        }
+
         let body = res.error_for_status()?.json::<ConfigResponse>().await?;
         Ok(body)
     }

@@ -281,6 +281,14 @@ pub(crate) enum Command {
         /// to enable KG-driven rewriting.
         #[arg(long, default_value_t = false)]
         rewrite: bool,
+        /// The program the pre-tool-use hook asks for a guard decision.
+        ///
+        /// The guard runs out of process so that a crash inside it cannot turn
+        /// into an allow, and so the hook can block the call when the guard
+        /// produced no decision. The default is this binary. This option exists
+        /// for tests and for wrappers; the installed hook does not pass it.
+        #[arg(long, value_name = "PATH", hide = true)]
+        guard_program: Option<std::path::PathBuf>,
     },
     /// Check command against safety guard patterns (blocks destructive git/fs commands)
     Guard {
@@ -393,6 +401,23 @@ pub(crate) enum CacheSub {
         /// Specific role to flush (if omitted, flushes all cached thesauri)
         #[arg(long)]
         role: Option<String>,
+    },
+    /// List the compiled thesaurus cache entries
+    List,
+    /// Export a role's compiled thesaurus (recompiled if its source changed)
+    Export {
+        /// Role to export (name or shortname)
+        #[arg(long, conflicts_with = "all")]
+        role: Option<String>,
+        /// Export every configured role (one file per role, needs --dir)
+        #[arg(long, requires = "dir")]
+        all: bool,
+        /// Write the export to this file ("-" means stdout)
+        #[arg(long, conflicts_with = "dir", requires = "role")]
+        out: Option<String>,
+        /// Write one file per role into this directory (needs --all)
+        #[arg(long, requires = "all")]
+        dir: Option<String>,
     },
 }
 
@@ -782,9 +807,14 @@ pub(crate) enum RobotSub {
 
 #[derive(Subcommand, Debug)]
 pub(crate) enum MemorySub {
-    /// Capture a command or session event as an agentic memory item
-    /// (writes to evolution store with provenance metadata)
+    /// Save authored lesson text to the evolution store with provenance metadata
     Capture {
+        /// Exact lesson text to save (mutually exclusive with --file)
+        #[arg(long, required_unless_present = "file", conflicts_with = "file")]
+        content: Option<String>,
+        /// Read the lesson from a UTF-8 file (mutually exclusive with --content)
+        #[arg(long, required_unless_present = "content", conflicts_with = "content")]
+        file: Option<std::path::PathBuf>,
         /// Provenance tag for traceability (session ID, commit SHA)
         #[arg(long)]
         provenance_tag: Option<String>,

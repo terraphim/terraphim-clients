@@ -3,6 +3,12 @@
 //! This crate provides shared functionality for Claude Code hooks and Git hooks,
 //! including text replacement via knowledge graphs and binary discovery utilities.
 
+// The workspace is a forbid-soundness project: no `unsafe` in the library or
+// binary target of this crate (terraphim-clients#447, #310). The integration
+// tests under `tests/` are separate crates and keep their own, listed
+// exceptions - see the `no_new_unsafe_sites` guard.
+#![forbid(unsafe_code)]
+
 mod discovery;
 mod replacement;
 mod validation;
