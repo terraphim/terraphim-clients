@@ -33,4 +33,4 @@ ls -lt ~/.local/share/terraphim/learnings/ | head
 
 - Multi-client plan: `cto-executive-system/2026-08-08-learn-hooks-multi-client.md`
 - Design: `docs/plans/design-pi-terraphim-learn-2026-08-08.md`
-- CLI: `terraphim-agent learn install-hook pi`
+- CLI: `terraphim-agent learn install-hook pi` - it prints the installation contract above and exits non-zero, because pi installs an extension package rather than a shell hook: the command installs nothing, and says so (terraphim-clients#517).

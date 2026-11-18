@@ -95,13 +95,46 @@ terraphim-grep "async fn spawn" --search-only
 
 # Search specific paths
 terraphim-grep "struct Config" --paths src/ crates/
+
+# Find files by name (fuzzy, ranked, no content read)
+terraphim-grep "tgp" --files --paths ~/.config/opencode
 ```
+
+`--files` answers "where is the file called ...": it ranks file names with the
+same fuzzy matcher and walker as content search, prints one absolute path per
+line (or `--json` objects with `path` and `score`), respects `--paths`, and
+exits 1 when nothing matches. It needs no thesaurus, role, or LLM.
 
 > **LLM synthesis is opt-in.** A plain query always returns retrieved chunks at grep
 > speed; the LLM is only called when you pass `--answer` or `--force-rlm`. Having
 > `OPENROUTER_API_KEY` in the environment is not, on its own, a request for synthesis
 > (terraphim/terraphim-clients#81). Use `--search-only` (alias `--no-rlm`) to also skip
 > building the LLM client.
+
+#### Sharing a role's vocabulary with terraphim-agent
+
+`--role` resolves a role from `~/.config/terraphim/embedded_config.json` (or
+`$TERRAPHIM_CONFIG`) by name, display name, or shortname, and loads that role's
+compiled thesaurus or its local Markdown KG — so grep and the agent search with
+the same concepts even in a repository with no `.terraphim/` directory.
+
+```bash
+terraphim-grep "rollback plan" --role code-reviewer
+terraphim-grep "rollback plan" --role "Code Reviewer"   # same role
+```
+
+A project `.terraphim/thesaurus-<role>.json` still takes precedence over the
+user role configuration, and `--thesaurus <path>` takes precedence over both.
+
+#### Exit codes
+
+`terraphim-grep` follows ripgrep so shell gates can branch without parsing stdout:
+
+| Code | Meaning |
+|---|---|
+| `0` | At least one chunk matched, or `--answer` produced an answer |
+| `1` | The query matched nothing (including a `--haystack` that excluded every match) |
+| `2` | Usage or IO error |
 
 ### Use an editor-exported synonym graph
 

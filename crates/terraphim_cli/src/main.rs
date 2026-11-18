@@ -3,6 +3,12 @@
 //! A non-interactive command-line tool for scripting and automation.
 //! Outputs JSON for easy parsing and integration with other tools.
 
+// The workspace is a forbid-soundness project: no `unsafe` in the library or
+// binary target of this crate (terraphim-clients#447, #310). The integration
+// tests under `tests/` are separate crates and keep their own, listed
+// exceptions - see the `no_new_unsafe_sites` guard.
+#![forbid(unsafe_code)]
+
 use anyhow::{Context, Result};
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};

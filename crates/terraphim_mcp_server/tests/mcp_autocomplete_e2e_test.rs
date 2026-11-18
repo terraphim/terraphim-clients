@@ -15,9 +15,67 @@ use tokio::process::Command;
 // Additional imports for thesaurus building
 use terraphim_automata::AutomataPath;
 
+/// A hermetic environment for one autocomplete test.
+///
+/// Settings, home and the thesaurus file all live under a unique temporary
+/// root. The MCP server is spawned as a child process, and without this it
+/// persisted its role config into the shared `/tmp/terraphim_sqlite` profile
+/// and wrote its thesaurus to a fixed `/tmp` path that a concurrent run could
+/// overwrite. Both leaked into other suites (the agent's checklist test
+/// resolved the polluted role and credited a different category). Refs #494.
+struct HermeticEnv {
+    root: tempfile::TempDir,
+}
+
+impl HermeticEnv {
+    fn new() -> Result<Self> {
+        let root = tempfile::tempdir()?;
+        let home = root.path().join("home");
+        let data = root.path().join("data");
+        let dashmap = root.path().join("dashmap");
+        std::fs::create_dir_all(home.join(".config"))?;
+        std::fs::create_dir_all(&data)?;
+        std::fs::create_dir_all(&dashmap)?;
+
+        let settings = format!(
+            "server_hostname = \"127.0.0.1:8000\"\n\
+             api_endpoint = \"http://localhost:8000/api\"\n\
+             initialized = \"false\"\n\
+             default_data_path = \"{data}\"\n\
+             \n\
+             [profiles.dashmap]\n\
+             type = \"dashmap\"\n\
+             root = \"{dashmap}\"\n",
+            data = data.display(),
+            dashmap = dashmap.display(),
+        );
+        std::fs::write(root.path().join("settings.toml"), settings)?;
+
+        // The child inherits the environment, so the redirects reach it.
+        set_env_var(
+            "TERRAPHIM_SETTINGS_PATH",
+            root.path().to_string_lossy().to_string(),
+        );
+        set_env_var("HOME", home.to_string_lossy().to_string());
+        set_env_var(
+            "XDG_CONFIG_HOME",
+            home.join(".config").to_string_lossy().to_string(),
+        );
+
+        Ok(Self { root })
+    }
+
+    /// Where this test's thesaurus file lives. Unique per test run.
+    fn thesaurus_path(&self) -> std::path::PathBuf {
+        self.root
+            .path()
+            .join("terraphim_engineer_autocomplete_thesaurus.json")
+    }
+}
+
 /// Create a comprehensive test configuration with the "Terraphim Engineer" role
 /// that uses local KG files and builds thesaurus from local markdown files
-async fn create_autocomplete_test_config() -> Result<String> {
+async fn create_autocomplete_test_config(env: &HermeticEnv) -> Result<String> {
     // Use memory-only persistence to avoid RocksDB filesystem issues in CI
     set_env_var("TERRAPHIM_PROFILE_MEMORY_TYPE", "memory");
     let log_dir = tempfile::Builder::new()
@@ -61,9 +119,8 @@ async fn create_autocomplete_test_config() -> Result<String> {
     // Reload thesaurus from persistence to get canonical version
     thesaurus = thesaurus.load().await?;
 
-    // Create automata path pointing to the persisted thesaurus
-    let temp_dir = std::env::temp_dir();
-    let thesaurus_path = temp_dir.join("terraphim_engineer_autocomplete_thesaurus.json");
+    // Create automata path pointing to this test's own thesaurus file
+    let thesaurus_path = env.thesaurus_path();
 
     // Write thesaurus to temp file for automata path
     let thesaurus_json = serde_json::to_string_pretty(&thesaurus)?;
@@ -142,7 +199,8 @@ async fn start_mcp_server() -> Result<TokioChildProcess> {
 async fn test_build_autocomplete_index_terraphim_engineer() -> Result<()> {
     println!("🧪 Testing autocomplete index building for Terraphim Engineer role");
 
-    let config_json = create_autocomplete_test_config().await?;
+    let env = HermeticEnv::new()?;
+    let config_json = create_autocomplete_test_config(&env).await?;
     let transport = start_mcp_server().await?;
     let service = ().serve(transport).await?;
 
@@ -197,7 +255,8 @@ async fn test_build_autocomplete_index_terraphim_engineer() -> Result<()> {
 async fn test_fuzzy_autocomplete_search_kg_terms() -> Result<()> {
     println!("🧪 Testing fuzzy autocomplete search with knowledge graph terms");
 
-    let config_json = create_autocomplete_test_config().await?;
+    let env = HermeticEnv::new()?;
+    let config_json = create_autocomplete_test_config(&env).await?;
     let transport = start_mcp_server().await?;
     let service = ().serve(transport).await?;
 
@@ -296,7 +355,8 @@ async fn test_fuzzy_autocomplete_search_kg_terms() -> Result<()> {
 async fn test_levenshtein_autocomplete_search_kg_terms() -> Result<()> {
     println!("🧪 Testing Levenshtein autocomplete search with knowledge graph terms");
 
-    let config_json = create_autocomplete_test_config().await?;
+    let env = HermeticEnv::new()?;
+    let config_json = create_autocomplete_test_config(&env).await?;
     let transport = start_mcp_server().await?;
     let service = ().serve(transport).await?;
 
@@ -374,7 +434,8 @@ async fn test_levenshtein_autocomplete_search_kg_terms() -> Result<()> {
 async fn test_autocomplete_algorithm_comparison() -> Result<()> {
     println!("🧪 Testing autocomplete algorithm comparison: Jaro-Winkler vs Levenshtein");
 
-    let config_json = create_autocomplete_test_config().await?;
+    let env = HermeticEnv::new()?;
+    let config_json = create_autocomplete_test_config(&env).await?;
     let transport = start_mcp_server().await?;
     let service = ().serve(transport).await?;
 
@@ -461,7 +522,8 @@ async fn test_autocomplete_algorithm_comparison() -> Result<()> {
 #[serial]
 #[ignore = "Test expects specific autocomplete results that may not be available"]
 async fn test_autocomplete_terms_tool() -> Result<()> {
-    let config_json = create_autocomplete_test_config().await?;
+    let env = HermeticEnv::new()?;
+    let config_json = create_autocomplete_test_config(&env).await?;
     let transport = start_mcp_server().await?;
     let service = ().serve(transport).await?;
 
@@ -517,7 +579,8 @@ async fn test_autocomplete_terms_tool() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_autocomplete_with_snippets_tool() -> Result<()> {
-    let config_json = create_autocomplete_test_config().await?;
+    let env = HermeticEnv::new()?;
+    let config_json = create_autocomplete_test_config(&env).await?;
     let transport = start_mcp_server().await?;
     let service = ().serve(transport).await?;
 
@@ -663,7 +726,8 @@ async fn test_autocomplete_error_handling() -> Result<()> {
 async fn test_role_specific_autocomplete() -> Result<()> {
     println!("🧪 Testing role-specific autocomplete functionality");
 
-    let config_json = create_autocomplete_test_config().await?;
+    let env = HermeticEnv::new()?;
+    let config_json = create_autocomplete_test_config(&env).await?;
     let transport = start_mcp_server().await?;
     let service = ().serve(transport).await?;
 

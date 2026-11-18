@@ -4,6 +4,9 @@
   "description": "Terraphim learn capture for pi_agent_rust (onToolResult → terraphim-agent learn hook)",
   "type": "module",
   "main": "index.js",
+  "scripts": {
+    "test": "node --test index.test.mjs"
+  },
   "license": "Apache-2.0",
   "keywords": ["pi", "terraphim", "hooks", "learn"],
   "engines": {

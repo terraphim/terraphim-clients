@@ -19,6 +19,8 @@ The manifest schema has four exact top-level keys. Unknown or missing keys,
 legacy string asset values, duplicate targets, invalid filenames, zero sizes,
 or malformed checksums are rejected.
 
+This excerpt illustrates one asset entry; it is not a complete accepted manifest.
+
 ```json
 {
   "assets": {
@@ -34,9 +36,10 @@ or malformed checksums are rejected.
 }
 ```
 
-Official manifests use closed target sets. Agent and grep have the six matrix
-targets plus `universal-apple-darwin`; CLI has the six matrix targets and no
-universal entry. Windows uses ZIP; other targets use `tar.gz`.
+Official strict manifests use five Unix matrix targets. Agent and grep also have
+`universal-apple-darwin`; CLI does not. The current producer ships no Windows
+archive. On Windows, the updater fails closed when no asset matches its target.
+Every published target uses a `tar.gz` archive.
 
 ## Verification and rollback safety
 
@@ -59,7 +62,7 @@ creates archives containing the executable and both repository licenses,
 signs them, validates the exact post-sign bytes, then emits `SHA256SUMS`, dual
 candidate manifests, canonical stripped Linux binaries with
 `BINARY_SHA256SUMS`, and provenance in one immutable workflow artifact. Linux
-and Windows outputs are byte-reproducible. Timestamped/notarized macOS outputs
+outputs are byte-reproducible. Timestamped/notarized macOS outputs
 are deterministic in structure and correlation, not byte-identical across
 independent rebuilds. It has no GitHub release or R2 write path.
 
