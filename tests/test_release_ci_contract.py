@@ -9,9 +9,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 HEALTH = ROOT / "scripts" / "validate-r2-manifests.py"
+# The published inventory has no Windows lane: five Unix targets for every
+# binary plus the universal Apple target for the two binaries that ship one.
 COMMON = {
     "aarch64-apple-darwin", "aarch64-unknown-linux-musl", "x86_64-apple-darwin",
-    "x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl",
+    "x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl",
 }
 
 
@@ -29,8 +31,7 @@ def prepare_tree(
         legacy_assets = {}
         strict_assets = {}
         for target in targets:
-            extension = ".zip" if target == "x86_64-pc-windows-msvc" else ".tar.gz"
-            path = f"{binary}/{binary}-{version}-{target}{extension}"
+            path = f"{binary}/{binary}-{version}-{target}.tar.gz"
             payload = f"{binary}-{target}".encode()
             (root / path).write_bytes(payload)
             legacy_assets[target] = path
@@ -38,7 +39,9 @@ def prepare_tree(
                 "path": path, "sha256": hashlib.sha256(payload).hexdigest(), "size": len(payload)
             }
         if legacy_live_shape:
-            legacy_assets.pop("x86_64-pc-windows-msvc")
+            # The legacy pointer published before the activation version keeps
+            # the historical v1 shape: the six Unix targets, universal Apple
+            # included, for every binary.
             if binary == "terraphim-cli":
                 target = "universal-apple-darwin"
                 path = f"{binary}/{binary}-{version}-{target}.tar.gz"

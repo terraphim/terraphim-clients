@@ -178,6 +178,15 @@ impl GiteaWikiClient {
         &self,
         learning: &SharedLearning,
     ) -> Result<SyncResult, WikiSyncError> {
+        // A rejected learning is never synced, whatever it claims to be worth
+        // (terraphim-clients#388).
+        if !crate::shared_learning::types::status_is_usable(learning.suggestion_status) {
+            return Ok(SyncResult::Skipped(format!(
+                "Learning status {:?} does not allow wiki sync",
+                learning.suggestion_status
+            )));
+        }
+
         // Only sync L2 and L3 learnings
         if !learning.should_sync_to_wiki() {
             return Ok(SyncResult::Skipped(format!(
@@ -447,6 +456,29 @@ impl WikiSyncReport {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::shared_learning::SuggestionStatus;
+
+    /// A rejected learning is never synced to the wiki (terraphim-clients#388).
+    #[tokio::test]
+    async fn rejected_learnings_are_never_synced() {
+        let client = GiteaWikiClient::new(GiteaWikiConfig::default());
+
+        let mut learning = SharedLearning::new(
+            "Rejected learning".to_string(),
+            "body".to_string(),
+            crate::shared_learning::types::LearningSource::BashHook,
+            "agent-a".to_string(),
+        );
+        learning.trust_level = crate::shared_learning::types::TrustLevel::L3;
+        learning.suggestion_status = SuggestionStatus::Rejected;
+
+        let result = client.sync_learning(&learning).await.unwrap();
+
+        assert!(
+            matches!(result, SyncResult::Skipped(_)),
+            "a rejected learning must not be synced, got {result:?}"
+        );
+    }
 
     #[test]
     fn test_gitea_wiki_config_default() {

@@ -37,7 +37,11 @@ async fn test_network_timeout_handling() {
                 error_str.contains("timeout")
                     || error_str.contains("connect")
                     || error_str.contains("network")
-                    || error_str.contains("unreachable"),
+                    || error_str.contains("unreachable")
+                    // reqwest reports every request failure as "error sending
+                    // request for url (...)"; the cause carries the detail. The
+                    // test must not depend on how quickly the network gave up.
+                    || error_str.contains("sending request"),
                 "Error should indicate network issue: {}",
                 e
             );
@@ -326,8 +330,16 @@ async fn test_config_error_scenarios() {
 
     let client = ApiClient::new(TEST_SERVER_URL);
 
-    // Test invalid role update
-    let result = client.update_selected_role("InvalidRoleName12345").await;
+    // Test invalid role update. The write carries the ETag of the current
+    // configuration, the way every write path does (#459).
+    let etag = client
+        .get_config_snapshot()
+        .await
+        .ok()
+        .and_then(|snapshot| snapshot.etag);
+    let result = client
+        .update_selected_role("InvalidRoleName12345", etag.as_deref())
+        .await;
 
     match result {
         Ok(response) => {

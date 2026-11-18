@@ -1,8 +1,10 @@
 //! Logging initialisation for `terraphim-agent`.
 //!
 //! This wraps the standard [`env_logger`] backend with a thin, message-aware
-//! filter that drops a single benign `ERROR` line emitted by `terraphim_service`
-//! on every knowledge-graph subcommand.
+//! filter that drops two classes of record: a benign `ERROR` line emitted by
+//! `terraphim_service` on every knowledge-graph subcommand, and the flood of
+//! per-line parse warnings the session analyzer emits for the event
+//! envelopes it does not recognise.
 //!
 //! ## Why this exists
 //!
@@ -27,6 +29,28 @@
 //! including genuine thesaurus failures — through untouched.
 //!
 //! See terraphim/terraphim-clients#48.
+//!
+//! ## The session analyzer's parse warnings
+//!
+//! `terraphim_session_analyzer` parses every line of a Claude Code JSONL
+//! session and warns for each line whose envelope it does not recognise:
+//!
+//! ```text
+//! WARN terraphim_session_analyzer::parser] Failed to parse line 9:
+//!   {"type":"atis-latch",...} - Error: missing field `uuid` at line 1 column 82
+//! ```
+//!
+//! Claude Code adds event types faster than the analyzer learns them
+//! (`atis-latch`, `api-request-shape`, `cost-state`, ...), so a single search
+//! over a session directory produced thousands of these lines - stderr became
+//! unreadable and the real warnings were lost in the flood. The analyzer
+//! already skips the metadata event types it knows
+//! (`SKIP_ENTRY_TYPES`), so the fix belongs upstream; until that lands, the
+//! agent drops the warnings for the envelopes it can recognise as unrecognised
+//! (a valid JSON object that simply has no `uuid` field), and keeps every
+//! other parse warning.
+//!
+//! See terraphim/terraphim-clients#402.
 
 use std::sync::Once;
 
@@ -56,8 +80,31 @@ fn is_benign_thesaurus_not_found(level: Level, target: &str, message: &str) -> b
     lower.contains("not found") || lower.contains("notfound")
 }
 
+/// Returns `true` when the record is the session analyzer's warning about a
+/// line whose envelope it does not recognise.
+///
+/// The analyzer logs `Failed to parse line <n>: <line> - Error: missing field
+/// \`uuid\` at line 1 column <c>` for every event type it does not know. The
+/// line itself is valid JSON - it simply is not a conversational entry - so
+/// the record carries no information about a problem the user can act on,
+/// and there is one per line of every session.
+///
+/// The match is deliberately narrow: only a `WARN` from the session analyzer
+/// whose message reports a **missing field** is dropped. A line that is
+/// actually malformed (`expected value at line 1 column 1`) keeps its warning.
+fn is_unrecognised_session_event(level: Level, target: &str, message: &str) -> bool {
+    if level != Level::Warn || !target.starts_with("terraphim_session_analyzer") {
+        return false;
+    }
+    if !message.contains("Failed to parse line") {
+        return false;
+    }
+    message.contains("missing field")
+}
+
 /// A [`Log`] wrapper that drops the benign thesaurus-not-found `ERROR` and
-/// delegates every other record to the inner logger unchanged.
+/// the session analyzer's unrecognised-event warnings, and delegates every
+/// other record to the inner logger unchanged.
 struct FilteredLogger<L: Log> {
     inner: L,
 }
@@ -68,11 +115,11 @@ impl<L: Log> Log for FilteredLogger<L> {
     }
 
     fn log(&self, record: &Record) {
-        if is_benign_thesaurus_not_found(
-            record.level(),
-            record.target(),
-            &record.args().to_string(),
-        ) {
+        let message = record.args().to_string();
+        if is_benign_thesaurus_not_found(record.level(), record.target(), &message) {
+            return;
+        }
+        if is_unrecognised_session_event(record.level(), record.target(), &message) {
             return;
         }
         self.inner.log(record);
@@ -235,6 +282,87 @@ mod tests {
             "terraphim_service",
             msg
         ));
+    }
+
+    /// The real warning the analyzer emits for an event type it does not
+    /// recognise, pinned to the format it uses.
+    fn real_unrecognised_event_warning() -> String {
+        "Failed to parse line 9: {\"type\":\"atis-latch\",\"atis\":\"\",\"sessionId\":\"bc40\"} - Error: missing field `uuid` at line 1 column 82".to_string()
+    }
+
+    #[test]
+    fn predicate_matches_the_real_unrecognised_event_warning() {
+        let msg = real_unrecognised_event_warning();
+        assert!(is_unrecognised_session_event(
+            Level::Warn,
+            "terraphim_session_analyzer::parser",
+            &msg
+        ));
+    }
+
+    #[test]
+    fn predicate_keeps_a_genuinely_malformed_line() {
+        // A line that is not valid JSON at all is a real problem, and its
+        // warning must survive.
+        let msg = "Failed to parse line 3: {not json - Error: expected value at line 1 column 2";
+        assert!(!is_unrecognised_session_event(
+            Level::Warn,
+            "terraphim_session_analyzer::parser",
+            msg
+        ));
+    }
+
+    #[test]
+    fn predicate_keeps_warnings_from_other_targets() {
+        let msg = real_unrecognised_event_warning();
+        assert!(!is_unrecognised_session_event(
+            Level::Warn,
+            "terraphim_agent::sessions",
+            &msg
+        ));
+    }
+
+    #[test]
+    fn predicate_keeps_other_levels() {
+        let msg = real_unrecognised_event_warning();
+        assert!(!is_unrecognised_session_event(
+            Level::Error,
+            "terraphim_session_analyzer::parser",
+            &msg
+        ));
+    }
+
+    #[test]
+    fn filtered_logger_drops_the_session_flood_and_keeps_real_warnings() {
+        let capture = CapturingLogger::new();
+        let logger = FilteredLogger { inner: capture };
+
+        // The flood: dropped.
+        logger.log(
+            &Record::builder()
+                .level(Level::Warn)
+                .target("terraphim_session_analyzer::parser")
+                .args(format_args!("{}", real_unrecognised_event_warning()))
+                .build(),
+        );
+        // A genuine parse failure: kept.
+        logger.log(
+            &Record::builder()
+                .level(Level::Warn)
+                .target("terraphim_session_analyzer::parser")
+                .args(format_args!(
+                    "Failed to parse line 3: {{not json - Error: expected value at line 1 column 2"
+                ))
+                .build(),
+        );
+
+        let records = logger.inner.records.lock().unwrap();
+        assert_eq!(records.len(), 1, "only the genuine warning should survive");
+        assert!(
+            records[0].contains("expected value"),
+            "the genuine warning must survive, got: {:?}",
+            records
+        );
     }
 
     #[test]
