@@ -43,7 +43,7 @@ Sufficiency: SearchOnly
    //! Error types for the linear_haystack crate.
 
 13. linear_haystack/src/lib.rs:1
-   //! `linear_haystack` — a haystack provider for Terraphim that searches
+   //! `linear_haystack`  a haystack provider for Terraphim that searches
 
 14. linear_haystack/src/lib.rs:4
    //! Implements [`haystack_core::HaystackProvider`] over [`LinearHaystack`].
@@ -65,4 +65,3 @@ Sufficiency: SearchOnly
 
 20. linear_haystack/src/lib.rs:32
    impl LinearHaystack {
-
