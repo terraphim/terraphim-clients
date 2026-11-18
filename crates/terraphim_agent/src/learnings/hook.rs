@@ -232,15 +232,22 @@ fn process_user_prompt_submit(json: &str) {
 /// change byte lengths. Leading whitespace of any script is trimmed
 /// before matching. The function must never panic on any input.
 fn parse_correction_pattern(text: &str) -> Option<(String, String)> {
-    let lower = text.to_lowercase();
-    let trimmed = lower.trim_start();
+    // The string that is SLICED is the one the offsets are computed from.
+    //
+    // The original is trimmed once, and the keyword search runs over
+    // `to_ascii_lowercase`, which maps only ASCII letters and therefore
+    // preserves byte length. Unicode lowercasing does not: `U+0130` lowercases
+    // to two bytes, so an offset taken from a lowercased copy can land inside
+    // a character and panic.
+    let trimmed = text.trim_start();
+    let lower = trimmed.to_ascii_lowercase();
 
     // "use X instead of Y" (must start with "use")
-    if let Some(use_idx) = trimmed.find("use ")
+    if let Some(use_idx) = lower.find("use ")
         && use_idx == 0
     {
-        let text_after_use = &text[text.to_lowercase().trim_start().find("use ").unwrap() + 4..];
-        let lower_after_use = text_after_use.to_lowercase();
+        let text_after_use = &trimmed[use_idx + 4..];
+        let lower_after_use = text_after_use.to_ascii_lowercase();
         if let Some(instead_idx) = lower_after_use.find(" instead of ") {
             let corrected = text_after_use[..instead_idx].trim().to_string();
             let original = text_after_use[instead_idx + 12..]
@@ -265,12 +272,11 @@ fn parse_correction_pattern(text: &str) -> Option<(String, String)> {
     }
 
     // "prefer X over Y" (must start with "prefer")
-    if let Some(prefer_idx) = trimmed.find("prefer ")
+    if let Some(prefer_idx) = lower.find("prefer ")
         && prefer_idx == 0
     {
-        let text_after_prefer =
-            &text[text.to_lowercase().trim_start().find("prefer ").unwrap() + 7..];
-        let lower_after_prefer = text_after_prefer.to_lowercase();
+        let text_after_prefer = &trimmed[prefer_idx + 7..];
+        let lower_after_prefer = text_after_prefer.to_ascii_lowercase();
         if let Some(over_idx) = lower_after_prefer.find(" over ") {
             let corrected = text_after_prefer[..over_idx].trim().to_string();
             let original = text_after_prefer[over_idx + 6..]
@@ -433,6 +439,81 @@ impl HookInput {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// UF-043 (#309): the offset contract must hold for arbitrary input.
+    ///
+    /// The offsets are computed on the string that is sliced, and case folding
+    /// is ASCII-only, so a Unicode case fold can never shift an offset into
+    /// the middle of a character.
+    #[test]
+    fn correction_pattern_survives_unicode_whitespace_and_case_folds() {
+        // Leading Unicode whitespace: EM SPACE (U+2003) is three bytes, so a
+        // byte offset taken from a trimmed copy of a different string would
+        // land inside the character.
+        assert_eq!(
+            parse_correction_pattern("\u{2003}\u{2003}use X instead of Y"),
+            Some(("Y".to_string(), "X".to_string())),
+            "leading Unicode whitespace must be trimmed, not mis-sliced"
+        );
+        // U+0130 lowercases to two bytes under Unicode rules, so a Unicode
+        // lowercase copy would shift the delimiter offset.
+        assert_eq!(
+            parse_correction_pattern("use \u{0130} instead of \u{e9}"),
+            Some(("\u{e9}".to_string(), "\u{0130}".to_string())),
+            "a Unicode case fold must not shift the delimiter offset"
+        );
+        // Repeated ASCII whitespace is trimmed once.
+        assert_eq!(
+            parse_correction_pattern("   use X instead of Y"),
+            Some(("Y".to_string(), "X".to_string())),
+            "leading ASCII whitespace must be trimmed once"
+        );
+        // Uppercase ASCII keywords still match.
+        assert_eq!(
+            parse_correction_pattern("USE X INSTEAD OF Y"),
+            Some(("Y".to_string(), "X".to_string())),
+            "ASCII keywords must match case-insensitively"
+        );
+        // A multibyte suffix after the delimiter.
+        assert_eq!(
+            parse_correction_pattern("use X instead of \u{00e9}\u{00e8}"),
+            Some(("\u{00e9}\u{00e8}".to_string(), "X".to_string())),
+            "a multibyte suffix must survive"
+        );
+        // The "prefer" form, with multibyte parts.
+        assert_eq!(
+            parse_correction_pattern("prefer \u{00e9} over \u{00e8}"),
+            Some(("\u{00e8}".to_string(), "\u{00e9}".to_string())),
+            "the prefer form must survive multibyte parts"
+        );
+    }
+
+    /// The parser must never panic on arbitrary UTF-8.
+    #[test]
+    fn correction_pattern_never_panics_on_arbitrary_utf8() {
+        let samples = [
+            "",
+            " ",
+            "\u{2003}",
+            "\u{0130}",
+            "\u{0130}use",
+            "use",
+            "use ",
+            "use X",
+            "use X not",
+            "prefer",
+            "prefer X over",
+            "\u{2003}\u{2003}use X instead of Y",
+            "USE X INSTEAD OF Y",
+            "use \u{0130} instead of \u{e9}",
+            "prefer \u{00e9} over \u{00e8}",
+            "\u{1F600} use X instead of Y",
+            "\u{2003}use\u{2003}X\u{2003}instead\u{2003}of\u{2003}Y",
+        ];
+        for sample in samples {
+            let _ = parse_correction_pattern(sample);
+        }
+    }
 
     #[test]
     fn test_hook_input_parse() {
