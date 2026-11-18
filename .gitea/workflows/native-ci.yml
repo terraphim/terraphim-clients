@@ -29,6 +29,12 @@ jobs:
         # `||` chaining instead. Refs #106.
         run: |
           test -x /usr/local/bin/zipsign && /usr/local/bin/zipsign --version || { echo "::error::zipsign not found on PATH. Install on the runner host: sudo install -m 0755 ~/.cargo/bin/zipsign /usr/local/bin/zipsign (see gitea-infrastructure HANDOVER.md, 'Host Tooling'). Refs #106"; exit 1; }
+      # The runner aborts the job on the first failing step, so a trailing cleanup only
+      # runs after success. Clearing leftovers at the start covers the case that matters:
+      # a previous run that died holding a checkout-scoped server. The script resolves
+      # exact PIDs from /proc and no-ops when there is nothing to stop.
+      - name: Stop leftover terraphim_server processes
+        run: bash ./scripts/ci/cleanup_terraphim_servers.sh
       # #313: guard the CA bundle path used below. #328: the check uses
       # the literal path, not $SSL_CERT_FILE -- the runner does not apply
       # job-level `env:` (parser has no env: handling), so the variable
@@ -136,9 +142,15 @@ jobs:
       # the workflow text; the alias stays scoped to exactly the lanes that
       # need it, guarded by
       # ci_guards.rs::native_ci_aliases_gitea_token_for_packaged_graph_lanes.
+      # TERRAPHIM_STRICT_TOOLCHAIN=1: this lane runs the ci_guards binary too
+      # (it is part of --all-targets), and the pinned tools are installed above
+      # into the very CARGO_HOME/bin this lane puts first on PATH. The
+      # local-vs-pin drift check must therefore be fatal here as well: leaving
+      # it report-only meant the drift could reach main unnoticed, because the
+      # only strict lane was a focused one (Refs #497, #500, #513).
       - run: |
           test -z "$GITEA_TOKEN" || export CARGO_REGISTRIES_TERRAPHIM_TOKEN="Bearer $GITEA_TOKEN"
-          RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER="" PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH" TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo test --workspace --all-targets --no-fail-fast
+          RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER="" PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH" TERRAPHIM_STRICT_TOOLCHAIN=1 TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo test --workspace --all-targets --no-fail-fast
       # #248: focused strict-manifest/integrity rollback attribution. Python
       # workflow contracts run on GitHub because the native runner command
       # policy allows cargo and repo scripts, not arbitrary Python commands.
@@ -153,6 +165,12 @@ jobs:
       - run: RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER="" TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo test -p terraphim_agent --test cross_mode_consistency_test -- --nocapture
       - run: RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER="" TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo test -p terraphim_agent --test integration_tests -- --nocapture
       - run: RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER="" TERRAPHIM_SERVER_BIN=/tmp/terraphim_server_install/bin/terraphim_server cargo test -p terraphim_agent --test kg_ranking_integration_test -- --nocapture
+      # #459: the server-mode client (the `--server` mode) lives behind the
+      # `server` feature. The test build enables it through the `repl-full`
+      # dev-dependency, but a plain build does not - so the feature is
+      # compiled explicitly here, otherwise a break in the client would only
+      # be found by whoever builds with the feature on.
+      - run: RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER="" cargo check -p terraphim_agent --features server --all-targets
       # #2171: enrichment feature clippy + test invocations (feature-gated,
       # not covered by --all-targets with default features).
       - run: RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER="" cargo clippy -p terraphim_sessions --features enrichment -- -D warnings
@@ -161,16 +179,11 @@ jobs:
       # connectors and the search-index score module are invisible to the
       # default-features and enrichment-only lanes above).
       - run: RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER="" cargo test -p terraphim_sessions --all-features --no-fail-fast
-      # #95: isolated packaged install-graph regression (covered by --all-targets
-      # above but kept as a focused gate for faster failure attribution). Its
-      # nested `cargo package` resolves the private terraphim registry, so it
-      # needs the same CONDITIONAL CARGO_REGISTRIES_TERRAPHIM_TOKEN alias as
-      # the broad lane above, with the Bearer authentication scheme (PR #332
-      # jobs 68638/68643; #335: conditional because VM runners apply no
-      # job/step env and must fall back to the baked CARGO_HOME credential).
-      - run: |
-          test -z "$GITEA_TOKEN" || export CARGO_REGISTRIES_TERRAPHIM_TOKEN="Bearer $GITEA_TOKEN"
-          RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER="" cargo test -p terraphim_agent --test packaged_install_graph_regression -- --nocapture
+      # #95/#431: isolated registry-free manifest regression (covered by
+      # --all-targets above but kept as a focused gate for faster failure
+      # attribution). The release-only package/install target is ignored by
+      # default and runs explicitly through scripts/release/verify-agent-package.sh.
+      - run: RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER="" cargo test -p terraphim_agent --test packaged_install_graph_regression -- --nocapture
       # #118: repo guards -- duplicate-crate detection and the publish gate's own
       # tests. Rust tests, not shell steps: the runner allowlist rejects any
       # program that is not cargo ("policy rejected command: ... not on the
@@ -179,7 +192,26 @@ jobs:
       # The host runner PATH omits the default Cargo install bin directory.
       # Cargo finds llvm-cov there itself, but the guard also executes
       # cargo-nextest directly. Scope the same install path to this lane.
-      - run: RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER="" PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH" cargo test -p terraphim_agent --test ci_guards -- --nocapture
+      # TERRAPHIM_STRICT_TOOLCHAIN=1: this lane has the pinned toolchain first
+      # on PATH, so the local-vs-pin drift check must be fatal here. Elsewhere
+      # (developer machines, whose toolchain is not the pinned one) the same
+      # drift is reported, not fatal -- it is a property of the machine, not
+      # of the repository. The workspace lane above is strict too, because it
+      # runs this guard as well and carries the same pinned installs.
+      # Refs #497, #500, #513.
+      - run: RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER="" TERRAPHIM_STRICT_TOOLCHAIN=1 PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH" cargo test -p terraphim_agent --test ci_guards -- --nocapture
+      # #467: the pi-terraphim-learn plugin package is JavaScript, so the
+      # workspace cargo tests never exercised it. The wrapper skips with a
+      # notice when the runner has no node; the GitHub lane runs it.
+      - name: pi-terraphim-learn functional test
+        run: bash ./scripts/ci/pi-terraphim-learn-tests.sh
+      # #437: the agent CLI performance gate. The budgets live in
+      # docs/benchmarks/agent-cli-budgets.json and the script turns the gate
+      # on, so the ceilings are asserted here rather than only measured. One
+      # line, one program: the runner's command policy classifies the first
+      # token of the step, and a checked-in script is the shape it accepts.
+      - name: Agent CLI performance gate
+        run: bash ./scripts/ci/perf-gate.sh
       # #313: first coverage lane in the monorepo. nextest runs each test
       # binary in its own process so llvm-cov can attribute per-test
       # coverage. --workspace --all-targets mirrors the existing cargo
@@ -220,3 +252,17 @@ jobs:
       # (terraphim/gitea-infrastructure#2).
       - name: Coverage summary (lcov totals)
         run: bash ./scripts/ci/lcov_totals.sh lcov.info
+      # #410: belt-and-braces cleanup for a cancelled or panicking test runner.
+      # The script checks both /proc/<pid>/exe and /proc/<pid>/cwd before
+      # signalling exact PIDs, so it cannot stop another checkout's server.
+      # The runner refuses step `if:` expressions outright ("unsupported step `if`
+      # expression `always()`; refusing to execute it unconditionally"), which fails
+      # workflow compilation for the whole job before any step runs. The cleanup is
+      # unconditional anyway - it resolves exact PIDs from /proc and no-ops when there
+      # is nothing to stop - so dropping the guard is both allowed and correct.
+      - name: Stop checkout terraphim_server processes
+        run: bash ./scripts/ci/cleanup_terraphim_servers.sh
+      # Checklist-vs-concept contract, end-to-end journey and bench. Placed after the
+      # library tests so a broken build fails first. Skips its live assertions when no
+      # knowledge graph is present and says so in the report, rather than passing silently.
+      - run: bash ./scripts/checklist-journey.sh

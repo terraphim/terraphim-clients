@@ -22,6 +22,12 @@ This crate provides a unified interface for self-updating Terraphim CLI tools. I
 - Tokio-based async scheduler for background checks
 - Cross-platform support (Linux, macOS, Windows)
 
+> **v1.21.14 Windows note:** The signed automatic-update manifests cover Linux
+> and macOS. Windows v1.21.14 binaries are available as manual downloads, but
+> this version of the Windows updater cannot verify ZIP signatures and therefore
+> will not install them automatically. A later client release will restore
+> signed Windows automatic updates.
+
 ## Usage
 
 ### Basic Update Check

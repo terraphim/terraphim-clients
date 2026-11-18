@@ -235,12 +235,61 @@ pub fn reject_hostile_tree(base: &Path) -> Result<(), String> {
             // `file_type` reports a symbolic link as such, so links are never
             // descended into -- no `metadata` call, and no loop to detect.
             if entry.file_type().is_ok_and(|t| t.is_dir()) {
-                stack.push((entry.path(), entry_rel_len));
+                let child = entry.path();
+                if never_indexed(base, &child) {
+                    // fff-search will not index this directory, so none of its
+                    // names can reach the shared path buffer: there is nothing
+                    // here for the guard to validate.
+                    continue;
+                }
+                stack.push((child, entry_rel_len));
             }
         }
     }
 
     Ok(())
+}
+
+/// Directories fff-search never indexes, so the guard does not walk them.
+///
+/// The list mirrors fff-search's own ignore rules (`fff_search::ignore`):
+/// `node_modules`, `__pycache__`, `venv` and `.venv` are excluded outright, and
+/// inside a `target` directory the `debug`, `release`, `rust-analyzer` and
+/// `criterion` subtrees are. `.git` is added because the `ignore` crate skips
+/// it in every repository.
+///
+/// Skipping them keeps the guard's walk over the same scope as the scan that
+/// follows it. That is where the cost of the double walk in #452 went: the
+/// guard walked `target/debug` - tens of thousands of build artefacts - while
+/// fff-search skipped it, so the second walk was pure overhead.
+const NEVER_INDEXED_DIRS: &[&str] = &["node_modules", "__pycache__", "venv", ".venv"];
+
+/// Subdirectories of `target` that fff-search excludes.
+const NEVER_INDEXED_TARGET_SUBDIRS: &[&str] = &["debug", "release", "rust-analyzer", "criterion"];
+
+/// Whether `dir` is a directory fff-search will not index.
+fn never_indexed(base: &Path, dir: &Path) -> bool {
+    let Ok(relative) = dir.strip_prefix(base) else {
+        return false;
+    };
+    let components: Vec<String> = relative
+        .components()
+        .map(|component| component.as_os_str().to_string_lossy().into_owned())
+        .collect();
+
+    let mut components = components.iter().peekable();
+    while let Some(component) = components.next() {
+        if component == ".git" || NEVER_INDEXED_DIRS.contains(&component.as_str()) {
+            return true;
+        }
+        if component == "target"
+            && let Some(child) = components.peek()
+            && NEVER_INDEXED_TARGET_SUBDIRS.contains(&child.as_str())
+        {
+            return true;
+        }
+    }
+    false
 }
 
 #[cfg(test)]
@@ -443,6 +492,82 @@ mod tests {
         assert!(
             err.contains("at or over fff-search's"),
             "error must explain the length rule, got: {err}"
+        );
+    }
+
+    /// Directories fff-search never indexes are not walked, so their names
+    /// never reach the shared path buffer and the guard has nothing to check
+    /// there. The rule mirrors fff-search's own ignore list.
+    #[test]
+    fn never_indexed_directories_are_recognised() {
+        let base = Path::new("/base");
+        for relative in [
+            "/base/.git",
+            "/base/node_modules",
+            "/base/pkg/__pycache__",
+            "/base/.venv",
+            "/base/target/debug",
+            "/base/target/release",
+            "/base/target/criterion",
+            "/base/target/rust-analyzer",
+        ] {
+            assert!(
+                never_indexed(base, Path::new(relative)),
+                "{relative} must be treated as never indexed"
+            );
+        }
+        for relative in [
+            "/base/src",
+            "/base/target",
+            "/base/target/custom",
+            "/base/venvish",
+            "/base/my_node_modules",
+        ] {
+            assert!(
+                !never_indexed(base, Path::new(relative)),
+                "{relative} must not be skipped"
+            );
+        }
+    }
+
+    /// A hostile name inside a directory fff-search ignores does not refuse
+    /// the search: those names never reach the library's path buffer, so
+    /// refusing would reject a tree the library would have scanned happily.
+    #[test]
+    #[cfg(unix)]
+    fn hostile_name_in_an_ignored_directory_does_not_refuse_the_search() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let debug_dir = tmp.path().join("target/debug");
+        std::fs::create_dir_all(&debug_dir).unwrap();
+        let raw = vec![0xFFu8; 16];
+        std::fs::write(debug_dir.join(std::ffi::OsStr::from_bytes(&raw)), b"x").unwrap();
+
+        assert!(
+            reject_hostile_tree(tmp.path()).is_ok(),
+            "an ignored directory must not refuse the search"
+        );
+    }
+
+    /// A hostile name in a directory that *is* indexed still refuses the
+    /// search -- the skip rule must not weaken the guard.
+    #[test]
+    #[cfg(unix)]
+    fn hostile_name_in_an_indexed_directory_still_refuses_the_search() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let src = tmp.path().join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        let raw = vec![0xFFu8; 16];
+        std::fs::write(src.join(std::ffi::OsStr::from_bytes(&raw)), b"x").unwrap();
+
+        let error = reject_hostile_tree(tmp.path())
+            .expect_err("a hostile name in an indexed directory must refuse the search");
+        assert!(
+            error.contains("not valid UTF-8"),
+            "error must say why, got: {error}"
         );
     }
 }

@@ -461,7 +461,7 @@ async fn test_search_invalid_pagination_params() -> Result<()> {
     let transport = TokioChildProcess::new(command)?;
     let service = ().serve(transport).await?;
 
-    // Negative limit – server may coerce or error; ensure it does not crash.
+    // Negative pagination is a protocol error, before any retrieval occurs.
     let res = service
         .call_tool(CallToolRequestParam {
             name: "search".into(),
@@ -472,10 +472,10 @@ async fn test_search_invalid_pagination_params() -> Result<()> {
             .as_object()
             .cloned(),
         })
-        .await?;
-    assert!(res.is_error.unwrap_or(false) || !res.content.is_empty());
+        .await;
+    assert!(res.is_err(), "negative limit must be rejected: {res:?}");
 
-    // Excessive limit should error
+    // A large in-range limit remains valid and does not terminate the server.
     let res2 = service
         .call_tool(CallToolRequestParam {
             name: "search".into(),
@@ -487,7 +487,8 @@ async fn test_search_invalid_pagination_params() -> Result<()> {
             .cloned(),
         })
         .await?;
-    assert!(res2.is_error.unwrap_or(false) || !res2.content.is_empty());
+    assert!(!res2.is_error.unwrap_or(false));
+    assert!(!res2.content.is_empty());
     Ok(())
 }
 

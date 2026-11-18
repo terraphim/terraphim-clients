@@ -1,0 +1,28 @@
+# Code review checklist.
+#
+# A category is satisfied when its topic is addressed in the reviewed text. Whether
+# a term can be recognised depends on the knowledge graph behind the role, so terms
+# are listed here rather than derived: the checklist states the standard, the graph
+# only helps recognise it (see docs/checklists.md).
+name = "code_review"
+title = "Code review"
+
+[[categories]]
+name = "tests"
+terms = ["tests", "test", "testing", "unit test", "integration test"]
+
+[[categories]]
+name = "documentation"
+terms = ["documentation", "docs", "comments"]
+
+[[categories]]
+name = "error_handling"
+terms = ["error handling", "exception handling"]
+
+[[categories]]
+name = "security"
+terms = ["security", "security check"]
+
+[[categories]]
+name = "performance"
+terms = ["performance", "optimization"]
